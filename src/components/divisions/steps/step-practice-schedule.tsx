@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { SkipForward } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { ORDERED_DAYS, type WizardData, type PlayingDay } from "../wizard-types";
+import { ORDERED_DAYS, type WizardData, type PlayingDay, type TeamEntry } from "../wizard-types";
 
 interface Props {
   data: WizardData;
@@ -40,6 +40,14 @@ export function StepPracticeSchedule({ data, update, onSkip }: Props) {
     return data.day_windows[day] ?? null;
   }
 
+  function withoutSlot(t: TeamEntry): TeamEntry {
+    const copy = { ...t };
+    delete copy.practice_day;
+    delete copy.practice_start;
+    delete copy.practice_venue_id;
+    return copy;
+  }
+
   function setSlotField(
     index: number,
     field: "practice_day" | "practice_start" | "practice_venue_id",
@@ -49,11 +57,8 @@ export function StepPracticeSchedule({ data, update, onSkip }: Props) {
     const prev = teams[index];
 
     if (field === "practice_day" && !value) {
-      // Clearing the day clears the whole slot
-      const { practice_day: _d, practice_start: _s, practice_venue_id: _v, ...rest } = prev;
-      teams[index] = rest;
+      teams[index] = withoutSlot(prev);
     } else if (field === "practice_day") {
-      // Selecting a day for the first time — pre-fill venue with division default
       teams[index] = {
         ...prev,
         practice_day: value as PlayingDay,
@@ -69,15 +74,13 @@ export function StepPracticeSchedule({ data, update, onSkip }: Props) {
   }
 
   function clearSlot(index: number) {
-    const { practice_day: _d, practice_start: _s, practice_venue_id: _v, ...rest } = data.teams[index];
     const teams = [...data.teams];
-    teams[index] = rest;
+    teams[index] = withoutSlot(data.teams[index]);
     update({ teams });
   }
 
   function handleSkip() {
-    const teams = data.teams.map(({ practice_day: _d, practice_start: _s, practice_venue_id: _v, ...rest }) => rest);
-    update({ teams });
+    update({ teams: data.teams.map(withoutSlot) });
     onSkip();
   }
 
