@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import { DivisionWizard } from "./division-wizard";
 import { DivisionSchedulePanel } from "./division-schedule-panel";
 import { ConflictResolverModal } from "./conflict-resolver-modal";
+import { LogRainoutModal } from "./log-rainout-modal";
 import type { Division } from "@/types/database";
 import type { DivisionStat } from "@/app/(dashboard)/dashboard/leagues/[id]/page";
 import {
@@ -122,7 +123,7 @@ const QUICK_ACTIONS = [
   {
     icon: CloudRain,
     label: "Log a rainout",
-    description: "Coming soon",
+    description: "Cancel & reschedule a game",
     available: false,
     iconBg: "bg-blue-50",
     iconColor: "text-blue-400",
@@ -160,6 +161,7 @@ export function DivisionSection({
   const [leagueEndDate, setLeagueEndDate] = useState<string>("");
   const [printTriggerId, setPrintTriggerId] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showLogRainout, setShowLogRainout] = useState(false);
 
   const fetchDivisions = useCallback(async () => {
     const supabase = createClient();
@@ -415,8 +417,18 @@ export function DivisionSection({
         <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4">
           {QUICK_ACTIONS.map(({ icon: Icon, label, description, available, iconBg, iconColor }) => {
             const isExport = label === "Export PDF / CSV";
-            const isActive = isExport ? divisions.length > 0 : available;
-            const onClick = isExport ? handleExportClick : undefined;
+            const isRainout = label === "Log a rainout";
+            const isActive = isExport || isRainout ? divisions.length > 0 : available;
+            const onClick = isExport
+              ? handleExportClick
+              : isRainout
+              ? () => setShowLogRainout(true)
+              : undefined;
+            const subtitle = isExport && divisions.length === 0
+              ? "Add a division first"
+              : isRainout && divisions.length === 0
+              ? "Add a division first"
+              : description;
             return (
               <button
                 key={label}
@@ -433,9 +445,7 @@ export function DivisionSection({
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-[#0C1F3F]">{label}</p>
-                  <p className="mt-0.5 text-xs text-gray-400">
-                    {isExport && divisions.length === 0 ? "Add a division first" : description}
-                  </p>
+                  <p className="mt-0.5 text-xs text-gray-400">{subtitle}</p>
                 </div>
               </button>
             );
@@ -516,10 +526,21 @@ export function DivisionSection({
           divisionName={fixingDivision.name}
           onClose={() => setFixingDivision(null)}
           onResolved={() => {
-            // Refresh the server component so the stat cards + division badges
-            // re-run with the same detection logic used inside the modal.
             router.refresh();
             fetchDivisions();
+            onDivisionSaved?.();
+          }}
+        />
+      )}
+
+      {/* ── Log Rainout ──────────────────────────────────────────────────── */}
+      {showLogRainout && (
+        <LogRainoutModal
+          leagueId={leagueId}
+          divisions={divisions}
+          onClose={() => setShowLogRainout(false)}
+          onRainedOut={() => {
+            router.refresh();
             onDivisionSaved?.();
           }}
         />
