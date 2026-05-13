@@ -1,0 +1,159 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@media print {
+  /* ── Root: no margin/padding so the page area starts at true zero ── */
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  /* ── Hide everything via visibility ── */
+  body {
+    visibility: hidden;
+  }
+
+  /* ── Collapse every app layout wrapper to zero height so the browser
+     doesn't paginate over their invisible content. The print region uses
+     position:absolute and has no positioned ancestor, so it anchors to the
+     initial containing block and is NOT clipped by these overflow:hidden
+     containers. ── */
+  body > div,
+  body > div > div,
+  main {
+    display: block !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* ── Show only the schedule print region ── */
+  .fieldslate-print-region {
+    display: block !important;
+    visibility: visible !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0;
+    /* prevent a trailing blank page after the last line of content */
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  .fieldslate-print-region * {
+    visibility: visible !important;
+  }
+
+  /* No trailing page break after the last child (final table or date group) */
+  .fieldslate-print-region > *:last-child,
+  .fieldslate-print-table:last-of-type {
+    page-break-after: avoid;
+    break-after: avoid;
+    margin-bottom: 0;
+  }
+
+  /* ── Print header ── */
+  .fieldslate-print-header {
+    padding-bottom: 12pt;
+    margin-bottom: 2pt;
+    border-bottom: 2pt solid #000;
+  }
+
+  .fieldslate-print-wordmark {
+    font-size: 20pt;
+    font-weight: 800;
+    color: #0c1f3f;
+    letter-spacing: -0.3pt;
+    line-height: 1;
+  }
+
+  .fieldslate-print-wordmark span {
+    color: #16a34a;
+  }
+
+  .fieldslate-print-league {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #000;
+    margin-top: 8pt;
+  }
+
+  .fieldslate-print-division {
+    font-size: 10pt;
+    font-weight: 600;
+    color: #444;
+    margin-top: 2pt;
+  }
+
+  .fieldslate-print-meta {
+    font-size: 8.5pt;
+    color: #666;
+    margin-top: 6pt;
+  }
+
+  /* ── Date group header ── */
+  .fieldslate-print-date-group {
+    font-size: 9.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6pt;
+    color: #000;
+    padding: 9pt 0 3pt;
+    border-top: 1pt solid #bbb;
+    margin-top: 10pt;
+  }
+
+  /* ── Schedule table ── */
+  .fieldslate-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9.5pt;
+    color: #000;
+    margin-top: 3pt;
+  }
+
+  .fieldslate-print-table th {
+    border: 1pt solid #999;
+    padding: 4pt 8pt;
+    background: #ebebeb;
+    font-weight: 700;
+    text-align: left;
+  }
+
+  .fieldslate-print-table td {
+    border: 1pt solid #ccc;
+    padding: 3pt 8pt;
+  }
+
+  .fieldslate-print-table tbody tr:nth-child(even) td {
+    background: #f7f7f7;
+  }
+
+  /* ── Page settings ── */
+  @page {
+    margin: 0.75in;
+    size: letter portrait;
+  }
+}
