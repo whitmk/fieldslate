@@ -18,8 +18,16 @@ import {
   DEFAULT_WIZARD_DATA, type WizardData, type PlayingDay,
   type ScheduleFormat, type TeamEntry, type DayWindowMap,
 } from "./wizard-types";
+import type { PracticeSlot } from "@/types/database";
 
-function divisionToWizardData(div: Division, venueIds: string[]): WizardData {
+type DbTeam = { id: string; name: string };
+
+function divisionToWizardData(
+  div: Division,
+  venueIds: string[],
+  practiceSlots: PracticeSlot[] = [],
+  dbTeams: DbTeam[] = [],
+): WizardData {
   const s = (div.settings ?? {}) as Record<string, unknown>;
   const asNum = (v: unknown, fb: number) => (typeof v === "number" ? v : fb);
   const asStr = (v: unknown, fb: string) => (typeof v === "string" ? v : fb);
@@ -60,12 +68,31 @@ function divisionToWizardData(div: Division, venueIds: string[]): WizardData {
       DEFAULT_WIZARD_DATA.max_games_per_field_per_day,
     ),
     bye_weeks: asNum(s.bye_weeks, DEFAULT_WIZARD_DATA.bye_weeks),
+    activities_per_week: div.activities_per_week ?? DEFAULT_WIZARD_DATA.activities_per_week,
+    practice_venue_id: div.practice_venue_id ?? "",
     venue_ids: venueIds,
     format: (s.format as ScheduleFormat) ?? DEFAULT_WIZARD_DATA.format,
     include_playoffs: asBool(s.include_playoffs, DEFAULT_WIZARD_DATA.include_playoffs),
     auto_rotate: asBool(s.auto_rotate, DEFAULT_WIZARD_DATA.auto_rotate),
     track_standings: asBool(s.track_standings, DEFAULT_WIZARD_DATA.track_standings),
-    teams: Array.isArray(s.teams) ? (s.teams as TeamEntry[]) : [],
+    teams: (() => {
+      const base: TeamEntry[] = Array.isArray(s.teams) ? (s.teams as TeamEntry[]) : [];
+      if (practiceSlots.length === 0) return base;
+      // Build teamId → slot and teamName → teamId maps for merging
+      const slotByTeamId = new Map(practiceSlots.map((sl) => [sl.team_id, sl]));
+      const teamIdByName = new Map(dbTeams.map((t) => [t.name.toLowerCase().trim(), t.id]));
+      return base.map((t) => {
+        const teamId = teamIdByName.get(t.name.toLowerCase().trim());
+        const slot = teamId ? slotByTeamId.get(teamId) : undefined;
+        if (!slot) return t;
+        return {
+          ...t,
+          practice_day: slot.day_of_week as PlayingDay,
+          practice_start: slot.start_time,
+          ...(slot.venue_id ? { practice_venue_id: slot.venue_id } : {}),
+        };
+      });
+    })(),
   };
 }
 
@@ -191,12 +218,20 @@ export function DivisionSection({
   async function handleEditClick(div: Division, e: React.MouseEvent) {
     e.stopPropagation();
     const supabase = createClient();
-    const { data: dvRows } = await supabase
-      .from("division_venues")
-      .select("venue_id")
-      .eq("division_id", div.id);
+    const [{ data: dvRows }, { data: slotRows }, { data: teamRows }] = await Promise.all([
+      supabase.from("division_venues").select("venue_id").eq("division_id", div.id),
+      supabase.from("team_practice_slots").select("*").eq("division_id", div.id),
+      supabase.from("teams").select("id, name").eq("division_id", div.id),
+    ]);
     const venueIds = (dvRows ?? []).map((r: { venue_id: string }) => r.venue_id);
-    setEditInitialData(divisionToWizardData(div, venueIds));
+    setEditInitialData(
+      divisionToWizardData(
+        div,
+        venueIds,
+        (slotRows ?? []) as PracticeSlot[],
+        (teamRows ?? []) as DbTeam[],
+      ),
+    );
     setEditingDiv(div);
   }
 

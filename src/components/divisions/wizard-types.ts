@@ -21,6 +21,10 @@ export type TeamEntry = {
   has_coach_conflict: boolean;
   conflict_division: string;
   conflict_team: string;
+  // Optional pinned practice slot (locked for the whole season)
+  practice_day?: PlayingDay;
+  practice_start?: string;   // "HH:MM" 24-hour
+  practice_venue_id?: string;
 };
 
 export type WizardData = {
@@ -40,6 +44,9 @@ export type WizardData = {
   buffer_minutes: number;
   max_games_per_field_per_day: number; // derived; kept for backward compat
   bye_weeks: number;
+  // Activities per week and practice venue (scheduling settings)
+  activities_per_week: number;
+  practice_venue_id: string;
   // Step 3 – Fields
   venue_ids: string[];
   // Step 4 – Format
@@ -69,6 +76,8 @@ export const DEFAULT_WIZARD_DATA: WizardData = {
   buffer_minutes: 15,
   max_games_per_field_per_day: 4,
   bye_weeks: 1,
+  activities_per_week: 2,
+  practice_venue_id: "",
   venue_ids: [],
   format: "round_robin",
   include_playoffs: true,

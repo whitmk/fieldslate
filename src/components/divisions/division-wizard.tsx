@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { StepBasics } from "./steps/step-basics";
 import { StepPlayingSchedule } from "./steps/step-playing-schedule";
+import { StepPracticeSchedule } from "./steps/step-practice-schedule";
 import { StepFields } from "./steps/step-fields";
 import { StepFormat } from "./steps/step-format";
 import { StepCoaches } from "./steps/step-coaches";
@@ -14,6 +15,7 @@ import type { Division } from "@/types/database";
 const STEPS = [
   { label: "Basics" },
   { label: "Schedule" },
+  { label: "Practice" },
   { label: "Fields" },
   { label: "Format" },
   { label: "Coaches" },
@@ -93,6 +95,12 @@ export function DivisionWizard({ leagueId, leagueName, leagueStartDate, leagueEn
   const stepContent = [
     <StepBasics key="basics" data={data} update={update} />,
     <StepPlayingSchedule key="schedule" data={data} update={update} leagueId={leagueId} />,
+    <StepPracticeSchedule
+      key="practice"
+      data={data}
+      update={update}
+      onSkip={() => setStep((s) => s + 1)}
+    />,
     <StepFields key="fields" data={data} update={update} leagueId={leagueId} />,
     <StepFormat key="format" data={data} update={update} />,
     <StepCoaches key="coaches" data={data} update={update} leagueId={leagueId} />,
@@ -172,7 +180,7 @@ export function DivisionWizard({ leagueId, leagueName, leagueStartDate, leagueEn
         <div className="flex-1 overflow-y-auto px-6 py-6">{stepContent[step]}</div>
 
         {/* Footer — hidden on review step (has its own CTA) */}
-        {step < 5 && (
+        {step < 6 && (
           <div className="flex flex-shrink-0 items-center justify-between border-t border-gray-100 px-6 py-4">
             <button
               onClick={() => setStep((s) => s - 1)}

@@ -128,6 +128,7 @@ export type Database = {
           city: string | null;
           state: string | null;
           capacity: number | null;
+          venue_type: "game" | "practice" | "both";
           created_at: string;
           updated_at: string;
         };
@@ -139,6 +140,7 @@ export type Database = {
           city?: string | null;
           state?: string | null;
           capacity?: number | null;
+          venue_type?: "game" | "practice" | "both";
           created_at?: string;
           updated_at?: string;
         };
@@ -149,6 +151,7 @@ export type Database = {
           city?: string | null;
           state?: string | null;
           capacity?: number | null;
+          venue_type?: "game" | "practice" | "both";
           updated_at?: string;
         };
         Relationships: [];
@@ -163,6 +166,8 @@ export type Database = {
           end_date: string | null;
           settings: Record<string, unknown>;
           status: "draft" | "active" | "archived";
+          activities_per_week: number;
+          practice_venue_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -175,6 +180,8 @@ export type Database = {
           end_date?: string | null;
           settings?: Record<string, unknown>;
           status?: "draft" | "active" | "archived";
+          activities_per_week?: number;
+          practice_venue_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -186,6 +193,8 @@ export type Database = {
           end_date?: string | null;
           settings?: Record<string, unknown>;
           status?: "draft" | "active" | "archived";
+          activities_per_week?: number;
+          practice_venue_id?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -194,6 +203,35 @@ export type Database = {
         Row: { division_id: string; venue_id: string };
         Insert: { division_id: string; venue_id: string };
         Update: { division_id?: string; venue_id?: string };
+        Relationships: [];
+      };
+      team_practice_slots: {
+        Row: {
+          id: string;
+          team_id: string;
+          division_id: string;
+          day_of_week: "Mo" | "Tu" | "We" | "Th" | "Fr" | "Sa" | "Su";
+          start_time: string;
+          venue_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_id: string;
+          division_id: string;
+          day_of_week: "Mo" | "Tu" | "We" | "Th" | "Fr" | "Sa" | "Su";
+          start_time: string;
+          venue_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          day_of_week?: "Mo" | "Tu" | "We" | "Th" | "Fr" | "Sa" | "Su";
+          start_time?: string;
+          venue_id?: string | null;
+          updated_at?: string;
+        };
         Relationships: [];
       };
       blackout_dates: {
@@ -272,3 +310,4 @@ export type Division = Database["public"]["Tables"]["divisions"]["Row"];
 export type Team = Database["public"]["Tables"]["teams"]["Row"];
 export type Venue = Database["public"]["Tables"]["venues"]["Row"];
 export type Game = Database["public"]["Tables"]["games"]["Row"];
+export type PracticeSlot = Database["public"]["Tables"]["team_practice_slots"]["Row"];

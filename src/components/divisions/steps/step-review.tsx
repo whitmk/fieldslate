@@ -151,6 +151,8 @@ export function StepReview({
           start_date: data.start_date || null,
           end_date: data.end_date || null,
           settings: settingsPayload,
+          activities_per_week: data.activities_per_week,
+          practice_venue_id: data.practice_venue_id || null,
         } as never)
         .eq("id", divisionId);
 
@@ -175,6 +177,8 @@ export function StepReview({
           end_date: data.end_date || null,
           settings: settingsPayload,
           status: "active",
+          activities_per_week: data.activities_per_week,
+          practice_venue_id: data.practice_venue_id || null,
         } as never])
         .select("id")
         .single();
@@ -225,6 +229,50 @@ export function StepReview({
           },
         } as never)
         .eq("id", leagueId);
+    }
+
+    // Sync team practice slots
+    const teamsWithSlots = data.teams.filter((t) => t.practice_day);
+    if (isEditMode || teamsWithSlots.length > 0) {
+      const { data: teamRows } = await supabase
+        .from("teams")
+        .select("id, name")
+        .eq("division_id", divId);
+
+      const teamIdByName = new Map(
+        (teamRows ?? []).map((t: { id: string; name: string }) => [
+          t.name.toLowerCase().trim(),
+          t.id,
+        ]),
+      );
+
+      // In edit mode wipe first so removals are handled
+      if (isEditMode) {
+        await supabase
+          .from("team_practice_slots")
+          .delete()
+          .eq("division_id", divId);
+      }
+
+      const slotsToInsert = teamsWithSlots
+        .map((t) => {
+          const teamId = teamIdByName.get(t.name.toLowerCase().trim());
+          if (!teamId) return null;
+          return {
+            team_id: teamId,
+            division_id: divId,
+            day_of_week: t.practice_day!,
+            start_time: t.practice_start ?? "09:00",
+            venue_id: t.practice_venue_id ?? null,
+          };
+        })
+        .filter((s): s is NonNullable<typeof s> => s !== null);
+
+      if (slotsToInsert.length > 0) {
+        await supabase
+          .from("team_practice_slots")
+          .insert(slotsToInsert as never[]);
+      }
     }
 
     return { divId };
@@ -579,23 +627,41 @@ export function StepReview({
         <Row label="Game duration" value={`${data.game_duration} min`} />
         <Row label="Buffer" value={`${data.buffer_minutes} min`} />
         <Row label="Bye weeks" value={data.bye_weeks} />
+        <Row label="Activities per week" value={data.activities_per_week} />
+        <Row label="Practice venue" value={data.practice_venue_id ? "Set" : "None"} />
       </Section>
 
-      <Section title="Fields" step={2} onEdit={onEdit}>
+      <Section title="Practice schedule" step={2} onEdit={onEdit}>
+        {(() => {
+          const pinned = data.teams.filter((t) => t.practice_day).length;
+          return (
+            <Row
+              label="Pinned slots"
+              value={
+                pinned > 0
+                  ? `${pinned} of ${data.teams.length} team${data.teams.length !== 1 ? "s" : ""}`
+                  : "None — auto-assign all"
+              }
+            />
+          );
+        })()}
+      </Section>
+
+      <Section title="Fields" step={3} onEdit={onEdit}>
         <Row
           label="Fields selected"
           value={data.venue_ids.length > 0 ? `${data.venue_ids.length} venue${data.venue_ids.length > 1 ? "s" : ""}` : "None"}
         />
       </Section>
 
-      <Section title="Format" step={3} onEdit={onEdit}>
+      <Section title="Format" step={4} onEdit={onEdit}>
         <Row label="Format" value={FORMAT_LABELS[data.format]} />
         <Row label="Playoffs" value={data.include_playoffs ? "Yes" : "No"} />
         <Row label="Home/away rotation" value={data.auto_rotate ? "Yes" : "No"} />
         <Row label="Track standings" value={data.track_standings ? "Yes" : "No"} />
       </Section>
 
-      <Section title="Coaches" step={4} onEdit={onEdit}>
+      <Section title="Coaches" step={5} onEdit={onEdit}>
         <Row label="Coach conflicts" value={conflictCount > 0 ? `${conflictCount} flagged` : "None"} />
       </Section>
 
