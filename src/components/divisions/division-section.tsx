@@ -394,6 +394,7 @@ export function DivisionSection({
                       divisionId={div.id}
                       divisionName={div.name}
                       leagueName={leagueName}
+                      leagueId={leagueId}
                       triggerPrint={printTriggerId === div.id}
                       onPrintDone={() => setPrintTriggerId(null)}
                       onScheduleChange={() => router.refresh()}

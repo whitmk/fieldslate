@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Zap, Loader2, CheckCircle2, AlertTriangle, CalendarDays,
-  RefreshCw, PlusCircle, Printer,
+  RefreshCw, PlusCircle, Printer, CloudRain, CalendarClock,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -13,11 +13,13 @@ import {
 } from "@/lib/schedule/generate-schedule";
 import type { ScheduleConflict } from "@/lib/schedule/generate-schedule";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
 
 interface Props {
   divisionId: string;
   divisionName: string;
   leagueName: string;
+  leagueId: string;
   triggerPrint?: boolean;
   onPrintDone?: () => void;
   onScheduleChange?: () => void;
@@ -37,7 +39,10 @@ type GameRow = {
   venue: { name: string } | null;
 };
 
-export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, triggerPrint, onPrintDone, onScheduleChange }: Props) {
+export function DivisionSchedulePanel({
+  divisionId, divisionName, leagueName, leagueId,
+  triggerPrint, onPrintDone, onScheduleChange,
+}: Props) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [gamesPerTeam, setGamesPerTeam] = useState(0);
   const [games, setGames] = useState<GameRow[]>([]);
@@ -46,12 +51,13 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
   const [finishing, setFinishing] = useState(false);
   const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
+  const [rainoutId, setRainoutId] = useState<string | null>(null);   // game being rained out
+  const [rescheduleGame, setRescheduleGame] = useState<GameRow | null>(null);
 
   const fetchGames = useCallback(async () => {
     setLoadingGames(true);
     const supabase = createClient();
 
-    // Load teams (need names for the breakdown)
     const { data: teamData } = await supabase
       .from("teams")
       .select("id, name")
@@ -69,7 +75,6 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
       return;
     }
 
-    // Load division settings
     const { data: divDataRaw } = await supabase
       .from("divisions")
       .select("settings")
@@ -85,7 +90,6 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
 
     setGamesPerTeam(Number(settings.games_per_team ?? 0));
 
-    // Load games — include home_team_id + away_team_id for per-team counting
     const { data } = await supabase
       .from("games")
       .select(
@@ -100,8 +104,9 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
     const rows = (data as unknown as GameRow[]) ?? [];
     setGames(rows);
 
-    // Conflict detection
-    const flat = rows.map((g) => ({
+    // Only count scheduled/active games for conflict detection
+    const activeRows = rows.filter((g) => g.status !== "cancelled");
+    const flat = activeRows.map((g) => ({
       id: g.id,
       scheduled_at: g.scheduled_at,
       venue_id: g.venue_id,
@@ -116,9 +121,7 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
     setLoadingGames(false);
   }, [divisionId]);
 
-  useEffect(() => {
-    fetchGames();
-  }, [fetchGames]);
+  useEffect(() => { fetchGames(); }, [fetchGames]);
 
   useEffect(() => {
     if (triggerPrint && !loadingGames) {
@@ -160,11 +163,23 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
     setFinishing(false);
   }
 
-  // ── Compute per-team game counts and deficits ─────────────────────────────────
+  async function handleRainOut(game: GameRow) {
+    setRainoutId(game.id);
+    const supabase = createClient();
+    await supabase.from("games").update({ status: "cancelled" } as never).eq("id", game.id);
+    await fetchGames();
+    onScheduleChange?.();
+    setRainoutId(null);
+  }
+
+  // ── Compute per-team counts (exclude cancelled games) ─────────────────────────
+
+  const activeGames = games.filter((g) => g.status !== "cancelled");
+  const cancelledGames = games.filter((g) => g.status === "cancelled");
 
   const gameCountByTeam: Record<string, number> = {};
   for (const t of teams) gameCountByTeam[t.id] = 0;
-  for (const g of games) {
+  for (const g of activeGames) {
     if (g.home_team_id) gameCountByTeam[g.home_team_id] = (gameCountByTeam[g.home_team_id] ?? 0) + 1;
     if (g.away_team_id) gameCountByTeam[g.away_team_id] = (gameCountByTeam[g.away_team_id] ?? 0) + 1;
   }
@@ -175,7 +190,7 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
 
   const isIncomplete = games.length > 0 && teamsWithDeficit.length > 0;
 
-  // ── Group games by date for display ──────────────────────────────────────────
+  // ── Group games by date ───────────────────────────────────────────────────────
 
   const grouped = new Map<string, GameRow[]>();
   for (const g of games) {
@@ -187,34 +202,27 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
   return (
     <div className="border-t border-gray-100 bg-gray-50/40 px-6 py-5">
 
-      {/* ── Action buttons ──────────────────────────────────────────────────── */}
+      {/* ── Action buttons ── */}
       <div className="flex flex-wrap items-center gap-3">
         {isIncomplete ? (
           <>
-            {/* Primary: fill in missing games */}
             <button
               onClick={handleFinish}
               disabled={finishing || generating}
               className="inline-flex items-center gap-2 rounded-lg bg-[#0C1F3F] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {finishing ? (
-                <><Loader2 className="h-4 w-4 animate-spin" />Finishing…</>
-              ) : (
-                <><PlusCircle className="h-4 w-4" />Finish scheduling</>
-              )}
+              {finishing
+                ? <><Loader2 className="h-4 w-4 animate-spin" />Finishing…</>
+                : <><PlusCircle className="h-4 w-4" />Finish scheduling</>}
             </button>
-
-            {/* Secondary: nuke and rebuild */}
             <button
               onClick={handleGenerate}
               disabled={finishing || generating}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:border-red-200 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {generating ? (
-                <><Loader2 className="h-3.5 w-3.5 animate-spin" />Regenerating…</>
-              ) : (
-                <><RefreshCw className="h-3.5 w-3.5" />Regenerate full schedule</>
-              )}
+              {generating
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Regenerating…</>
+                : <><RefreshCw className="h-3.5 w-3.5" />Regenerate full schedule</>}
             </button>
           </>
         ) : (
@@ -223,11 +231,9 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
             disabled={generating}
             className="inline-flex items-center gap-2 rounded-lg bg-[#0C1F3F] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {generating ? (
-              <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
-            ) : (
-              <><Zap className="h-4 w-4" />{games.length > 0 ? "Regenerate schedule" : "Generate schedule"}</>
-            )}
+            {generating
+              ? <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
+              : <><Zap className="h-4 w-4" />{games.length > 0 ? "Regenerate schedule" : "Generate schedule"}</>}
           </button>
         )}
 
@@ -251,7 +257,19 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
         )}
       </div>
 
-      {/* ── Incomplete breakdown ─────────────────────────────────────────────── */}
+      {/* ── Rained out pending banner ── */}
+      {cancelledGames.length > 0 && (
+        <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <CloudRain className="h-4 w-4 flex-shrink-0 text-blue-400" />
+            <p className="text-sm font-semibold text-blue-700">
+              {cancelledGames.length} rained-out game{cancelledGames.length !== 1 ? "s" : ""} need rescheduling
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Incomplete breakdown ── */}
       {isIncomplete && (
         <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
           <p className="mb-1.5 text-xs font-semibold text-amber-700">
@@ -260,19 +278,15 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             {teamsWithDeficit.map((t) => (
               <span key={t.id} className="text-xs text-amber-700">
-                <span className="font-medium">{t.name}</span>
-                {" "}
-                <span className="text-amber-600">
-                  {t.count}/{gamesPerTeam}
-                  {" "}({t.deficit} missing)
-                </span>
+                <span className="font-medium">{t.name}</span>{" "}
+                <span className="text-amber-600">{t.count}/{gamesPerTeam} ({t.deficit} missing)</span>
               </span>
             ))}
           </div>
         </div>
       )}
 
-      {/* ── Conflict warning ─────────────────────────────────────────────────── */}
+      {/* ── Conflict warning ── */}
       {conflicts.length > 0 && (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
           <div className="flex items-start gap-2.5">
@@ -304,7 +318,7 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
         </div>
       )}
 
-      {/* ── Schedule list ────────────────────────────────────────────────────── */}
+      {/* ── Schedule list ── */}
       {loadingGames ? (
         <div className="mt-5 flex justify-center py-4">
           <svg className="h-5 w-5 animate-spin text-gray-300" fill="none" viewBox="0 0 24 24">
@@ -324,7 +338,12 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
         <div className="mt-4 overflow-hidden rounded-xl border border-gray-100 bg-white">
           <div className="flex items-center justify-between border-b border-gray-50 px-4 py-2.5">
             <p className="text-xs font-semibold text-gray-500">Schedule</p>
-            <p className="text-xs text-gray-400">{games.length} game{games.length !== 1 ? "s" : ""}</p>
+            <p className="text-xs text-gray-400">
+              {activeGames.length} game{activeGames.length !== 1 ? "s" : ""}
+              {cancelledGames.length > 0 && (
+                <span className="ml-1.5 text-blue-400">· {cancelledGames.length} rained out</span>
+              )}
+            </p>
           </div>
 
           {Array.from(grouped.entries()).map(([, dayGames], groupIdx) => (
@@ -335,73 +354,99 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
                 </p>
               </div>
               <div className="divide-y divide-gray-50">
-                {dayGames.map((game) => (
-                  <div key={game.id} className="flex items-center justify-between px-4 py-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="w-16 flex-shrink-0 text-xs tabular-nums text-gray-400">
-                        {fmtGameTime(game.scheduled_at)}
-                      </span>
-                      <span className="truncate text-sm font-semibold text-[#0C1F3F]">
-                        {game.home_team?.name ?? "TBD"}
-                      </span>
-                      <span className="flex-shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                        vs
-                      </span>
-                      <span className="truncate text-sm font-medium text-gray-600">
-                        {game.away_team?.name ?? "TBD"}
-                      </span>
+                {dayGames.map((game) => {
+                  const isCancelled = game.status === "cancelled";
+                  const isRaining = rainoutId === game.id;
+                  return (
+                    <div
+                      key={game.id}
+                      className={`group flex items-center justify-between px-4 py-3 ${isCancelled ? "bg-gray-50/80" : ""}`}
+                    >
+                      {/* Left: time + teams */}
+                      <div className="flex min-w-0 items-center gap-3">
+                        {isCancelled && (
+                          <CloudRain className="h-3.5 w-3.5 flex-shrink-0 text-blue-400" />
+                        )}
+                        <span className={`w-16 flex-shrink-0 text-xs tabular-nums ${isCancelled ? "text-gray-300 line-through" : "text-gray-400"}`}>
+                          {fmtGameTime(game.scheduled_at)}
+                        </span>
+                        <span className={`truncate text-sm font-semibold ${isCancelled ? "text-gray-400" : "text-[#0C1F3F]"}`}>
+                          {game.home_team?.name ?? "TBD"}
+                        </span>
+                        <span className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${isCancelled ? "bg-gray-100 text-gray-300" : "bg-gray-100 text-gray-400"}`}>
+                          vs
+                        </span>
+                        <span className={`truncate text-sm font-medium ${isCancelled ? "text-gray-400" : "text-gray-600"}`}>
+                          {game.away_team?.name ?? "TBD"}
+                        </span>
+                      </div>
+
+                      {/* Right: venue + action */}
+                      <div className="ml-3 flex flex-shrink-0 items-center gap-2">
+                        {game.venue?.name && (
+                          <span className={`text-xs ${isCancelled ? "text-gray-300" : "text-gray-400"}`}>
+                            {game.venue.name}
+                          </span>
+                        )}
+
+                        {isCancelled ? (
+                          /* Rained out: show badge + reschedule button */
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-400">
+                              Rained out
+                            </span>
+                            <button
+                              onClick={() => setRescheduleGame(game)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
+                            >
+                              <CalendarClock className="h-3 w-3" />
+                              Reschedule
+                            </button>
+                          </div>
+                        ) : (
+                          /* Scheduled: show rain-out button on hover */
+                          <button
+                            onClick={() => handleRainOut(game)}
+                            disabled={isRaining}
+                            title="Mark as rained out"
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-200 opacity-0 transition-all group-hover:opacity-100 hover:bg-blue-50 hover:text-blue-400 disabled:opacity-50"
+                          >
+                            {isRaining
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <CloudRain className="h-3.5 w-3.5" />}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    {game.venue?.name && (
-                      <span className="ml-3 flex-shrink-0 text-xs text-gray-400">{game.venue.name}</span>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* ── Print-only region — hidden on screen, visible when window.print() fires ─ */}
+      {/* ── Print region ── */}
       {games.length > 0 && (
         <div className="fieldslate-print-region hidden">
-          {/* Header */}
           <div className="fieldslate-print-header">
-            <div className="fieldslate-print-wordmark">
-              Field<span>Slate</span>
-            </div>
+            <div className="fieldslate-print-wordmark">Field<span>Slate</span></div>
             <p className="fieldslate-print-league">{leagueName}</p>
             <p className="fieldslate-print-division">{divisionName}</p>
             <p className="fieldslate-print-meta">
-              Printed{" "}
-              {new Date().toLocaleDateString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-              {" "}· {games.length} game{games.length !== 1 ? "s" : ""}
+              Printed {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+              {" "}· {activeGames.length} game{activeGames.length !== 1 ? "s" : ""}
             </p>
           </div>
-
-          {/* Schedule grouped by date */}
           {Array.from(grouped.entries()).map(([, dayGames]) => (
             <div key={dayGames[0].scheduled_at.substring(0, 10)}>
-              <div className="fieldslate-print-date-group">
-                {fmtGameDate(dayGames[0].scheduled_at)}
-              </div>
+              <div className="fieldslate-print-date-group">{fmtGameDate(dayGames[0].scheduled_at)}</div>
               <table className="fieldslate-print-table">
                 <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Time</th>
-                    <th>Home Team</th>
-                    <th>Away Team</th>
-                    <th>Field / Venue</th>
-                  </tr>
+                  <tr><th>Date</th><th>Time</th><th>Home Team</th><th>Away Team</th><th>Field / Venue</th></tr>
                 </thead>
                 <tbody>
-                  {dayGames.map((game) => (
+                  {dayGames.filter((g) => g.status !== "cancelled").map((game) => (
                     <tr key={game.id}>
                       <td>{fmtGameDate(game.scheduled_at)}</td>
                       <td>{fmtGameTime(game.scheduled_at)}</td>
@@ -415,6 +460,25 @@ export function DivisionSchedulePanel({ divisionId, divisionName, leagueName, tr
             </div>
           ))}
         </div>
+      )}
+
+      {/* ── Reschedule modal ── */}
+      {rescheduleGame && (
+        <RainoutRescheduleModal
+          gameId={rescheduleGame.id}
+          homeTeamId={rescheduleGame.home_team_id}
+          awayTeamId={rescheduleGame.away_team_id}
+          homeTeamName={rescheduleGame.home_team?.name ?? "Home"}
+          awayTeamName={rescheduleGame.away_team?.name ?? "Away"}
+          divisionId={divisionId}
+          leagueId={leagueId}
+          onClose={() => setRescheduleGame(null)}
+          onRescheduled={() => {
+            setRescheduleGame(null);
+            fetchGames();
+            onScheduleChange?.();
+          }}
+        />
       )}
     </div>
   );

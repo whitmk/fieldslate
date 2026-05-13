@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, AlertCircle } from "lucide-react";
+import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, AlertCircle, CloudRain } from "lucide-react";
 import type { League } from "@/types/database";
 import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
@@ -32,6 +32,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
   type TeamRow = { id: string; division_id: string | null };
   type GameRow = {
     id: string; scheduled_at: string; venue_id: string | null; home_team_id: string; away_team_id: string;
+    status: string;
     venue: { name: string } | null;
     home_team: { name: string } | null;
     away_team: { name: string } | null;
@@ -49,7 +50,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     supabase.from("teams").select("id, division_id").eq("league_id", league.id),
     supabase
       .from("games")
-      .select(`id, scheduled_at, venue_id, home_team_id, away_team_id,
+      .select(`id, scheduled_at, venue_id, home_team_id, away_team_id, status,
                venue:venues(name),
                home_team:teams!home_team_id(name),
                away_team:teams!away_team_id(name)`)
@@ -135,7 +136,8 @@ export default async function LeaguePage({ params }: { params: { id: string } })
 
   const divisionCount = allDivisions.length;
   const teamCount = allTeams.length;
-  const gameCount = allGames.length;
+  const gameCount = allGames.filter((g) => g.status !== "cancelled").length;
+  const rainedOutCount = allGames.filter((g) => g.status === "cancelled").length;
   const totalConflicts = allConflictingGameIds.size;
 
   const sportColor: Record<string, string> = {
@@ -190,23 +192,24 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         </div>
       )}
 
-      {/* Stats row — 4 cards */}
-      <div className="grid grid-cols-4 gap-4">
+      {/* Stats row — 5 cards */}
+      <div className="grid grid-cols-5 gap-4">
         {[
           { label: "Divisions", value: divisionCount, icon: Layers },
           { label: "Teams", value: teamCount, icon: Users },
           { label: "Games", value: gameCount, icon: CalendarDays },
+          { label: "Rained Out", value: rainedOutCount, icon: CloudRain, rain: rainedOutCount > 0 },
           { label: "Conflicts", value: totalConflicts, icon: AlertCircle, alert: totalConflicts > 0 },
-        ].map(({ label, value, icon: Icon, alert }) => (
+        ].map(({ label, value, icon: Icon, alert, rain }) => (
           <div
             key={label}
-            className={`rounded-xl border bg-white p-5 shadow-sm ${alert ? "border-red-200" : "border-gray-100"}`}
+            className={`rounded-xl border bg-white p-5 shadow-sm ${alert ? "border-red-200" : rain ? "border-blue-200" : "border-gray-100"}`}
           >
             <div className="flex items-center justify-between">
-              <p className={`text-sm font-medium ${alert ? "text-red-500" : "text-gray-500"}`}>{label}</p>
-              <Icon className={`h-4 w-4 ${alert ? "text-red-300" : "text-gray-300"}`} />
+              <p className={`text-sm font-medium ${alert ? "text-red-500" : rain ? "text-blue-500" : "text-gray-500"}`}>{label}</p>
+              <Icon className={`h-4 w-4 ${alert ? "text-red-300" : rain ? "text-blue-300" : "text-gray-300"}`} />
             </div>
-            <p className={`mt-2 text-3xl font-bold ${alert ? "text-red-600" : "text-[#0C1F3F]"}`}>{value}</p>
+            <p className={`mt-2 text-3xl font-bold ${alert ? "text-red-600" : rain ? "text-blue-600" : "text-[#0C1F3F]"}`}>{value}</p>
           </div>
         ))}
       </div>
