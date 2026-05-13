@@ -20,7 +20,6 @@ const FORMAT_LABELS = {
 interface Props {
   data: WizardData;
   originalData?: WizardData; // populated when editing; used for change analysis
-  leagueName: string;
   leagueId: string;
   onEdit: (step: number) => void;
   onComplete: () => void;
@@ -89,7 +88,7 @@ type SaveOnlyResult = {
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export function StepReview({
-  data, originalData, leagueName, leagueId, onEdit, onComplete, divisionId,
+  data, originalData, leagueId, onEdit, onComplete, divisionId,
 }: Props) {
   const [savingOnly, setSavingOnly] = useState(false);
   const [savingRegen, setSavingRegen] = useState(false);

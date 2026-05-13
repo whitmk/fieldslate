@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { detectScheduleConflicts, type ScheduleConflict } from "@/lib/schedule/generate-schedule";
-import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import { fmtGameDate } from "@/lib/utils/game-time";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -346,7 +346,7 @@ export function ConflictResolverModal({ divisionId, divisionName, onClose, onRes
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <CheckCircle2 className="h-10 w-10 text-[#22C55E]" />
               <p className="mt-3 font-semibold text-[#0C1F3F]">No conflicts</p>
-              <p className="mt-1 text-sm text-gray-400">This division's schedule looks clean.</p>
+              <p className="mt-1 text-sm text-gray-400">This division&apos;s schedule looks clean.</p>
             </div>
           ) : (
             <div className="flex flex-col gap-5">
@@ -389,8 +389,6 @@ export function ConflictResolverModal({ divisionId, divisionName, onClose, onRes
                         const isExpanded = expandedGame === g.id;
                         const form = moveForms[g.id];
                         const isSavingGame = saving[g.id];
-                        const isDivGame = divGameIds.has(g.id);
-
                         return (
                           <div key={g.id}>
                             {/* Game row */}

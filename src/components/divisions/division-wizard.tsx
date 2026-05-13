@@ -100,7 +100,6 @@ export function DivisionWizard({ leagueId, leagueName, leagueStartDate, leagueEn
       key="review"
       data={data}
       originalData={isEditMode ? initialData : undefined}
-      leagueName={leagueName}
       leagueId={leagueId}
       onEdit={setStep}
       onComplete={handleComplete}
