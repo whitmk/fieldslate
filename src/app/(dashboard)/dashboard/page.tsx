@@ -1,16 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { StatsCard } from "@/components/dashboard/stats-card";
-import { Badge } from "@/components/ui/badge";
 import { Trophy, Users, CalendarDays, MapPin, Plus, ArrowRight } from "lucide-react";
-
-type UpcomingGame = {
-  id: string;
-  scheduled_at: string;
-  status: string;
-  home_team: { name: string } | null;
-  away_team: { name: string } | null;
-};
+import { UpcomingGamesList, type UpcomingGame } from "@/components/dashboard/upcoming-games-list";
 
 export default async function DashboardPage() {
   const supabase = createClient();
@@ -30,7 +22,12 @@ export default async function DashboardPage() {
     supabase.from("venues").select("*", { count: "exact", head: true }).eq("owner_id", user!.id),
     supabase
       .from("games")
-      .select("id, scheduled_at, status, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name)")
+      .select(`
+        id, scheduled_at, status, league_id, home_team_id, away_team_id,
+        home_team:teams!home_team_id(name, division_id),
+        away_team:teams!away_team_id(name),
+        venue:venues(name)
+      `)
       .eq("status", "scheduled")
       .gte("scheduled_at", new Date().toISOString())
       .order("scheduled_at", { ascending: true })
@@ -43,8 +40,8 @@ export default async function DashboardPage() {
       .limit(1)
       .single(),
   ]);
-  const upcomingGames = rawGames as UpcomingGame[] | null;
 
+  const upcomingGames = (rawGames ?? []) as unknown as UpcomingGame[];
   const isEmpty = !leagueCount || leagueCount === 0;
 
   return (
@@ -69,7 +66,7 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      {/* Stat cards — always visible */}
+      {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatsCard title="Active Leagues" value={leagueCount ?? 0} icon={Trophy} />
         <StatsCard title="Teams" value={teamCount ?? 0} icon={Users} />
@@ -113,37 +110,12 @@ export default async function DashboardPage() {
           </div>
         </div>
       ) : (
-        /* Upcoming games — only shown when there's data */
         <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
           <div className="border-b border-gray-100 px-6 py-4">
             <h2 className="font-semibold text-[#0C1F3F]">Upcoming Games</h2>
           </div>
           <div className="px-6 py-4">
-            {!upcomingGames || upcomingGames.length === 0 ? (
-              <p className="text-sm text-gray-500">No upcoming games scheduled.</p>
-            ) : (
-              <ul className="flex flex-col divide-y divide-gray-50">
-                {upcomingGames.map((game) => (
-                  <li key={game.id} className="flex items-center justify-between py-3">
-                    <div>
-                      <p className="text-sm font-medium text-[#0C1F3F]">
-                        {game.home_team?.name ?? "TBD"} vs {game.away_team?.name ?? "TBD"}
-                      </p>
-                      <p className="mt-0.5 text-xs text-gray-400">
-                        {new Date(game.scheduled_at).toLocaleDateString("en-US", {
-                          weekday: "short",
-                          month: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                    </div>
-                    <Badge variant="info">Scheduled</Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <UpcomingGamesList initialGames={upcomingGames} />
           </div>
         </div>
       )}
