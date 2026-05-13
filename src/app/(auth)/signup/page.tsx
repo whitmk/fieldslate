@@ -10,6 +10,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [leagueName, setLeagueName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -18,6 +19,12 @@ export default function SignupPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
+
+    if (inviteCode.trim().toUpperCase() !== "FIELDSLATE2026") {
+      setError("Invalid invite code.");
+      setLoading(false);
+      return;
+    }
 
     const supabase = createClient();
     const { error } = await supabase.auth.signUp({
@@ -113,6 +120,17 @@ export default function SignupPage() {
           variant="dark"
           autoComplete="new-password"
           minLength={8}
+          required
+        />
+        <Input
+          id="inviteCode"
+          label="Beta invite code"
+          type="text"
+          placeholder="Enter your invite code"
+          value={inviteCode}
+          onChange={(e) => setInviteCode(e.target.value)}
+          variant="dark"
+          autoComplete="off"
           required
         />
 
