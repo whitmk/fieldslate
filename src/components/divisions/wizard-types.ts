@@ -1,6 +1,21 @@
 export type PlayingDay = "Mo" | "Tu" | "We" | "Th" | "Fr" | "Sa" | "Su";
 export type ScheduleFormat = "round_robin" | "balanced" | "pool_play";
 
+export type DayWindow = { start: string; end: string }; // "HH:MM" 24-hour
+export type DayWindowMap = Partial<Record<PlayingDay, DayWindow>>;
+
+export const ORDERED_DAYS: { key: PlayingDay; label: string }[] = [
+  { key: "Su", label: "Sun" },
+  { key: "Mo", label: "Mon" },
+  { key: "Tu", label: "Tue" },
+  { key: "We", label: "Wed" },
+  { key: "Th", label: "Thu" },
+  { key: "Fr", label: "Fri" },
+  { key: "Sa", label: "Sat" },
+];
+
+export const DEFAULT_DAY_WINDOW: DayWindow = { start: "09:00", end: "17:00" };
+
 export type TeamEntry = {
   name: string;
   has_coach_conflict: boolean;
@@ -19,11 +34,11 @@ export type WizardData = {
   max_games_per_week: number;
   max_games_per_team_per_day: number;
   playing_days: PlayingDay[];
-  earliest_start: string;
-  latest_start: string;
+  day_windows: DayWindowMap;       // per-day time windows (keyed by PlayingDay)
+  use_league_schedule: boolean;    // true = also save windows to league on submit
   game_duration: number;
   buffer_minutes: number;
-  max_games_per_field_per_day: number;
+  max_games_per_field_per_day: number; // derived; kept for backward compat
   bye_weeks: number;
   // Step 3 – Fields
   venue_ids: string[];
@@ -45,8 +60,11 @@ export const DEFAULT_WIZARD_DATA: WizardData = {
   max_games_per_week: 2,
   max_games_per_team_per_day: 1,
   playing_days: ["Sa", "Su"],
-  earliest_start: "08:00",
-  latest_start: "17:00",
+  day_windows: {
+    Sa: { start: "09:00", end: "17:00" },
+    Su: { start: "09:00", end: "17:00" },
+  },
+  use_league_schedule: false,
   game_duration: 90,
   buffer_minutes: 15,
   max_games_per_field_per_day: 4,

@@ -15,7 +15,7 @@ import type { Division } from "@/types/database";
 import type { DivisionStat } from "@/app/(dashboard)/dashboard/leagues/[id]/page";
 import {
   DEFAULT_WIZARD_DATA, type WizardData, type PlayingDay,
-  type ScheduleFormat, type TeamEntry,
+  type ScheduleFormat, type TeamEntry, type DayWindowMap,
 } from "./wizard-types";
 
 function divisionToWizardData(div: Division, venueIds: string[]): WizardData {
@@ -23,6 +23,24 @@ function divisionToWizardData(div: Division, venueIds: string[]): WizardData {
   const asNum = (v: unknown, fb: number) => (typeof v === "number" ? v : fb);
   const asStr = (v: unknown, fb: string) => (typeof v === "string" ? v : fb);
   const asBool = (v: unknown, fb: boolean) => (typeof v === "boolean" ? v : fb);
+
+  const playingDays: PlayingDay[] = Array.isArray(s.playing_days)
+    ? (s.playing_days as PlayingDay[])
+    : DEFAULT_WIZARD_DATA.playing_days;
+
+  // Migrate old single-window format → per-day windows
+  let day_windows: DayWindowMap;
+  if (s.day_windows && typeof s.day_windows === "object" && !Array.isArray(s.day_windows)) {
+    day_windows = s.day_windows as DayWindowMap;
+  } else {
+    const start = asStr(s.earliest_start, "09:00");
+    const end   = asStr(s.latest_start,   "17:00");
+    day_windows = {};
+    for (const day of playingDays) {
+      day_windows[day] = { start, end };
+    }
+  }
+
   return {
     name: div.name,
     team_count: div.team_count,
@@ -31,11 +49,9 @@ function divisionToWizardData(div: Division, venueIds: string[]): WizardData {
     games_per_team: asNum(s.games_per_team, DEFAULT_WIZARD_DATA.games_per_team),
     max_games_per_week: asNum(s.max_games_per_week, DEFAULT_WIZARD_DATA.max_games_per_week),
     max_games_per_team_per_day: asNum(s.max_games_per_team_per_day, DEFAULT_WIZARD_DATA.max_games_per_team_per_day),
-    playing_days: Array.isArray(s.playing_days)
-      ? (s.playing_days as PlayingDay[])
-      : DEFAULT_WIZARD_DATA.playing_days,
-    earliest_start: asStr(s.earliest_start, DEFAULT_WIZARD_DATA.earliest_start),
-    latest_start: asStr(s.latest_start, DEFAULT_WIZARD_DATA.latest_start),
+    playing_days: playingDays,
+    day_windows,
+    use_league_schedule: asBool(s.use_league_schedule, false),
     game_duration: asNum(s.game_duration, DEFAULT_WIZARD_DATA.game_duration),
     buffer_minutes: asNum(s.buffer_minutes, DEFAULT_WIZARD_DATA.buffer_minutes),
     max_games_per_field_per_day: asNum(

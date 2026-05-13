@@ -92,7 +92,7 @@ export function DivisionWizard({ leagueId, leagueName, leagueStartDate, leagueEn
 
   const stepContent = [
     <StepBasics key="basics" data={data} update={update} />,
-    <StepPlayingSchedule key="schedule" data={data} update={update} />,
+    <StepPlayingSchedule key="schedule" data={data} update={update} leagueId={leagueId} />,
     <StepFields key="fields" data={data} update={update} leagueId={leagueId} />,
     <StepFormat key="format" data={data} update={update} />,
     <StepCoaches key="coaches" data={data} update={update} leagueId={leagueId} />,

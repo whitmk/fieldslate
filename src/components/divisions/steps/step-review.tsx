@@ -58,6 +58,13 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function fmtTime(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
 function fmt(date: string) {
   if (!date) return "—";
   return new Date(date + "T00:00:00").toLocaleDateString("en-US", {
@@ -104,13 +111,20 @@ export function StepReview({
   const canSubmit = !!data.name.trim() && !!data.start_date && !!data.end_date;
   const isBusy = savingOnly || savingRegen;
 
+  // Derive legacy earliest/latest from first enabled day for backward compat
+  const firstDay = data.playing_days[0];
+  const firstWin = firstDay ? (data.day_windows[firstDay] ?? { start: "09:00", end: "17:00" }) : { start: "09:00", end: "17:00" };
+
   const settingsPayload = {
     games_per_team: data.games_per_team,
     max_games_per_week: data.max_games_per_week,
     max_games_per_team_per_day: data.max_games_per_team_per_day,
     playing_days: data.playing_days,
-    earliest_start: data.earliest_start,
-    latest_start: data.latest_start,
+    day_windows: data.day_windows,
+    use_league_schedule: data.use_league_schedule,
+    // Backward-compat fields — schedule generator uses day_windows when present
+    earliest_start: firstWin.start,
+    latest_start: firstWin.end,
     game_duration: data.game_duration,
     buffer_minutes: data.buffer_minutes,
     max_games_per_field_per_day: data.max_games_per_field_per_day,
@@ -198,6 +212,19 @@ export function StepReview({
           nonBlankTeams.map((t) => ({ league_id: leagueId, division_id: divId, name: t.name.trim() })) as never[]
         );
       }
+    }
+
+    // When scoped to league, persist the schedule windows as league-wide defaults
+    if (data.use_league_schedule) {
+      await supabase
+        .from("leagues")
+        .update({
+          schedule_settings: {
+            playing_days: data.playing_days,
+            day_windows: data.day_windows,
+          },
+        } as never)
+        .eq("id", leagueId);
     }
 
     return { divId };
@@ -534,14 +561,23 @@ export function StepReview({
       </Section>
 
       <Section title="Playing schedule" step={1} onEdit={onEdit}>
+        <Row label="Schedule scope" value={data.use_league_schedule ? "League-wide" : "Per division"} />
         <Row label="Games per team" value={data.games_per_team} />
         <Row label="Max per week" value={data.max_games_per_week} />
         <Row label="Max per day" value={data.max_games_per_team_per_day} />
-        <Row label="Playing days" value={data.playing_days.join(", ") || "—"} />
-        <Row label="Start window" value={`${data.earliest_start} – ${data.latest_start}`} />
+        <Row
+          label="Playing days"
+          value={
+            data.playing_days.length > 0
+              ? data.playing_days.map((d) => {
+                  const w = data.day_windows[d];
+                  return w ? `${d} (${fmtTime(w.start)}–${fmtTime(w.end)})` : d;
+                }).join(", ")
+              : "—"
+          }
+        />
         <Row label="Game duration" value={`${data.game_duration} min`} />
         <Row label="Buffer" value={`${data.buffer_minutes} min`} />
-        <Row label="Max games / field / day" value={data.max_games_per_field_per_day} />
         <Row label="Bye weeks" value={data.bye_weeks} />
       </Section>
 

@@ -48,6 +48,10 @@ export type Database = {
           owner_id: string;
           start_date: string | null;
           end_date: string | null;
+          schedule_settings: {
+            playing_days: string[];
+            day_windows: Record<string, { start: string; end: string }>;
+          } | null;
           created_at: string;
           updated_at: string;
         };
@@ -60,6 +64,10 @@ export type Database = {
           owner_id: string;
           start_date?: string | null;
           end_date?: string | null;
+          schedule_settings?: {
+            playing_days: string[];
+            day_windows: Record<string, { start: string; end: string }>;
+          } | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -71,6 +79,10 @@ export type Database = {
           status?: "active" | "inactive" | "archived";
           start_date?: string | null;
           end_date?: string | null;
+          schedule_settings?: {
+            playing_days: string[];
+            day_windows: Record<string, { start: string; end: string }>;
+          } | null;
           updated_at?: string;
         };
         Relationships: [];

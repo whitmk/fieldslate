@@ -33,8 +33,9 @@ interface DivisionSettings {
   max_games_per_week: number;
   max_games_per_team_per_day: number;
   playing_days: string[];      // e.g. ["Sa","Su"]
-  earliest_start: string;      // "HH:MM"
-  latest_start: string;        // "HH:MM"
+  day_windows?: Record<string, { start: string; end: string }>; // per-day windows (new)
+  earliest_start?: string;     // "HH:MM" — legacy fallback
+  latest_start?: string;       // "HH:MM" — legacy fallback
   game_duration: number;       // minutes
   buffer_minutes: number;      // minutes
   max_games_per_field_per_day: number;
@@ -66,6 +67,10 @@ interface Matchup {
 
 const DAY_TO_JS: Record<string, number> = {
   Su: 0, Mo: 1, Tu: 2, We: 3, Th: 4, Fr: 5, Sa: 6,
+};
+
+const JS_TO_DAY: Record<number, string> = {
+  0: "Su", 1: "Mo", 2: "Tu", 3: "We", 4: "Th", 5: "Fr", 6: "Sa",
 };
 
 function timeToMinutes(t: string): number {
@@ -212,25 +217,18 @@ function buildSlots(
   if (!venueIds.length) return [];
 
   const allowedDays = new Set(s.playing_days.map((d) => DAY_TO_JS[d]));
-  const earliest = timeToMinutes(s.earliest_start);
-  const latest = timeToMinutes(s.latest_start);
 
-  // FIX: coerce JSONB values to Number before arithmetic to prevent string
-  // concatenation ("90" + "15" = "9015" instead of 105).
+  // Coerce JSONB values to Number before arithmetic (prevents "90"+"15"="9015").
   const gameDuration = Number(s.game_duration);
   const bufferMins = Number(s.buffer_minutes);
-  const maxPerField = Number(s.max_games_per_field_per_day);
-  // Guard against zero interval which would cause an infinite loop
   const interval = Math.max(1, gameDuration + bufferMins);
 
-  // Collect all valid game dates (playing days only)
+  // Collect all valid game dates (playing days, not blacked out)
   const allDates: string[] = [];
   const cur = new Date(startDate + "T00:00:00");
   const end = new Date(endDate + "T00:00:00");
 
   while (cur <= end) {
-    // FIX: use local-time date string, not toISOString() which returns UTC date
-    // and can be one day behind in UTC-offset timezones (e.g. UTC-7).
     const iso = localDateStr(cur);
     if (allowedDays.has(cur.getDay()) && !blackoutDates.has(iso)) allDates.push(iso);
     cur.setDate(cur.getDate() + 1);
@@ -246,11 +244,23 @@ function buildSlots(
     }
   }
 
-  // Build slot list
   const slots: Slot[] = [];
 
   for (const date of validDates) {
     const wk = weekKey(date);
+    const dayKey = JS_TO_DAY[new Date(date + "T00:00:00").getDay()];
+
+    // Per-day window — fall back to legacy earliest_start/latest_start for old divisions
+    const dayWin = s.day_windows?.[dayKey];
+    const earliest = timeToMinutes(dayWin?.start ?? s.earliest_start ?? "09:00");
+    const latest   = timeToMinutes(dayWin?.end   ?? s.latest_start  ?? "17:00");
+
+    // Derive the slot cap from this day's window when per-day windows are present;
+    // otherwise use the stored max_games_per_field_per_day (backward compat).
+    const maxPerField = dayWin
+      ? Math.max(1, Math.floor((latest - earliest) / interval) + 1)
+      : Number(s.max_games_per_field_per_day);
+
     let timeMin = earliest;
     let slotsThisDay = 0;
 
@@ -264,7 +274,7 @@ function buildSlots(
     }
   }
 
-  // Sort chronologically; within same time spread across venues
+  // Chronological order; within same time spread across venues
   slots.sort(
     (a, b) =>
       a.isoString.localeCompare(b.isoString) ||
