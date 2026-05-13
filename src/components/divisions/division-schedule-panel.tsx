@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Zap, Loader2, CheckCircle2, AlertTriangle, CalendarDays,
   RefreshCw, PlusCircle, Printer, CloudRain, CalendarClock,
+  Pencil, Trash2, Check, Users,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -51,8 +52,20 @@ export function DivisionSchedulePanel({
   const [finishing, setFinishing] = useState(false);
   const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
-  const [rainoutId, setRainoutId] = useState<string | null>(null);   // game being rained out
+  const [rainoutId, setRainoutId] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<GameRow | null>(null);
+
+  // Team inline-edit state
+  const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingTeamId, setSavingTeamId] = useState<string | null>(null);
+
+  // Team delete state
+  const [deleteTarget, setDeleteTarget] = useState<Team | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   const fetchGames = useCallback(async () => {
     setLoadingGames(true);
@@ -163,6 +176,64 @@ export function DivisionSchedulePanel({
     setFinishing(false);
   }
 
+  function startEdit(team: Team) {
+    setEditingTeamId(team.id);
+    setEditingName(team.name);
+    setEditError(null);
+    setTimeout(() => editInputRef.current?.focus(), 0);
+  }
+
+  function cancelEdit() {
+    setEditingTeamId(null);
+    setEditingName("");
+    setEditError(null);
+  }
+
+  async function handleSaveTeamName(teamId: string) {
+    const trimmed = editingName.trim();
+    if (!trimmed) {
+      setEditError("Name cannot be blank.");
+      return;
+    }
+    const duplicate = teams.some(
+      (t) => t.id !== teamId && t.name.toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (duplicate) {
+      setEditError("Another team in this division already has that name.");
+      return;
+    }
+    setSavingTeamId(teamId);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("teams")
+      .update({ name: trimmed } as never)
+      .eq("id", teamId);
+    if (error) {
+      setEditError(error.message);
+    } else {
+      cancelEdit();
+      await fetchGames();
+      onScheduleChange?.();
+    }
+    setSavingTeamId(null);
+  }
+
+  async function handleDeleteTeam(team: Team) {
+    setDeleteLoading(true);
+    const supabase = createClient();
+
+    // Delete games where the team is home or away (no cascade on those FKs)
+    await supabase.from("games").delete().eq("home_team_id", team.id);
+    await supabase.from("games").delete().eq("away_team_id", team.id);
+
+    await supabase.from("teams").delete().eq("id", team.id);
+
+    setDeleteTarget(null);
+    setDeleteLoading(false);
+    await fetchGames();
+    onScheduleChange?.();
+  }
+
   async function handleRainOut(game: GameRow) {
     setRainoutId(game.id);
     const supabase = createClient();
@@ -201,6 +272,120 @@ export function DivisionSchedulePanel({
 
   return (
     <div className="border-t border-gray-100 bg-gray-50/40 px-6 py-5">
+
+      {/* ── Team roster ── */}
+      {teams.length > 0 && (
+        <div className="mb-5 overflow-hidden rounded-xl border border-gray-100 bg-white">
+          <div className="flex items-center gap-2 border-b border-gray-50 px-4 py-2.5">
+            <Users className="h-3.5 w-3.5 text-gray-300" />
+            <p className="text-xs font-semibold text-gray-500">
+              Teams · {teams.length}
+            </p>
+          </div>
+          <ul className="divide-y divide-gray-50">
+            {teams.map((team) => {
+              const isEditing = editingTeamId === team.id;
+              const isSaving = savingTeamId === team.id;
+              return (
+                <li key={team.id} className="group flex items-center gap-2 px-4 py-2.5">
+                  {isEditing ? (
+                    /* Inline edit mode */
+                    <div className="flex flex-1 flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={editInputRef}
+                          value={editingName}
+                          onChange={(e) => { setEditingName(e.target.value); setEditError(null); }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSaveTeamName(team.id);
+                            if (e.key === "Escape") cancelEdit();
+                          }}
+                          className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2.5 py-1 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/30"
+                        />
+                        <button
+                          onClick={() => handleSaveTeamName(team.id)}
+                          disabled={isSaving}
+                          className="inline-flex items-center gap-1 rounded-lg bg-[#22C55E] px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
+                        >
+                          {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                          Save
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          className="rounded-lg px-2 py-1 text-xs text-gray-400 transition-colors hover:text-gray-600"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {editError && (
+                        <p className="text-xs text-red-500">{editError}</p>
+                      )}
+                    </div>
+                  ) : (
+                    /* Normal display mode */
+                    <>
+                      <span className="flex-1 text-sm font-medium text-[#0C1F3F]">{team.name}</span>
+                      <span className="text-xs text-gray-400">
+                        {gameCountByTeam[team.id] ?? 0}
+                        {gamesPerTeam > 0 ? ` / ${gamesPerTeam}` : ""} games
+                      </span>
+                      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button
+                          onClick={() => startEdit(team)}
+                          title="Rename team"
+                          className="flex h-6 w-6 items-center justify-center rounded-md text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(team)}
+                          title="Delete team"
+                          className="flex h-6 w-6 items-center justify-center rounded-md text-gray-300 transition-colors hover:bg-red-50 hover:text-red-400"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {/* ── Delete confirmation modal ── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-1 flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-red-500" />
+              <h3 className="text-base font-bold text-[#0C1F3F]">Delete team?</h3>
+            </div>
+            <p className="mt-2 text-sm text-gray-600">
+              <span className="font-semibold">{deleteTarget.name}</span> will be permanently removed along with{" "}
+              <span className="font-semibold">all of their scheduled games</span>. This cannot be undone.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteLoading}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-gray-300 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteTeam(deleteTarget)}
+                disabled={deleteLoading}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:opacity-50"
+              >
+                {deleteLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                {deleteLoading ? "Deleting…" : "Delete team & games"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Action buttons ── */}
       <div className="flex flex-wrap items-center gap-3">
