@@ -146,10 +146,12 @@ export function ConflictResolverModal({ divisionId, divisionName, onClose, onRes
     const supabase = createClient();
 
     type DivRow = { settings: DivSettings; start_date: string | null; end_date: string | null };
+    type TeamIdRow = { id: string };
     type VenueIdRow = { venue_id: string };
 
-    const [divRes, dvRes] = await Promise.all([
+    const [divRes, teamRes, dvRes] = await Promise.all([
       supabase.from("divisions").select("settings, start_date, end_date").eq("id", divisionId).single(),
+      supabase.from("teams").select("id").eq("division_id", divisionId),
       supabase.from("division_venues").select("venue_id").eq("division_id", divisionId),
     ]);
 
@@ -160,6 +162,7 @@ export function ConflictResolverModal({ divisionId, divisionName, onClose, onRes
       setDateRange({ start: divData.start_date, end: divData.end_date });
     }
 
+    const divTeamIds = new Set(((teamRes.data ?? []) as unknown as TeamIdRow[]).map((t) => t.id));
     const venueIds = ((dvRes.data ?? []) as unknown as VenueIdRow[]).map((r) => r.venue_id);
 
     if (!venueIds.length) { setLoading(false); return; }
@@ -195,6 +198,7 @@ export function ConflictResolverModal({ divisionId, divisionName, onClose, onRes
     const gameDuration = Number(s?.game_duration ?? 0);
     const bufferMins = Number(s?.buffer_minutes ?? 0);
     const all = detectScheduleConflicts(flat, gameDuration, bufferMins);
+    const divIds = new Set(rows.filter((g) => divTeamIds.has(g.home_team_id)).map((g) => g.id));
     const divConflicts = all.filter((c) => c.games.some((g) => divIds.has(g.id)));
     setConflicts(divConflicts);
     setLoading(false);

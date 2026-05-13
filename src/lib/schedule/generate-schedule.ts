@@ -369,7 +369,7 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
     return { success: false, error: "Division must have a start and end date." };
   }
 
-  const settings = div.settings as DivisionSettings;
+  const settings = div.settings as unknown as DivisionSettings;
 
   if (!settings.playing_days?.length) {
     return { success: false, error: "No playing days configured for this division." };
@@ -643,7 +643,7 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
     )
     .in("venue_id", venueIds);
 
-  const crossDivGames: ConflictInputGame[] = ((crossDivRaw ?? []) as CrossDivRaw[]).map((g) => ({
+  const crossDivGames: ConflictInputGame[] = ((crossDivRaw ?? []) as unknown as CrossDivRaw[]).map((g) => ({
     id: g.id,
     scheduled_at: g.scheduled_at,
     venue_id: g.venue_id,
@@ -685,7 +685,7 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
   if (divErr || !div) return { success: false, error: divErr?.message ?? "Division not found." };
   if (!div.start_date || !div.end_date) return { success: false, error: "Division must have a start and end date." };
 
-  const settings = div.settings as DivisionSettings;
+  const settings = div.settings as unknown as DivisionSettings;
   if (!settings.playing_days?.length) return { success: false, error: "No playing days configured for this division." };
 
   // ── 2. Load teams ────────────────────────────────────────────────────────────
@@ -978,7 +978,7 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
     .select("id, scheduled_at, venue_id, home_team:teams!home_team_id(name, division:divisions(name)), away_team:teams!away_team_id(name), venue:venues(name)")
     .in("venue_id", venueIds);
 
-  const crossDivGames: ConflictInputGame[] = ((crossDivRaw ?? []) as CrossDivRaw[]).map((g) => ({
+  const crossDivGames: ConflictInputGame[] = ((crossDivRaw ?? []) as unknown as CrossDivRaw[]).map((g) => ({
     id: g.id,
     scheduled_at: g.scheduled_at,
     venue_id: g.venue_id,

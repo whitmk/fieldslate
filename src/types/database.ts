@@ -36,6 +36,7 @@ export type Database = {
           role?: "admin" | "manager" | "viewer";
           updated_at?: string;
         };
+        Relationships: [];
       };
       leagues: {
         Row: {
@@ -72,6 +73,7 @@ export type Database = {
           end_date?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
       teams: {
         Row: {
@@ -103,6 +105,7 @@ export type Database = {
           contact_email?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
       venues: {
         Row: {
@@ -136,6 +139,7 @@ export type Database = {
           capacity?: number | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
       divisions: {
         Row: {
@@ -172,11 +176,13 @@ export type Database = {
           status?: "draft" | "active" | "archived";
           updated_at?: string;
         };
+        Relationships: [];
       };
       division_venues: {
         Row: { division_id: string; venue_id: string };
         Insert: { division_id: string; venue_id: string };
         Update: { division_id?: string; venue_id?: string };
+        Relationships: [];
       };
       blackout_dates: {
         Row: {
@@ -197,6 +203,7 @@ export type Database = {
           date?: string;
           label?: string | null;
         };
+        Relationships: [];
       };
       games: {
         Row: {
@@ -237,6 +244,7 @@ export type Database = {
           notes?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
     };
     Views: { [_ in never]: never };
