@@ -131,7 +131,6 @@ export function ConflictResolverModal({ divisionId, divisionName, onClose, onRes
   const [venues, setVenues] = useState<Venue[]>([]);
   const [settings, setSettings] = useState<DivSettings | null>(null);
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
-  const [divGameIds, setDivGameIds] = useState<Set<string>>(new Set());
 
   // Per-game state
   const [expandedGame, setExpandedGame] = useState<string | null>(null);
@@ -185,10 +184,6 @@ export function ConflictResolverModal({ divisionId, divisionName, onClose, onRes
     const rows = (gamesRes.data ?? []) as unknown as GameRow[];
     setAllVenueGames(rows);
     setVenues((venueRes.data ?? []) as Venue[]);
-
-    const teamIdSet = new Set(teamIds);
-    const divIds = new Set(rows.filter((g) => teamIdSet.has(g.home_team_id)).map((g) => g.id));
-    setDivGameIds(divIds);
 
     // Detect conflicts across all venue games, filter to those touching this division
     const flat = rows.map((g) => ({
