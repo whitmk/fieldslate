@@ -232,8 +232,10 @@ export function StepReview({
     }
 
     // Sync team practice slots
-    const teamsWithSlots = data.teams.filter((t) => t.practice_day);
-    if (isEditMode || teamsWithSlots.length > 0) {
+    const hasAnySlots = data.teams.some((t) =>
+      (t.practice_slots ?? []).some((s) => s.day),
+    );
+    if (isEditMode || hasAnySlots) {
       const { data: teamRows } = await supabase
         .from("teams")
         .select("id, name")
@@ -254,19 +256,19 @@ export function StepReview({
           .eq("division_id", divId);
       }
 
-      const slotsToInsert = teamsWithSlots
-        .map((t) => {
-          const teamId = teamIdByName.get(t.name.toLowerCase().trim());
-          if (!teamId) return null;
-          return {
+      const slotsToInsert = data.teams.flatMap((t) => {
+        const teamId = teamIdByName.get(t.name.toLowerCase().trim());
+        if (!teamId) return [];
+        return (t.practice_slots ?? [])
+          .filter((s) => s.day)
+          .map((s) => ({
             team_id: teamId,
             division_id: divId,
-            day_of_week: t.practice_day!,
-            start_time: t.practice_start ?? "09:00",
-            venue_id: t.practice_venue_id ?? null,
-          };
-        })
-        .filter((s): s is NonNullable<typeof s> => s !== null);
+            day_of_week: s.day!,
+            start_time: s.start ?? "09:00",
+            venue_id: s.venue_id ?? null,
+          }));
+      });
 
       if (slotsToInsert.length > 0) {
         await supabase
@@ -633,13 +635,19 @@ export function StepReview({
 
       <Section title="Practice schedule" step={2} onEdit={onEdit}>
         {(() => {
-          const pinned = data.teams.filter((t) => t.practice_day).length;
+          const totalSlots = data.teams.reduce(
+            (sum, t) => sum + (t.practice_slots ?? []).filter((s) => s.day).length,
+            0,
+          );
+          const teamsWithSlots = data.teams.filter((t) =>
+            (t.practice_slots ?? []).some((s) => s.day),
+          ).length;
           return (
             <Row
               label="Pinned slots"
               value={
-                pinned > 0
-                  ? `${pinned} of ${data.teams.length} team${data.teams.length !== 1 ? "s" : ""}`
+                totalSlots > 0
+                  ? `${totalSlots} slot${totalSlots !== 1 ? "s" : ""} across ${teamsWithSlots} team${teamsWithSlots !== 1 ? "s" : ""}`
                   : "None — auto-assign all"
               }
             />

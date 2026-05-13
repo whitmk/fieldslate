@@ -16,15 +16,19 @@ export const ORDERED_DAYS: { key: PlayingDay; label: string }[] = [
 
 export const DEFAULT_DAY_WINDOW: DayWindow = { start: "09:00", end: "17:00" };
 
+export type PracticeSlotEntry = {
+  day?: PlayingDay;
+  start?: string;    // "HH:MM" 24-hour
+  venue_id?: string;
+};
+
 export type TeamEntry = {
   name: string;
   has_coach_conflict: boolean;
   conflict_division: string;
   conflict_team: string;
-  // Optional pinned practice slot (locked for the whole season)
-  practice_day?: PlayingDay;
-  practice_start?: string;   // "HH:MM" 24-hour
-  practice_venue_id?: string;
+  // Optional pinned practice slots (locked for the whole season)
+  practice_slots?: PracticeSlotEntry[];
 };
 
 export type WizardData = {

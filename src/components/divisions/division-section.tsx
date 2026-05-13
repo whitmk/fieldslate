@@ -17,6 +17,7 @@ import type { DivisionStat } from "@/app/(dashboard)/dashboard/leagues/[id]/page
 import {
   DEFAULT_WIZARD_DATA, type WizardData, type PlayingDay,
   type ScheduleFormat, type TeamEntry, type DayWindowMap,
+  type PracticeSlotEntry,
 } from "./wizard-types";
 import type { PracticeSlot } from "@/types/database";
 
@@ -78,19 +79,22 @@ function divisionToWizardData(
     teams: (() => {
       const base: TeamEntry[] = Array.isArray(s.teams) ? (s.teams as TeamEntry[]) : [];
       if (practiceSlots.length === 0) return base;
-      // Build teamId → slot and teamName → teamId maps for merging
-      const slotByTeamId = new Map(practiceSlots.map((sl) => [sl.team_id, sl]));
+      // Group all slots by team_id, then attach to matching TeamEntry by name
+      const slotsByTeamId = new Map<string, PracticeSlotEntry[]>();
+      for (const sl of practiceSlots) {
+        const entry: PracticeSlotEntry = {
+          day: sl.day_of_week as PlayingDay,
+          start: sl.start_time,
+          ...(sl.venue_id ? { venue_id: sl.venue_id } : {}),
+        };
+        slotsByTeamId.set(sl.team_id, [...(slotsByTeamId.get(sl.team_id) ?? []), entry]);
+      }
       const teamIdByName = new Map(dbTeams.map((t) => [t.name.toLowerCase().trim(), t.id]));
       return base.map((t) => {
         const teamId = teamIdByName.get(t.name.toLowerCase().trim());
-        const slot = teamId ? slotByTeamId.get(teamId) : undefined;
-        if (!slot) return t;
-        return {
-          ...t,
-          practice_day: slot.day_of_week as PlayingDay,
-          practice_start: slot.start_time,
-          ...(slot.venue_id ? { practice_venue_id: slot.venue_id } : {}),
-        };
+        const slots = teamId ? slotsByTeamId.get(teamId) : undefined;
+        if (!slots?.length) return t;
+        return { ...t, practice_slots: slots };
       });
     })(),
   };
