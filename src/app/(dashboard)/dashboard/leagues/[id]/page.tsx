@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, AlertCircle, CloudRain } from "lucide-react";
+import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, AlertCircle } from "lucide-react";
 import type { League } from "@/types/database";
 import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
 import { detectConflicts } from "@/lib/schedule/detect-conflicts";
+import { RainedOutStatCard, type RainedOutGame } from "@/components/dashboard/rained-out-stat-card";
 
 export type DivisionStat = {
   divisionId: string;
@@ -34,7 +35,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     id: string; scheduled_at: string; venue_id: string | null; home_team_id: string; away_team_id: string;
     status: string;
     venue: { name: string } | null;
-    home_team: { name: string } | null;
+    home_team: { name: string; division_id: string | null } | null;
     away_team: { name: string } | null;
   };
   type DivVenueRow = { division_id: string; venue_id: string };
@@ -52,7 +53,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       .from("games")
       .select(`id, scheduled_at, venue_id, home_team_id, away_team_id, status,
                venue:venues(name),
-               home_team:teams!home_team_id(name),
+               home_team:teams!home_team_id(name, division_id),
                away_team:teams!away_team_id(name)`)
       .eq("league_id", league.id),
     supabase.from("division_venues").select("division_id, venue_id"),
@@ -137,8 +138,12 @@ export default async function LeaguePage({ params }: { params: { id: string } })
   const divisionCount = allDivisions.length;
   const teamCount = allTeams.length;
   const gameCount = allGames.filter((g) => g.status !== "cancelled").length;
-  const rainedOutCount = allGames.filter((g) => g.status === "cancelled").length;
+  const rainedOutGames = allGames.filter((g) => g.status === "cancelled") as unknown as RainedOutGame[];
+  const rainedOutCount = rainedOutGames.length;
   const totalConflicts = allConflictingGameIds.size;
+
+  const divisionNames: Record<string, string> = {};
+  for (const d of allDivisions) divisionNames[d.id] = d.name;
 
   const sportColor: Record<string, string> = {
     Baseball: "bg-blue-50 text-blue-700",
@@ -198,20 +203,27 @@ export default async function LeaguePage({ params }: { params: { id: string } })
           { label: "Divisions", value: divisionCount, icon: Layers },
           { label: "Teams", value: teamCount, icon: Users },
           { label: "Games", value: gameCount, icon: CalendarDays },
-          { label: "Rained Out", value: rainedOutCount, icon: CloudRain, rain: rainedOutCount > 0 },
           { label: "Conflicts", value: totalConflicts, icon: AlertCircle, alert: totalConflicts > 0 },
-        ].map(({ label, value, icon: Icon, alert, rain }) => (
+        ].map(({ label, value, icon: Icon, alert }) => (
           <div
             key={label}
-            className={`rounded-xl border bg-white p-5 shadow-sm ${alert ? "border-red-200" : rain ? "border-blue-200" : "border-gray-100"}`}
+            className={`rounded-xl border bg-white p-5 shadow-sm ${alert ? "border-red-200" : "border-gray-100"}`}
           >
             <div className="flex items-center justify-between">
-              <p className={`text-sm font-medium ${alert ? "text-red-500" : rain ? "text-blue-500" : "text-gray-500"}`}>{label}</p>
-              <Icon className={`h-4 w-4 ${alert ? "text-red-300" : rain ? "text-blue-300" : "text-gray-300"}`} />
+              <p className={`text-sm font-medium ${alert ? "text-red-500" : "text-gray-500"}`}>{label}</p>
+              <Icon className={`h-4 w-4 ${alert ? "text-red-300" : "text-gray-300"}`} />
             </div>
-            <p className={`mt-2 text-3xl font-bold ${alert ? "text-red-600" : rain ? "text-blue-600" : "text-[#0C1F3F]"}`}>{value}</p>
+            <p className={`mt-2 text-3xl font-bold ${alert ? "text-red-600" : "text-[#0C1F3F]"}`}>{value}</p>
           </div>
         ))}
+
+        {/* Rained Out — interactive client card */}
+        <RainedOutStatCard
+          count={rainedOutCount}
+          initialGames={rainedOutGames}
+          leagueId={league.id}
+          divisionNames={divisionNames}
+        />
       </div>
 
       <BlackoutDatesPanel leagueId={league.id} />
