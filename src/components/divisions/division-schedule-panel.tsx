@@ -152,8 +152,7 @@ export function DivisionSchedulePanel({
     const res = await generateSchedule(divisionId);
     if (res.success) {
       setResult({ type: "success", message: `${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled` });
-      const supabase = createClient();
-      await logActivity(supabase, leagueId, divisionId, "schedule_generated",
+      await logActivity(leagueId, divisionId, "schedule_generated",
         `${divisionName} schedule generated — ${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled`);
       fetchGames();
       onScheduleChange?.();
@@ -175,8 +174,7 @@ export function DivisionSchedulePanel({
           : `${res.gamesCreated} missing game${res.gamesCreated === 1 ? "" : "s"} added`,
       });
       if (res.gamesCreated > 0) {
-        const supabase = createClient();
-        await logActivity(supabase, leagueId, divisionId, "schedule_generated",
+        await logActivity(leagueId, divisionId, "schedule_generated",
           `${divisionName} schedule generated — ${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} added`);
       }
       fetchGames();
@@ -250,7 +248,6 @@ export function DivisionSchedulePanel({
     const supabase = createClient();
     await supabase.from("games").update({ status: "cancelled" } as never).eq("id", game.id);
     await logActivity(
-      supabase,
       leagueId,
       divisionId,
       "rainout_logged",

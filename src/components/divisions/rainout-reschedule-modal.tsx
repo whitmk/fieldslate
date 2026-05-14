@@ -312,7 +312,7 @@ export function RainoutRescheduleModal({
     const logMsg = buildLogMessage
       ? buildLogMessage({ newScheduledAt: picked.isoString, newVenueName: picked.venueName })
       : `${homeTeamName} vs ${awayTeamName} rescheduled to ${fmtGameDate(picked.isoString)} at ${fmtGameTime(picked.isoString)} — ${picked.venueName}`;
-    await logActivity(supabase, leagueId, divisionId, "game_rescheduled", logMsg);
+    await logActivity(leagueId, divisionId, "game_rescheduled", logMsg);
     router.refresh();
     setDone(true);
     setConfirming(false);

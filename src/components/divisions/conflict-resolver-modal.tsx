@@ -239,8 +239,7 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     const game = allVenueGames.find((g) => g.id === gameId);
     const homeTeam = (game?.home_team as { name: string } | null)?.name ?? "Home";
     const awayTeam = (game?.away_team as { name: string } | null)?.name ?? "Away";
-    const supabase = createClient();
-    await logActivity(supabase, leagueId, divisionId, "game_conflict_resolved",
+    await logActivity(leagueId, divisionId, "game_conflict_resolved",
       `${homeTeam} vs ${awayTeam} moved to ${form.date} at ${form.time} — double-booking resolved`);
 
     setExpandedGame(null);
@@ -279,9 +278,8 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
       );
     }
 
-    const supabase = createClient();
     const movedCount = gamesToMove.length;
-    await logActivity(supabase, leagueId, divisionId, "game_conflict_resolved",
+    await logActivity(leagueId, divisionId, "game_conflict_resolved",
       `${movedCount} game${movedCount !== 1 ? "s" : ""} at ${conflict.venueName} moved — double-booking resolved`);
 
     setResolving((p) => ({ ...p, [key]: false }));
@@ -316,8 +314,7 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     }
 
     const totalMoved = conflicts.reduce((sum, c) => sum + c.games.slice(1).length, 0);
-    const supabase = createClient();
-    await logActivity(supabase, leagueId, divisionId, "game_conflict_resolved",
+    await logActivity(leagueId, divisionId, "game_conflict_resolved",
       `${totalMoved} game${totalMoved !== 1 ? "s" : ""} auto-resolved — all double-bookings cleared`);
 
     setAutoResolvingAll(false);

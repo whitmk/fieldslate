@@ -54,7 +54,6 @@ export function UpcomingGamesList({ initialGames }: Props) {
       .update({ status: "cancelled" } as never)
       .eq("id", game.id);
     await logActivity(
-      supabase,
       game.league_id,
       game.home_team?.division_id ?? null,
       "rainout_logged",

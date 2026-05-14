@@ -1,13 +1,12 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/database";
+import { createClient } from "@/lib/supabase/client";
 
 export async function logActivity(
-  supabase: SupabaseClient<Database>,
   leagueId: string,
   divisionId: string | null,
   eventType: string,
   message: string,
 ): Promise<void> {
+  const supabase = createClient();
   const { error } = await supabase.from("activity_log").insert({
     league_id: leagueId,
     division_id: divisionId || null,

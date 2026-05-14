@@ -9,7 +9,6 @@ import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
 import { ActivityLogPanel } from "@/components/dashboard/activity-log-panel";
 import { detectConflicts } from "@/lib/schedule/detect-conflicts";
-import { logActivity } from "@/lib/activity-log";
 import { RainedOutStatCard, type RainedOutGame } from "@/components/dashboard/rained-out-stat-card";
 import { ConflictStatCard, type ConflictGame } from "@/components/dashboard/conflict-stat-card";
 import type { BlackoutAffectedGame } from "@/components/blackout/blackout-dates-panel";
@@ -35,9 +34,6 @@ export default async function LeaguePage({ params }: { params: { id: string } })
 
   if (!rawLeague) notFound();
   const league = rawLeague as League;
-
-  // TEMP: verify activity_log table write + RLS
-  await logActivity(supabase, league.id, null, "test", "Activity log connected");
 
   type TeamRow = { id: string; division_id: string | null };
   type GameRow = {

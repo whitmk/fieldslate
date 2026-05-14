@@ -436,8 +436,7 @@ export function StepReview({
       setSavingRegen(false);
       return;
     }
-    const supabase = createClient();
-    await logActivity(supabase, leagueId, divId, "schedule_generated",
+    await logActivity(leagueId, divId, "schedule_generated",
       `${data.name} schedule generated — ${scheduleResult.gamesCreated} game${scheduleResult.gamesCreated === 1 ? "" : "s"} scheduled`);
 
     router.refresh();

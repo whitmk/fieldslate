@@ -85,7 +85,6 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut }: P
       .update({ status: "cancelled" } as never)
       .eq("id", selectedGame.id);
     await logActivity(
-      supabase,
       leagueId,
       divisionId || null,
       "rainout_logged",
