@@ -18,6 +18,8 @@ interface Props {
   leagueId: string;
   onClose: () => void;
   onRescheduled: () => void;
+  /** Override the activity-log message. Receives the chosen slot; return the full message string. */
+  buildLogMessage?: (p: { newScheduledAt: string; newVenueName: string }) => string;
 }
 
 interface SlotOption {
@@ -138,7 +140,7 @@ function buildAvailableSlots(params: {
 
 export function RainoutRescheduleModal({
   gameId, homeTeamId, awayTeamId, homeTeamName, awayTeamName,
-  divisionId, leagueId, onClose, onRescheduled,
+  divisionId, leagueId, onClose, onRescheduled, buildLogMessage,
 }: Props) {
   const [slots, setSlots] = useState<SlotOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -305,13 +307,10 @@ export function RainoutRescheduleModal({
       setConfirming(false);
       return;
     }
-    await logActivity(
-      supabase,
-      leagueId,
-      divisionId,
-      "game_rescheduled",
-      `${homeTeamName} vs ${awayTeamName} rescheduled to ${fmtGameDate(picked.isoString)} at ${fmtGameTime(picked.isoString)} — ${picked.venueName}`,
-    );
+    const logMsg = buildLogMessage
+      ? buildLogMessage({ newScheduledAt: picked.isoString, newVenueName: picked.venueName })
+      : `${homeTeamName} vs ${awayTeamName} rescheduled to ${fmtGameDate(picked.isoString)} at ${fmtGameTime(picked.isoString)} — ${picked.venueName}`;
+    await logActivity(supabase, leagueId, divisionId, "game_rescheduled", logMsg);
     setDone(true);
     setConfirming(false);
   }

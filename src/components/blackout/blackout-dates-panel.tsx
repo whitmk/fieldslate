@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { CalendarX, Plus, X, AlertTriangle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -13,8 +13,17 @@ type AffectedGame = {
   away_team: { name: string } | null;
 };
 
+export type BlackoutAffectedGame = {
+  id: string;
+  scheduled_at: string;
+  home_team: { name: string } | null;
+  away_team: { name: string } | null;
+};
+
 interface Props {
   leagueId: string;
+  /** Server-computed games that fall on a blackout date. Synced via router.refresh(). */
+  initialAffectedGames?: BlackoutAffectedGame[];
 }
 
 function fmtDate(dateStr: string): string {
@@ -27,9 +36,10 @@ function fmtDate(dateStr: string): string {
   });
 }
 
-export function BlackoutDatesPanel({ leagueId }: Props) {
+export function BlackoutDatesPanel({ leagueId, initialAffectedGames }: Props) {
   const [blackouts, setBlackouts] = useState<BlackoutRow[]>([]);
-  const [affectedGames, setAffectedGames] = useState<AffectedGame[]>([]);
+  const [affectedGames, setAffectedGames] = useState<AffectedGame[]>(initialAffectedGames ?? []);
+  const isMounted = useRef(false);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [newDate, setNewDate] = useState("");
@@ -72,6 +82,12 @@ export function BlackoutDatesPanel({ leagueId }: Props) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Sync affected games from server data (updated after router.refresh())
+  useEffect(() => {
+    if (!isMounted.current) { isMounted.current = true; return; }
+    if (initialAffectedGames !== undefined) setAffectedGames(initialAffectedGames);
+  }, [initialAffectedGames]);
 
   async function handleAdd() {
     if (!newDate) return;

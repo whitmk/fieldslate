@@ -1,13 +1,15 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, AlertCircle } from "lucide-react";
+import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle } from "lucide-react";
 import type { League } from "@/types/database";
 import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
 import { ActivityLogPanel } from "@/components/dashboard/activity-log-panel";
 import { detectConflicts } from "@/lib/schedule/detect-conflicts";
 import { RainedOutStatCard, type RainedOutGame } from "@/components/dashboard/rained-out-stat-card";
+import { ConflictStatCard, type ConflictGame } from "@/components/dashboard/conflict-stat-card";
+import type { BlackoutAffectedGame } from "@/components/blackout/blackout-dates-panel";
 
 export type DivisionStat = {
   divisionId: string;
@@ -40,13 +42,14 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     away_team: { name: string } | null;
   };
   type DivVenueRow = { division_id: string; venue_id: string };
+  type BlackoutRow = { date: string; label: string | null };
 
-  // Fetch everything in one parallel round-trip
   const [
     { data: allDivisionsRaw },
     { data: allTeamsRaw },
     { data: allGamesRaw },
     { data: allDivVenuesRaw },
+    { data: blackoutDatesRaw },
   ] = await Promise.all([
     supabase.from("divisions").select("*").eq("league_id", league.id).order("created_at", { ascending: true }),
     supabase.from("teams").select("id, division_id").eq("league_id", league.id),
@@ -58,12 +61,14 @@ export default async function LeaguePage({ params }: { params: { id: string } })
                away_team:teams!away_team_id(name)`)
       .eq("league_id", league.id),
     supabase.from("division_venues").select("division_id, venue_id"),
+    supabase.from("blackout_dates").select("date, label").eq("league_id", league.id),
   ]);
 
   const allDivisions = (allDivisionsRaw ?? []) as import("@/types/database").Division[];
   const allTeams = (allTeamsRaw ?? []) as TeamRow[];
   const allGames = (allGamesRaw ?? []) as unknown as GameRow[];
   const allDivVenues = (allDivVenuesRaw ?? []) as unknown as DivVenueRow[];
+  const blackoutDates = (blackoutDatesRaw ?? []) as BlackoutRow[];
 
   // Build division → venue-id set
   const divToVenues = new Map<string, Set<string>>();
@@ -72,8 +77,11 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     divToVenues.get(dv.division_id)!.add(dv.venue_id);
   }
 
-  // Per-division stats — conflict detection uses each division's own settings and venues,
-  // matching exactly what ConflictResolverModal does client-side.
+  // Blackout date → label map (active games only)
+  const blackoutMap = new Map<string, string | null>();
+  for (const b of blackoutDates) blackoutMap.set(b.date, b.label);
+
+  // Per-division stats
   const allConflictingGameIds = new Set<string>();
 
   const divisionStats: DivisionStat[] = allDivisions.map((div) => {
@@ -91,7 +99,6 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     const divTeamIds = new Set(divTeamArr);
     const divGames = allGames.filter((g) => divTeamIds.has(g.home_team_id));
 
-    // Per-team game count (each team appears as home or away)
     const teamGameCount: Record<string, number> = {};
     divTeamArr.forEach((id) => { teamGameCount[id] = 0; });
     for (const g of divGames) {
@@ -103,11 +110,9 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       gamesPerTeam > 0 &&
       divTeamArr.every((id) => (teamGameCount[id] ?? 0) >= gamesPerTeam);
 
-    // All games at this division's venues — includes cross-division games, same as the modal
     const divVenueIds = divToVenues.get(div.id) ?? new Set<string>();
     const venueGames = allGames.filter((g) => g.venue_id !== null && divVenueIds.has(g.venue_id!));
 
-    // Detect conflicts with this division's actual game_duration + buffer_minutes
     const conflicts = detectConflicts(
       venueGames.map((g) => ({
         id: g.id,
@@ -122,8 +127,6 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     );
 
     const conflictingAtVenues = new Set(conflicts.flatMap((c) => c.gameIds));
-
-    // Only count games that belong to THIS division
     const divConflictCount = divGames.filter((g) => conflictingAtVenues.has(g.id)).length;
     divGames.filter((g) => conflictingAtVenues.has(g.id)).forEach((g) => allConflictingGameIds.add(g.id));
 
@@ -136,12 +139,52 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     };
   });
 
+  // Blackout conflicts — active (non-cancelled) games that land on a blackout date
+  const allBlackoutGameIds = new Set<string>();
+  for (const g of allGames) {
+    if (g.status !== "cancelled" && blackoutMap.has(g.scheduled_at.substring(0, 10))) {
+      allBlackoutGameIds.add(g.id);
+    }
+  }
+
+  // Build unified conflict list for ConflictStatCard (schedule conflicts take priority if both)
+  const conflictGames: ConflictGame[] = [];
+  for (const g of allGames) {
+    if (g.status === "cancelled") continue;
+    const isSchedule = allConflictingGameIds.has(g.id);
+    const isBlackout = allBlackoutGameIds.has(g.id);
+    if (!isSchedule && !isBlackout) continue;
+    conflictGames.push({
+      id: g.id,
+      scheduled_at: g.scheduled_at,
+      home_team_id: g.home_team_id,
+      away_team_id: g.away_team_id,
+      home_team: g.home_team,
+      away_team: g.away_team,
+      venue: g.venue,
+      conflictType: isSchedule ? "schedule" : "blackout",
+      blackoutLabel: isBlackout && !isSchedule
+        ? (blackoutMap.get(g.scheduled_at.substring(0, 10)) ?? null)
+        : null,
+    });
+  }
+
+  // Affected games for BlackoutDatesPanel warning (synced after router.refresh())
+  const blackoutAffectedGames: BlackoutAffectedGame[] = allGames
+    .filter((g) => g.status !== "cancelled" && blackoutMap.has(g.scheduled_at.substring(0, 10)))
+    .map((g) => ({
+      id: g.id,
+      scheduled_at: g.scheduled_at,
+      home_team: g.home_team ? { name: g.home_team.name } : null,
+      away_team: g.away_team ? { name: g.away_team.name } : null,
+    }));
+
   const divisionCount = allDivisions.length;
   const teamCount = allTeams.length;
   const gameCount = allGames.filter((g) => g.status !== "cancelled").length;
   const rainedOutGames = allGames.filter((g) => g.status === "cancelled") as unknown as RainedOutGame[];
   const rainedOutCount = rainedOutGames.length;
-  const totalConflicts = allConflictingGameIds.size;
+  const scheduleConflictCount = allConflictingGameIds.size;
 
   const divisionNames: Record<string, string> = {};
   for (const d of allDivisions) divisionNames[d.id] = d.name;
@@ -183,16 +226,16 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         </span>
       </div>
 
-      {/* Conflict alert banner */}
-      {totalConflicts > 0 && (
+      {/* Schedule-conflict alert banner (double-booked fields only) */}
+      {scheduleConflictCount > 0 && (
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5">
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" />
           <div>
             <p className="text-sm font-semibold text-red-700">
-              Schedule conflict — {totalConflicts} game{totalConflicts !== 1 ? "s" : ""} double-booked
+              Schedule conflict — {scheduleConflictCount} game{scheduleConflictCount !== 1 ? "s" : ""} double-booked
             </p>
             <p className="mt-0.5 text-xs text-red-600">
-              Two or more games are assigned to the same field at overlapping times. Expand a division below to review and fix.
+              Two or more games are assigned to the same field at overlapping times. Click the Conflicts card to review and fix.
             </p>
           </div>
         </div>
@@ -202,21 +245,27 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       <div className="grid grid-cols-5 gap-4">
         {[
           { label: "Divisions", value: divisionCount, icon: Layers },
-          { label: "Teams", value: teamCount, icon: Users },
-          { label: "Games", value: gameCount, icon: CalendarDays },
-          { label: "Conflicts", value: totalConflicts, icon: AlertCircle, alert: totalConflicts > 0 },
-        ].map(({ label, value, icon: Icon, alert }) => (
+          { label: "Teams",     value: teamCount,     icon: Users },
+          { label: "Games",     value: gameCount,     icon: CalendarDays },
+        ].map(({ label, value, icon: Icon }) => (
           <div
             key={label}
-            className={`rounded-xl border bg-white p-5 shadow-sm ${alert ? "border-red-200" : "border-gray-100"}`}
+            className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm"
           >
             <div className="flex items-center justify-between">
-              <p className={`text-sm font-medium ${alert ? "text-red-500" : "text-gray-500"}`}>{label}</p>
-              <Icon className={`h-4 w-4 ${alert ? "text-red-300" : "text-gray-300"}`} />
+              <p className="text-sm font-medium text-gray-500">{label}</p>
+              <Icon className="h-4 w-4 text-gray-300" />
             </div>
-            <p className={`mt-2 text-3xl font-bold ${alert ? "text-red-600" : "text-[#0C1F3F]"}`}>{value}</p>
+            <p className="mt-2 text-3xl font-bold text-[#0C1F3F]">{value}</p>
           </div>
         ))}
+
+        {/* Conflicts — clickable, includes schedule + blackout conflicts */}
+        <ConflictStatCard
+          initialConflictGames={conflictGames}
+          leagueId={league.id}
+          divisionNames={divisionNames}
+        />
 
         {/* Rained Out — interactive client card */}
         <RainedOutStatCard
@@ -227,7 +276,10 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         />
       </div>
 
-      <BlackoutDatesPanel leagueId={league.id} />
+      <BlackoutDatesPanel
+        leagueId={league.id}
+        initialAffectedGames={blackoutAffectedGames}
+      />
 
       <ActivityLogPanel leagueId={league.id} />
 
