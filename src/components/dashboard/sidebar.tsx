@@ -12,6 +12,7 @@ import {
   Layers,
   Flag,
   ArrowLeftRight,
+  Medal,
   FileDown,
   Settings,
   LogOut,
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/dashboard/divisions", label: "Divisions", icon: Layers },
   { href: "/dashboard/fields", label: "Fields", icon: Flag },
   { href: "/dashboard/interleague", label: "Interleague", icon: ArrowLeftRight },
+  { href: "/dashboard/playoffs", label: "Playoffs", icon: Medal },
   { href: "/dashboard/export", label: "Export", icon: FileDown },
 ];
 

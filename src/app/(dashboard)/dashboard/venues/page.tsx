@@ -24,14 +24,14 @@ export default function VenuesPage() {
   // Add form
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState("");
-  const [addType, setAddType] = useState<Venue["venue_type"]>("game");
+  const [addType, setAddType] = useState<string>("game");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
   // Inline edit
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const [editType, setEditType] = useState<Venue["venue_type"]>("game");
+  const [editType, setEditType] = useState<string>("game");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -76,7 +76,7 @@ export default function VenuesPage() {
   function startEdit(venue: Venue) {
     setEditId(venue.id);
     setEditName(venue.name);
-    setEditType(venue.venue_type);
+    setEditType(venue.venue_type ?? "game");
     setSaveError(null);
   }
 
@@ -136,7 +136,7 @@ export default function VenuesPage() {
           />
           <select
             value={addType}
-            onChange={(e) => setAddType(e.target.value as Venue["venue_type"])}
+            onChange={(e) => setAddType(e.target.value)}
             className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-gray-700 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
           >
             <option value="game">Game</option>
@@ -189,7 +189,7 @@ export default function VenuesPage() {
                 />
                 <select
                   value={editType}
-                  onChange={(e) => setEditType(e.target.value as Venue["venue_type"])}
+                  onChange={(e) => setEditType(e.target.value)}
                   className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-700 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
                 >
                   <option value="game">Game</option>
@@ -222,8 +222,8 @@ export default function VenuesPage() {
               <div key={venue.id} className="group flex items-start justify-between rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
                 <div className="flex flex-col gap-1.5">
                   <p className="font-semibold text-[#0C1F3F]">{venue.name}</p>
-                  <span className={`self-start rounded-full px-2 py-0.5 text-xs font-medium ${TYPE_STYLES[venue.venue_type] ?? "bg-gray-100 text-gray-600"}`}>
-                    {TYPE_LABELS[venue.venue_type] ?? venue.venue_type}
+                  <span className={`self-start rounded-full px-2 py-0.5 text-xs font-medium ${TYPE_STYLES[venue.venue_type ?? ""] ?? "bg-gray-100 text-gray-600"}`}>
+                    {TYPE_LABELS[venue.venue_type ?? ""] ?? venue.venue_type}
                   </span>
                   {venue.address && <p className="text-xs text-gray-400">{venue.address}</p>}
                   {(venue.city || venue.state) && (
