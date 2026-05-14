@@ -89,6 +89,13 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     return { success: true, practicesCreated: 0, droppedCount: 0 };
   }
 
+  if (!div.practice_venue_id) {
+    return {
+      success: false,
+      error: "No practice venue set for this division. Add a practice venue in the division settings before generating practices.",
+    };
+  }
+
   // ── 2. Load teams ────────────────────────────────────────────────────────────
 
   const { data: teamsData, error: teamsErr } = await supabase
