@@ -153,9 +153,9 @@ export function DivisionSchedulePanel({
     if (res.success) {
       setResult({ type: "success", message: `${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled` });
       console.log("[logActivity] before call: schedule_generated (handleGenerate)");
-      await logActivity(leagueId, divisionId, "schedule_generated",
+      const _r1 = await logActivity(leagueId, divisionId, "schedule_generated",
         `${divisionName} schedule generated — ${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled`);
-      console.log("[logActivity] after call: schedule_generated (handleGenerate)");
+      console.log("[logActivity] result (handleGenerate):", _r1);
       fetchGames();
       onScheduleChange?.();
     } else {
@@ -177,9 +177,9 @@ export function DivisionSchedulePanel({
       });
       if (res.gamesCreated > 0) {
         console.log("[logActivity] before call: schedule_generated (handleFinish)");
-        await logActivity(leagueId, divisionId, "schedule_generated",
+        const _r2 = await logActivity(leagueId, divisionId, "schedule_generated",
           `${divisionName} schedule generated — ${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} added`);
-        console.log("[logActivity] after call: schedule_generated (handleFinish)");
+        console.log("[logActivity] result (handleFinish):", _r2);
       }
       fetchGames();
       onScheduleChange?.();
@@ -252,13 +252,13 @@ export function DivisionSchedulePanel({
     const supabase = createClient();
     await supabase.from("games").update({ status: "cancelled" } as never).eq("id", game.id);
     console.log("[logActivity] before call: rainout_logged (handleRainOut)", { leagueId, divisionId });
-    await logActivity(
+    const _r3 = await logActivity(
       leagueId,
       divisionId,
       "rainout_logged",
       `${game.home_team?.name ?? "Home"} vs ${game.away_team?.name ?? "Away"} on ${fmtGameDate(game.scheduled_at)} marked as rained out`,
     );
-    console.log("[logActivity] after call: rainout_logged (handleRainOut)");
+    console.log("[logActivity] result (handleRainOut):", _r3);
     await fetchGames();
     router.refresh();
     onScheduleChange?.();
