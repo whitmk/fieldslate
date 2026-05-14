@@ -26,43 +26,47 @@ export default function VenuesPage() {
   const [addName, setAddName] = useState("");
   const [addType, setAddType] = useState<Venue["venue_type"]>("game");
   const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   // Inline edit
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editType, setEditType] = useState<Venue["venue_type"]>("game");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from("venues")
-        .select("*")
-        .eq("owner_id", user.id)
-        .order("name");
-      setVenues((data as Venue[]) ?? []);
-      setLoading(false);
-    }
-    load();
-  }, []);
-
-  async function handleAdd() {
-    if (!addName.trim()) return;
-    setAdding(true);
+  async function loadVenues() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const { data } = await supabase
       .from("venues")
-      .insert([{ name: addName.trim(), venue_type: addType, owner_id: user.id }])
       .select("*")
-      .single();
-    if (data) {
-      setVenues((prev) => [...prev, data as Venue].sort((a, b) => a.name.localeCompare(b.name)));
+      .eq("owner_id", user.id)
+      .order("name");
+    setVenues((data as Venue[]) ?? []);
+  }
+
+  useEffect(() => {
+    loadVenues().then(() => setLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleAdd() {
+    if (!addName.trim()) return;
+    setAdding(true);
+    setAddError(null);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase
+      .from("venues")
+      .insert([{ name: addName.trim(), venue_type: addType, owner_id: user.id }]);
+    if (error) {
+      setAddError(error.message);
+      setAdding(false);
+      return;
     }
+    await loadVenues();
     setAddName("");
     setAddType("game");
     setShowAdd(false);
@@ -73,28 +77,29 @@ export default function VenuesPage() {
     setEditId(venue.id);
     setEditName(venue.name);
     setEditType(venue.venue_type);
+    setSaveError(null);
   }
 
   function cancelEdit() {
     setEditId(null);
+    setSaveError(null);
   }
 
   async function handleSave(venueId: string) {
     if (!editName.trim()) return;
     setSaving(true);
+    setSaveError(null);
     const supabase = createClient();
-    const { data } = await supabase
+    const { error } = await supabase
       .from("venues")
       .update({ name: editName.trim(), venue_type: editType } as never)
-      .eq("id", venueId)
-      .select("*")
-      .single();
-    if (data) {
-      setVenues((prev) =>
-        prev.map((v) => (v.id === venueId ? (data as Venue) : v))
-            .sort((a, b) => a.name.localeCompare(b.name)),
-      );
+      .eq("id", venueId);
+    if (error) {
+      setSaveError(error.message);
+      setSaving(false);
+      return;
     }
+    await loadVenues();
     setEditId(null);
     setSaving(false);
   }
@@ -147,11 +152,14 @@ export default function VenuesPage() {
             {adding ? "Adding…" : "Add venue"}
           </button>
           <button
-            onClick={() => { setShowAdd(false); setAddName(""); setAddType("game"); }}
+            onClick={() => { setShowAdd(false); setAddName(""); setAddType("game"); setAddError(null); }}
             className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition-colors hover:text-gray-700"
           >
             Cancel
           </button>
+          {addError && (
+            <p className="w-full text-xs text-red-500">{addError}</p>
+          )}
         </div>
       )}
 
@@ -205,6 +213,9 @@ export default function VenuesPage() {
                     Cancel
                   </button>
                 </div>
+                {saveError && (
+                  <p className="text-xs text-red-500">{saveError}</p>
+                )}
               </div>
             ) : (
               /* ── Display card ── */
