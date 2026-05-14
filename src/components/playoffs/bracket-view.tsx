@@ -15,7 +15,6 @@ interface GameWithTeams extends PlayoffGame {
 interface Props {
   playoffId: string;
   divisionName: string;
-  format: string;
 }
 
 function pad2(n: number) { return String(n).padStart(2, "0"); }
@@ -181,7 +180,7 @@ function ListGameRow({ game, idx }: { game: GameWithTeams; idx: number }) {
   );
 }
 
-export function BracketView({ playoffId, divisionName, format }: Props) {
+export function BracketView({ playoffId, divisionName }: Props) {
   const [games, setGames] = useState<GameWithTeams[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"bracket" | "list">("list");

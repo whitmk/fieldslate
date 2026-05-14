@@ -127,7 +127,6 @@ function buildSingleElimination(
 
   // Round up to next power of 2
   const bracketSize = Math.pow(2, Math.ceil(Math.log2(n)));
-  const byeCount = bracketSize - n;
 
   // Top seeds get byes (seed 1 = index 0 gets bye if any)
   // Seeded positions: pair 1 vs bracketSize, 2 vs bracketSize-1, etc.
