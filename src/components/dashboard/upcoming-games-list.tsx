@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
 import { logActivity } from "@/lib/activity-log";
-import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import { fmtGameDate } from "@/lib/utils/game-time";
 
 export type UpcomingGame = {
   id: string;
