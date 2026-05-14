@@ -8,6 +8,8 @@ import { logActivity } from "@/lib/activity-log";
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 export interface Props {
+  /** ID of the existing practices row with status="unscheduled" to update */
+  practiceId: string;
   teamId: string;
   teamName: string;
   /** ISO Monday of the week to fill, e.g. "2025-06-02" */
@@ -100,7 +102,7 @@ function buildSlots(params: {
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export function SchedulePracticeModal({
-  teamId, teamName, weekMonday, weekLabel, divisionId, leagueId, onClose, onScheduled,
+  practiceId, teamId, teamName, weekMonday, weekLabel, divisionId, leagueId, onClose, onScheduled,
 }: Props) {
   const [slots, setSlots]         = useState<SlotOption[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -212,15 +214,15 @@ export function SchedulePracticeModal({
     setConfirmError(null);
     const supabase = createClient();
 
-    const { error } = await supabase.from("practices").insert({
-      league_id:      leagueId,
-      division_id:    divisionId,
-      team_id:        teamId,
-      venue_id:       picked.venueId,
-      scheduled_date: picked.date,
-      start_time:     picked.startTime,
-      status:         "scheduled",
-    } as never);
+    const { error } = await supabase
+      .from("practices")
+      .update({
+        venue_id:       picked.venueId,
+        scheduled_date: picked.date,
+        start_time:     picked.startTime,
+        status:         "scheduled",
+      } as never)
+      .eq("id", practiceId);
 
     if (error) { setConfirmError(error.message); setConfirming(false); return; }
 

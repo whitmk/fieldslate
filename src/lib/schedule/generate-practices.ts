@@ -248,7 +248,7 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     venue_id: string | null;
     scheduled_date: string;
     start_time: string;
-    status: "scheduled";
+    status: "scheduled" | "unscheduled";
   };
 
   type DroppedLog = { league_id: string; division_id: string; event_type: string; message: string };
@@ -343,6 +343,19 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
         });
 
         practicesNeeded--;
+      }
+      // Insert a placeholder row for each slot that couldn't be filled so the
+      // division detail page can surface them as actionable critical-alert items.
+      for (let i = 0; i < practicesNeeded; i++) {
+        practices.push({
+          league_id: div.league_id,
+          division_id: divisionId,
+          team_id: team.id,
+          venue_id: null,
+          scheduled_date: localDateStr(weekMon), // week's Monday as placeholder
+          start_time: "00:00",
+          status: "unscheduled",
+        });
       }
       totalShortfall += practicesNeeded;
     }

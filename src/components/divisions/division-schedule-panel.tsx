@@ -20,22 +20,13 @@ import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
 import { SchedulePracticeModal } from "./schedule-practice-modal";
 import { logActivity } from "@/lib/activity-log";
 
-// ─── Local week helpers ────────────────────────────────────────────────────────
-
-function _p2(n: number) { return String(n).padStart(2, "0"); }
-function _localDate(d: Date) { return `${d.getFullYear()}-${_p2(d.getMonth() + 1)}-${_p2(d.getDate())}`; }
-function _mondayOf(dateStr: string): Date {
-  const d = new Date(dateStr + "T00:00:00");
-  const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
-  const m = new Date(d); m.setDate(d.getDate() + diff); return m;
-}
-function _weekKey(dateStr: string): string { return _localDate(_mondayOf(dateStr)); }
 
 type UnscheduledPractice = {
   key: string;
+  practiceId: string;
   teamId: string;
   teamName: string;
-  weekMonday: string; // YYYY-MM-DD
+  weekMonday: string; // YYYY-MM-DD (the week's Monday, stored as scheduled_date)
   weekLabel: string;  // "Jun 2"
 };
 
@@ -95,8 +86,6 @@ export function DivisionSchedulePanel({
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
   const [practiceShortfall, setPracticeShortfall] = useState<{ count: number; target: number } | null>(null);
   const [activitiesPerWeek, setActivitiesPerWeek] = useState(0);
-  const [practiceSeasonStart, setPracticeSeasonStart] = useState("");
-  const [practiceSeasonEnd, setPracticeSeasonEnd] = useState("");
   const [schedulingPractice, setSchedulingPractice] = useState<UnscheduledPractice | null>(null);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<GameRow | null>(null);
@@ -137,17 +126,13 @@ export function DivisionSchedulePanel({
 
     const { data: divDataRaw } = await supabase
       .from("divisions")
-      .select("settings, activities_per_week, practice_season_start, practice_season_end, start_date, end_date")
+      .select("settings, activities_per_week")
       .eq("id", divisionId)
       .single();
 
     const divData = divDataRaw as unknown as {
       settings: Record<string, unknown>;
       activities_per_week: number | null;
-      practice_season_start: string | null;
-      practice_season_end: string | null;
-      start_date: string | null;
-      end_date: string | null;
     } | null;
     const settings = (divData?.settings ?? {}) as {
       game_duration?: number;
@@ -157,8 +142,6 @@ export function DivisionSchedulePanel({
 
     setGamesPerTeam(Number(settings.games_per_team ?? 0));
     setActivitiesPerWeek(Number(divData?.activities_per_week ?? 0));
-    setPracticeSeasonStart(divData?.practice_season_start ?? divData?.start_date ?? "");
-    setPracticeSeasonEnd(divData?.practice_season_end ?? divData?.end_date ?? "");
 
     const { data } = await supabase
       .from("games")
@@ -371,61 +354,22 @@ export function DivisionSchedulePanel({
 
   const isIncomplete = games.length > 0 && teamsWithDeficit.length > 0;
 
-  // ── Compute unscheduled practice slots ────────────────────────────────────────
-  // Only compute when the generator has been run (practices exist) and a
-  // weekly target is set, so the list stays quiet before first generation.
+  // ── Unscheduled practice slots (status = "unscheduled" rows from generator) ───
+  // The generator inserts placeholder rows for slots it couldn't fill; they are
+  // deleted on every re-run and updated to "scheduled" when manually placed.
 
-  const unscheduledPractices: UnscheduledPractice[] = (() => {
-    if (!activitiesPerWeek || !practiceSeasonStart || !practiceSeasonEnd || !practices.length) return [];
-
-    // Index practices: "teamId:weekMonday" → count
-    const practicesByWeek = new Map<string, number>();
-    for (const p of practices) {
-      const k = `${p.team_id}:${_weekKey(p.scheduled_date)}`;
-      practicesByWeek.set(k, (practicesByWeek.get(k) ?? 0) + 1);
-    }
-
-    // Index active games: "teamId:weekMonday" → count
-    const gamesByWeek = new Map<string, number>();
-    for (const g of activeGames) {
-      const mon = _weekKey(g.scheduled_at.substring(0, 10));
-      if (g.home_team_id) {
-        const k = `${g.home_team_id}:${mon}`;
-        gamesByWeek.set(k, (gamesByWeek.get(k) ?? 0) + 1);
-      }
-      if (g.away_team_id) {
-        const k = `${g.away_team_id}:${mon}`;
-        gamesByWeek.set(k, (gamesByWeek.get(k) ?? 0) + 1);
-      }
-    }
-
-    const items: UnscheduledPractice[] = [];
-    let weekMon = _mondayOf(practiceSeasonStart);
-    const seasonEnd = new Date(practiceSeasonEnd + "T00:00:00");
-
-    while (weekMon <= seasonEnd) {
-      const monStr = _localDate(weekMon);
-      for (const team of teams) {
-        const gamesThisWeek     = gamesByWeek.get(`${team.id}:${monStr}`) ?? 0;
-        const expectedPractices = Math.max(0, activitiesPerWeek - gamesThisWeek);
-        const actualPractices   = practicesByWeek.get(`${team.id}:${monStr}`) ?? 0;
-        const shortfall         = Math.max(0, expectedPractices - actualPractices);
-        for (let i = 0; i < shortfall; i++) {
-          items.push({
-            key: `${team.id}:${monStr}:${i}`,
-            teamId: team.id,
-            teamName: team.name,
-            weekMonday: monStr,
-            weekLabel: weekMon.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-          });
-        }
-      }
-      weekMon = new Date(weekMon);
-      weekMon.setDate(weekMon.getDate() + 7);
-    }
-
-    return items;
-  })();
+  const unscheduledPractices: UnscheduledPractice[] = practices
+    .filter((p) => p.status === "unscheduled")
+    .map((p) => ({
+      key: p.id,
+      practiceId: p.id,
+      teamId: p.team_id,
+      teamName: p.team?.name ?? "Unknown",
+      weekMonday: p.scheduled_date,
+      weekLabel: new Date(p.scheduled_date + "T00:00:00").toLocaleDateString("en-US", {
+        month: "short", day: "numeric",
+      }),
+    }));
 
   // ── Merge games and practices into a unified sorted timeline ─────────────────
 
@@ -435,7 +379,7 @@ export function DivisionSchedulePanel({
       sortKey: g.scheduled_at.substring(0, 16),
       data: g,
     })),
-    ...practices.map((p): ScheduleEvent => ({
+    ...practices.filter((p) => p.status !== "unscheduled").map((p): ScheduleEvent => ({
       kind: "practice",
       sortKey: `${p.scheduled_date}T${p.start_time}`,
       data: p,
@@ -951,6 +895,7 @@ export function DivisionSchedulePanel({
 
       {schedulingPractice && (
         <SchedulePracticeModal
+          practiceId={schedulingPractice.practiceId}
           teamId={schedulingPractice.teamId}
           teamName={schedulingPractice.teamName}
           weekMonday={schedulingPractice.weekMonday}
