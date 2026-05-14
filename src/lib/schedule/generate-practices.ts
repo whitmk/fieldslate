@@ -66,12 +66,13 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
   type DivRow = {
     id: string; league_id: string; name: string;
     start_date: string | null; end_date: string | null;
+    practice_season_start: string | null; practice_season_end: string | null;
     activities_per_week: number; practice_venue_id: string | null;
   };
 
   const { data: divRaw, error: divErr } = await supabase
     .from("divisions")
-    .select("id, league_id, name, start_date, end_date, activities_per_week, practice_venue_id")
+    .select("id, league_id, name, start_date, end_date, practice_season_start, practice_season_end, activities_per_week, practice_venue_id")
     .eq("id", divisionId)
     .single();
 
@@ -81,7 +82,11 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
 
   const div = divRaw as unknown as DivRow;
 
-  if (!div.start_date || !div.end_date) {
+  // Use practice-specific dates when set, fall back to game season dates
+  const practiceStart = div.practice_season_start ?? div.start_date;
+  const practiceEnd   = div.practice_season_end   ?? div.end_date;
+
+  if (!practiceStart || !practiceEnd) {
     return { success: false, error: "Division must have a start and end date." };
   }
 
@@ -236,10 +241,10 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
   const practices: PracticeInsert[] = [];
   const droppedLogs: DroppedLog[] = [];
 
-  const seasonStart = new Date(div.start_date + "T00:00:00");
-  const seasonEnd = new Date(div.end_date + "T00:00:00");
+  const seasonStart = new Date(practiceStart + "T00:00:00");
+  const seasonEnd = new Date(practiceEnd + "T00:00:00");
 
-  let weekMon = mondayOf(div.start_date);
+  let weekMon = mondayOf(practiceStart);
 
   while (weekMon <= seasonEnd) {
     const thu = new Date(weekMon);

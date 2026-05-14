@@ -164,6 +164,8 @@ export type Database = {
           team_count: number;
           start_date: string | null;
           end_date: string | null;
+          practice_season_start: string | null;
+          practice_season_end: string | null;
           settings: Record<string, unknown>;
           status: "draft" | "active" | "archived";
           activities_per_week: number;
@@ -178,6 +180,8 @@ export type Database = {
           team_count?: number;
           start_date?: string | null;
           end_date?: string | null;
+          practice_season_start?: string | null;
+          practice_season_end?: string | null;
           settings?: Record<string, unknown>;
           status?: "draft" | "active" | "archived";
           activities_per_week?: number;
@@ -191,6 +195,8 @@ export type Database = {
           team_count?: number;
           start_date?: string | null;
           end_date?: string | null;
+          practice_season_start?: string | null;
+          practice_season_end?: string | null;
           settings?: Record<string, unknown>;
           status?: "draft" | "active" | "archived";
           activities_per_week?: number;

@@ -151,6 +151,8 @@ export function StepReview({
           team_count: data.team_count,
           start_date: data.start_date || null,
           end_date: data.end_date || null,
+          practice_season_start: data.practice_season_start || null,
+          practice_season_end: data.practice_season_end || null,
           settings: settingsPayload,
           activities_per_week: data.activities_per_week,
           practice_venue_id: data.practice_venue_id || null,
@@ -176,6 +178,8 @@ export function StepReview({
           team_count: data.team_count,
           start_date: data.start_date || null,
           end_date: data.end_date || null,
+          practice_season_start: data.practice_season_start || null,
+          practice_season_end: data.practice_season_end || null,
           settings: settingsPayload,
           status: "active",
           activities_per_week: data.activities_per_week,
@@ -639,6 +643,14 @@ export function StepReview({
       </Section>
 
       <Section title="Practice schedule" step={2} onEdit={onEdit}>
+        <Row
+          label="Practice season"
+          value={
+            data.practice_season_start && data.practice_season_end
+              ? `${fmt(data.practice_season_start)} → ${fmt(data.practice_season_end)}`
+              : "Uses game season dates"
+          }
+        />
         {(() => {
           const totalSlots = data.teams.reduce(
             (sum, t) => sum + (t.practice_slots ?? []).filter((s) => s.day).length,
