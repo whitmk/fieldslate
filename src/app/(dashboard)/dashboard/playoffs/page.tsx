@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Medal, Plus, Pencil } from "lucide-react";
+import { Medal, Plus, Pencil, ChevronDown, ChevronUp, Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PlayoffWizard } from "@/components/playoffs/playoff-wizard";
 import { BracketView } from "@/components/playoffs/bracket-view";
@@ -46,6 +46,12 @@ const STATUS_STYLES: Record<string, string> = {
   draft: "bg-gray-100 text-gray-500",
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  active: "Generated",
+  completed: "Completed",
+  draft: "Draft",
+};
+
 function rowToWizardData(row: PlayoffRow): PlayoffWizardData {
   return {
     division_id: row.division_id,
@@ -70,6 +76,7 @@ export default function PlayoffsPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardLeague, setWizardLeague] = useState<League | null>(null);
   const [editData, setEditData] = useState<PlayoffWizardData | undefined>(undefined);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,7 +84,10 @@ export default function PlayoffsPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
     const { data: leagueData } = await supabase
       .from("leagues")
@@ -90,17 +100,21 @@ export default function PlayoffsPage() {
 
     if (leagueList.length > 0) {
       const leagueIds = leagueList.map((l) => l.id);
-      const { data: playoffData } = await supabase
+      // Use FK hint to disambiguate: playoffs has two FKs to divisions
+      const { data: playoffData, error } = await supabase
         .from("playoffs")
         .select(
           `id, league_id, division_id, format, status, start_date, end_date,
            seeding, playing_days, day_windows, venue_assignments,
            cross_division_enabled, cross_division_opponent_id,
-           division:divisions(id, name)`
+           division:divisions!playoffs_division_id_fkey(id, name)`
         )
-        .in("league_id", leagueIds);
+        .in("league_id", leagueIds)
+        .order("division_id");
 
-      setPlayoffs((playoffData as unknown as PlayoffRow[]) ?? []);
+      if (!error) {
+        setPlayoffs((playoffData as unknown as PlayoffRow[]) ?? []);
+      }
     }
 
     setLoading(false);
@@ -135,44 +149,49 @@ export default function PlayoffsPage() {
     setEditData(undefined);
   }
 
+  function toggleExpand(id: string) {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <svg
-          className="h-5 w-5 animate-spin text-gray-400"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-          />
+        <svg className="h-5 w-5 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
       </div>
     );
   }
 
-  const hasAny = playoffs.length > 0;
-
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold text-[#0C1F3F]">Playoffs</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Set up playoff brackets for each division.
-        </p>
+      {/* Page header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[#0C1F3F]">Playoffs</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Set up and manage playoff brackets for each division.
+          </p>
+        </div>
+        {leagues.length > 0 && playoffs.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {leagues.map((league) => (
+              <button
+                key={league.id}
+                onClick={() => openNewWizard(league)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {league.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {!hasAny ? (
+      {playoffs.length === 0 ? (
+        /* ── True empty state ── */
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white py-20 text-center">
           <Medal className="mb-4 h-10 w-10 text-gray-300" />
           <h3 className="font-semibold text-gray-900">No playoffs set up yet</h3>
@@ -195,27 +214,24 @@ export default function PlayoffsPage() {
           )}
         </div>
       ) : (
+        /* ── Bracket cards, grouped by league ── */
         <div className="flex flex-col gap-8">
           {leagues.map((league) => {
-            const leaguePlayoffs = playoffs.filter(
-              (p) => p.league_id === league.id
-            );
+            const leaguePlayoffs = playoffs.filter((p) => p.league_id === league.id);
+            if (leaguePlayoffs.length === 0) return null;
+
             return (
               <section key={league.id}>
+                {/* League heading */}
                 <div className="mb-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-[#0C1F3F]">
-                      {league.name}
-                    </span>
+                    <span className="text-sm font-semibold text-[#0C1F3F]">{league.name}</span>
                     <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
                       {league.sport}
                     </span>
-                    {leaguePlayoffs.length > 0 && (
-                      <span className="text-xs text-gray-400">
-                        {leaguePlayoffs.length} bracket
-                        {leaguePlayoffs.length !== 1 ? "s" : ""}
-                      </span>
-                    )}
+                    <span className="text-xs text-gray-400">
+                      {leaguePlayoffs.length} bracket{leaguePlayoffs.length !== 1 ? "s" : ""}
+                    </span>
                   </div>
                   <button
                     onClick={() => openNewWizard(league)}
@@ -226,59 +242,76 @@ export default function PlayoffsPage() {
                   </button>
                 </div>
 
-                {leaguePlayoffs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-8 text-center">
-                    <p className="text-sm text-gray-400">
-                      No playoffs set up for this league.
-                    </p>
-                    <button
-                      onClick={() => openNewWizard(league)}
-                      className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-[#22C55E] hover:underline"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Set up playoffs
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-4">
-                    {leaguePlayoffs.map((playoff) => (
+                {/* Cards */}
+                <div className="flex flex-col gap-3">
+                  {leaguePlayoffs.map((playoff) => {
+                    const isExpanded = expandedId === playoff.id;
+                    const hasGames = playoff.status !== "draft";
+
+                    return (
                       <div
                         key={playoff.id}
                         className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm"
                       >
-                        {/* Playoff header row */}
-                        <div className="flex items-center gap-3 border-b border-gray-50 px-4 py-3">
-                          <Medal className="h-4 w-4 flex-shrink-0 text-gray-300" />
+                        {/* Card header */}
+                        <div className="flex items-center gap-3 px-4 py-4">
+                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gray-50">
+                            <Trophy className="h-4 w-4 text-gray-400" />
+                          </div>
+
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-gray-900">
+                            <p className="truncate font-semibold text-[#0C1F3F]">
                               {playoff.division?.name ?? "—"}
                             </p>
                             <p className="text-xs text-gray-400">
                               {FORMAT_LABELS[playoff.format] ?? playoff.format}
-                              {playoff.start_date
-                                ? ` · starts ${playoff.start_date}`
-                                : ""}
+                              {playoff.start_date ? ` · starts ${playoff.start_date}` : ""}
                             </p>
                           </div>
+
+                          {/* Status badge */}
                           <span
-                            className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
                               STATUS_STYLES[playoff.status] ?? STATUS_STYLES.draft
                             }`}
                           >
-                            {playoff.status}
+                            {STATUS_LABELS[playoff.status] ?? playoff.status}
                           </span>
-                          <button
-                            onClick={() => openEditWizard(league, playoff)}
-                            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
-                            aria-label="Edit playoff"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-1.5">
+                            {hasGames && (
+                              <button
+                                onClick={() => toggleExpand(playoff.id)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-[#0C1F3F] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80"
+                              >
+                                {isExpanded ? (
+                                  <>
+                                    <ChevronUp className="h-3.5 w-3.5" />
+                                    Hide bracket
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="h-3.5 w-3.5" />
+                                    View bracket
+                                  </>
+                                )}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => openEditWizard(league, playoff)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-800"
+                              aria-label="Edit playoff setup"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit setup
+                            </button>
+                          </div>
                         </div>
 
-                        {/* Bracket — shown when generated */}
-                        {playoff.status !== "draft" && (
-                          <div className="p-4">
+                        {/* Expandable bracket */}
+                        {isExpanded && hasGames && (
+                          <div className="border-t border-gray-50 p-4">
                             <BracketView
                               playoffId={playoff.id}
                               divisionName={playoff.division?.name ?? ""}
@@ -286,9 +319,9 @@ export default function PlayoffsPage() {
                           </div>
                         )}
                       </div>
-                    ))}
-                  </div>
-                )}
+                    );
+                  })}
+                </div>
               </section>
             );
           })}
