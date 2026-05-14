@@ -51,6 +51,15 @@ function divisionToWizardData(
     }
   }
 
+  const practice_days: PlayingDay[] = Array.isArray(s.practice_days)
+    ? (s.practice_days as PlayingDay[])
+    : DEFAULT_WIZARD_DATA.practice_days;
+
+  const practice_day_windows: DayWindowMap =
+    s.practice_day_windows && typeof s.practice_day_windows === "object" && !Array.isArray(s.practice_day_windows)
+      ? (s.practice_day_windows as DayWindowMap)
+      : DEFAULT_WIZARD_DATA.practice_day_windows;
+
   return {
     name: div.name,
     team_count: div.team_count,
@@ -61,6 +70,8 @@ function divisionToWizardData(
     max_games_per_team_per_day: asNum(s.max_games_per_team_per_day, DEFAULT_WIZARD_DATA.max_games_per_team_per_day),
     playing_days: playingDays,
     day_windows,
+    practice_days,
+    practice_day_windows,
     use_league_schedule: asBool(s.use_league_schedule, false),
     game_duration: asNum(s.game_duration, DEFAULT_WIZARD_DATA.game_duration),
     buffer_minutes: asNum(s.buffer_minutes, DEFAULT_WIZARD_DATA.buffer_minutes),

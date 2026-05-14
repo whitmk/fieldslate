@@ -15,6 +15,7 @@ export const ORDERED_DAYS: { key: PlayingDay; label: string }[] = [
 ];
 
 export const DEFAULT_DAY_WINDOW: DayWindow = { start: "09:00", end: "17:00" };
+export const DEFAULT_PRACTICE_DAY_WINDOW: DayWindow = { start: "17:00", end: "20:00" };
 
 export type VenueAssignment = {
   venue_id: string;
@@ -48,7 +49,9 @@ export type WizardData = {
   max_games_per_week: number;
   max_games_per_team_per_day: number;
   playing_days: PlayingDay[];
-  day_windows: DayWindowMap;       // per-day time windows (keyed by PlayingDay)
+  day_windows: DayWindowMap;          // game time windows per day
+  practice_days: PlayingDay[];
+  practice_day_windows: DayWindowMap; // practice time windows per day
   use_league_schedule: boolean;    // true = also save windows to league on submit
   game_duration: number;
   buffer_minutes: number;
@@ -81,6 +84,11 @@ export const DEFAULT_WIZARD_DATA: WizardData = {
   day_windows: {
     Sa: { start: "09:00", end: "17:00" },
     Su: { start: "09:00", end: "17:00" },
+  },
+  practice_days: ["Mo", "We"],
+  practice_day_windows: {
+    Mo: { start: "17:00", end: "20:00" },
+    We: { start: "17:00", end: "20:00" },
   },
   use_league_schedule: false,
   game_duration: 90,

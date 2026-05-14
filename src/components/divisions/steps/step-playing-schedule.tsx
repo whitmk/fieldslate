@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Globe, Settings2 } from "lucide-react";
+import { Globe, Settings2, ChevronDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  ORDERED_DAYS, DEFAULT_DAY_WINDOW,
+  ORDERED_DAYS, DEFAULT_DAY_WINDOW, DEFAULT_PRACTICE_DAY_WINDOW,
   type WizardData, type PlayingDay, type DayWindowMap,
 } from "../wizard-types";
 
@@ -58,8 +58,50 @@ function NumField({
   );
 }
 
+function Toggle({ enabled, color = "green", onChange }: {
+  enabled: boolean;
+  color?: "green" | "indigo";
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onChange(); }}
+      aria-pressed={enabled}
+      className={`relative flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${
+        enabled
+          ? color === "indigo" ? "bg-indigo-500" : "bg-[#22C55E]"
+          : "bg-gray-200"
+      }`}
+    >
+      <span className={`absolute h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+        enabled ? "translate-x-[18px]" : "translate-x-0.5"
+      }`} />
+    </button>
+  );
+}
+
+function TimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <input
+      type="time"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-8 w-full rounded-lg border border-gray-200 px-2 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+    />
+  );
+}
+
 export function StepPlayingSchedule({ data, update, leagueId }: Props) {
   const [leagueSettings, setLeagueSettings] = useState<LeagueScheduleSettings | null>(null);
+
+  // Days that start expanded: any day with games or practices already enabled
+  const [expandedDays, setExpandedDays] = useState<Set<PlayingDay>>(() => {
+    const s = new Set<PlayingDay>();
+    for (const d of data.playing_days) s.add(d);
+    for (const d of data.practice_days) s.add(d);
+    return s;
+  });
 
   useEffect(() => {
     const supabase = createClient();
@@ -76,7 +118,15 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
       });
   }, [leagueId]);
 
-  function toggleDay(day: PlayingDay) {
+  function toggleExpand(day: PlayingDay) {
+    setExpandedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(day)) next.delete(day); else next.add(day);
+      return next;
+    });
+  }
+
+  function toggleGameDay(day: PlayingDay) {
     const enabled = data.playing_days.includes(day);
     if (enabled) {
       update({ playing_days: data.playing_days.filter((d) => d !== day) });
@@ -84,10 +134,23 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
       const windows: DayWindowMap = { ...data.day_windows };
       if (!windows[day]) windows[day] = { ...DEFAULT_DAY_WINDOW };
       update({ playing_days: [...data.playing_days, day], day_windows: windows });
+      setExpandedDays((prev) => new Set(prev).add(day));
     }
   }
 
-  function updateWindow(day: PlayingDay, field: "start" | "end", value: string) {
+  function togglePracticeDay(day: PlayingDay) {
+    const enabled = data.practice_days.includes(day);
+    if (enabled) {
+      update({ practice_days: data.practice_days.filter((d) => d !== day) });
+    } else {
+      const windows: DayWindowMap = { ...data.practice_day_windows };
+      if (!windows[day]) windows[day] = { ...DEFAULT_PRACTICE_DAY_WINDOW };
+      update({ practice_days: [...data.practice_days, day], practice_day_windows: windows });
+      setExpandedDays((prev) => new Set(prev).add(day));
+    }
+  }
+
+  function updateGameWindow(day: PlayingDay, field: "start" | "end", value: string) {
     update({
       day_windows: {
         ...data.day_windows,
@@ -96,17 +159,24 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
     });
   }
 
+  function updatePracticeWindow(day: PlayingDay, field: "start" | "end", value: string) {
+    update({
+      practice_day_windows: {
+        ...data.practice_day_windows,
+        [day]: { ...(data.practice_day_windows[day] ?? DEFAULT_PRACTICE_DAY_WINDOW), [field]: value },
+      },
+    });
+  }
+
   function handleScopeToggle(useLeague: boolean) {
     if (useLeague) {
       if (leagueSettings) {
-        // Populate fields from league defaults
         update({
           use_league_schedule: true,
           playing_days: leagueSettings.playing_days,
           day_windows: leagueSettings.day_windows,
         });
       } else {
-        // No league defaults yet — current settings will become the defaults on save
         update({ use_league_schedule: true });
       }
     } else {
@@ -196,87 +266,119 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
       {/* ── Per-day scheduling table ── */}
       <div className="flex flex-col gap-2">
         <div>
-          <label className="text-sm font-medium text-gray-700">Playing days &amp; time windows</label>
+          <label className="text-sm font-medium text-gray-700">Game &amp; practice days</label>
           <p className="mt-0.5 text-xs text-gray-400">
-            Toggle each day on or off. Enabled days get their own start and end times.
-            Disabled days are completely skipped by the scheduler.
+            Expand a day to configure games and practices independently, each with their own on/off
+            toggle and time window.
           </p>
         </div>
-        <div className="overflow-hidden rounded-xl border border-gray-200">
+
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
           {ORDERED_DAYS.map(({ key, label }, i) => {
-            const enabled = data.playing_days.includes(key);
-            const win = data.day_windows[key] ?? DEFAULT_DAY_WINDOW;
-            const slots = enabled
-              ? slotsPerField(win.start, win.end, data.game_duration, data.buffer_minutes)
+            const gameEnabled     = data.playing_days.includes(key);
+            const practiceEnabled = data.practice_days.includes(key);
+            const isExpanded      = expandedDays.has(key);
+            const isLast          = i === ORDERED_DAYS.length - 1;
+            const gameWin         = data.day_windows[key] ?? DEFAULT_DAY_WINDOW;
+            const practiceWin     = data.practice_day_windows[key] ?? DEFAULT_PRACTICE_DAY_WINDOW;
+            const slots           = gameEnabled
+              ? slotsPerField(gameWin.start, gameWin.end, data.game_duration, data.buffer_minutes)
               : 0;
-            const isLast = i === ORDERED_DAYS.length - 1;
 
             return (
-              <div
-                key={key}
-                className={`flex items-center gap-3 px-4 py-3 ${!isLast ? "border-b border-gray-100" : ""} ${
-                  enabled ? "bg-white" : "bg-gray-50/60"
-                }`}
-              >
-                {/* Toggle switch */}
+              <div key={key} className={!isLast ? "border-b border-gray-100" : ""}>
+
+                {/* ── Day header row (click to expand) ── */}
                 <button
                   type="button"
-                  onClick={() => toggleDay(key)}
-                  aria-label={enabled ? `Disable ${label}` : `Enable ${label}`}
-                  className={`relative flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${
-                    enabled ? "bg-[#22C55E]" : "bg-gray-200"
-                  }`}
+                  onClick={() => toggleExpand(key)}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50/60"
                 >
-                  <span
-                    className={`absolute h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                      enabled ? "translate-x-[18px]" : "translate-x-0.5"
+                  {/* Day label */}
+                  <span className="w-9 flex-shrink-0 text-sm font-semibold text-[#0C1F3F]">
+                    {label}
+                  </span>
+
+                  {/* Status chips */}
+                  <div className="flex flex-1 items-center gap-1.5">
+                    {gameEnabled && (
+                      <span className="rounded-full bg-[#22C55E]/10 px-2 py-0.5 text-[10px] font-semibold text-[#16a34a]">
+                        Games
+                      </span>
+                    )}
+                    {practiceEnabled && (
+                      <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600">
+                        Practices
+                      </span>
+                    )}
+                    {!gameEnabled && !practiceEnabled && (
+                      <span className="text-xs text-gray-300">No schedule</span>
+                    )}
+                  </div>
+
+                  <ChevronDown
+                    className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform duration-150 ${
+                      isExpanded ? "rotate-180" : ""
                     }`}
                   />
                 </button>
 
-                {/* Day label */}
-                <span
-                  className={`w-9 flex-shrink-0 text-sm font-semibold ${
-                    enabled ? "text-[#0C1F3F]" : "text-gray-300"
-                  }`}
-                >
-                  {label}
-                </span>
+                {/* ── Expanded: Games + Practices sub-rows ── */}
+                {isExpanded && (
+                  <div className="border-t border-gray-100 bg-gray-50/50 px-4 pb-3 pt-2.5 space-y-2.5">
 
-                {enabled ? (
-                  <>
-                    <div className="flex min-w-0 flex-1 items-end gap-2">
-                      <div className="flex flex-1 flex-col gap-0.5">
-                        <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-                          Start
-                        </label>
-                        <input
-                          type="time"
-                          value={win.start}
-                          onChange={(e) => updateWindow(key, "start", e.target.value)}
-                          className="h-9 w-full rounded-lg border border-gray-200 px-2.5 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-                        />
-                      </div>
-                      <div className="flex flex-1 flex-col gap-0.5">
-                        <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-                          End
-                        </label>
-                        <input
-                          type="time"
-                          value={win.end}
-                          onChange={(e) => updateWindow(key, "end", e.target.value)}
-                          className="h-9 w-full rounded-lg border border-gray-200 px-2.5 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-                        />
-                      </div>
+                    {/* Games row */}
+                    <div className="flex items-center gap-3">
+                      <Toggle enabled={gameEnabled} color="green" onChange={() => toggleGameDay(key)} />
+                      <span className="w-20 flex-shrink-0 text-xs font-semibold text-gray-600">
+                        Games
+                      </span>
+                      {gameEnabled ? (
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <div className="flex flex-1 flex-col gap-0.5">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Start</p>
+                            <TimeInput value={gameWin.start} onChange={(v) => updateGameWindow(key, "start", v)} />
+                          </div>
+                          <span className="flex-shrink-0 text-xs text-gray-300">–</span>
+                          <div className="flex flex-1 flex-col gap-0.5">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">End</p>
+                            <TimeInput value={gameWin.end} onChange={(v) => updateGameWindow(key, "end", v)} />
+                          </div>
+                          <span className="w-14 flex-shrink-0 text-right text-[10px] text-gray-400">
+                            {slots} slot{slots !== 1 ? "s" : ""}/field
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="flex-1 text-xs italic text-gray-300">Off</span>
+                      )}
                     </div>
-                    <span className="w-16 flex-shrink-0 text-right text-xs text-gray-400">
-                      {slots} slot{slots !== 1 ? "s" : ""}/field
-                    </span>
-                  </>
-                ) : (
-                  <span className="flex-1 text-xs italic text-gray-300">
-                    No games scheduled
-                  </span>
+
+                    {/* Practices row */}
+                    <div className="flex items-center gap-3">
+                      <Toggle enabled={practiceEnabled} color="indigo" onChange={() => togglePracticeDay(key)} />
+                      <span className="w-20 flex-shrink-0 text-xs font-semibold text-gray-600">
+                        Practices
+                      </span>
+                      {practiceEnabled ? (
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <div className="flex flex-1 flex-col gap-0.5">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Start</p>
+                            <TimeInput value={practiceWin.start} onChange={(v) => updatePracticeWindow(key, "start", v)} />
+                          </div>
+                          <span className="flex-shrink-0 text-xs text-gray-300">–</span>
+                          <div className="flex flex-1 flex-col gap-0.5">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">End</p>
+                            <TimeInput value={practiceWin.end} onChange={(v) => updatePracticeWindow(key, "end", v)} />
+                          </div>
+                          {/* spacer to align with game row */}
+                          <span className="w-14 flex-shrink-0" />
+                        </div>
+                      ) : (
+                        <span className="flex-1 text-xs italic text-gray-300">Off</span>
+                      )}
+                    </div>
+
+                  </div>
                 )}
               </div>
             );
@@ -303,7 +405,6 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
         value={data.bye_weeks} min={0} max={10}
         onChange={(v) => update({ bye_weeks: v })}
       />
-
     </div>
   );
 }

@@ -122,6 +122,8 @@ export function StepReview({
     max_games_per_team_per_day: data.max_games_per_team_per_day,
     playing_days: data.playing_days,
     day_windows: data.day_windows,
+    practice_days: data.practice_days,
+    practice_day_windows: data.practice_day_windows,
     use_league_schedule: data.use_league_schedule,
     // Backward-compat fields — schedule generator uses day_windows when present
     earliest_start: firstWin.start,
@@ -239,6 +241,8 @@ export function StepReview({
           schedule_settings: {
             playing_days: data.playing_days,
             day_windows: data.day_windows,
+            practice_days: data.practice_days,
+            practice_day_windows: data.practice_day_windows,
           },
         } as never)
         .eq("id", leagueId);
@@ -633,11 +637,22 @@ export function StepReview({
         <Row label="Max per week" value={data.max_games_per_week} />
         <Row label="Max per day" value={data.max_games_per_team_per_day} />
         <Row
-          label="Playing days"
+          label="Game days"
           value={
             data.playing_days.length > 0
               ? data.playing_days.map((d) => {
                   const w = data.day_windows[d];
+                  return w ? `${d} (${fmtTime(w.start)}–${fmtTime(w.end)})` : d;
+                }).join(", ")
+              : "—"
+          }
+        />
+        <Row
+          label="Practice days"
+          value={
+            data.practice_days.length > 0
+              ? data.practice_days.map((d) => {
+                  const w = data.practice_day_windows[d];
                   return w ? `${d} (${fmtTime(w.start)}–${fmtTime(w.end)})` : d;
                 }).join(", ")
               : "—"

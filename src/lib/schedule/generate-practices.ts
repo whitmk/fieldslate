@@ -68,11 +68,12 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     start_date: string | null; end_date: string | null;
     practice_season_start: string | null; practice_season_end: string | null;
     activities_per_week: number;
+    settings: Record<string, unknown> | null;
   };
 
   const { data: divRaw, error: divErr } = await supabase
     .from("divisions")
-    .select("id, league_id, name, start_date, end_date, practice_season_start, practice_season_end, activities_per_week")
+    .select("id, league_id, name, start_date, end_date, practice_season_start, practice_season_end, activities_per_week, settings")
     .eq("id", divisionId)
     .single();
 
@@ -81,6 +82,18 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
   }
 
   const div = divRaw as unknown as DivRow;
+
+  // Derive allowed practice days and time windows from division settings.
+  // Falls back to AUTO_DAYS / AUTO_TIME when not configured (backward compat).
+  const divSettings = (div.settings ?? {}) as {
+    practice_days?: string[];
+    practice_day_windows?: Record<string, { start: string; end: string }>;
+  };
+  const practiceDays: string[] = divSettings.practice_days?.length
+    ? divSettings.practice_days
+    : AUTO_DAYS;
+  const practiceTimeForDay = (day: string): string =>
+    divSettings.practice_day_windows?.[day]?.start ?? AUTO_TIME;
 
   // Use practice-specific dates when set, fall back to game season dates
   const practiceStart = div.practice_season_start ?? div.start_date;
@@ -229,9 +242,10 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
 
   for (const team of teams) {
     if (slotsByTeam.has(team.id) && slotsByTeam.get(team.id)!.length > 0) continue;
+    const autoDay = practiceDays[autoDayIdx % practiceDays.length];
     autoSlots.set(team.id, {
-      day_of_week: AUTO_DAYS[autoDayIdx % AUTO_DAYS.length],
-      start_time: AUTO_TIME,
+      day_of_week: autoDay,
+      start_time: practiceTimeForDay(autoDay),
       venue_id: practiceVenueList.length > 0
         ? practiceVenueList[autoDayIdx % practiceVenueList.length].venue_id
         : null,
@@ -284,10 +298,10 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
       if (practicesNeeded > effectiveSlots.length) {
         const usedDays = new Set(effectiveSlots.map((s) => s.day_of_week));
         const fillVenueId = autoSlots.get(team.id)?.venue_id ?? practiceVenueList[0]?.venue_id ?? null;
-        for (const day of AUTO_DAYS) {
+        for (const day of practiceDays) {
           if (effectiveSlots.length >= practicesNeeded) break;
           if (usedDays.has(day)) continue;
-          effectiveSlots.push({ day_of_week: day, start_time: AUTO_TIME, venue_id: fillVenueId });
+          effectiveSlots.push({ day_of_week: day, start_time: practiceTimeForDay(day), venue_id: fillVenueId });
           usedDays.add(day);
         }
       }
