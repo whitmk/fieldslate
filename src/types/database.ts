@@ -278,6 +278,37 @@ export type Database = {
         };
         Relationships: [];
       };
+      practices: {
+        Row: {
+          id: string;
+          league_id: string;
+          division_id: string;
+          team_id: string;
+          venue_id: string | null;
+          scheduled_date: string; // YYYY-MM-DD
+          start_time: string;     // HH:MM
+          status: "scheduled" | "cancelled";
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          league_id: string;
+          division_id: string;
+          team_id: string;
+          venue_id?: string | null;
+          scheduled_date: string;
+          start_time: string;
+          status?: "scheduled" | "cancelled";
+          created_at?: string;
+        };
+        Update: {
+          venue_id?: string | null;
+          scheduled_date?: string;
+          start_time?: string;
+          status?: "scheduled" | "cancelled";
+        };
+        Relationships: [];
+      };
       games: {
         Row: {
           id: string;
@@ -335,3 +366,4 @@ export type Venue = Database["public"]["Tables"]["venues"]["Row"];
 export type Game = Database["public"]["Tables"]["games"]["Row"];
 export type PracticeSlot = Database["public"]["Tables"]["team_practice_slots"]["Row"];
 export type ActivityLog = Database["public"]["Tables"]["activity_log"]["Row"];
+export type Practice = Database["public"]["Tables"]["practices"]["Row"];
