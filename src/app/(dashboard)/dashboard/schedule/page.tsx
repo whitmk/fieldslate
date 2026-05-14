@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { DivisionFilter } from "@/components/schedule/division-filter";
+import { ViewToggle } from "@/components/schedule/view-toggle";
 
 type GameRow = {
   id: string;
@@ -15,7 +16,17 @@ type GameRow = {
   venue: { name: string } | null;
 };
 
-const statusVariants: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
+type PracticeRow = {
+  id: string;
+  scheduled_date: string;
+  start_time: string;
+  status: string;
+  team: { name: string } | null;
+  division: { name: string } | null;
+  venue: { name: string } | null;
+};
+
+const gameStatusVariants: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
   scheduled: "info",
   in_progress: "warning",
   completed: "success",
@@ -23,13 +34,19 @@ const statusVariants: Record<string, "default" | "success" | "warning" | "danger
   postponed: "default",
 };
 
+const practiceStatusVariants: Record<string, "default" | "success" | "danger"> = {
+  scheduled: "success",
+  cancelled: "danger",
+};
+
 export default async function SchedulePage({
   searchParams,
 }: {
-  searchParams: { division?: string };
+  searchParams: { division?: string; view?: string };
 }) {
   const supabase = createClient();
   const selectedDivisionId = searchParams.division ?? "";
+  const view = searchParams.view === "practices" ? "practices" : "games";
 
   // Fetch all divisions for the filter dropdown
   const { data: divisionData } = await supabase
@@ -38,39 +55,70 @@ export default async function SchedulePage({
     .order("name");
   const divisions = (divisionData ?? []) as { id: string; name: string }[];
 
-  // When filtering, first resolve the team IDs for the selected division
-  let teamIdFilter: string[] | null = null;
-  if (selectedDivisionId) {
-    const { data: teamData } = await supabase
-      .from("teams")
-      .select("id")
-      .eq("division_id", selectedDivisionId);
-    teamIdFilter = (teamData ?? []).map((t: { id: string }) => t.id);
-  }
+  // ── Games view ────────────────────────────────────────────────────────────────
 
-  // Build games query — join division name through home_team
-  let gamesQuery = supabase
-    .from("games")
-    .select(`
-      id, scheduled_at, status,
-      home_team:teams!home_team_id(name, division:divisions(name)),
-      away_team:teams!away_team_id(name),
-      venue:venues(name)
-    `)
-    .order("scheduled_at", { ascending: true })
-    .limit(50);
+  let games: GameRow[] = [];
 
-  if (teamIdFilter !== null) {
-    if (teamIdFilter.length === 0) {
-      // Division exists but has no teams — guarantee empty result
-      gamesQuery = gamesQuery.in("home_team_id", ["00000000-0000-0000-0000-000000000000"]);
-    } else {
-      gamesQuery = gamesQuery.in("home_team_id", teamIdFilter);
+  if (view === "games") {
+    let teamIdFilter: string[] | null = null;
+    if (selectedDivisionId) {
+      const { data: teamData } = await supabase
+        .from("teams")
+        .select("id")
+        .eq("division_id", selectedDivisionId);
+      teamIdFilter = (teamData ?? []).map((t: { id: string }) => t.id);
     }
+
+    let gamesQuery = supabase
+      .from("games")
+      .select(`
+        id, scheduled_at, status,
+        home_team:teams!home_team_id(name, division:divisions(name)),
+        away_team:teams!away_team_id(name),
+        venue:venues(name)
+      `)
+      .order("scheduled_at", { ascending: true })
+      .limit(50);
+
+    if (teamIdFilter !== null) {
+      gamesQuery = teamIdFilter.length === 0
+        ? gamesQuery.in("home_team_id", ["00000000-0000-0000-0000-000000000000"])
+        : gamesQuery.in("home_team_id", teamIdFilter);
+    }
+
+    const { data: rawGames } = await gamesQuery;
+    games = (rawGames as GameRow[] | null) ?? [];
   }
 
-  const { data: rawGames } = await gamesQuery;
-  const games = rawGames as GameRow[] | null;
+  // ── Practices view ────────────────────────────────────────────────────────────
+
+  let practices: PracticeRow[] = [];
+
+  if (view === "practices") {
+    let practicesQuery = supabase
+      .from("practices")
+      .select(`
+        id, scheduled_date, start_time, status,
+        team:teams(name),
+        division:divisions(name),
+        venue:venues(name)
+      `)
+      .order("scheduled_date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .limit(50);
+
+    if (selectedDivisionId) {
+      practicesQuery = practicesQuery.eq("division_id", selectedDivisionId);
+    }
+
+    const { data: rawPractices } = await practicesQuery;
+    practices = (rawPractices as unknown as PracticeRow[] | null) ?? [];
+  }
+
+  const isEmpty = view === "games" ? games.length === 0 : practices.length === 0;
+  const emptyMessage = view === "games"
+    ? (selectedDivisionId ? "No games found for this division." : "No games scheduled yet.")
+    : (selectedDivisionId ? "No practices found for this division." : "No practices scheduled yet.");
 
   return (
     <div className="flex flex-col gap-6">
@@ -85,21 +133,22 @@ export default async function SchedulePage({
         </Button>
       </div>
 
+      {/* Segmented control */}
+      <ViewToggle view={view} />
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>All Games</CardTitle>
+            <CardTitle>{view === "games" ? "All Games" : "All Practices"}</CardTitle>
             {divisions.length > 0 && (
               <DivisionFilter divisions={divisions} selectedId={selectedDivisionId} />
             )}
           </div>
         </CardHeader>
         <CardContent>
-          {!games || games.length === 0 ? (
-            <p className="text-sm text-gray-500">
-              {selectedDivisionId ? "No games found for this division." : "No games scheduled yet."}
-            </p>
-          ) : (
+          {isEmpty ? (
+            <p className="text-sm text-gray-500">{emptyMessage}</p>
+          ) : view === "games" ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -127,8 +176,46 @@ export default async function SchedulePage({
                         {game.venue?.name ?? "—"}
                       </td>
                       <td className="py-3">
-                        <Badge variant={statusVariants[game.status] ?? "default"}>
+                        <Badge variant={gameStatusVariants[game.status] ?? "default"}>
                           {game.status.replace("_", " ")}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-left">
+                    <th className="pb-3 font-medium text-gray-500">Date & Time</th>
+                    <th className="pb-3 font-medium text-gray-500">Team</th>
+                    <th className="pb-3 font-medium text-gray-500">Division</th>
+                    <th className="pb-3 font-medium text-gray-500">Venue</th>
+                    <th className="pb-3 font-medium text-gray-500">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {practices.map((practice) => (
+                    <tr key={practice.id} className="border-b border-gray-50 last:border-0">
+                      <td className="py-3 text-gray-600">
+                        {fmtGameDate(practice.scheduled_date)},{" "}
+                        {fmtGameTime(`${practice.scheduled_date}T${practice.start_time}:00`)}
+                      </td>
+                      <td className="py-3 font-medium text-gray-900">
+                        {practice.team?.name ?? "TBD"}
+                      </td>
+                      <td className="py-3 text-gray-600">
+                        {practice.division?.name ?? "—"}
+                      </td>
+                      <td className="py-3 text-gray-600">
+                        {practice.venue?.name ?? "—"}
+                      </td>
+                      <td className="py-3">
+                        <Badge variant={practiceStatusVariants[practice.status] ?? "default"}>
+                          {practice.status}
                         </Badge>
                       </td>
                     </tr>
