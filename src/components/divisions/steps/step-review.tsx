@@ -436,8 +436,10 @@ export function StepReview({
       setSavingRegen(false);
       return;
     }
+    console.log("[logActivity] before call: schedule_generated (step-review)", { leagueId, divId });
     await logActivity(leagueId, divId, "schedule_generated",
       `${data.name} schedule generated — ${scheduleResult.gamesCreated} game${scheduleResult.gamesCreated === 1 ? "" : "s"} scheduled`);
+    console.log("[logActivity] after call: schedule_generated (step-review)");
 
     router.refresh();
     setSavingRegen(false);

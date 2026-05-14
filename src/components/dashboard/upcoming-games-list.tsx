@@ -53,12 +53,14 @@ export function UpcomingGamesList({ initialGames }: Props) {
       .from("games")
       .update({ status: "cancelled" } as never)
       .eq("id", game.id);
+    console.log("[logActivity] before call: rainout_logged (upcoming-games-list)", { leagueId: game.league_id });
     await logActivity(
       game.league_id,
       game.home_team?.division_id ?? null,
       "rainout_logged",
       `${game.home_team?.name ?? "Home"} vs ${game.away_team?.name ?? "Away"} on ${fmtGameDate(game.scheduled_at)} marked as rained out`,
     );
+    console.log("[logActivity] after call: rainout_logged (upcoming-games-list)");
     setRainoutId(null);
     router.refresh();
   }

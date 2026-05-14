@@ -239,8 +239,10 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     const game = allVenueGames.find((g) => g.id === gameId);
     const homeTeam = (game?.home_team as { name: string } | null)?.name ?? "Home";
     const awayTeam = (game?.away_team as { name: string } | null)?.name ?? "Away";
+    console.log("[logActivity] before call: game_conflict_resolved (saveManualMove)", { leagueId, divisionId });
     await logActivity(leagueId, divisionId, "game_conflict_resolved",
       `${homeTeam} vs ${awayTeam} moved to ${form.date} at ${form.time} — double-booking resolved`);
+    console.log("[logActivity] after call: game_conflict_resolved (saveManualMove)");
 
     setExpandedGame(null);
     await load();
@@ -279,8 +281,10 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     }
 
     const movedCount = gamesToMove.length;
+    console.log("[logActivity] before call: game_conflict_resolved (autoResolveConflict)", { leagueId, divisionId });
     await logActivity(leagueId, divisionId, "game_conflict_resolved",
       `${movedCount} game${movedCount !== 1 ? "s" : ""} at ${conflict.venueName} moved — double-booking resolved`);
+    console.log("[logActivity] after call: game_conflict_resolved (autoResolveConflict)");
 
     setResolving((p) => ({ ...p, [key]: false }));
     await load();
@@ -314,8 +318,10 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     }
 
     const totalMoved = conflicts.reduce((sum, c) => sum + c.games.slice(1).length, 0);
+    console.log("[logActivity] before call: game_conflict_resolved (autoResolveAll)", { leagueId, divisionId });
     await logActivity(leagueId, divisionId, "game_conflict_resolved",
       `${totalMoved} game${totalMoved !== 1 ? "s" : ""} auto-resolved — all double-bookings cleared`);
+    console.log("[logActivity] after call: game_conflict_resolved (autoResolveAll)");
 
     setAutoResolvingAll(false);
     await load();

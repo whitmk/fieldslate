@@ -84,12 +84,14 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut }: P
       .from("games")
       .update({ status: "cancelled" } as never)
       .eq("id", selectedGame.id);
+    console.log("[logActivity] before call: rainout_logged (handleMarkRainout)", { leagueId, divisionId });
     await logActivity(
       leagueId,
       divisionId || null,
       "rainout_logged",
       `${selectedGame.home_team?.name ?? "Home"} vs ${selectedGame.away_team?.name ?? "Away"} on ${fmtGameDate(selectedGame.scheduled_at)} marked as rained out`,
     );
+    console.log("[logActivity] after call: rainout_logged (handleMarkRainout)");
     setMarkedGame(selectedGame);
     setMarking(false);
     onRainedOut();

@@ -152,8 +152,10 @@ export function DivisionSchedulePanel({
     const res = await generateSchedule(divisionId);
     if (res.success) {
       setResult({ type: "success", message: `${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled` });
+      console.log("[logActivity] before call: schedule_generated (handleGenerate)");
       await logActivity(leagueId, divisionId, "schedule_generated",
         `${divisionName} schedule generated — ${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled`);
+      console.log("[logActivity] after call: schedule_generated (handleGenerate)");
       fetchGames();
       onScheduleChange?.();
     } else {
@@ -174,8 +176,10 @@ export function DivisionSchedulePanel({
           : `${res.gamesCreated} missing game${res.gamesCreated === 1 ? "" : "s"} added`,
       });
       if (res.gamesCreated > 0) {
+        console.log("[logActivity] before call: schedule_generated (handleFinish)");
         await logActivity(leagueId, divisionId, "schedule_generated",
           `${divisionName} schedule generated — ${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} added`);
+        console.log("[logActivity] after call: schedule_generated (handleFinish)");
       }
       fetchGames();
       onScheduleChange?.();
@@ -247,12 +251,14 @@ export function DivisionSchedulePanel({
     setRainoutId(game.id);
     const supabase = createClient();
     await supabase.from("games").update({ status: "cancelled" } as never).eq("id", game.id);
+    console.log("[logActivity] before call: rainout_logged (handleRainOut)", { leagueId, divisionId });
     await logActivity(
       leagueId,
       divisionId,
       "rainout_logged",
       `${game.home_team?.name ?? "Home"} vs ${game.away_team?.name ?? "Away"} on ${fmtGameDate(game.scheduled_at)} marked as rained out`,
     );
+    console.log("[logActivity] after call: rainout_logged (handleRainOut)");
     await fetchGames();
     router.refresh();
     onScheduleChange?.();

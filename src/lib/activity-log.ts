@@ -8,6 +8,7 @@ export async function logActivity(
   eventType: string,
   message: string,
 ): Promise<void> {
+  console.log("[logActivity] server action executing:", eventType, { leagueId, divisionId });
   const supabase = createClient();
   const { error } = await supabase.from("activity_log").insert({
     league_id: leagueId,
