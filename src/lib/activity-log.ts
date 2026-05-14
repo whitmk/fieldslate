@@ -10,7 +10,7 @@ export async function logActivity(
 ): Promise<void> {
   await supabase.from("activity_log").insert({
     league_id: leagueId,
-    division_id: divisionId,
+    division_id: divisionId || null,
     event_type: eventType,
     message,
   } as never);

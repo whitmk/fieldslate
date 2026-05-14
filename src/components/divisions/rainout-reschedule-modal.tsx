@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { X, CloudRain, CalendarDays, Loader2, CheckCircle2, AlertTriangle, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
@@ -142,6 +143,7 @@ export function RainoutRescheduleModal({
   gameId, homeTeamId, awayTeamId, homeTeamName, awayTeamName,
   divisionId, leagueId, onClose, onRescheduled, buildLogMessage,
 }: Props) {
+  const router = useRouter();
   const [slots, setSlots] = useState<SlotOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -311,6 +313,7 @@ export function RainoutRescheduleModal({
       ? buildLogMessage({ newScheduledAt: picked.isoString, newVenueName: picked.venueName })
       : `${homeTeamName} vs ${awayTeamName} rescheduled to ${fmtGameDate(picked.isoString)} at ${fmtGameTime(picked.isoString)} — ${picked.venueName}`;
     await logActivity(supabase, leagueId, divisionId, "game_rescheduled", logMsg);
+    router.refresh();
     setDone(true);
     setConfirming(false);
   }
