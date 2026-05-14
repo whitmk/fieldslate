@@ -139,10 +139,10 @@ export function SchedulePracticeModal({
     setLoadError(null);
     const supabase = createClient();
 
-    // 1. Practice season bounds + practice day windows
+    // 1. Practice season bounds + practice day windows (stored inside settings JSONB)
     const { data: divRaw, error: divErr } = await supabase
       .from("divisions")
-      .select("practice_season_start, practice_season_end, start_date, end_date, practice_days, practice_day_windows")
+      .select("practice_season_start, practice_season_end, start_date, end_date, settings")
       .eq("id", divisionId)
       .single();
 
@@ -153,14 +153,16 @@ export function SchedulePracticeModal({
       practice_season_end: string | null;
       start_date: string | null;
       end_date: string | null;
-      practice_days: string[] | null;
-      practice_day_windows: Record<string, DayWindow> | null;
+      settings: Record<string, unknown> | null;
     };
     const div = divRaw as unknown as DivRow;
     const practiceSeasonStart = div.practice_season_start ?? div.start_date;
     const practiceSeasonEnd   = div.practice_season_end   ?? div.end_date;
-    const practiceDays        = div.practice_days ?? null;
-    const practiceDayWindows  = div.practice_day_windows ?? null;
+    const settings            = div.settings ?? {};
+    const practiceDays        = Array.isArray(settings.practice_days) ? (settings.practice_days as string[]) : null;
+    const practiceDayWindows  = settings.practice_day_windows && typeof settings.practice_day_windows === "object" && !Array.isArray(settings.practice_day_windows)
+      ? (settings.practice_day_windows as Record<string, DayWindow>)
+      : null;
 
     if (!practiceSeasonStart || !practiceSeasonEnd) {
       setLoadError("Division is missing season dates.");
