@@ -70,7 +70,6 @@ function divisionToWizardData(
     ),
     bye_weeks: asNum(s.bye_weeks, DEFAULT_WIZARD_DATA.bye_weeks),
     activities_per_week: div.activities_per_week ?? DEFAULT_WIZARD_DATA.activities_per_week,
-    practice_venue_id: div.practice_venue_id ?? "",
     practice_season_start: div.practice_season_start ?? "",
     practice_season_end: div.practice_season_end ?? "",
     venue_assignments: venueAssignments,

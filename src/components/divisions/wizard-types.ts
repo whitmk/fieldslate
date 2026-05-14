@@ -54,9 +54,8 @@ export type WizardData = {
   buffer_minutes: number;
   max_games_per_field_per_day: number; // derived; kept for backward compat
   bye_weeks: number;
-  // Activities per week, practice venue, and practice season dates
+  // Activities per week and practice season dates
   activities_per_week: number;
-  practice_venue_id: string;
   practice_season_start: string;
   practice_season_end: string;
   // Step 3 – Fields
@@ -89,7 +88,6 @@ export const DEFAULT_WIZARD_DATA: WizardData = {
   max_games_per_field_per_day: 4,
   bye_weeks: 1,
   activities_per_week: 2,
-  practice_venue_id: "",
   practice_season_start: "",
   practice_season_end: "",
   venue_assignments: [],

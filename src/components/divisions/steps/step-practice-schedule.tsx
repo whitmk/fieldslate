@@ -55,9 +55,10 @@ export function StepPracticeSchedule({ data, update, onSkip }: Props) {
     const prev = slots[slotIdx] ?? {};
     const next = { ...prev, ...patch };
 
-    // Pre-fill venue with division default when a day is first selected
-    if (patch.day && !prev.venue_id && data.practice_venue_id) {
-      next.venue_id = data.practice_venue_id;
+    // Pre-fill venue with first practice venue when a day is first selected
+    if (patch.day && !prev.venue_id) {
+      const firstPracticeVenue = data.venue_assignments.find((a) => a.allow_practices);
+      if (firstPracticeVenue) next.venue_id = firstPracticeVenue.venue_id;
     }
     // Clear day-dependent fields when day is removed
     if (patch.day === undefined || patch.day === ("" as PlayingDay)) {
@@ -238,7 +239,7 @@ export function StepPracticeSchedule({ data, update, onSkip }: Props) {
                           </div>
                         ) : (
                           <select
-                            value={slot.venue_id ?? data.practice_venue_id ?? ""}
+                            value={slot.venue_id ?? ""}
                             disabled={!slot.day}
                             onChange={(e) =>
                               updateSlot(teamIdx, slotIdx, { venue_id: e.target.value || undefined })

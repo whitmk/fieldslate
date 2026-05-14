@@ -155,7 +155,6 @@ export function StepReview({
           practice_season_end: data.practice_season_end || null,
           settings: settingsPayload,
           activities_per_week: data.activities_per_week,
-          practice_venue_id: data.practice_venue_id || null,
         } as never)
         .eq("id", divisionId);
 
@@ -188,7 +187,6 @@ export function StepReview({
           settings: settingsPayload,
           status: "active",
           activities_per_week: data.activities_per_week,
-          practice_venue_id: data.practice_venue_id || null,
         } as never])
         .select("id")
         .single();
@@ -649,7 +647,6 @@ export function StepReview({
         <Row label="Buffer" value={`${data.buffer_minutes} min`} />
         <Row label="Bye weeks" value={data.bye_weeks} />
         <Row label="Activities per week" value={data.activities_per_week} />
-        <Row label="Practice venue" value={data.practice_venue_id ? "Set" : "None"} />
       </Section>
 
       <Section title="Practice schedule" step={2} onEdit={onEdit}>

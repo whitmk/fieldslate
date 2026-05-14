@@ -58,11 +58,8 @@ function NumField({
   );
 }
 
-type PracticeVenueOption = { id: string; name: string };
-
 export function StepPlayingSchedule({ data, update, leagueId }: Props) {
   const [leagueSettings, setLeagueSettings] = useState<LeagueScheduleSettings | null>(null);
-  const [practiceVenues, setPracticeVenues] = useState<PracticeVenueOption[]>([]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -78,22 +75,6 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
         }
       });
   }, [leagueId]);
-
-  useEffect(() => {
-    async function loadPracticeVenues() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: rows } = await supabase
-        .from("venues")
-        .select("id, name")
-        .eq("owner_id", user.id)
-        .in("venue_type", ["practice", "both"])
-        .order("name");
-      setPracticeVenues((rows as PracticeVenueOption[]) ?? []);
-    }
-    loadPracticeVenues();
-  }, []);
 
   function toggleDay(day: PlayingDay) {
     const enabled = data.playing_days.includes(day);
@@ -323,27 +304,6 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
         onChange={(v) => update({ bye_weeks: v })}
       />
 
-      {/* ── Practice venue ── */}
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-gray-700">Practice venue</label>
-        {practiceVenues.length === 0 ? (
-          <p className="text-xs text-gray-400 rounded-lg border border-dashed border-gray-200 px-3 py-3">
-            No practice venues available. In Venues settings, set a venue type to &ldquo;Practice&rdquo; or &ldquo;Both&rdquo; to enable this field.
-          </p>
-        ) : (
-          <select
-            value={data.practice_venue_id}
-            onChange={(e) => update({ practice_venue_id: e.target.value })}
-            className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 bg-white focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-          >
-            <option value="">None</option>
-            {practiceVenues.map((v) => (
-              <option key={v.id} value={v.id}>{v.name}</option>
-            ))}
-          </select>
-        )}
-        <p className="text-xs text-gray-400">Default venue used for practice sessions.</p>
-      </div>
     </div>
   );
 }

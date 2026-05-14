@@ -67,12 +67,12 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     id: string; league_id: string; name: string;
     start_date: string | null; end_date: string | null;
     practice_season_start: string | null; practice_season_end: string | null;
-    activities_per_week: number; practice_venue_id: string | null;
+    activities_per_week: number;
   };
 
   const { data: divRaw, error: divErr } = await supabase
     .from("divisions")
-    .select("id, league_id, name, start_date, end_date, practice_season_start, practice_season_end, activities_per_week, practice_venue_id")
+    .select("id, league_id, name, start_date, end_date, practice_season_start, practice_season_end, activities_per_week")
     .eq("id", divisionId)
     .single();
 
@@ -94,14 +94,17 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     return { success: true, practicesCreated: 0, droppedCount: 0 };
   }
 
-  if (!div.practice_venue_id) {
-    return {
-      success: false,
-      error: "No practice venue set for this division. Add a practice venue in the division settings before generating practices.",
-    };
-  }
+  // ── 2. Load practice venues for this division ────────────────────────────────
 
-  // ── 2. Load teams ────────────────────────────────────────────────────────────
+  const { data: dvRows } = await supabase
+    .from("division_venues")
+    .select("venue_id")
+    .eq("division_id", divisionId)
+    .eq("allow_practices", true);
+
+  const practiceVenueList = (dvRows ?? []) as { venue_id: string }[];
+
+  // ── 3. Load teams ────────────────────────────────────────────────────────────
 
   const { data: teamsData, error: teamsErr } = await supabase
     .from("teams")
@@ -115,7 +118,7 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
 
   const teamIds = teams.map((t) => t.id);
 
-  // ── 3. Load team practice slots (pinned recurring slots) ─────────────────────
+  // ── 4. Load team practice slots (pinned recurring slots) ─────────────────────
 
   type SlotRow = { team_id: string; day_of_week: string; start_time: string; venue_id: string | null };
 
@@ -130,7 +133,16 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     slotsByTeam.get(s.team_id)!.push(s);
   }
 
-  // ── 4. Load blackout dates ───────────────────────────────────────────────────
+  // Guard: if no team has a pinned slot, we need at least one practice venue
+  const hasPinnedSlots = [...slotsByTeam.values()].some((slots) => slots.length > 0);
+  if (!hasPinnedSlots && practiceVenueList.length === 0) {
+    return {
+      success: false,
+      error: "No practice venues assigned to this division. In the Fields step, check 'Practices' for at least one venue.",
+    };
+  }
+
+  // ── 5. Load blackout dates ───────────────────────────────────────────────────
 
   const { data: blackoutRaw } = await supabase
     .from("blackout_dates")
@@ -141,11 +153,11 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     ((blackoutRaw ?? []) as { date: string }[]).map((b) => b.date),
   );
 
-  // ── 5. Delete existing practices for this division ───────────────────────────
+  // ── 6. Delete existing practices for this division ───────────────────────────
 
   await supabase.from("practices").delete().eq("division_id", divisionId);
 
-  // ── 6. Load all games for division teams ─────────────────────────────────────
+  // ── 7. Load all games for division teams ─────────────────────────────────────
 
   type GameRow = { home_team_id: string; away_team_id: string; scheduled_at: string };
 
@@ -179,10 +191,10 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     if (awm) awm.set(wk, (awm.get(wk) ?? 0) + 1);
   }
 
-  // ── 7. Pre-load venue bookings (from games) at practice venues ───────────────
+  // ── 8. Pre-load venue bookings (from games) at practice venues ───────────────
 
   const practiceVenueIds = new Set<string>();
-  if (div.practice_venue_id) practiceVenueIds.add(div.practice_venue_id);
+  for (const v of practiceVenueList) practiceVenueIds.add(v.venue_id);
   for (const slots of slotsByTeam.values()) {
     for (const s of slots) {
       if (s.venue_id) practiceVenueIds.add(s.venue_id);
@@ -207,8 +219,9 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     }
   }
 
-  // ── 8. Assign consistent auto-slots to teams with no pinned slot ─────────────
+  // ── 9. Assign consistent auto-slots to teams with no pinned slot ─────────────
   // Teams are sorted alphabetically; each gets the next available day in round-robin.
+  // Venues are also round-robined across teams from the practice venue list.
 
   type EffectiveSlot = { day_of_week: string; start_time: string; venue_id: string | null };
   const autoSlots = new Map<string, EffectiveSlot>();
@@ -219,12 +232,14 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     autoSlots.set(team.id, {
       day_of_week: AUTO_DAYS[autoDayIdx % AUTO_DAYS.length],
       start_time: AUTO_TIME,
-      venue_id: div.practice_venue_id,
+      venue_id: practiceVenueList.length > 0
+        ? practiceVenueList[autoDayIdx % practiceVenueList.length].venue_id
+        : null,
     });
     autoDayIdx++;
   }
 
-  // ── 9. Walk every week of the season ─────────────────────────────────────────
+  // ── 10. Walk every week of the season ────────────────────────────────────────
 
   type PracticeInsert = {
     league_id: string;
@@ -291,7 +306,7 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
           continue;
         }
 
-        const venueId = slot.venue_id ?? div.practice_venue_id ?? null;
+        const venueId = slot.venue_id ?? practiceVenueList[0]?.venue_id ?? null;
         if (venueId) {
           const vKey = `${venueId}:${dateStr}`;
           const bookedMins = venueBookings.get(vKey) ?? [];
@@ -321,7 +336,7 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     weekMon.setDate(weekMon.getDate() + 7);
   }
 
-  // ── 10. Bulk-insert practices ────────────────────────────────────────────────
+  // ── 11. Bulk-insert practices ────────────────────────────────────────────────
 
   const BATCH = 500;
   for (let i = 0; i < practices.length; i += BATCH) {
@@ -331,7 +346,7 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     if (insertErr) return { success: false, error: insertErr.message };
   }
 
-  // ── 11. Batch-insert activity log entries for dropped practices ──────────────
+  // ── 12. Batch-insert activity log entries for dropped practices ──────────────
 
   if (droppedLogs.length > 0) {
     await supabase.from("activity_log").insert(droppedLogs as never[]);
