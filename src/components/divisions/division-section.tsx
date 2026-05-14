@@ -561,6 +561,7 @@ export function DivisionSection({
 
       {fixingDivision && (
         <ConflictResolverModal
+          leagueId={leagueId}
           divisionId={fixingDivision.id}
           divisionName={fixingDivision.name}
           onClose={() => setFixingDivision(null)}
