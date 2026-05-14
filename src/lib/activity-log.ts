@@ -14,5 +14,5 @@ export async function logActivity(
     event_type: eventType,
     message,
   } as never);
-  if (error) console.error("[logActivity] insert failed:", error.message, { leagueId, eventType });
+  if (error) console.error("[logActivity] insert failed:", error.message, error.code, { leagueId, divisionId, eventType });
 }

@@ -47,12 +47,16 @@ function fmtTimestamp(iso: string): string {
 
 export async function ActivityLogPanel({ leagueId }: Props) {
   const supabase = createClient();
-  const { data } = await supabase
+  console.log("[ActivityLogPanel] querying league_id:", leagueId);
+  const { data, error } = await supabase
     .from("activity_log")
     .select("id, event_type, message, created_at")
     .eq("league_id", leagueId)
     .order("created_at", { ascending: false })
     .limit(20);
+
+  if (error) console.error("[ActivityLogPanel] SELECT failed:", error.message, error.code);
+  console.log("[ActivityLogPanel] rows returned:", data?.length ?? 0);
 
   const entries = (data ?? []) as ActivityLogEntry[];
 
