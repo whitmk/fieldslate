@@ -391,7 +391,16 @@ export function DivisionSection({
                         {div.team_count}
                       </span>
 
-                      {/* Status badge */}
+                      {/* Practice status badge */}
+                      <span className={`hidden rounded-full px-2.5 py-0.5 text-xs font-semibold sm:inline-block ${
+                        stat.practiceCount > 0
+                          ? "bg-indigo-50 text-indigo-600"
+                          : "bg-gray-100 text-gray-400"
+                      }`}>
+                        {stat.practiceCount > 0 ? "Practices set" : "No practices"}
+                      </span>
+
+                      {/* Game schedule status badge */}
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.className}`}>
                         {status.label}
                       </span>

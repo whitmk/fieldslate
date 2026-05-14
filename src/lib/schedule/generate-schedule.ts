@@ -1,7 +1,6 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { generatePractices } from "./generate-practices";
 
 // ─── Public result types ───────────────────────────────────────────────────────
 
@@ -670,11 +669,6 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
     Number(settings.buffer_minutes),
   );
 
-  // Auto-generate practice schedule alongside games
-  await generatePractices(divisionId).catch((e) =>
-    console.warn("[generateSchedule] practice generation failed:", e),
-  );
-
   return {
     success: true,
     gamesCreated: scheduled.length,
@@ -1005,11 +999,6 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
   }));
 
   const conflicts = detectScheduleConflicts(crossDivGames, Number(settings.game_duration), Number(settings.buffer_minutes));
-
-  // Regenerate practice schedule since game schedule changed
-  await generatePractices(divisionId).catch((e) =>
-    console.warn("[finishSchedule] practice generation failed:", e),
-  );
 
   return {
     success: true,
