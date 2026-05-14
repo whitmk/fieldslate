@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Medal, Plus, Pencil } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PlayoffWizard } from "@/components/playoffs/playoff-wizard";
+import { BracketView } from "@/components/playoffs/bracket-view";
 import {
   DEFAULT_PLAYOFF_DATA,
   type PlayoffWizardData,
@@ -239,38 +240,52 @@ export default function PlayoffsPage() {
                     </button>
                   </div>
                 ) : (
-                  <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+                  <div className="flex flex-col gap-4">
                     {leaguePlayoffs.map((playoff) => (
                       <div
                         key={playoff.id}
-                        className="flex items-center gap-3 border-b border-gray-50 px-4 py-3 last:border-0"
+                        className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm"
                       >
-                        <Medal className="h-4 w-4 flex-shrink-0 text-gray-300" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-gray-900">
-                            {playoff.division?.name ?? "—"}
-                          </p>
-                          <p className="text-xs text-gray-400">
-                            {FORMAT_LABELS[playoff.format] ?? playoff.format}
-                            {playoff.start_date
-                              ? ` · starts ${playoff.start_date}`
-                              : ""}
-                          </p>
+                        {/* Playoff header row */}
+                        <div className="flex items-center gap-3 border-b border-gray-50 px-4 py-3">
+                          <Medal className="h-4 w-4 flex-shrink-0 text-gray-300" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-gray-900">
+                              {playoff.division?.name ?? "—"}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {FORMAT_LABELS[playoff.format] ?? playoff.format}
+                              {playoff.start_date
+                                ? ` · starts ${playoff.start_date}`
+                                : ""}
+                            </p>
+                          </div>
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
+                              STATUS_STYLES[playoff.status] ?? STATUS_STYLES.draft
+                            }`}
+                          >
+                            {playoff.status}
+                          </span>
+                          <button
+                            onClick={() => openEditWizard(league, playoff)}
+                            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                            aria-label="Edit playoff"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
                         </div>
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
-                            STATUS_STYLES[playoff.status] ?? STATUS_STYLES.draft
-                          }`}
-                        >
-                          {playoff.status}
-                        </span>
-                        <button
-                          onClick={() => openEditWizard(league, playoff)}
-                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
-                          aria-label="Edit playoff"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
+
+                        {/* Bracket — shown when generated */}
+                        {playoff.status !== "draft" && (
+                          <div className="p-4">
+                            <BracketView
+                              playoffId={playoff.id}
+                              divisionName={playoff.division?.name ?? ""}
+                              format={playoff.format}
+                            />
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

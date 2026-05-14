@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ORDERED_DAYS } from "@/components/divisions/wizard-types";
+import { generateBracket } from "@/lib/playoffs/generate-bracket";
 import type { PlayoffWizardData, PlayoffFormat } from "../playoff-wizard-types";
 
 interface Props {
@@ -100,14 +101,26 @@ export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
       updated_at: new Date().toISOString(),
     };
 
-    const { error: dbError } = await supabase
+    const { data: upserted, error: dbError } = await supabase
       .from("playoffs")
-      .upsert(payload, { onConflict: "league_id,division_id" });
+      .upsert(payload, { onConflict: "league_id,division_id" })
+      .select("id")
+      .single();
 
     if (dbError) {
       setError(dbError.message);
       setSaving(false);
       return;
+    }
+
+    const playoffId = upserted?.id;
+    if (playoffId) {
+      const result = await generateBracket(playoffId, leagueId, data);
+      if (!result.success) {
+        setError(result.error);
+        setSaving(false);
+        return;
+      }
     }
 
     setSaved(true);

@@ -390,6 +390,82 @@ export type Database = {
           },
         ]
       }
+      playoff_games: {
+        Row: {
+          away_team_id: string | null
+          created_at: string
+          division_id: string
+          game_number: number
+          home_team_id: string | null
+          id: string
+          league_id: string
+          playoff_id: string
+          round: string
+          scheduled_date: string | null
+          start_time: string | null
+          status: string
+          updated_at: string
+          venue_id: string | null
+          winner_id: string | null
+        }
+        Insert: {
+          away_team_id?: string | null
+          created_at?: string
+          division_id: string
+          game_number: number
+          home_team_id?: string | null
+          id?: string
+          league_id: string
+          playoff_id: string
+          round: string
+          scheduled_date?: string | null
+          start_time?: string | null
+          status?: string
+          updated_at?: string
+          venue_id?: string | null
+          winner_id?: string | null
+        }
+        Update: {
+          away_team_id?: string | null
+          created_at?: string
+          division_id?: string
+          game_number?: number
+          home_team_id?: string | null
+          id?: string
+          league_id?: string
+          playoff_id?: string
+          round?: string
+          scheduled_date?: string | null
+          start_time?: string | null
+          status?: string
+          updated_at?: string
+          venue_id?: string | null
+          winner_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "playoff_games_playoff_id_fkey"
+            columns: ["playoff_id"]
+            isOneToOne: false
+            referencedRelation: "playoffs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "playoff_games_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "playoff_games_division_id_fkey"
+            columns: ["division_id"]
+            isOneToOne: false
+            referencedRelation: "divisions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       practices: {
         Row: {
           created_at: string
@@ -759,4 +835,5 @@ export type Game        = Database["public"]["Tables"]["games"]["Row"];
 export type ActivityLog  = Database["public"]["Tables"]["activity_log"]["Row"];
 export type Practice     = Database["public"]["Tables"]["practices"]["Row"];
 export type Playoff      = Database["public"]["Tables"]["playoffs"]["Row"];
+export type PlayoffGame  = Database["public"]["Tables"]["playoff_games"]["Row"];
 export type PracticeSlot = Database["public"]["Tables"]["team_practice_slots"]["Row"];
