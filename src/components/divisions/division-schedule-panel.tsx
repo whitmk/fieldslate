@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Zap, Loader2, CheckCircle2, AlertTriangle, CalendarDays,
   RefreshCw, PlusCircle, Printer, CloudRain, CalendarClock,
@@ -45,6 +46,7 @@ export function DivisionSchedulePanel({
   divisionId, divisionName, leagueName, leagueId,
   triggerPrint, onPrintDone, onScheduleChange,
 }: Props) {
+  const router = useRouter();
   const [teams, setTeams] = useState<Team[]>([]);
   const [gamesPerTeam, setGamesPerTeam] = useState(0);
   const [games, setGames] = useState<GameRow[]>([]);
@@ -255,6 +257,7 @@ export function DivisionSchedulePanel({
       `${game.home_team?.name ?? "Home"} vs ${game.away_team?.name ?? "Away"} on ${fmtGameDate(game.scheduled_at)} marked as rained out`,
     );
     await fetchGames();
+    router.refresh();
     onScheduleChange?.();
     setRainoutId(null);
   }

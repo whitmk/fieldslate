@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   CloudRain, X, CalendarClock, RotateCcw, Loader2,
@@ -33,6 +33,9 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
   const [games, setGames] = useState<RainedOutGame[]>(initialGames);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<RainedOutGame | null>(null);
+
+  // Sync when server re-renders after router.refresh()
+  useEffect(() => { setGames(initialGames); }, [initialGames]);
 
   const active = count > 0;
 
