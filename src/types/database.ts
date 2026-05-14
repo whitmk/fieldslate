@@ -255,6 +255,29 @@ export type Database = {
         };
         Relationships: [];
       };
+      activity_log: {
+        Row: {
+          id: string;
+          league_id: string;
+          division_id: string | null;
+          event_type: string;
+          message: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          league_id: string;
+          division_id?: string | null;
+          event_type: string;
+          message: string;
+          created_at?: string;
+        };
+        Update: {
+          event_type?: string;
+          message?: string;
+        };
+        Relationships: [];
+      };
       games: {
         Row: {
           id: string;
@@ -311,3 +334,4 @@ export type Team = Database["public"]["Tables"]["teams"]["Row"];
 export type Venue = Database["public"]["Tables"]["venues"]["Row"];
 export type Game = Database["public"]["Tables"]["games"]["Row"];
 export type PracticeSlot = Database["public"]["Tables"]["team_practice_slots"]["Row"];
+export type ActivityLog = Database["public"]["Tables"]["activity_log"]["Row"];

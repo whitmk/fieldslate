@@ -6,6 +6,8 @@ import { MoreHorizontal, CloudRain, CalendarClock, Loader2, MapPin } from "lucid
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
+import { logActivity } from "@/lib/activity-log";
+import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 
 export type UpcomingGame = {
   id: string;
@@ -51,6 +53,13 @@ export function UpcomingGamesList({ initialGames }: Props) {
       .from("games")
       .update({ status: "cancelled" } as never)
       .eq("id", game.id);
+    await logActivity(
+      supabase,
+      game.league_id,
+      game.home_team?.division_id ?? null,
+      "rainout_logged",
+      `${game.home_team?.name ?? "Home"} vs ${game.away_team?.name ?? "Away"} on ${fmtGameDate(game.scheduled_at)} marked as rained out`,
+    );
     setRainoutId(null);
     router.refresh();
   }

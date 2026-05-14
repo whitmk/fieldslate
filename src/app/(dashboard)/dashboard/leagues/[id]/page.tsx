@@ -5,6 +5,7 @@ import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, AlertCircle } fr
 import type { League } from "@/types/database";
 import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
+import { ActivityLogPanel } from "@/components/dashboard/activity-log-panel";
 import { detectConflicts } from "@/lib/schedule/detect-conflicts";
 import { RainedOutStatCard, type RainedOutGame } from "@/components/dashboard/rained-out-stat-card";
 
@@ -227,6 +228,8 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       </div>
 
       <BlackoutDatesPanel leagueId={league.id} />
+
+      <ActivityLogPanel leagueId={league.id} />
 
       <LeagueContent
         leagueId={league.id}

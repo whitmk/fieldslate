@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { logActivity } from "@/lib/activity-log";
 import Link from "next/link";
 import type { WizardData } from "../wizard-types";
 import { generateSchedule, type ScheduleConflict } from "@/lib/schedule/generate-schedule";
@@ -435,6 +436,9 @@ export function StepReview({
       setSavingRegen(false);
       return;
     }
+    const supabase = createClient();
+    await logActivity(supabase, leagueId, divId, "schedule_generated",
+      `${data.name} schedule generated — ${scheduleResult.gamesCreated} game${scheduleResult.gamesCreated === 1 ? "" : "s"} scheduled`);
 
     router.refresh();
     setSavingRegen(false);

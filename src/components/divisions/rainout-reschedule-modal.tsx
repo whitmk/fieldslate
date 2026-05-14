@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { X, CloudRain, CalendarDays, Loader2, CheckCircle2, AlertTriangle, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import { logActivity } from "@/lib/activity-log";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -304,6 +305,13 @@ export function RainoutRescheduleModal({
       setConfirming(false);
       return;
     }
+    await logActivity(
+      supabase,
+      leagueId,
+      divisionId,
+      "game_rescheduled",
+      `${homeTeamName} vs ${awayTeamName} rescheduled to ${fmtGameDate(picked.isoString)} at ${fmtGameTime(picked.isoString)} — ${picked.venueName}`,
+    );
     setDone(true);
     setConfirming(false);
   }

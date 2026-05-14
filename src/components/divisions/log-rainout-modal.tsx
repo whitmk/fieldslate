@@ -7,6 +7,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
+import { logActivity } from "@/lib/activity-log";
 import type { Division } from "@/types/database";
 
 type GameOption = {
@@ -83,6 +84,13 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut }: P
       .from("games")
       .update({ status: "cancelled" } as never)
       .eq("id", selectedGame.id);
+    await logActivity(
+      supabase,
+      leagueId,
+      divisionId || null,
+      "rainout_logged",
+      `${selectedGame.home_team?.name ?? "Home"} vs ${selectedGame.away_team?.name ?? "Away"} on ${fmtGameDate(selectedGame.scheduled_at)} marked as rained out`,
+    );
     setMarkedGame(selectedGame);
     setMarking(false);
     onRainedOut();

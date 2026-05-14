@@ -15,6 +15,7 @@ import {
 import type { ScheduleConflict } from "@/lib/schedule/generate-schedule";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
+import { logActivity } from "@/lib/activity-log";
 
 interface Props {
   divisionId: string;
@@ -149,6 +150,9 @@ export function DivisionSchedulePanel({
     const res = await generateSchedule(divisionId);
     if (res.success) {
       setResult({ type: "success", message: `${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled` });
+      const supabase = createClient();
+      await logActivity(supabase, leagueId, divisionId, "schedule_generated",
+        `${divisionName} schedule generated — ${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled`);
       fetchGames();
       onScheduleChange?.();
     } else {
@@ -168,6 +172,11 @@ export function DivisionSchedulePanel({
           ? "Schedule is already complete"
           : `${res.gamesCreated} missing game${res.gamesCreated === 1 ? "" : "s"} added`,
       });
+      if (res.gamesCreated > 0) {
+        const supabase = createClient();
+        await logActivity(supabase, leagueId, divisionId, "schedule_generated",
+          `${divisionName} schedule generated — ${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} added`);
+      }
       fetchGames();
       onScheduleChange?.();
     } else {
@@ -238,6 +247,13 @@ export function DivisionSchedulePanel({
     setRainoutId(game.id);
     const supabase = createClient();
     await supabase.from("games").update({ status: "cancelled" } as never).eq("id", game.id);
+    await logActivity(
+      supabase,
+      leagueId,
+      divisionId,
+      "rainout_logged",
+      `${game.home_team?.name ?? "Home"} vs ${game.away_team?.name ?? "Away"} on ${fmtGameDate(game.scheduled_at)} marked as rained out`,
+    );
     await fetchGames();
     onScheduleChange?.();
     setRainoutId(null);
