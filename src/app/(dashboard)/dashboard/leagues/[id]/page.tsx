@@ -19,6 +19,7 @@ export type DivisionStat = {
   expectedGames: number;
   conflictCount: number;
   allTeamsAtMinimum: boolean;
+  practiceCount: number;
 };
 
 export default async function LeaguePage({ params }: { params: { id: string } }) {
@@ -52,6 +53,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     { data: allGamesRaw },
     { data: allDivVenuesRaw },
     { data: blackoutDatesRaw },
+    { data: allPracticesRaw },
   ] = await Promise.all([
     supabase.from("divisions").select("*").eq("league_id", league.id).order("created_at", { ascending: true }),
     supabase.from("teams").select("id, division_id").eq("league_id", league.id),
@@ -64,6 +66,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       .eq("league_id", league.id),
     supabase.from("division_venues").select("division_id, venue_id"),
     supabase.from("blackout_dates").select("date, label").eq("league_id", league.id),
+    supabase.from("practices").select("division_id").eq("league_id", league.id).eq("status", "scheduled"),
   ]);
 
   const allDivisions = (allDivisionsRaw ?? []) as import("@/types/database").Division[];
@@ -71,6 +74,11 @@ export default async function LeaguePage({ params }: { params: { id: string } })
   const allGames = (allGamesRaw ?? []) as unknown as GameRow[];
   const allDivVenues = (allDivVenuesRaw ?? []) as unknown as DivVenueRow[];
   const blackoutDates = (blackoutDatesRaw ?? []) as BlackoutRow[];
+
+  const practiceCountByDivision = new Map<string, number>();
+  for (const p of (allPracticesRaw ?? []) as { division_id: string }[]) {
+    practiceCountByDivision.set(p.division_id, (practiceCountByDivision.get(p.division_id) ?? 0) + 1);
+  }
 
   // Build division → venue-id set
   const divToVenues = new Map<string, Set<string>>();
@@ -138,6 +146,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       expectedGames,
       conflictCount: divConflictCount,
       allTeamsAtMinimum,
+      practiceCount: practiceCountByDivision.get(div.id) ?? 0,
     };
   });
 

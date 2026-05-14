@@ -320,6 +320,7 @@ export function DivisionSection({
                 expectedGames: 0,
                 conflictCount: 0,
                 allTeamsAtMinimum: false,
+                practiceCount: 0,
               };
               const status = getDivisionStatus(stat);
               const progressPct =
@@ -361,11 +362,14 @@ export function DivisionSection({
                     </button>
 
                     {/* Center: progress bar + game count */}
-                    <div className="hidden w-40 flex-shrink-0 sm:block">
+                    <div className="hidden w-56 flex-shrink-0 sm:block">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[11px] text-gray-400">
                           {stat.gameCount}
                           {stat.expectedGames > 0 ? ` / ${stat.expectedGames}` : ""} games
+                          {stat.practiceCount > 0 && (
+                            <span className="ml-1 text-indigo-400">· {stat.practiceCount} practices</span>
+                          )}
                         </span>
                         {progressPct > 0 && (
                           <span className="text-[11px] text-gray-400">{progressPct}%</span>
