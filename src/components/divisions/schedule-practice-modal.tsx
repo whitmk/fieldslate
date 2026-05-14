@@ -50,8 +50,13 @@ function fmtTime(hhmm: string) {
 
 const PRACTICE_DURATION = 90; // minutes — same as generate-practices.ts
 const SLOT_INTERVAL    = 60; // 1-hour grid
-const DAY_START        = 6 * 60;  // 6 am
-const DAY_END          = 21 * 60; // 9 pm (last start)
+const DEFAULT_DAY_START = 6 * 60;  // fallback: 6 am
+const DEFAULT_DAY_END   = 21 * 60; // fallback: 9 pm (last start)
+
+// Maps JS Date.getDay() (0=Sun) to 2-char day code used in division settings
+const JS_TO_DAY_CODE = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] as const;
+
+type DayWindow = { start: string; end: string };
 
 function buildSlots(params: {
   weekMonday: string;
@@ -62,9 +67,12 @@ function buildSlots(params: {
   blackoutDates: Set<string>;
   teamGameDates: Set<string>;
   venueBookings: Map<string, number[]>;
+  practiceDays: string[] | null;
+  practiceDayWindows: Record<string, DayWindow> | null;
 }): SlotOption[] {
   const { weekMonday, practiceSeasonStart, practiceSeasonEnd,
-          venueIds, venueNames, blackoutDates, teamGameDates, venueBookings } = params;
+          venueIds, venueNames, blackoutDates, teamGameDates, venueBookings,
+          practiceDays, practiceDayWindows } = params;
 
   const wkStart = new Date(weekMonday + "T00:00:00");
   const wkEnd   = new Date(wkStart); wkEnd.setDate(wkStart.getDate() + 6);
@@ -78,11 +86,23 @@ function buildSlots(params: {
 
   while (cur <= end) {
     const dateStr = localDate(cur);
+    const dayCode = JS_TO_DAY_CODE[cur.getDay()];
+
+    // Skip days not configured for practices
+    if (practiceDays?.length && !practiceDays.includes(dayCode)) {
+      cur.setDate(cur.getDate() + 1);
+      continue;
+    }
 
     if (!blackoutDates.has(dateStr) && !teamGameDates.has(dateStr)) {
+      const win = practiceDayWindows?.[dayCode];
+      // First valid start; last valid start = window end minus duration so practice fits within window
+      const dayStart = win ? toMins(win.start) : DEFAULT_DAY_START;
+      const dayEnd   = win ? toMins(win.end) - PRACTICE_DURATION : DEFAULT_DAY_END;
+
       for (const venueId of venueIds) {
         const booked = venueBookings.get(`${venueId}:${dateStr}`) ?? [];
-        for (let mins = DAY_START; mins <= DAY_END; mins += SLOT_INTERVAL) {
+        for (let mins = dayStart; mins <= dayEnd; mins += SLOT_INTERVAL) {
           if (!booked.some((t) => Math.abs(t - mins) < PRACTICE_DURATION)) {
             slots.push({ date: dateStr, startTime: minsToHHMM(mins), venueId, venueName: venueNames[venueId] ?? venueId });
           }
@@ -119,19 +139,28 @@ export function SchedulePracticeModal({
     setLoadError(null);
     const supabase = createClient();
 
-    // 1. Practice season bounds
+    // 1. Practice season bounds + practice day windows
     const { data: divRaw, error: divErr } = await supabase
       .from("divisions")
-      .select("practice_season_start, practice_season_end, start_date, end_date")
+      .select("practice_season_start, practice_season_end, start_date, end_date, practice_days, practice_day_windows")
       .eq("id", divisionId)
       .single();
 
     if (divErr || !divRaw) { setLoadError("Could not load division."); setLoading(false); return; }
 
-    type DivRow = { practice_season_start: string | null; practice_season_end: string | null; start_date: string | null; end_date: string | null };
+    type DivRow = {
+      practice_season_start: string | null;
+      practice_season_end: string | null;
+      start_date: string | null;
+      end_date: string | null;
+      practice_days: string[] | null;
+      practice_day_windows: Record<string, DayWindow> | null;
+    };
     const div = divRaw as unknown as DivRow;
     const practiceSeasonStart = div.practice_season_start ?? div.start_date;
     const practiceSeasonEnd   = div.practice_season_end   ?? div.end_date;
+    const practiceDays        = div.practice_days ?? null;
+    const practiceDayWindows  = div.practice_day_windows ?? null;
 
     if (!practiceSeasonStart || !practiceSeasonEnd) {
       setLoadError("Division is missing season dates.");
@@ -204,7 +233,7 @@ export function SchedulePracticeModal({
       venueBookings.get(vKey)!.push(mins);
     }
 
-    setSlots(buildSlots({ weekMonday, practiceSeasonStart, practiceSeasonEnd, venueIds, venueNames, blackoutDates, teamGameDates, venueBookings }));
+    setSlots(buildSlots({ weekMonday, practiceSeasonStart, practiceSeasonEnd, venueIds, venueNames, blackoutDates, teamGameDates, venueBookings, practiceDays, practiceDayWindows }));
     setLoading(false);
   }
 
