@@ -18,6 +18,7 @@ export function StepFields({ data, update, leagueId }: Props) {
   const [conflictMap, setConflictMap] = useState<Record<string, string>>({});
   const [showAddForm, setShowAddForm] = useState(false);
   const [newVenueName, setNewVenueName] = useState("");
+  const [newVenueType, setNewVenueType] = useState<"game" | "practice" | "both">("game");
   const [addingVenue, setAddingVenue] = useState(false);
 
   useEffect(() => {
@@ -83,7 +84,7 @@ export function StepFields({ data, update, leagueId }: Props) {
 
     const { data: newV } = await supabase
       .from("venues")
-      .insert([{ name: newVenueName.trim(), owner_id: user.id }])
+      .insert([{ name: newVenueName.trim(), owner_id: user.id, venue_type: newVenueType }])
       .select("*")
       .single();
 
@@ -94,6 +95,7 @@ export function StepFields({ data, update, leagueId }: Props) {
     }
 
     setNewVenueName("");
+    setNewVenueType("game");
     setShowAddForm(false);
     setAddingVenue(false);
   }
@@ -191,7 +193,7 @@ export function StepFields({ data, update, leagueId }: Props) {
       )}
 
       {showAddForm ? (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <input
             type="text"
             placeholder="Venue name"
@@ -199,8 +201,17 @@ export function StepFields({ data, update, leagueId }: Props) {
             onChange={(e) => setNewVenueName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addVenue()}
             autoFocus
-            className="h-10 flex-1 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+            className="h-10 min-w-0 flex-1 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
           />
+          <select
+            value={newVenueType}
+            onChange={(e) => setNewVenueType(e.target.value as "game" | "practice" | "both")}
+            className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-gray-700 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+          >
+            <option value="game">Game</option>
+            <option value="practice">Practice</option>
+            <option value="both">Both</option>
+          </select>
           <button
             type="button"
             onClick={addVenue}
@@ -214,6 +225,7 @@ export function StepFields({ data, update, leagueId }: Props) {
             onClick={() => {
               setShowAddForm(false);
               setNewVenueName("");
+              setNewVenueType("game");
             }}
             className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 hover:text-gray-700"
           >
