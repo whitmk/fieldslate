@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { GripVertical, Users } from "lucide-react";
+import { GripVertical, Users, Shuffle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { PlayoffWizardData, SeededTeam } from "../playoff-wizard-types";
 
@@ -88,12 +88,32 @@ export function StepSeeding({ data, update }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h3 className="text-lg font-semibold text-[#0C1F3F]">Seeding</h3>
-        <p className="mt-0.5 text-sm text-gray-500">
-          Drag teams to set the seed order. Seed 1 is the top team entering the
-          bracket.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-semibold text-[#0C1F3F]">Seeding</h3>
+          <p className="mt-0.5 text-sm text-gray-500">
+            Drag teams to set the seed order. Seed 1 is the top team entering the
+            bracket.
+          </p>
+        </div>
+        {seeding.length > 1 && (
+          <button
+            type="button"
+            onClick={() => {
+              const next = [...seeding];
+              for (let i = next.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [next[i], next[j]] = [next[j], next[i]];
+              }
+              setSeeding(next);
+              update({ seeding: next });
+            }}
+            className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
+          >
+            <Shuffle className="h-3.5 w-3.5" />
+            Randomize
+          </button>
+        )}
       </div>
 
       {loading ? (
