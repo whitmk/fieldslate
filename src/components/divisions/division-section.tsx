@@ -17,7 +17,7 @@ import type { DivisionStat } from "@/app/(dashboard)/dashboard/leagues/[id]/page
 import {
   DEFAULT_WIZARD_DATA, type WizardData, type PlayingDay,
   type ScheduleFormat, type TeamEntry, type DayWindowMap,
-  type PracticeSlotEntry,
+  type PracticeSlotEntry, type VenueAssignment,
 } from "./wizard-types";
 import type { PracticeSlot } from "@/types/database";
 
@@ -25,7 +25,7 @@ type DbTeam = { id: string; name: string };
 
 function divisionToWizardData(
   div: Division,
-  venueIds: string[],
+  venueAssignments: VenueAssignment[],
   practiceSlots: PracticeSlot[] = [],
   dbTeams: DbTeam[] = [],
 ): WizardData {
@@ -73,7 +73,7 @@ function divisionToWizardData(
     practice_venue_id: div.practice_venue_id ?? "",
     practice_season_start: div.practice_season_start ?? "",
     practice_season_end: div.practice_season_end ?? "",
-    venue_ids: venueIds,
+    venue_assignments: venueAssignments,
     format: (s.format as ScheduleFormat) ?? DEFAULT_WIZARD_DATA.format,
     include_playoffs: asBool(s.include_playoffs, DEFAULT_WIZARD_DATA.include_playoffs),
     auto_rotate: asBool(s.auto_rotate, DEFAULT_WIZARD_DATA.auto_rotate),
@@ -225,15 +225,21 @@ export function DivisionSection({
     e.stopPropagation();
     const supabase = createClient();
     const [{ data: dvRows }, { data: slotRows }, { data: teamRows }] = await Promise.all([
-      supabase.from("division_venues").select("venue_id").eq("division_id", div.id),
+      supabase.from("division_venues").select("venue_id, allow_games, allow_practices").eq("division_id", div.id),
       supabase.from("team_practice_slots").select("*").eq("division_id", div.id),
       supabase.from("teams").select("id, name").eq("division_id", div.id),
     ]);
-    const venueIds = (dvRows ?? []).map((r: { venue_id: string }) => r.venue_id);
+    const venueAssignments: VenueAssignment[] = (dvRows ?? []).map(
+      (r: { venue_id: string; allow_games: boolean; allow_practices: boolean }) => ({
+        venue_id: r.venue_id,
+        allow_games: r.allow_games,
+        allow_practices: r.allow_practices,
+      }),
+    );
     setEditInitialData(
       divisionToWizardData(
         div,
-        venueIds,
+        venueAssignments,
         (slotRows ?? []) as PracticeSlot[],
         (teamRows ?? []) as DbTeam[],
       ),

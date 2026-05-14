@@ -406,14 +406,15 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
   const { data: dvRows, error: dvErr } = await supabase
     .from("division_venues")
     .select("venue_id")
-    .eq("division_id", divisionId);
+    .eq("division_id", divisionId)
+    .eq("allow_games", true);
 
   if (dvErr) return { success: false, error: dvErr.message };
 
   const venueIds = (dvRows ?? []).map((r: { venue_id: string }) => r.venue_id);
 
   if (!venueIds.length) {
-    return { success: false, error: "No venues assigned to this division." };
+    return { success: false, error: "No venues assigned to this division for games." };
   }
 
   // ── 4. Load league blackout dates ────────────────────────────────────────────
@@ -715,11 +716,12 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
   const { data: dvRows, error: dvErr } = await supabase
     .from("division_venues")
     .select("venue_id")
-    .eq("division_id", divisionId);
+    .eq("division_id", divisionId)
+    .eq("allow_games", true);
 
   if (dvErr) return { success: false, error: dvErr.message };
   const venueIds = (dvRows ?? []).map((r: { venue_id: string }) => r.venue_id);
-  if (!venueIds.length) return { success: false, error: "No venues assigned to this division." };
+  if (!venueIds.length) return { success: false, error: "No venues assigned to this division for games." };
 
   // ── 4. Load league blackout dates ────────────────────────────────────────────
 

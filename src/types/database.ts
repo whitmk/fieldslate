@@ -206,9 +206,9 @@ export type Database = {
         Relationships: [];
       };
       division_venues: {
-        Row: { division_id: string; venue_id: string };
-        Insert: { division_id: string; venue_id: string };
-        Update: { division_id?: string; venue_id?: string };
+        Row: { division_id: string; venue_id: string; allow_games: boolean; allow_practices: boolean };
+        Insert: { division_id: string; venue_id: string; allow_games?: boolean; allow_practices?: boolean };
+        Update: { allow_games?: boolean; allow_practices?: boolean };
         Relationships: [];
       };
       team_practice_slots: {

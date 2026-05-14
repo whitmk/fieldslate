@@ -16,6 +16,12 @@ export const ORDERED_DAYS: { key: PlayingDay; label: string }[] = [
 
 export const DEFAULT_DAY_WINDOW: DayWindow = { start: "09:00", end: "17:00" };
 
+export type VenueAssignment = {
+  venue_id: string;
+  allow_games: boolean;
+  allow_practices: boolean;
+};
+
 export type PracticeSlotEntry = {
   day?: PlayingDay;
   start?: string;    // "HH:MM" 24-hour
@@ -54,7 +60,7 @@ export type WizardData = {
   practice_season_start: string;
   practice_season_end: string;
   // Step 3 – Fields
-  venue_ids: string[];
+  venue_assignments: VenueAssignment[];
   // Step 4 – Format
   format: ScheduleFormat;
   include_playoffs: boolean;
@@ -86,7 +92,7 @@ export const DEFAULT_WIZARD_DATA: WizardData = {
   practice_venue_id: "",
   practice_season_start: "",
   practice_season_end: "",
-  venue_ids: [],
+  venue_assignments: [],
   format: "round_robin",
   include_playoffs: true,
   auto_rotate: true,

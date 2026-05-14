@@ -162,10 +162,15 @@ export function StepReview({
       if (updateError) return { error: updateError.message };
 
       await supabase.from("division_venues").delete().eq("division_id", divisionId);
-      if (data.venue_ids.length > 0) {
+      if (data.venue_assignments.length > 0) {
         await supabase
           .from("division_venues")
-          .insert(data.venue_ids.map((venue_id) => ({ division_id: divisionId, venue_id })) as never[]);
+          .insert(data.venue_assignments.map((a) => ({
+            division_id: divisionId,
+            venue_id: a.venue_id,
+            allow_games: a.allow_games,
+            allow_practices: a.allow_practices,
+          })) as never[]);
       }
 
       divId = divisionId;
@@ -192,10 +197,15 @@ export function StepReview({
 
       divId = (divData as unknown as { id: string }).id;
 
-      if (data.venue_ids.length > 0) {
+      if (data.venue_assignments.length > 0) {
         await supabase
           .from("division_venues")
-          .insert(data.venue_ids.map((venue_id) => ({ division_id: divId, venue_id })) as never[]);
+          .insert(data.venue_assignments.map((a) => ({
+            division_id: divId,
+            venue_id: a.venue_id,
+            allow_games: a.allow_games,
+            allow_practices: a.allow_practices,
+          })) as never[]);
       }
     }
 
@@ -370,10 +380,10 @@ export function StepReview({
 
         // Venue changes
         if (originalData) {
-          const oldVenueSet = new Set(originalData.venue_ids);
-          const newVenueSet = new Set(data.venue_ids);
-          const addedVenues = data.venue_ids.filter((id) => !oldVenueSet.has(id));
-          const removedVenues = originalData.venue_ids.filter((id) => !newVenueSet.has(id));
+          const oldVenueSet = new Set(originalData.venue_assignments.map((a) => a.venue_id));
+          const newVenueSet = new Set(data.venue_assignments.map((a) => a.venue_id));
+          const addedVenues = data.venue_assignments.filter((a) => !oldVenueSet.has(a.venue_id)).map((a) => a.venue_id);
+          const removedVenues = originalData.venue_assignments.filter((a) => !newVenueSet.has(a.venue_id)).map((a) => a.venue_id);
 
           if (addedVenues.length > 0) {
             warnings.push(
@@ -673,10 +683,15 @@ export function StepReview({
       </Section>
 
       <Section title="Fields" step={3} onEdit={onEdit}>
-        <Row
-          label="Fields selected"
-          value={data.venue_ids.length > 0 ? `${data.venue_ids.length} venue${data.venue_ids.length > 1 ? "s" : ""}` : "None"}
-        />
+        {data.venue_assignments.length === 0 ? (
+          <Row label="Fields selected" value="None" />
+        ) : (
+          <>
+            <Row label="Fields selected" value={`${data.venue_assignments.length} venue${data.venue_assignments.length > 1 ? "s" : ""}`} />
+            <Row label="For games" value={`${data.venue_assignments.filter((a) => a.allow_games).length} venue${data.venue_assignments.filter((a) => a.allow_games).length !== 1 ? "s" : ""}`} />
+            <Row label="For practices" value={`${data.venue_assignments.filter((a) => a.allow_practices).length} venue${data.venue_assignments.filter((a) => a.allow_practices).length !== 1 ? "s" : ""}`} />
+          </>
+        )}
       </Section>
 
       <Section title="Format" step={4} onEdit={onEdit}>
