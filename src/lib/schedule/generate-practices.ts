@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 // ─── Public types ──────────────────────────────────────────────────────────────
 
 export type PracticeResult =
-  | { success: true; practicesCreated: number; droppedCount: number }
+  | { success: true; practicesCreated: number; droppedCount: number; shortfallCount: number }
   | { success: false; error: string };
 
 // ─── Pure helpers ──────────────────────────────────────────────────────────────
@@ -91,7 +91,7 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
   }
 
   if (!div.activities_per_week || div.activities_per_week < 1) {
-    return { success: true, practicesCreated: 0, droppedCount: 0 };
+    return { success: true, practicesCreated: 0, droppedCount: 0, shortfallCount: 0 };
   }
 
   // ── 2. Load practice venues for this division ────────────────────────────────
@@ -114,7 +114,7 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
 
   if (teamsErr) return { success: false, error: teamsErr.message };
   const teams = (teamsData ?? []) as { id: string; name: string }[];
-  if (!teams.length) return { success: true, practicesCreated: 0, droppedCount: 0 };
+  if (!teams.length) return { success: true, practicesCreated: 0, droppedCount: 0, shortfallCount: 0 };
 
   const teamIds = teams.map((t) => t.id);
 
@@ -255,6 +255,7 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
 
   const practices: PracticeInsert[] = [];
   const droppedLogs: DroppedLog[] = [];
+  let totalShortfall = 0;
 
   const seasonStart = new Date(practiceStart + "T00:00:00");
   const seasonEnd = new Date(practiceEnd + "T00:00:00");
@@ -270,13 +271,26 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
 
     for (const team of teams) {
       const pinnedSlots = slotsByTeam.get(team.id) ?? [];
-      const effectiveSlots: EffectiveSlot[] =
+      const baseSlots: EffectiveSlot[] =
         pinnedSlots.length > 0 ? pinnedSlots : autoSlots.has(team.id) ? [autoSlots.get(team.id)!] : [];
 
-      if (!effectiveSlots.length) continue;
+      if (!baseSlots.length) continue;
 
       const gamesThisWeek = teamGamesByWeek.get(team.id)?.get(wk) ?? 0;
       let practicesNeeded = Math.max(0, div.activities_per_week - gamesThisWeek);
+
+      // When more practices are needed than base slots cover, fill with additional auto days
+      const effectiveSlots = [...baseSlots];
+      if (practicesNeeded > effectiveSlots.length) {
+        const usedDays = new Set(effectiveSlots.map((s) => s.day_of_week));
+        const fillVenueId = autoSlots.get(team.id)?.venue_id ?? practiceVenueList[0]?.venue_id ?? null;
+        for (const day of AUTO_DAYS) {
+          if (effectiveSlots.length >= practicesNeeded) break;
+          if (usedDays.has(day)) continue;
+          effectiveSlots.push({ day_of_week: day, start_time: AUTO_TIME, venue_id: fillVenueId });
+          usedDays.add(day);
+        }
+      }
 
       for (const slot of effectiveSlots) {
         if (practicesNeeded <= 0) break;
@@ -330,6 +344,7 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
 
         practicesNeeded--;
       }
+      totalShortfall += practicesNeeded;
     }
 
     weekMon = new Date(weekMon);
@@ -352,9 +367,19 @@ export async function generatePractices(divisionId: string): Promise<PracticeRes
     await supabase.from("activity_log").insert(droppedLogs as never[]);
   }
 
+  if (totalShortfall > 0) {
+    await supabase.from("activity_log").insert({
+      league_id: div.league_id,
+      division_id: divisionId,
+      event_type: "practice_shortage",
+      message: `${div.name}: ${totalShortfall} practice${totalShortfall === 1 ? "" : "s"} could not be scheduled — not enough venue availability to meet ${div.activities_per_week} per week for all teams`,
+    } as never);
+  }
+
   return {
     success: true,
     practicesCreated: practices.length,
     droppedCount: droppedLogs.length,
+    shortfallCount: totalShortfall,
   };
 }

@@ -73,6 +73,8 @@ export function DivisionSchedulePanel({
   const [generatingPractices, setGeneratingPractices] = useState(false);
   const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
+  const [practiceShortfall, setPracticeShortfall] = useState<{ count: number; target: number } | null>(null);
+  const [activitiesPerWeek, setActivitiesPerWeek] = useState(0);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<GameRow | null>(null);
 
@@ -112,11 +114,11 @@ export function DivisionSchedulePanel({
 
     const { data: divDataRaw } = await supabase
       .from("divisions")
-      .select("settings")
+      .select("settings, activities_per_week")
       .eq("id", divisionId)
       .single();
 
-    const divData = divDataRaw as unknown as { settings: Record<string, unknown> } | null;
+    const divData = divDataRaw as unknown as { settings: Record<string, unknown>; activities_per_week: number | null } | null;
     const settings = (divData?.settings ?? {}) as {
       game_duration?: number;
       buffer_minutes?: number;
@@ -124,6 +126,7 @@ export function DivisionSchedulePanel({
     };
 
     setGamesPerTeam(Number(settings.games_per_team ?? 0));
+    setActivitiesPerWeek(Number(divData?.activities_per_week ?? 0));
 
     const { data } = await supabase
       .from("games")
@@ -220,6 +223,7 @@ export function DivisionSchedulePanel({
   async function handleGeneratePractices() {
     setGeneratingPractices(true);
     setResult(null);
+    setPracticeShortfall(null);
     const res = await generatePractices(divisionId);
     if (res.success) {
       setResult({
@@ -228,6 +232,9 @@ export function DivisionSchedulePanel({
           ? "No practices to schedule"
           : `${res.practicesCreated} practice${res.practicesCreated === 1 ? "" : "s"} scheduled`,
       });
+      if (res.shortfallCount > 0) {
+        setPracticeShortfall({ count: res.shortfallCount, target: activitiesPerWeek });
+      }
       await logActivity(leagueId, divisionId, "practices_generated",
         `${divisionName} practices generated — ${res.practicesCreated} practice${res.practicesCreated === 1 ? "" : "s"} scheduled`);
       fetchGames();
@@ -537,6 +544,23 @@ export function DivisionSchedulePanel({
           </button>
         )}
       </div>
+
+      {/* ── Practice shortage warning ── */}
+      {practiceShortfall && practiceShortfall.count > 0 && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800">
+                Warning: Not enough venue availability to meet {practiceShortfall.target} practice{practiceShortfall.target !== 1 ? "s" : ""} per week for all teams.
+              </p>
+              <p className="mt-0.5 text-xs text-amber-700">
+                {practiceShortfall.count} practice{practiceShortfall.count !== 1 ? "s" : ""} could not be scheduled. Add more venue availability or adjust practice slots.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Rained out pending banner ── */}
       {cancelledGames.length > 0 && (
