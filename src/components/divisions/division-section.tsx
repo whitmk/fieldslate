@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, CalendarDays, ChevronDown, Pencil,
-  Zap, CloudRain, ArrowLeftRight, FileDown, Users, X,
+  Zap, CloudRain, ArrowLeftRight, FileDown, Users,
 } from "lucide-react";
 import { DivisionBallIcon } from "./division-ball-icon";
 import { createClient } from "@/lib/supabase/client";
@@ -12,6 +12,7 @@ import { DivisionWizard } from "./division-wizard";
 import { DivisionSchedulePanel } from "./division-schedule-panel";
 import { ConflictResolverModal } from "./conflict-resolver-modal";
 import { LogRainoutModal } from "./log-rainout-modal";
+import { ExportPickerModal, type PrintMode } from "./export-picker-modal";
 import type { Division } from "@/types/database";
 import type { DivisionStat } from "@/app/(dashboard)/dashboard/leagues/[id]/page";
 import {
@@ -203,7 +204,8 @@ export function DivisionSection({
   const [leagueStartDate, setLeagueStartDate] = useState<string>("");
   const [leagueEndDate, setLeagueEndDate] = useState<string>("");
   const [printTriggerId, setPrintTriggerId] = useState<string | null>(null);
-  const [showExportModal, setShowExportModal] = useState(false);
+  const [printMode, setPrintMode] = useState<PrintMode>("games");
+  const [showExportPicker, setShowExportPicker] = useState(false);
   const [showLogRainout, setShowLogRainout] = useState(false);
 
   const fetchDivisions = useCallback(async () => {
@@ -267,16 +269,11 @@ export function DivisionSection({
 
   function handleExportClick() {
     if (divisions.length === 0) return;
-    if (divisions.length === 1) {
-      setExpandedId(divisions[0].id);
-      setPrintTriggerId(divisions[0].id);
-    } else {
-      setShowExportModal(true);
-    }
+    setShowExportPicker(true);
   }
 
-  function handleExportPick(divisionId: string) {
-    setShowExportModal(false);
+  function handleExportPrint(divisionId: string, mode: PrintMode) {
+    setPrintMode(mode);
     setExpandedId(divisionId);
     setPrintTriggerId(divisionId);
   }
@@ -468,6 +465,7 @@ export function DivisionSection({
                       leagueName={leagueName}
                       leagueId={leagueId}
                       triggerPrint={printTriggerId === div.id}
+                      printMode={printMode}
                       onPrintDone={() => setPrintTriggerId(null)}
                       onScheduleChange={() => router.refresh()}
                     />
@@ -546,48 +544,15 @@ export function DivisionSection({
         />
       )}
 
-      {/* ── Export / Print division picker ──────────────────────────────── */}
-      {showExportModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setShowExportModal(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl bg-white shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between border-b border-gray-100 px-5 py-4">
-              <div>
-                <h3 className="font-semibold text-[#0C1F3F]">Print Schedule</h3>
-                <p className="mt-0.5 text-xs text-gray-400">Choose a division to print</p>
-              </div>
-              <button
-                onClick={() => setShowExportModal(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-[#0C1F3F]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex flex-col gap-2 p-4">
-              {divisions.map((div) => {
-                const stat = divisionStats.find((s) => s.divisionId === div.id);
-                const gameCount = stat?.gameCount ?? 0;
-                return (
-                  <button
-                    key={div.id}
-                    onClick={() => handleExportPick(div.id)}
-                    className="flex items-center justify-between rounded-xl border border-gray-100 px-4 py-3 text-left transition-colors hover:border-[#22C55E]/50 hover:bg-gray-50"
-                  >
-                    <span className="text-sm font-semibold text-[#0C1F3F]">{div.name}</span>
-                    <span className="text-xs text-gray-400">
-                      {gameCount} game{gameCount !== 1 ? "s" : ""}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+      {/* ── Export / Print picker ────────────────────────────────────────── */}
+      {showExportPicker && (
+        <ExportPickerModal
+          divisions={divisions}
+          divisionStats={divisionStats}
+          leagueName={leagueName}
+          onClose={() => setShowExportPicker(false)}
+          onPrint={handleExportPrint}
+        />
       )}
 
       {fixingDivision && (

@@ -30,12 +30,15 @@ type UnscheduledPractice = {
   weekLabel: string;  // "Jun 2"
 };
 
+type PrintMode = "games" | "practices" | "combined";
+
 interface Props {
   divisionId: string;
   divisionName: string;
   leagueName: string;
   leagueId: string;
   triggerPrint?: boolean;
+  printMode?: PrintMode;
   onPrintDone?: () => void;
   onScheduleChange?: () => void;
 }
@@ -71,7 +74,7 @@ type ScheduleEvent =
 
 export function DivisionSchedulePanel({
   divisionId, divisionName, leagueName, leagueId,
-  triggerPrint, onPrintDone, onScheduleChange,
+  triggerPrint, printMode = "games", onPrintDone, onScheduleChange,
 }: Props) {
   const router = useRouter();
   const [teams, setTeams] = useState<Team[]>([]);
@@ -828,8 +831,10 @@ export function DivisionSchedulePanel({
         </div>
       )}
 
-      {/* ── Print region (games only) ── */}
-      {games.length > 0 && (
+      {/* ── Print regions — only the active mode is rendered ── */}
+
+      {/* Games */}
+      {printMode === "games" && games.length > 0 && (
         <div className="fieldslate-print-region hidden">
           <div className="fieldslate-print-header">
             <div className="fieldslate-print-wordmark">Field<span>Slate</span></div>
@@ -873,6 +878,134 @@ export function DivisionSchedulePanel({
           ))}
         </div>
       )}
+
+      {/* Practices */}
+      {printMode === "practices" && practices.filter((p) => p.status === "scheduled").length > 0 && (() => {
+        const scheduledPractices = practices.filter((p) => p.status === "scheduled");
+        const grouped = scheduledPractices.reduce((map, p) => {
+          if (!map.has(p.scheduled_date)) map.set(p.scheduled_date, []);
+          map.get(p.scheduled_date)!.push(p);
+          return map;
+        }, new Map<string, PracticeRow[]>());
+        return (
+          <div className="fieldslate-print-region hidden">
+            <div className="fieldslate-print-header">
+              <div className="fieldslate-print-wordmark">Field<span>Slate</span></div>
+              <p className="fieldslate-print-league">{leagueName}</p>
+              <p className="fieldslate-print-division">{divisionName} — Practice Schedule</p>
+              <p className="fieldslate-print-meta">
+                Printed {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                {" "}· {scheduledPractices.length} practice{scheduledPractices.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+            {Array.from(grouped.entries()).map(([date, dayPractices]) => (
+              <div key={date}>
+                <div className="fieldslate-print-date-group">{fmtGameDate(date)}</div>
+                <table className="fieldslate-print-table">
+                  <thead>
+                    <tr><th>Date</th><th>Time</th><th>Team</th><th>Field / Venue</th></tr>
+                  </thead>
+                  <tbody>
+                    {dayPractices.map((p) => (
+                      <tr key={p.id}>
+                        <td>{fmtGameDate(p.scheduled_date)}</td>
+                        <td>{fmtGameTime(`${p.scheduled_date}T${p.start_time}:00`)}</td>
+                        <td>{p.team?.name ?? "TBD"}</td>
+                        <td>{p.venue?.name ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* Combined */}
+      {printMode === "combined" && (games.length > 0 || practices.filter((p) => p.status === "scheduled").length > 0) && (() => {
+        const scheduledPractices = practices.filter((p) => p.status === "scheduled");
+        const gamesByDate = games
+          .filter((g) => g.status !== "cancelled")
+          .reduce((map, g) => {
+            const k = g.scheduled_at.substring(0, 10);
+            if (!map.has(k)) map.set(k, []);
+            map.get(k)!.push(g);
+            return map;
+          }, new Map<string, GameRow[]>());
+        const practicesByDate = scheduledPractices.reduce((map, p) => {
+          if (!map.has(p.scheduled_date)) map.set(p.scheduled_date, []);
+          map.get(p.scheduled_date)!.push(p);
+          return map;
+        }, new Map<string, PracticeRow[]>());
+        return (
+          <div className="fieldslate-print-region hidden">
+            <div className="fieldslate-print-header">
+              <div className="fieldslate-print-wordmark">Field<span>Slate</span></div>
+              <p className="fieldslate-print-league">{leagueName}</p>
+              <p className="fieldslate-print-division">{divisionName} — Full Schedule</p>
+              <p className="fieldslate-print-meta">
+                Printed {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                {" "}· {activeGames.length} game{activeGames.length !== 1 ? "s" : ""}
+                {scheduledPractices.length > 0 ? ` · ${scheduledPractices.length} practice${scheduledPractices.length !== 1 ? "s" : ""}` : ""}
+              </p>
+            </div>
+            {/* Games section */}
+            {gamesByDate.size > 0 && (
+              <>
+                <div className="fieldslate-print-date-group" style={{ marginTop: 0, borderTop: "none", paddingTop: 0 }}>Games</div>
+                {Array.from(gamesByDate.entries()).map(([, dayGames]) => (
+                  <div key={dayGames[0].scheduled_at.substring(0, 10)}>
+                    <div className="fieldslate-print-date-group">{fmtGameDate(dayGames[0].scheduled_at)}</div>
+                    <table className="fieldslate-print-table">
+                      <thead>
+                        <tr><th>Date</th><th>Time</th><th>Home Team</th><th>Away Team</th><th>Field / Venue</th></tr>
+                      </thead>
+                      <tbody>
+                        {dayGames.map((game) => (
+                          <tr key={game.id}>
+                            <td>{fmtGameDate(game.scheduled_at)}</td>
+                            <td>{fmtGameTime(game.scheduled_at)}</td>
+                            <td>{game.home_team?.name ?? "TBD"}</td>
+                            <td>{game.away_team?.name ?? "TBD"}</td>
+                            <td>{game.venue?.name ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </>
+            )}
+            {/* Practices section */}
+            {practicesByDate.size > 0 && (
+              <>
+                <div className="fieldslate-print-date-group">Practices</div>
+                {Array.from(practicesByDate.entries()).map(([date, dayPractices]) => (
+                  <div key={date}>
+                    <div className="fieldslate-print-date-group">{fmtGameDate(date)}</div>
+                    <table className="fieldslate-print-table">
+                      <thead>
+                        <tr><th>Date</th><th>Time</th><th>Team</th><th>Field / Venue</th></tr>
+                      </thead>
+                      <tbody>
+                        {dayPractices.map((p) => (
+                          <tr key={p.id}>
+                            <td>{fmtGameDate(p.scheduled_date)}</td>
+                            <td>{fmtGameTime(`${p.scheduled_date}T${p.start_time}:00`)}</td>
+                            <td>{p.team?.name ?? "TBD"}</td>
+                            <td>{p.venue?.name ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── Reschedule modal ── */}
       {rescheduleGame && (
