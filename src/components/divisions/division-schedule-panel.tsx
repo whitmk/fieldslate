@@ -17,7 +17,27 @@ import type { ScheduleConflict } from "@/lib/schedule/generate-schedule";
 import { generatePractices } from "@/lib/schedule/generate-practices";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
+import { SchedulePracticeModal } from "./schedule-practice-modal";
 import { logActivity } from "@/lib/activity-log";
+
+// ─── Local week helpers ────────────────────────────────────────────────────────
+
+function _p2(n: number) { return String(n).padStart(2, "0"); }
+function _localDate(d: Date) { return `${d.getFullYear()}-${_p2(d.getMonth() + 1)}-${_p2(d.getDate())}`; }
+function _mondayOf(dateStr: string): Date {
+  const d = new Date(dateStr + "T00:00:00");
+  const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
+  const m = new Date(d); m.setDate(d.getDate() + diff); return m;
+}
+function _weekKey(dateStr: string): string { return _localDate(_mondayOf(dateStr)); }
+
+type UnscheduledPractice = {
+  key: string;
+  teamId: string;
+  teamName: string;
+  weekMonday: string; // YYYY-MM-DD
+  weekLabel: string;  // "Jun 2"
+};
 
 interface Props {
   divisionId: string;
@@ -75,6 +95,9 @@ export function DivisionSchedulePanel({
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
   const [practiceShortfall, setPracticeShortfall] = useState<{ count: number; target: number } | null>(null);
   const [activitiesPerWeek, setActivitiesPerWeek] = useState(0);
+  const [practiceSeasonStart, setPracticeSeasonStart] = useState("");
+  const [practiceSeasonEnd, setPracticeSeasonEnd] = useState("");
+  const [schedulingPractice, setSchedulingPractice] = useState<UnscheduledPractice | null>(null);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<GameRow | null>(null);
 
@@ -114,11 +137,18 @@ export function DivisionSchedulePanel({
 
     const { data: divDataRaw } = await supabase
       .from("divisions")
-      .select("settings, activities_per_week")
+      .select("settings, activities_per_week, practice_season_start, practice_season_end, start_date, end_date")
       .eq("id", divisionId)
       .single();
 
-    const divData = divDataRaw as unknown as { settings: Record<string, unknown>; activities_per_week: number | null } | null;
+    const divData = divDataRaw as unknown as {
+      settings: Record<string, unknown>;
+      activities_per_week: number | null;
+      practice_season_start: string | null;
+      practice_season_end: string | null;
+      start_date: string | null;
+      end_date: string | null;
+    } | null;
     const settings = (divData?.settings ?? {}) as {
       game_duration?: number;
       buffer_minutes?: number;
@@ -127,6 +157,8 @@ export function DivisionSchedulePanel({
 
     setGamesPerTeam(Number(settings.games_per_team ?? 0));
     setActivitiesPerWeek(Number(divData?.activities_per_week ?? 0));
+    setPracticeSeasonStart(divData?.practice_season_start ?? divData?.start_date ?? "");
+    setPracticeSeasonEnd(divData?.practice_season_end ?? divData?.end_date ?? "");
 
     const { data } = await supabase
       .from("games")
@@ -338,6 +370,62 @@ export function DivisionSchedulePanel({
     .filter((t) => t.deficit > 0);
 
   const isIncomplete = games.length > 0 && teamsWithDeficit.length > 0;
+
+  // ── Compute unscheduled practice slots ────────────────────────────────────────
+  // Only compute when the generator has been run (practices exist) and a
+  // weekly target is set, so the list stays quiet before first generation.
+
+  const unscheduledPractices: UnscheduledPractice[] = (() => {
+    if (!activitiesPerWeek || !practiceSeasonStart || !practiceSeasonEnd || !practices.length) return [];
+
+    // Index practices: "teamId:weekMonday" → count
+    const practicesByWeek = new Map<string, number>();
+    for (const p of practices) {
+      const k = `${p.team_id}:${_weekKey(p.scheduled_date)}`;
+      practicesByWeek.set(k, (practicesByWeek.get(k) ?? 0) + 1);
+    }
+
+    // Index active games: "teamId:weekMonday" → count
+    const gamesByWeek = new Map<string, number>();
+    for (const g of activeGames) {
+      const mon = _weekKey(g.scheduled_at.substring(0, 10));
+      if (g.home_team_id) {
+        const k = `${g.home_team_id}:${mon}`;
+        gamesByWeek.set(k, (gamesByWeek.get(k) ?? 0) + 1);
+      }
+      if (g.away_team_id) {
+        const k = `${g.away_team_id}:${mon}`;
+        gamesByWeek.set(k, (gamesByWeek.get(k) ?? 0) + 1);
+      }
+    }
+
+    const items: UnscheduledPractice[] = [];
+    let weekMon = _mondayOf(practiceSeasonStart);
+    const seasonEnd = new Date(practiceSeasonEnd + "T00:00:00");
+
+    while (weekMon <= seasonEnd) {
+      const monStr = _localDate(weekMon);
+      for (const team of teams) {
+        const gamesThisWeek     = gamesByWeek.get(`${team.id}:${monStr}`) ?? 0;
+        const expectedPractices = Math.max(0, activitiesPerWeek - gamesThisWeek);
+        const actualPractices   = practicesByWeek.get(`${team.id}:${monStr}`) ?? 0;
+        const shortfall         = Math.max(0, expectedPractices - actualPractices);
+        for (let i = 0; i < shortfall; i++) {
+          items.push({
+            key: `${team.id}:${monStr}:${i}`,
+            teamId: team.id,
+            teamName: team.name,
+            weekMonday: monStr,
+            weekLabel: weekMon.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          });
+        }
+      }
+      weekMon = new Date(weekMon);
+      weekMon.setDate(weekMon.getDate() + 7);
+    }
+
+    return items;
+  })();
 
   // ── Merge games and practices into a unified sorted timeline ─────────────────
 
@@ -558,6 +646,39 @@ export function DivisionSchedulePanel({
                 {practiceShortfall.count} practice{practiceShortfall.count !== 1 ? "s" : ""} could not be scheduled. Add more venue availability or adjust practice slots.
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Unscheduled practice slots ── */}
+      {unscheduledPractices.length > 0 && (
+        <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3">
+          <div className="mb-2 flex items-center gap-2">
+            <Dumbbell className="h-4 w-4 flex-shrink-0 text-indigo-400" />
+            <p className="text-sm font-semibold text-indigo-800">
+              {unscheduledPractices.length} unscheduled practice slot{unscheduledPractices.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {unscheduledPractices.slice(0, 10).map((item) => (
+              <div key={item.key} className="flex items-center justify-between rounded-lg bg-white/70 px-3 py-2">
+                <div>
+                  <span className="text-xs font-semibold text-indigo-900">{item.teamName}</span>
+                  <span className="ml-1.5 text-xs text-indigo-600">week of {item.weekLabel}</span>
+                </div>
+                <button
+                  onClick={() => setSchedulingPractice(item)}
+                  className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-indigo-700"
+                >
+                  Schedule
+                </button>
+              </div>
+            ))}
+            {unscheduledPractices.length > 10 && (
+              <p className="mt-0.5 text-xs text-indigo-500">
+                and {unscheduledPractices.length - 10} more…
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -822,6 +943,23 @@ export function DivisionSchedulePanel({
           onClose={() => setRescheduleGame(null)}
           onRescheduled={() => {
             setRescheduleGame(null);
+            fetchGames();
+            onScheduleChange?.();
+          }}
+        />
+      )}
+
+      {schedulingPractice && (
+        <SchedulePracticeModal
+          teamId={schedulingPractice.teamId}
+          teamName={schedulingPractice.teamName}
+          weekMonday={schedulingPractice.weekMonday}
+          weekLabel={schedulingPractice.weekLabel}
+          divisionId={divisionId}
+          leagueId={leagueId}
+          onClose={() => setSchedulingPractice(null)}
+          onScheduled={() => {
+            setSchedulingPractice(null);
             fetchGames();
             onScheduleChange?.();
           }}
