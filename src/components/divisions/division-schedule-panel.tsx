@@ -625,6 +625,16 @@ export function DivisionSchedulePanel({
           </span>
         )}
 
+        {activeGames.length > 0 && (
+          <button
+            onClick={enterSelectMode}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:border-blue-300 hover:text-blue-500 print:hidden"
+          >
+            <ListChecks className="h-4 w-4" />
+            Select games
+          </button>
+        )}
+
         {allEvents.length > 0 && (
           <button
             onClick={() => window.print()}
@@ -823,15 +833,6 @@ export function DivisionSchedulePanel({
                       <span className="ml-1.5 text-blue-400">· {cancelledGames.length} rained out</span>
                     )}
                   </p>
-                  {activeGames.length > 0 && (
-                    <button
-                      onClick={enterSelectMode}
-                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-500 transition-colors hover:border-blue-300 hover:text-blue-500"
-                    >
-                      <ListChecks className="h-3 w-3" />
-                      Select games
-                    </button>
-                  )}
                 </div>
               </>
             )}
