@@ -19,6 +19,12 @@ import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
 import { SchedulePracticeModal } from "./schedule-practice-modal";
 import { logActivity } from "@/lib/activity-log";
+import { AutoAssignUmpiresButton } from "@/components/umpires/auto-assign-button";
+import {
+  UmpireSlots,
+  type SlotAssignment,
+  type UmpireOption,
+} from "@/components/umpires/umpire-slots";
 
 
 type UnscheduledPractice = {
@@ -109,6 +115,15 @@ export function DivisionSchedulePanel({
   const [confirmingBulkRainout, setConfirmingBulkRainout] = useState(false);
   const [bulkRainoutLoading, setBulkRainoutLoading] = useState(false);
 
+  // Umpire state
+  const [umpiresPerGame, setUmpiresPerGame] = useState(0);
+  const [umpireRoles, setUmpireRoles] = useState<string[]>([]);
+  const [umpireRoster, setUmpireRoster] = useState<UmpireOption[]>([]);
+  const [assignmentsByGame, setAssignmentsByGame] = useState<
+    Map<string, SlotAssignment[]>
+  >(new Map());
+  const [gameDurationMinutes, setGameDurationMinutes] = useState(90);
+
   const editInputRef = useRef<HTMLInputElement>(null);
 
   const fetchGames = useCallback(async () => {
@@ -135,13 +150,15 @@ export function DivisionSchedulePanel({
 
     const { data: divDataRaw } = await supabase
       .from("divisions")
-      .select("settings, activities_per_week")
+      .select("settings, activities_per_week, umpires_per_game, umpire_roles")
       .eq("id", divisionId)
       .single();
 
     const divData = divDataRaw as unknown as {
       settings: Record<string, unknown>;
       activities_per_week: number | null;
+      umpires_per_game: number | null;
+      umpire_roles: unknown;
     } | null;
     const settings = (divData?.settings ?? {}) as {
       game_duration?: number;
@@ -151,6 +168,18 @@ export function DivisionSchedulePanel({
 
     setGamesPerTeam(Number(settings.games_per_team ?? 0));
     setActivitiesPerWeek(Number(divData?.activities_per_week ?? 0));
+    setGameDurationMinutes(Number(settings.game_duration ?? 90));
+
+    const upg = Number(divData?.umpires_per_game ?? 0);
+    setUmpiresPerGame(upg);
+    const persistedRoles = Array.isArray(divData?.umpire_roles)
+      ? (divData!.umpire_roles as unknown[]).filter(
+          (r): r is string => typeof r === "string",
+        )
+      : [];
+    const roles = [...persistedRoles];
+    while (roles.length < upg) roles.push(`Umpire ${roles.length + 1}`);
+    setUmpireRoles(roles);
 
     const { data } = await supabase
       .from("games")
@@ -165,6 +194,46 @@ export function DivisionSchedulePanel({
 
     const rows = (data as unknown as GameRow[]) ?? [];
     setGames(rows);
+
+    // Umpire roster for this season and assignments for these games
+    const [{ data: umpiresRaw }, { data: assignsRaw }] = await Promise.all([
+      supabase
+        .from("umpires")
+        .select("id, name")
+        .eq("season_id", leagueId)
+        .order("name"),
+      rows.length > 0
+        ? supabase
+            .from("game_umpires")
+            .select("id, game_id, role, umpire:umpires(id, name)")
+            .in(
+              "game_id",
+              rows.map((g) => g.id),
+            )
+        : Promise.resolve({ data: [] as unknown[] }),
+    ]);
+    setUmpireRoster((umpiresRaw ?? []) as UmpireOption[]);
+    type AssignRow = {
+      id: string;
+      game_id: string;
+      role: string;
+      umpire: { id: string; name: string } | null;
+    };
+    const assigns = ((assignsRaw as unknown as AssignRow[] | null) ?? []).filter(
+      (r) => r.umpire,
+    );
+    const map = new Map<string, SlotAssignment[]>();
+    for (const a of assigns) {
+      const slot: SlotAssignment = {
+        id: a.id,
+        umpire_id: a.umpire!.id,
+        umpire_name: a.umpire!.name,
+        role: a.role,
+      };
+      if (!map.has(a.game_id)) map.set(a.game_id, []);
+      map.get(a.game_id)!.push(slot);
+    }
+    setAssignmentsByGame(map);
 
     const { data: practiceData } = await supabase
       .from("practices")
@@ -190,7 +259,7 @@ export function DivisionSchedulePanel({
     );
 
     setLoadingGames(false);
-  }, [divisionId]);
+  }, [divisionId, leagueId]);
 
   useEffect(() => { fetchGames(); }, [fetchGames]);
 
@@ -635,6 +704,14 @@ export function DivisionSchedulePanel({
           </button>
         )}
 
+        {umpiresPerGame > 0 && activeGames.length > 0 && (
+          <AutoAssignUmpiresButton
+            divisionId={divisionId}
+            seasonId={leagueId}
+            enabled
+          />
+        )}
+
         {allEvents.length > 0 && (
           <button
             onClick={() => window.print()}
@@ -880,11 +957,14 @@ export function DivisionSchedulePanel({
                   const isRaining = rainoutId === game.id;
                   const isSelected = selectedGameIds.has(game.id);
                   const isSelectable = selectMode && !isCancelled;
+                  const gameAssignments = assignmentsByGame.get(game.id) ?? [];
+                  const showSlots =
+                    !isCancelled && !selectMode && umpiresPerGame > 0;
                   return (
                     <div
                       key={game.id}
                       onClick={() => { if (isSelectable) toggleGameSelect(game.id); }}
-                      className={`group flex items-center justify-between px-4 py-3 transition-colors ${
+                      className={`group flex flex-col gap-2 px-4 py-3 transition-colors ${
                         isCancelled
                           ? "bg-gray-50/80"
                           : isSelectable
@@ -894,6 +974,7 @@ export function DivisionSchedulePanel({
                           : ""
                       }`}
                     >
+                    <div className="flex items-center justify-between">
                       {/* Left: checkbox (select mode) or rain icon (cancelled) + time + teams */}
                       <div className="flex min-w-0 items-center gap-3">
                         {selectMode && !isCancelled ? (
@@ -955,6 +1036,33 @@ export function DivisionSchedulePanel({
                           </button>
                         ) : null}
                       </div>
+                    </div>
+                    {showSlots && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="ml-[80px] mr-2 mt-1"
+                      >
+                        {umpireRoster.length === 0 ? (
+                          <p className="text-[11px] text-gray-400">
+                            Add umpires on the Umpires tab to assign them here.
+                          </p>
+                        ) : (
+                          <UmpireSlots
+                            game={{
+                              id: game.id,
+                              scheduled_at: game.scheduled_at,
+                              duration_minutes: gameDurationMinutes,
+                              home_team_name: game.home_team?.name ?? "TBD",
+                              away_team_name: game.away_team?.name ?? "TBD",
+                            }}
+                            roles={umpireRoles}
+                            assignments={gameAssignments}
+                            umpires={umpireRoster}
+                            compact
+                          />
+                        )}
+                      </div>
+                    )}
                     </div>
                   );
                 })}

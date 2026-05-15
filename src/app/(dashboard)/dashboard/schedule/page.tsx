@@ -135,9 +135,10 @@ export default async function SchedulePage({
       .from("games")
       .select(`
         id, scheduled_at, status, league_id, home_team_id, away_team_id,
-        home_team:teams!home_team_id(name, division_id, division:divisions(name)),
+        home_team:teams!home_team_id(name, division_id, division:divisions(name, umpires_per_game, umpire_roles)),
         away_team:teams!away_team_id(name),
-        venue:venues(name)
+        venue:venues(name),
+        game_umpires:game_umpires(id, role, umpire:umpires(id, name))
       `)
       .order("scheduled_at", { ascending: true })
       .limit(mode === "calendar" ? 1000 : 200);

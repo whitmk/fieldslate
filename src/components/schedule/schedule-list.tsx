@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   MoreHorizontal,
   CloudRain,
@@ -10,6 +9,7 @@ import {
   Eye,
   XCircle,
   Loader2,
+  UserCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
@@ -17,6 +17,13 @@ import { createClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/activity-log";
 import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
 import { SchedulePracticeModal } from "@/components/divisions/schedule-practice-modal";
+import { GameDetailModal } from "@/components/umpires/game-detail-modal";
+
+export type ScheduleGameUmpire = {
+  id: string;
+  role: string;
+  umpire: { id: string; name: string } | null;
+};
 
 export type ScheduleGame = {
   id: string;
@@ -28,10 +35,15 @@ export type ScheduleGame = {
   home_team: {
     name: string;
     division_id: string | null;
-    division: { name: string } | null;
+    division: {
+      name: string;
+      umpires_per_game?: number | null;
+      umpire_roles?: unknown;
+    } | null;
   } | null;
   away_team: { name: string } | null;
   venue: { name: string } | null;
+  game_umpires?: ScheduleGameUmpire[];
 };
 
 export type SchedulePractice = {
@@ -107,6 +119,7 @@ export function ScheduleList({ view, games, practices }: Props) {
   const [cancellingPracticeId, setCancellingPracticeId] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<ScheduleGame | null>(null);
   const [reschedulePractice, setReschedulePractice] = useState<SchedulePractice | null>(null);
+  const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -198,6 +211,7 @@ export function ScheduleList({ view, games, practices }: Props) {
               <th className="pb-3 font-medium text-gray-500">Matchup / Team</th>
               <th className="pb-3 font-medium text-gray-500">Division</th>
               <th className="pb-3 font-medium text-gray-500">Venue</th>
+              <th className="pb-3 font-medium text-gray-500">Umpires</th>
               <th className="pb-3 font-medium text-gray-500">Status</th>
               <th className="pb-3" />
             </tr>
@@ -218,6 +232,10 @@ export function ScheduleList({ view, games, practices }: Props) {
                     onReschedule={() => {
                       setOpenMenuId(null);
                       setRescheduleGame(g);
+                    }}
+                    onViewDetails={() => {
+                      setOpenMenuId(null);
+                      setDetailGame(g);
                     }}
                     rainoutLoading={rainoutId === g.id}
                     showType
@@ -279,6 +297,10 @@ export function ScheduleList({ view, games, practices }: Props) {
             }}
           />
         )}
+
+        {detailGame && (
+          <GameDetailModal game={detailGame} onClose={() => setDetailGame(null)} />
+        )}
       </div>
     );
   }
@@ -295,6 +317,7 @@ export function ScheduleList({ view, games, practices }: Props) {
               <th className="pb-3 font-medium text-gray-500">Matchup</th>
               <th className="pb-3 font-medium text-gray-500">Division</th>
               <th className="pb-3 font-medium text-gray-500">Venue</th>
+              <th className="pb-3 font-medium text-gray-500">Umpires</th>
               <th className="pb-3 font-medium text-gray-500">Status</th>
               <th className="pb-3" />
             </tr>
@@ -310,6 +333,10 @@ export function ScheduleList({ view, games, practices }: Props) {
                 onReschedule={() => {
                   setOpenMenuId(null);
                   setRescheduleGame(g);
+                }}
+                onViewDetails={() => {
+                  setOpenMenuId(null);
+                  setDetailGame(g);
                 }}
                 rainoutLoading={rainoutId === g.id}
               />
@@ -332,6 +359,10 @@ export function ScheduleList({ view, games, practices }: Props) {
               router.refresh();
             }}
           />
+        )}
+
+        {detailGame && (
+          <GameDetailModal game={detailGame} onClose={() => setDetailGame(null)} />
         )}
       </div>
     );
@@ -398,6 +429,7 @@ interface GameRowProps {
   onMenuToggle: () => void;
   onRainout: () => void;
   onReschedule: () => void;
+  onViewDetails: () => void;
   rainoutLoading: boolean;
   showType?: boolean;
 }
@@ -408,9 +440,23 @@ function GameRowCells({
   onMenuToggle,
   onRainout,
   onReschedule,
+  onViewDetails,
   rainoutLoading,
   showType,
 }: GameRowProps) {
+  const umpiresPerGame = Number(game.home_team?.division?.umpires_per_game ?? 0);
+  const umpireRoles: string[] = Array.isArray(game.home_team?.division?.umpire_roles)
+    ? (game.home_team!.division!.umpire_roles as unknown[]).filter(
+        (r): r is string => typeof r === "string",
+      )
+    : [];
+  while (umpireRoles.length < umpiresPerGame) {
+    umpireRoles.push(`Umpire ${umpireRoles.length + 1}`);
+  }
+  const assignmentsByRole = new Map<string, string>();
+  for (const a of game.game_umpires ?? []) {
+    if (a.umpire) assignmentsByRole.set(a.role, a.umpire.name);
+  }
   return (
     <tr className="border-b border-gray-50 last:border-0">
       <td className="py-3 text-gray-600">
@@ -428,6 +474,34 @@ function GameRowCells({
       </td>
       <td className="py-3 text-gray-600">{game.home_team?.division?.name ?? "—"}</td>
       <td className="py-3 text-gray-600">{game.venue?.name ?? "—"}</td>
+      <td className="py-3">
+        {umpiresPerGame === 0 ? (
+          <span className="text-xs text-gray-300">—</span>
+        ) : (
+          <button
+            onClick={onViewDetails}
+            className="flex flex-wrap gap-1 text-left"
+            title="Manage umpire assignments"
+          >
+            {umpireRoles.map((role) => {
+              const name = assignmentsByRole.get(role);
+              return (
+                <span
+                  key={role}
+                  className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                    name
+                      ? "bg-indigo-50 text-indigo-700"
+                      : "border border-dashed border-amber-300 text-amber-600"
+                  }`}
+                >
+                  <UserCheck className="h-2.5 w-2.5" />
+                  {role}: {name ?? "Open"}
+                </span>
+              );
+            })}
+          </button>
+        )}
+      </td>
       <td className="py-3">
         <Badge variant={gameStatusVariants[game.status] ?? "default"}>
           {gameStatusLabel(game.status)}
@@ -462,13 +536,13 @@ function GameRowCells({
               <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
               Reschedule
             </button>
-            <Link
-              href={`/dashboard/leagues/${game.league_id}`}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+            <button
+              onClick={onViewDetails}
+              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
             >
               <Eye className="h-3.5 w-3.5 text-gray-400" />
               View details
-            </Link>
+            </button>
           </div>
         )}
       </td>
@@ -511,6 +585,7 @@ function PracticeRowCells({
       <td className="py-3 font-medium text-gray-900">{practice.team?.name ?? "TBD"}</td>
       <td className="py-3 text-gray-600">{practice.division?.name ?? "—"}</td>
       <td className="py-3 text-gray-600">{practice.venue?.name ?? "—"}</td>
+      {showType && <td className="py-3 text-xs text-gray-300">—</td>}
       <td className="py-3">
         <Badge variant={practiceStatusVariants[practice.status] ?? "default"}>
           {practice.status}

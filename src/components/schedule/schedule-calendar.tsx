@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import {
   ChevronLeft,
   ChevronRight,
@@ -19,6 +18,7 @@ import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
 import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
 import { SchedulePracticeModal } from "@/components/divisions/schedule-practice-modal";
+import { GameDetailModal } from "@/components/umpires/game-detail-modal";
 import type { ScheduleGame, SchedulePractice } from "./schedule-list";
 
 type View = "games" | "practices" | "combined";
@@ -111,6 +111,7 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
   const [rescheduleGame, setRescheduleGame] = useState<ScheduleGame | null>(null);
   const [reschedulePractice, setReschedulePractice] = useState<SchedulePractice | null>(null);
   const [dayDetail, setDayDetail] = useState<string | null>(null);
+  const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -413,13 +414,16 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
                     <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
                     Reschedule
                   </button>
-                  <Link
-                    href={`/dashboard/leagues/${pill.data.league_id}`}
+                  <button
+                    onClick={() => {
+                      setDetailGame(pill.data);
+                      setSelected(null);
+                    }}
                     className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
                   >
                     <Eye className="h-3.5 w-3.5 text-gray-400" />
                     View details
-                  </Link>
+                  </button>
                 </>
               ) : (
                 <>
@@ -514,6 +518,10 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
             router.refresh();
           }}
         />
+      )}
+
+      {detailGame && (
+        <GameDetailModal game={detailGame} onClose={() => setDetailGame(null)} />
       )}
     </div>
   );

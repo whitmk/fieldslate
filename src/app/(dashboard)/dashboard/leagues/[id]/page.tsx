@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, UserCheck } from "lucide-react";
 import type { League } from "@/types/database";
 import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
@@ -197,6 +197,41 @@ export default async function LeaguePage({ params }: { params: { id: string } })
   const rainedOutCount = rainedOutGames.length;
   const scheduleConflictCount = allConflictingGameIds.size;
 
+  // ── Umpire shortfall: active games whose division needs N umpires but has fewer than N assigned
+  let umpireShortfallCount = 0;
+  {
+    const divUmpiresPerGame = new Map<string, number>();
+    for (const d of allDivisions) {
+      const n = Number((d as unknown as { umpires_per_game?: number }).umpires_per_game ?? 0);
+      if (n > 0) divUmpiresPerGame.set(d.id, n);
+    }
+
+    if (divUmpiresPerGame.size > 0) {
+      const gamesNeedingUmpires = allGames.filter((g) => {
+        if (g.status === "cancelled") return false;
+        const divId = g.home_team?.division_id;
+        return !!divId && divUmpiresPerGame.has(divId);
+      });
+
+      if (gamesNeedingUmpires.length > 0) {
+        const gameIds = gamesNeedingUmpires.map((g) => g.id);
+        const { data: assignmentsRaw } = await supabase
+          .from("game_umpires")
+          .select("game_id")
+          .in("game_id", gameIds);
+        const assignedCount = new Map<string, number>();
+        for (const row of (assignmentsRaw ?? []) as { game_id: string }[]) {
+          assignedCount.set(row.game_id, (assignedCount.get(row.game_id) ?? 0) + 1);
+        }
+        for (const g of gamesNeedingUmpires) {
+          const need = divUmpiresPerGame.get(g.home_team!.division_id!) ?? 0;
+          const have = assignedCount.get(g.id) ?? 0;
+          if (have < need) umpireShortfallCount++;
+        }
+      }
+    }
+  }
+
   const divisionNames: Record<string, string> = {};
   for (const d of allDivisions) divisionNames[d.id] = d.name;
 
@@ -247,6 +282,21 @@ export default async function LeaguePage({ params }: { params: { id: string } })
             </p>
             <p className="mt-0.5 text-xs text-red-600">
               Two or more games are assigned to the same field at overlapping times. Click the Conflicts card to review and fix.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Umpire shortfall alert */}
+      {umpireShortfallCount > 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5">
+          <UserCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+          <div>
+            <p className="text-sm font-semibold text-amber-800">
+              Umpire shortfall — {umpireShortfallCount} game{umpireShortfallCount !== 1 ? "s" : ""} still need umpires assigned
+            </p>
+            <p className="mt-0.5 text-xs text-amber-700">
+              Use Auto-assign umpires on each division, or fill slots manually from the schedule.
             </p>
           </div>
         </div>

@@ -682,6 +682,45 @@ export type Database = {
           },
         ]
       }
+      game_umpires: {
+        Row: {
+          created_at: string
+          game_id: string
+          id: string
+          role: string
+          umpire_id: string
+        }
+        Insert: {
+          created_at?: string
+          game_id: string
+          id?: string
+          role: string
+          umpire_id: string
+        }
+        Update: {
+          created_at?: string
+          game_id?: string
+          id?: string
+          role?: string
+          umpire_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_umpires_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_umpires_umpire_id_fkey"
+            columns: ["umpire_id"]
+            isOneToOne: false
+            referencedRelation: "umpires"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       venues: {
         Row: {
           address: string | null
@@ -881,4 +920,5 @@ export type Practice     = Database["public"]["Tables"]["practices"]["Row"];
 export type Playoff      = Database["public"]["Tables"]["playoffs"]["Row"];
 export type PlayoffGame  = Database["public"]["Tables"]["playoff_games"]["Row"];
 export type Umpire       = Database["public"]["Tables"]["umpires"]["Row"];
+export type GameUmpire   = Database["public"]["Tables"]["game_umpires"]["Row"];
 export type PracticeSlot = Database["public"]["Tables"]["team_practice_slots"]["Row"];
