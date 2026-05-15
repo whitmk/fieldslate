@@ -244,7 +244,7 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
         </h3>
         <div className="flex items-center gap-3 text-xs text-gray-500">
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-[#22C55E]" />
+            <span className="h-2 w-2 rounded-full bg-orange-500" />
             Games
           </span>
           <span className="inline-flex items-center gap-1.5">
@@ -338,9 +338,32 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
               className="z-40 w-72 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg"
             >
               <div className="border-b border-gray-100 px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                  {pill.kind === "game" ? "Game" : "Practice"}
-                  {pill.data.status === "cancelled" && " · Cancelled"}
+                <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider">
+                  <span
+                    className={`rounded px-1.5 py-0.5 ${
+                      pill.kind === "game"
+                        ? "bg-orange-100 text-orange-700"
+                        : "bg-indigo-100 text-indigo-500"
+                    }`}
+                  >
+                    {pill.kind === "game" ? "Game" : "Practice"}
+                  </span>
+                  {pill.data.status === "cancelled" && (
+                    <span
+                      className={`rounded px-1.5 py-0.5 ${
+                        pill.kind === "game"
+                          ? "bg-yellow-100 text-yellow-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {pill.kind === "game" ? "Rained out" : "Cancelled"}
+                    </span>
+                  )}
+                  {pill.data.status === "scheduled" && (
+                    <span className="rounded bg-green-100 px-1.5 py-0.5 text-green-700">
+                      Scheduled
+                    </span>
+                  )}
                 </p>
                 <p className="mt-1 text-sm font-semibold text-[#0C1F3F]">
                   {pill.kind === "game"
@@ -514,7 +537,7 @@ function PillButton({ pill, muted, loading, size = "sm", onClick }: PillButtonPr
     pill.kind === "game"
       ? dim
         ? "bg-gray-100 text-gray-400"
-        : "bg-[#22C55E]/15 text-[#0C1F3F] hover:bg-[#22C55E]/25"
+        : "bg-orange-100 text-orange-700 hover:bg-orange-200"
       : dim
       ? "bg-gray-100 text-gray-400"
       : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100";

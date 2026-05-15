@@ -56,10 +56,12 @@ interface Props {
 }
 
 const gameStatusVariants: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
-  scheduled: "info",
-  in_progress: "warning",
-  completed: "success",
-  cancelled: "danger",
+  scheduled: "success",
+  in_progress: "info",
+  completed: "default",
+  // Cancelled games on FieldSlate are always rainouts (the only way to cancel
+  // a game through the UI), so amber + a "Rained out" label.
+  cancelled: "warning",
   postponed: "default",
 };
 
@@ -67,6 +69,11 @@ const practiceStatusVariants: Record<string, "default" | "success" | "danger"> =
   scheduled: "success",
   cancelled: "danger",
 };
+
+function gameStatusLabel(status: string) {
+  if (status === "cancelled") return "Rained out";
+  return status.replace("_", " ");
+}
 
 type CombinedItem =
   | { kind: "game"; sortKey: string; data: ScheduleGame }
@@ -411,7 +418,7 @@ function GameRowCells({
       </td>
       {showType && (
         <td className="py-3">
-          <span className="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+          <span className="inline-flex items-center rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-orange-700">
             Game
           </span>
         </td>
@@ -423,7 +430,7 @@ function GameRowCells({
       <td className="py-3 text-gray-600">{game.venue?.name ?? "—"}</td>
       <td className="py-3">
         <Badge variant={gameStatusVariants[game.status] ?? "default"}>
-          {game.status.replace("_", " ")}
+          {gameStatusLabel(game.status)}
         </Badge>
       </td>
       <td className="relative py-3 text-right">
