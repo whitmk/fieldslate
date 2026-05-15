@@ -29,6 +29,12 @@ export type PracticeSlotEntry = {
   venue_id?: string;
 };
 
+export type InterleagueGameEntry = {
+  interleague_org_id: string;
+  org_name: string;
+  game_count: number;
+};
+
 export type TeamEntry = {
   name: string;
   has_coach_conflict: boolean;
@@ -71,7 +77,10 @@ export type WizardData = {
   include_playoffs: boolean;
   auto_rotate: boolean;
   track_standings: boolean;
-  // Step 6 – Coaches
+  // Step 6 – Interleague
+  plays_interleague: boolean;
+  interleague_games: InterleagueGameEntry[];
+  // Step 7 – Coaches
   teams: TeamEntry[];
 };
 
@@ -108,5 +117,7 @@ export const DEFAULT_WIZARD_DATA: WizardData = {
   include_playoffs: true,
   auto_rotate: true,
   track_standings: true,
+  plays_interleague: false,
+  interleague_games: [],
   teams: [],
 };

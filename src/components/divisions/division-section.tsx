@@ -18,7 +18,7 @@ import type { DivisionStat } from "@/app/(dashboard)/dashboard/leagues/[id]/page
 import {
   DEFAULT_WIZARD_DATA, type WizardData, type PlayingDay,
   type ScheduleFormat, type TeamEntry, type DayWindowMap,
-  type PracticeSlotEntry, type VenueAssignment,
+  type PracticeSlotEntry, type VenueAssignment, type InterleagueGameEntry,
 } from "./wizard-types";
 import type { PracticeSlot } from "@/types/database";
 
@@ -29,6 +29,7 @@ function divisionToWizardData(
   venueAssignments: VenueAssignment[],
   practiceSlots: PracticeSlot[] = [],
   dbTeams: DbTeam[] = [],
+  interleagueGames: InterleagueGameEntry[] = [],
 ): WizardData {
   const s = (div.settings ?? {}) as Record<string, unknown>;
   const asNum = (v: unknown, fb: number) => (typeof v === "number" ? v : fb);
@@ -96,6 +97,8 @@ function divisionToWizardData(
     include_playoffs: asBool(s.include_playoffs, DEFAULT_WIZARD_DATA.include_playoffs),
     auto_rotate: asBool(s.auto_rotate, DEFAULT_WIZARD_DATA.auto_rotate),
     track_standings: asBool(s.track_standings, DEFAULT_WIZARD_DATA.track_standings),
+    plays_interleague: div.plays_interleague ?? false,
+    interleague_games: interleagueGames,
     teams: (() => {
       const base: TeamEntry[] = Array.isArray(s.teams) ? (s.teams as TeamEntry[]) : [];
       if (practiceSlots.length === 0) return base;
@@ -243,10 +246,14 @@ export function DivisionSection({
   async function handleEditClick(div: Division, e: React.MouseEvent) {
     e.stopPropagation();
     const supabase = createClient();
-    const [{ data: dvRows }, { data: slotRows }, { data: teamRows }] = await Promise.all([
+    const [{ data: dvRows }, { data: slotRows }, { data: teamRows }, { data: igRows }] = await Promise.all([
       supabase.from("division_venues").select("venue_id, allow_games, allow_practices").eq("division_id", div.id),
       supabase.from("team_practice_slots").select("*").eq("division_id", div.id),
       supabase.from("teams").select("id, name").eq("division_id", div.id),
+      supabase
+        .from("division_interleague_games")
+        .select("interleague_org_id, game_count, interleague_orgs(name)")
+        .eq("division_id", div.id),
     ]);
     const venueAssignments: VenueAssignment[] = (dvRows ?? []).map(
       (r: { venue_id: string; allow_games: boolean; allow_practices: boolean }) => ({
@@ -255,12 +262,20 @@ export function DivisionSection({
         allow_practices: r.allow_practices,
       }),
     );
+    const interleagueGames: InterleagueGameEntry[] = (igRows ?? []).map(
+      (r: { interleague_org_id: string; game_count: number; interleague_orgs: { name: string } | null }) => ({
+        interleague_org_id: r.interleague_org_id,
+        org_name: r.interleague_orgs?.name ?? "",
+        game_count: r.game_count,
+      }),
+    );
     setEditInitialData(
       divisionToWizardData(
         div,
         venueAssignments,
         (slotRows ?? []) as PracticeSlot[],
         (teamRows ?? []) as DbTeam[],
+        interleagueGames,
       ),
     );
     setEditingDiv(div);

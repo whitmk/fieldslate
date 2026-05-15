@@ -166,6 +166,7 @@ export function StepReview({
           activities_per_week: data.activities_per_week,
           umpires_per_game: data.umpires_per_game,
           umpire_roles: data.umpire_roles,
+          plays_interleague: data.plays_interleague,
         } as never)
         .eq("id", divisionId);
 
@@ -200,6 +201,7 @@ export function StepReview({
           activities_per_week: data.activities_per_week,
           umpires_per_game: data.umpires_per_game,
           umpire_roles: data.umpire_roles,
+          plays_interleague: data.plays_interleague,
         } as never])
         .select("id")
         .single();
@@ -303,6 +305,19 @@ export function StepReview({
           .from("team_practice_slots")
           .insert(slotsToInsert as never[]);
       }
+    }
+
+    // Sync interleague game counts — always wipe+replace so removals are handled
+    await supabase.from("division_interleague_games").delete().eq("division_id", divId);
+    const nonZeroGames = data.interleague_games.filter((g) => g.game_count > 0);
+    if (nonZeroGames.length > 0) {
+      await supabase.from("division_interleague_games").insert(
+        nonZeroGames.map((g) => ({
+          division_id: divId,
+          interleague_org_id: g.interleague_org_id,
+          game_count: g.game_count,
+        })) as never[]
+      );
     }
 
     return { divId };
@@ -811,7 +826,31 @@ export function StepReview({
         <Row label="Track standings" value={data.track_standings ? "Yes" : "No"} />
       </Section>
 
-      <Section title="Coaches" step={6} onEdit={onEdit}>
+      {data.plays_interleague && (
+        <Section title="Interleague" step={6} onEdit={onEdit}>
+          {data.interleague_games.filter((g) => g.game_count > 0).length === 0 ? (
+            <Row label="Games configured" value="None" />
+          ) : (
+            <>
+              {data.interleague_games
+                .filter((g) => g.game_count > 0)
+                .map((g) => (
+                  <Row
+                    key={g.interleague_org_id}
+                    label={g.org_name}
+                    value={`${g.game_count} game${g.game_count !== 1 ? "s" : ""}`}
+                  />
+                ))}
+              <Row
+                label="Total"
+                value={`${data.interleague_games.reduce((s, g) => s + g.game_count, 0)} games`}
+              />
+            </>
+          )}
+        </Section>
+      )}
+
+      <Section title="Coaches" step={7} onEdit={onEdit}>
         <Row label="Coach conflicts" value={conflictCount > 0 ? `${conflictCount} flagged` : "None"} />
       </Section>
 

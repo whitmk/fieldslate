@@ -8,6 +8,7 @@ import { StepPracticeSchedule } from "./steps/step-practice-schedule";
 import { StepFields } from "./steps/step-fields";
 import { StepUmpires } from "./steps/step-umpires";
 import { StepFormat } from "./steps/step-format";
+import { StepInterleague } from "./steps/step-interleague";
 import { StepCoaches } from "./steps/step-coaches";
 import { StepReview } from "./steps/step-review";
 import { DEFAULT_WIZARD_DATA, type WizardData } from "./wizard-types";
@@ -20,6 +21,7 @@ const STEPS = [
   { label: "Fields" },
   { label: "Umpires" },
   { label: "Format" },
+  { label: "Interleague" },
   { label: "Coaches" },
   { label: "Review" },
 ];
@@ -106,6 +108,7 @@ export function DivisionWizard({ leagueId, leagueName, leagueStartDate, leagueEn
     <StepFields key="fields" data={data} update={update} leagueId={leagueId} />,
     <StepUmpires key="umpires" data={data} update={update} />,
     <StepFormat key="format" data={data} update={update} />,
+    <StepInterleague key="interleague" data={data} update={update} />,
     <StepCoaches key="coaches" data={data} update={update} leagueId={leagueId} />,
     <StepReview
       key="review"
