@@ -189,9 +189,4 @@ body {
     visibility: hidden !important;
   }
 
-  /* Page-break separator for per-team pages in bulk print */
-  .snack-print-team-page + .snack-print-team-page {
-    page-break-before: always;
-    break-before: page;
-  }
 }
