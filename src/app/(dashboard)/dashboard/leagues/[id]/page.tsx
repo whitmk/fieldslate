@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, UserCheck } from "lucide-react";
+import { LeaguePaySettings } from "@/components/umpires/league-pay-settings";
 import type { League } from "@/types/database";
 import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
@@ -54,6 +55,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     { data: allDivVenuesRaw },
     { data: blackoutDatesRaw },
     { data: allPracticesRaw },
+    { data: roleRatesRaw },
   ] = await Promise.all([
     supabase.from("divisions").select("*").eq("league_id", league.id).order("created_at", { ascending: true }),
     supabase.from("teams").select("id, division_id").eq("league_id", league.id),
@@ -67,6 +69,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     supabase.from("division_venues").select("division_id, venue_id"),
     supabase.from("blackout_dates").select("date, label").eq("league_id", league.id),
     supabase.from("practices").select("division_id").eq("league_id", league.id).eq("status", "scheduled"),
+    supabase.from("umpire_role_rates").select("role, rate").eq("season_id", league.id),
   ]);
 
   const allDivisions = (allDivisionsRaw ?? []) as import("@/types/database").Division[];
@@ -232,6 +235,22 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     }
   }
 
+  // Collect all unique umpire roles across the season's divisions
+  const allRolesSet = new Set<string>();
+  for (const div of allDivisions) {
+    const roles = div.umpire_roles;
+    if (Array.isArray(roles)) {
+      for (const r of roles) {
+        if (typeof r === "string" && r) allRolesSet.add(r);
+      }
+    }
+  }
+  const availableRoles = Array.from(allRolesSet);
+  const initialRoleRates = ((roleRatesRaw ?? []) as { role: string; rate: number }[]).map((r) => ({
+    role: r.role,
+    rate: r.rate,
+  }));
+
   const divisionNames: Record<string, string> = {};
   for (const d of allDivisions) divisionNames[d.id] = d.name;
 
@@ -340,6 +359,18 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       <BlackoutDatesPanel
         leagueId={league.id}
         initialAffectedGames={blackoutAffectedGames}
+      />
+
+      <LeaguePaySettings
+        leagueId={league.id}
+        initialEnabled={(league as unknown as { pay_tracking_enabled: boolean }).pay_tracking_enabled ?? false}
+        initialMode={
+          ((league as unknown as { pay_rate_mode?: string }).pay_rate_mode === "per_role"
+            ? "per_role"
+            : "per_umpire") as "per_umpire" | "per_role"
+        }
+        availableRoles={availableRoles}
+        initialRoleRates={initialRoleRates}
       />
 
       <ActivityLogPanel leagueId={league.id} />

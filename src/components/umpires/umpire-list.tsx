@@ -12,19 +12,33 @@ export type UmpireRow = {
   name: string;
   designation: string;
   season_id: string;
+  pay_rate: number | null;
   season: { name: string } | null;
+};
+
+export type SeasonPaySettings = {
+  id: string;
+  pay_tracking_enabled: boolean;
+  pay_rate_mode: "per_umpire" | "per_role";
 };
 
 interface Props {
   umpires: UmpireRow[];
   showSeasonColumn: boolean;
+  seasonPaySettings: SeasonPaySettings[];
 }
 
-export function UmpireList({ umpires, showSeasonColumn }: Props) {
+function getPaySettings(seasonId: string, settings: SeasonPaySettings[]): SeasonPaySettings | null {
+  return settings.find((s) => s.id === seasonId) ?? null;
+}
+
+export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState<UmpireRow | null>(null);
   const [deleting, setDeleting] = useState<UmpireRow | null>(null);
   const [pending, setPending] = useState<string | null>(null);
+
+  const anyPayTracking = seasonPaySettings.some((s) => s.pay_tracking_enabled);
 
   async function handleDelete(umpire: UmpireRow) {
     setPending(umpire.id);
@@ -32,8 +46,6 @@ export function UmpireList({ umpires, showSeasonColumn }: Props) {
     const { error } = await supabase.from("umpires").delete().eq("id", umpire.id);
     setPending(null);
     if (error) {
-      // Surface the error inline on the row by keeping the dialog open;
-      // a simple alert is acceptable here since this is admin-only UI.
       alert(`Failed to delete umpire: ${error.message}`);
       return;
     }
@@ -56,54 +68,76 @@ export function UmpireList({ umpires, showSeasonColumn }: Props) {
               {showSeasonColumn && (
                 <th className="pb-3 font-medium text-gray-500">Season</th>
               )}
+              {anyPayTracking && (
+                <th className="pb-3 font-medium text-gray-500">Pay rate</th>
+              )}
               <th className="pb-3" />
             </tr>
           </thead>
           <tbody>
-            {umpires.map((u) => (
-              <tr key={u.id} className="border-b border-gray-50 last:border-0">
-                <td className="py-3 font-medium text-gray-900">{u.name}</td>
-                <td className="py-3">
-                  <Badge variant={u.designation === "adult" ? "info" : "success"}>
-                    {u.designation === "adult" ? "Adult" : "Youth"}
-                  </Badge>
-                </td>
-                {showSeasonColumn && (
-                  <td className="py-3 text-gray-600">{u.season?.name ?? "—"}</td>
-                )}
-                <td className="py-3 text-right">
-                  <div className="inline-flex items-center gap-1">
-                    <Link
-                      href={`/dashboard/umpires/${u.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
-                    >
-                      <CalendarDays className="h-3 w-3" />
-                      View schedule
-                    </Link>
-                    <button
-                      onClick={() => setEditing(u)}
-                      disabled={pending === u.id}
-                      aria-label={`Edit ${u.name}`}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-[#0C1F3F] disabled:opacity-50"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setDeleting(u)}
-                      disabled={pending === u.id}
-                      aria-label={`Delete ${u.name}`}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
-                    >
-                      {pending === u.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {umpires.map((u) => {
+              const ps = getPaySettings(u.season_id, seasonPaySettings);
+              const showPay = ps?.pay_tracking_enabled ?? false;
+              return (
+                <tr key={u.id} className="border-b border-gray-50 last:border-0">
+                  <td className="py-3 font-medium text-gray-900">{u.name}</td>
+                  <td className="py-3">
+                    <Badge variant={u.designation === "adult" ? "info" : "success"}>
+                      {u.designation === "adult" ? "Adult" : "Youth"}
+                    </Badge>
+                  </td>
+                  {showSeasonColumn && (
+                    <td className="py-3 text-gray-600">{u.season?.name ?? "—"}</td>
+                  )}
+                  {anyPayTracking && (
+                    <td className="py-3 text-gray-600">
+                      {!showPay ? (
+                        <span className="text-gray-300">—</span>
+                      ) : ps?.pay_rate_mode === "per_role" ? (
+                        <span className="text-xs text-gray-400 italic">Per role</span>
+                      ) : u.pay_rate != null ? (
+                        <span className="font-medium tabular-nums text-gray-800">
+                          ${u.pay_rate.toFixed(2)}/game
+                        </span>
                       ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <span className="text-xs text-amber-600">Not set</span>
                       )}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                    </td>
+                  )}
+                  <td className="py-3 text-right">
+                    <div className="inline-flex items-center gap-1">
+                      <Link
+                        href={`/dashboard/umpires/${u.id}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
+                      >
+                        <CalendarDays className="h-3 w-3" />
+                        View schedule
+                      </Link>
+                      <button
+                        onClick={() => setEditing(u)}
+                        disabled={pending === u.id}
+                        aria-label={`Edit ${u.name}`}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-[#0C1F3F] disabled:opacity-50"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setDeleting(u)}
+                        disabled={pending === u.id}
+                        aria-label={`Delete ${u.name}`}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                      >
+                        {pending === u.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -111,6 +145,7 @@ export function UmpireList({ umpires, showSeasonColumn }: Props) {
       {editing && (
         <EditUmpireModal
           umpire={editing}
+          paySettings={getPaySettings(editing.season_id, seasonPaySettings)}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -135,10 +170,12 @@ export function UmpireList({ umpires, showSeasonColumn }: Props) {
 
 function EditUmpireModal({
   umpire,
+  paySettings,
   onClose,
   onSaved,
 }: {
   umpire: UmpireRow;
+  paySettings: SeasonPaySettings | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -146,8 +183,14 @@ function EditUmpireModal({
   const [designation, setDesignation] = useState<"youth" | "adult">(
     umpire.designation === "adult" ? "adult" : "youth",
   );
+  const [payRate, setPayRate] = useState<string>(
+    umpire.pay_rate != null ? String(umpire.pay_rate) : "",
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const showPayRate =
+    paySettings?.pay_tracking_enabled && paySettings?.pay_rate_mode === "per_umpire";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -155,9 +198,13 @@ function EditUmpireModal({
     setSaving(true);
     setError("");
     const supabase = createClient();
+    const updates: Record<string, unknown> = { name: name.trim(), designation };
+    if (showPayRate) {
+      updates.pay_rate = payRate !== "" ? parseFloat(payRate) || null : null;
+    }
     const { error: updateError } = await supabase
       .from("umpires")
-      .update({ name: name.trim(), designation } as never)
+      .update(updates as never)
       .eq("id", umpire.id);
     setSaving(false);
     if (updateError) {
@@ -219,6 +266,25 @@ function EditUmpireModal({
               ))}
             </div>
           </div>
+          {showPayRate && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-gray-700">
+                Pay rate <span className="font-normal text-gray-400">($ per game)</span>
+              </label>
+              <div className="flex items-center gap-1 rounded-lg border border-gray-200 px-3">
+                <span className="text-sm text-gray-400">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={payRate}
+                  onChange={(e) => setPayRate(e.target.value)}
+                  placeholder="0.00"
+                  className="h-11 flex-1 bg-transparent text-sm text-gray-900 focus:outline-none"
+                />
+              </div>
+            </div>
+          )}
           {error && (
             <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2.5 text-sm text-red-600">
               {error}

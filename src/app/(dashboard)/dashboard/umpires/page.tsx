@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserCheck, Printer } from "lucide-react";
 import { AddUmpireButton } from "@/components/umpires/add-umpire-button";
-import { UmpireList, type UmpireRow } from "@/components/umpires/umpire-list";
+import { UmpireList, type UmpireRow, type SeasonPaySettings } from "@/components/umpires/umpire-list";
+import { PayReportButton } from "@/components/umpires/pay-report-button";
 
 export default async function UmpiresPage() {
   const supabase = createClient();
@@ -14,18 +15,35 @@ export default async function UmpiresPage() {
   const [{ data: rawUmpires }, { data: rawSeasons }] = await Promise.all([
     supabase
       .from("umpires")
-      .select("id, name, designation, season_id, season:leagues(name)")
+      .select("id, name, designation, season_id, pay_rate, season:leagues(name)")
       .order("name", { ascending: true }),
     supabase
       .from("leagues")
-      .select("id, name")
+      .select("id, name, pay_tracking_enabled, pay_rate_mode")
       .eq("owner_id", user!.id)
       .order("name", { ascending: true }),
   ]);
 
   const umpires = (rawUmpires as unknown as UmpireRow[] | null) ?? [];
-  const seasons = (rawSeasons ?? []) as { id: string; name: string }[];
+  const seasons = (rawSeasons ?? []) as {
+    id: string;
+    name: string;
+    pay_tracking_enabled: boolean;
+    pay_rate_mode: string;
+  }[];
+
   const showSeasonColumn = seasons.length > 1;
+
+  const seasonPaySettings: SeasonPaySettings[] = seasons.map((s) => ({
+    id: s.id,
+    pay_tracking_enabled: s.pay_tracking_enabled ?? false,
+    pay_rate_mode: (s.pay_rate_mode === "per_role" ? "per_role" : "per_umpire") as
+      | "per_umpire"
+      | "per_role",
+  }));
+
+  const anyPayTracking = seasonPaySettings.some((s) => s.pay_tracking_enabled);
+  const simpleSeasons = seasons.map((s) => ({ id: s.id, name: s.name }));
 
   return (
     <div className="flex flex-col gap-6">
@@ -37,6 +55,9 @@ export default async function UmpiresPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {anyPayTracking && umpires.length > 0 && (
+            <PayReportButton seasonPaySettings={seasonPaySettings} />
+          )}
           {umpires.length > 0 && (
             <Link
               href="/dashboard/umpires/print-all"
@@ -46,7 +67,7 @@ export default async function UmpiresPage() {
               Print all schedules
             </Link>
           )}
-          <AddUmpireButton seasons={seasons} />
+          <AddUmpireButton seasons={simpleSeasons} />
         </div>
       </div>
 
@@ -64,7 +85,11 @@ export default async function UmpiresPage() {
               </p>
             </div>
           ) : (
-            <UmpireList umpires={umpires} showSeasonColumn={showSeasonColumn} />
+            <UmpireList
+              umpires={umpires}
+              showSeasonColumn={showSeasonColumn}
+              seasonPaySettings={seasonPaySettings}
+            />
           )}
         </CardContent>
       </Card>

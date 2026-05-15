@@ -277,6 +277,8 @@ export type Database = {
           id: string
           name: string
           owner_id: string
+          pay_rate_mode: string
+          pay_tracking_enabled: boolean
           schedule_settings: Json | null
           season: string
           sport: string
@@ -290,6 +292,8 @@ export type Database = {
           id?: string
           name: string
           owner_id: string
+          pay_rate_mode?: string
+          pay_tracking_enabled?: boolean
           schedule_settings?: Json | null
           season: string
           sport: string
@@ -303,6 +307,8 @@ export type Database = {
           id?: string
           name?: string
           owner_id?: string
+          pay_rate_mode?: string
+          pay_tracking_enabled?: boolean
           schedule_settings?: Json | null
           season?: string
           sport?: string
@@ -650,12 +656,140 @@ export type Database = {
           },
         ]
       }
+      snack_shack_settings: {
+        Row: {
+          created_at: string
+          days_of_week: Json
+          end_date: string
+          home_venue_ids: Json
+          id: string
+          scheduling_preference: string
+          season_id: string
+          start_date: string
+          time_blocks_by_day: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          days_of_week?: Json
+          end_date: string
+          home_venue_ids?: Json
+          id?: string
+          scheduling_preference?: string
+          season_id: string
+          start_date: string
+          time_blocks_by_day?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          days_of_week?: Json
+          end_date?: string
+          home_venue_ids?: Json
+          id?: string
+          scheduling_preference?: string
+          season_id?: string
+          start_date?: string
+          time_blocks_by_day?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "snack_shack_settings_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: true
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      snack_shack_blocks: {
+        Row: {
+          assigned_team_id: string | null
+          created_at: string
+          date: string
+          end_time: string
+          id: string
+          is_recurring: boolean
+          snack_shack_id: string
+          start_time: string
+        }
+        Insert: {
+          assigned_team_id?: string | null
+          created_at?: string
+          date: string
+          end_time: string
+          id?: string
+          is_recurring?: boolean
+          snack_shack_id: string
+          start_time: string
+        }
+        Update: {
+          assigned_team_id?: string | null
+          created_at?: string
+          date?: string
+          end_time?: string
+          id?: string
+          is_recurring?: boolean
+          snack_shack_id?: string
+          start_time?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "snack_shack_blocks_snack_shack_id_fkey"
+            columns: ["snack_shack_id"]
+            isOneToOne: false
+            referencedRelation: "snack_shack_settings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "snack_shack_blocks_assigned_team_id_fkey"
+            columns: ["assigned_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      umpire_role_rates: {
+        Row: {
+          created_at: string
+          id: string
+          rate: number
+          role: string
+          season_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          rate?: number
+          role: string
+          season_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          rate?: number
+          role?: string
+          season_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "umpire_role_rates_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       umpires: {
         Row: {
           created_at: string
           designation: string
           id: string
           name: string
+          pay_rate: number | null
           season_id: string
         }
         Insert: {
@@ -663,6 +797,7 @@ export type Database = {
           designation: string
           id?: string
           name: string
+          pay_rate?: number | null
           season_id: string
         }
         Update: {
@@ -670,6 +805,7 @@ export type Database = {
           designation?: string
           id?: string
           name?: string
+          pay_rate?: number | null
           season_id?: string
         }
         Relationships: [
@@ -687,6 +823,7 @@ export type Database = {
           created_at: string
           game_id: string
           id: string
+          paid: boolean
           role: string
           umpire_id: string
         }
@@ -694,6 +831,7 @@ export type Database = {
           created_at?: string
           game_id: string
           id?: string
+          paid?: boolean
           role: string
           umpire_id: string
         }
@@ -701,6 +839,7 @@ export type Database = {
           created_at?: string
           game_id?: string
           id?: string
+          paid?: boolean
           role?: string
           umpire_id?: string
         }
@@ -919,6 +1058,9 @@ export type ActivityLog  = Database["public"]["Tables"]["activity_log"]["Row"];
 export type Practice     = Database["public"]["Tables"]["practices"]["Row"];
 export type Playoff      = Database["public"]["Tables"]["playoffs"]["Row"];
 export type PlayoffGame  = Database["public"]["Tables"]["playoff_games"]["Row"];
-export type Umpire       = Database["public"]["Tables"]["umpires"]["Row"];
-export type GameUmpire   = Database["public"]["Tables"]["game_umpires"]["Row"];
-export type PracticeSlot = Database["public"]["Tables"]["team_practice_slots"]["Row"];
+export type Umpire         = Database["public"]["Tables"]["umpires"]["Row"];
+export type GameUmpire     = Database["public"]["Tables"]["game_umpires"]["Row"];
+export type UmpireRoleRate    = Database["public"]["Tables"]["umpire_role_rates"]["Row"];
+export type SnackShackSettings = Database["public"]["Tables"]["snack_shack_settings"]["Row"];
+export type SnackShackBlock    = Database["public"]["Tables"]["snack_shack_blocks"]["Row"];
+export type PracticeSlot   = Database["public"]["Tables"]["team_practice_slots"]["Row"];

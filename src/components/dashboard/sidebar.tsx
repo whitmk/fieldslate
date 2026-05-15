@@ -17,6 +17,7 @@ import {
   Settings,
   LogOut,
   UserCheck,
+  ShoppingBag,
 } from "lucide-react";
 
 const navItems = [
@@ -30,6 +31,7 @@ const navItems = [
   { href: "/dashboard/umpires", label: "Umpires", icon: UserCheck },
   { href: "/dashboard/interleague", label: "Cross-season", icon: ArrowLeftRight },
   { href: "/dashboard/playoffs", label: "Playoffs", icon: Medal },
+  { href: "/dashboard/snack-shack", label: "Snack Shack", icon: ShoppingBag },
   { href: "/dashboard/export", label: "Export", icon: FileDown },
 ];
 
