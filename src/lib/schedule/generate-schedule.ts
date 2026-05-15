@@ -368,7 +368,7 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
 
   const { data: div, error: divErr } = await supabase
     .from("divisions")
-    .select("id, league_id, name, start_date, end_date, settings")
+    .select("id, league_id, name, start_date, end_date, settings, intra_division_games_per_team")
     .eq("id", divisionId)
     .single();
 
@@ -380,6 +380,10 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
   }
 
   const settings = div.settings as unknown as DivisionSettings;
+  // Prefer the dedicated column; fall back to the settings JSON for old divisions
+  const intraDivisionGamesPerTeam =
+    (div as unknown as { intra_division_games_per_team: number | null }).intra_division_games_per_team
+    ?? settings.games_per_team;
 
   if (!settings.playing_days?.length) {
     return { success: false, error: "No playing days configured for this division." };
@@ -482,7 +486,7 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
 
   const teamIds = teams.map((t) => t.id);
   const matchups = shuffle(
-    buildMatchups(teamIds, settings.games_per_team, settings.auto_rotate),
+    buildMatchups(teamIds, intraDivisionGamesPerTeam, settings.auto_rotate),
   );
 
   if (!matchups.length) {
@@ -685,10 +689,10 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
 
   // ── 1. Load division ─────────────────────────────────────────────────────────
 
-  type FinishDivRow = { id: string; league_id: string; name: string; start_date: string; end_date: string; settings: unknown };
+  type FinishDivRow = { id: string; league_id: string; name: string; start_date: string; end_date: string; settings: unknown; intra_division_games_per_team: number | null };
   const { data: divRaw, error: divErr } = await supabase
     .from("divisions")
-    .select("id, league_id, name, start_date, end_date, settings")
+    .select("id, league_id, name, start_date, end_date, settings, intra_division_games_per_team")
     .eq("id", divisionId)
     .single();
 
@@ -698,6 +702,7 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
 
   const settings = div.settings as unknown as DivisionSettings;
   if (!settings.playing_days?.length) return { success: false, error: "No playing days configured for this division." };
+  const intraDivisionGamesPerTeamFinish = div.intra_division_games_per_team ?? settings.games_per_team;
 
   // ── 2. Load teams ────────────────────────────────────────────────────────────
 
@@ -788,7 +793,7 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
 
   // ── 7. Compute per-team deficit and build only the needed matchups ────────────
 
-  const gamesPerTeam = settings.games_per_team;
+  const gamesPerTeam = intraDivisionGamesPerTeamFinish;
   const isOdd = teamIds.length % 2 === 1;
   // Odd-team divisions tolerate one extra game per team due to bye rotation
   const maxPerTeamFinish = gamesPerTeam + (isOdd ? 1 : 0);

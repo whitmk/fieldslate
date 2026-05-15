@@ -167,6 +167,7 @@ export function StepReview({
           umpires_per_game: data.umpires_per_game,
           umpire_roles: data.umpire_roles,
           plays_interleague: data.plays_interleague,
+          intra_division_games_per_team: data.games_per_team,
         } as never)
         .eq("id", divisionId);
 
@@ -202,6 +203,7 @@ export function StepReview({
           umpires_per_game: data.umpires_per_game,
           umpire_roles: data.umpire_roles,
           plays_interleague: data.plays_interleague,
+          intra_division_games_per_team: data.games_per_team,
         } as never])
         .select("id")
         .single();
@@ -737,7 +739,6 @@ export function StepReview({
 
       <Section title="Playing schedule" step={1} onEdit={onEdit}>
         <Row label="Schedule scope" value={data.use_league_schedule ? "Season-wide" : "Per division"} />
-        <Row label="Games per team" value={data.games_per_team} />
         <Row label="Max per week" value={data.max_games_per_week} />
         <Row label="Max per day" value={data.max_games_per_team_per_day} />
         <Row
@@ -820,6 +821,28 @@ export function StepReview({
       </Section>
 
       <Section title="Format" step={5} onEdit={onEdit}>
+        {(() => {
+          const interleagueGames = data.plays_interleague
+            ? data.interleague_games.reduce((s, g) => s + g.game_count, 0)
+            : 0;
+          const totalPerTeam = data.games_per_team + interleagueGames;
+          return (
+            <div className="mb-1 rounded-lg bg-[#0C1F3F]/5 px-3 py-2.5">
+              <p className="text-xs text-gray-500">
+                Each team plays{" "}
+                <span className="font-semibold text-[#0C1F3F]">{data.games_per_team}</span> intra-division game{data.games_per_team !== 1 ? "s" : ""}
+                {data.plays_interleague && interleagueGames > 0 && (
+                  <>
+                    {" "}+{" "}
+                    <span className="font-semibold text-[#0C1F3F]">{interleagueGames}</span> interleague game{interleagueGames !== 1 ? "s" : ""}
+                  </>
+                )}
+                {" "}={" "}
+                <span className="font-semibold text-[#0C1F3F]">{totalPerTeam}</span> total game{totalPerTeam !== 1 ? "s" : ""} per team
+              </p>
+            </div>
+          );
+        })()}
         <Row label="Format" value={FORMAT_LABELS[data.format]} />
         <Row label="Playoffs" value={data.include_playoffs ? "Yes" : "No"} />
         <Row label="Home/away rotation" value={data.auto_rotate ? "Yes" : "No"} />

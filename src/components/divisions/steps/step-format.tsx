@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import type { WizardData, ScheduleFormat } from "../wizard-types";
 
 const FORMATS: {
@@ -28,6 +29,28 @@ const FORMATS: {
 interface Props {
   data: WizardData;
   update: (patch: Partial<WizardData>) => void;
+}
+
+function NumField({
+  label, hint, value, min, max, onChange,
+}: {
+  label: string; hint?: string; value: number; min?: number; max?: number;
+  onChange: (v: number) => void;
+}) {
+  const [display, setDisplay] = useState(String(value));
+  useEffect(() => { setDisplay(String(value)); }, [value]);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-sm font-medium text-gray-700">{label}</label>
+      <input
+        type="number" min={min} max={max} value={display}
+        onChange={(e) => { setDisplay(e.target.value); const n = parseInt(e.target.value, 10); if (!isNaN(n)) onChange(n); }}
+        onBlur={() => setDisplay(String(value))}
+        className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+      />
+      {hint && <p className="text-xs text-gray-400">{hint}</p>}
+    </div>
+  );
 }
 
 function Toggle({
@@ -62,6 +85,11 @@ function Toggle({
 }
 
 export function StepFormat({ data, update }: Props) {
+  const interleagueTotal = data.plays_interleague
+    ? data.interleague_games.reduce((s, g) => s + g.game_count, 0)
+    : 0;
+  const totalPerTeam = data.games_per_team + interleagueTotal;
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -69,6 +97,31 @@ export function StepFormat({ data, update }: Props) {
         <p className="mt-0.5 text-sm text-gray-500">
           Choose how games are structured and what features to enable.
         </p>
+      </div>
+
+      {/* ── Game counts ── */}
+      <div className="flex flex-col gap-3">
+        <NumField
+          label="Intra-division games per team"
+          hint="Games each team plays against other teams within this division."
+          value={data.games_per_team}
+          min={1}
+          max={50}
+          onChange={(v) => update({ games_per_team: v })}
+        />
+
+        {/* Total preview */}
+        <div className="flex items-center justify-between rounded-xl bg-[#0C1F3F]/5 px-4 py-3 text-sm">
+          <span className="text-gray-600">
+            {data.games_per_team} intra-division
+            {data.plays_interleague && interleagueTotal > 0
+              ? ` + ${interleagueTotal} interleague`
+              : ""}
+          </span>
+          <span className="font-bold text-[#0C1F3F]">
+            {totalPerTeam} total per team
+          </span>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3">

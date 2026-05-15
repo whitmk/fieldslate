@@ -193,6 +193,7 @@ export type Database = {
           created_at: string
           end_date: string | null
           id: string
+          intra_division_games_per_team: number | null
           league_id: string
           name: string
           plays_interleague: boolean
@@ -212,6 +213,7 @@ export type Database = {
           created_at?: string
           end_date?: string | null
           id?: string
+          intra_division_games_per_team?: number | null
           league_id: string
           name: string
           plays_interleague?: boolean
@@ -231,6 +233,7 @@ export type Database = {
           created_at?: string
           end_date?: string | null
           id?: string
+          intra_division_games_per_team?: number | null
           league_id?: string
           name?: string
           plays_interleague?: boolean

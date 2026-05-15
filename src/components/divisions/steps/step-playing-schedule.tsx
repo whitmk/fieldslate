@@ -235,26 +235,20 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
         </p>
       </div>
 
-      {/* ── Game count fields ── */}
+      {/* ── Scheduling constraint fields ── */}
       <div className="grid grid-cols-2 gap-4">
-        <NumField
-          label="Games per team"
-          value={data.games_per_team} min={1} max={50}
-          onChange={(v) => update({ games_per_team: v })}
-        />
         <NumField
           label="Max games / team / week"
           value={data.max_games_per_week} min={1} max={7}
           onChange={(v) => update({ max_games_per_week: v })}
         />
+        <NumField
+          label="Max games per team per day"
+          value={data.max_games_per_team_per_day} min={1} max={10}
+          hint="Set higher for tournaments."
+          onChange={(v) => update({ max_games_per_team_per_day: v })}
+        />
       </div>
-
-      <NumField
-        label="Max games per team per day"
-        value={data.max_games_per_team_per_day} min={1} max={10}
-        hint="Set higher for tournaments or playoff days."
-        onChange={(v) => update({ max_games_per_team_per_day: v })}
-      />
 
       <NumField
         label="Activities per week"
