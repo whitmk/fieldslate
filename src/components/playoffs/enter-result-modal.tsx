@@ -28,8 +28,9 @@ export function EnterResultModal({ game, allGames, format, onClose, onSaved }: P
   const isChampionship = CHAMPIONSHIP_ROUNDS.has(game.round);
 
   async function handleSave() {
-    const h = parseInt(homeScore, 10);
-    const a = parseInt(awayScore, 10);
+    // A blank field defaults to 0 so the admin can enter just the winner's score.
+    const h = homeScore.trim() === "" ? 0 : parseInt(homeScore, 10);
+    const a = awayScore.trim() === "" ? 0 : parseInt(awayScore, 10);
     if (isNaN(h) || isNaN(a) || h < 0 || a < 0) {
       setError("Enter valid scores for both teams.");
       return;
