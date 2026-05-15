@@ -392,10 +392,12 @@ export type Database = {
       }
       playoff_games: {
         Row: {
+          away_score: number | null
           away_team_id: string | null
           created_at: string
           division_id: string
           game_number: number
+          home_score: number | null
           home_team_id: string | null
           id: string
           league_id: string
@@ -409,10 +411,12 @@ export type Database = {
           winner_id: string | null
         }
         Insert: {
+          away_score?: number | null
           away_team_id?: string | null
           created_at?: string
           division_id: string
           game_number: number
+          home_score?: number | null
           home_team_id?: string | null
           id?: string
           league_id: string
@@ -426,10 +430,12 @@ export type Database = {
           winner_id?: string | null
         }
         Update: {
+          away_score?: number | null
           away_team_id?: string | null
           created_at?: string
           division_id?: string
           game_number?: number
+          home_score?: number | null
           home_team_id?: string | null
           id?: string
           league_id?: string
