@@ -132,6 +132,7 @@ export function SchedulePracticeModal({
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void loadSlots(); }, []);
 
   async function loadSlots() {
