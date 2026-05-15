@@ -251,7 +251,7 @@ function BracketTree({ rounds }: { rounds: [string, GameWithTeams[]][] }) {
       ))}
 
       {/* Game cards */}
-      {rounds.map(([_round, roundGames], rIdx) =>
+      {rounds.map(([, roundGames], rIdx) =>
         roundGames.map((game, gIdx) => (
           <div
             key={game.id}
