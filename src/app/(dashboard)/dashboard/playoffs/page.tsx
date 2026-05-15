@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Medal, Plus, Pencil, ChevronDown, ChevronUp, Trophy } from "lucide-react";
+import { Medal, Plus, Pencil, ChevronDown, ChevronUp, Trophy, FileDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PlayoffWizard } from "@/components/playoffs/playoff-wizard";
 import { BracketView } from "@/components/playoffs/bracket-view";
+import { PlayoffExportModal } from "@/components/playoffs/playoff-export-modal";
 import {
   DEFAULT_PLAYOFF_DATA,
   type PlayoffWizardData,
@@ -77,6 +78,7 @@ export default function PlayoffsPage() {
   const [wizardLeague, setWizardLeague] = useState<League | null>(null);
   const [editData, setEditData] = useState<PlayoffWizardData | undefined>(undefined);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [exportingPlayoff, setExportingPlayoff] = useState<PlayoffRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -298,6 +300,16 @@ export default function PlayoffsPage() {
                                 )}
                               </button>
                             )}
+                            {hasGames && (
+                              <button
+                                onClick={() => setExportingPlayoff(playoff)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-800"
+                                aria-label="Export bracket"
+                              >
+                                <FileDown className="h-3.5 w-3.5" />
+                                Export
+                              </button>
+                            )}
                             <button
                               onClick={() => openEditWizard(league, playoff)}
                               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-800"
@@ -337,6 +349,16 @@ export default function PlayoffsPage() {
           isEditMode={!!editData}
           onClose={handleWizardClose}
           onComplete={handleWizardComplete}
+        />
+      )}
+
+      {exportingPlayoff && (
+        <PlayoffExportModal
+          playoffId={exportingPlayoff.id}
+          divisionName={exportingPlayoff.division?.name ?? ""}
+          leagueName={leagues.find((l) => l.id === exportingPlayoff.league_id)?.name ?? ""}
+          format={exportingPlayoff.format}
+          onClose={() => setExportingPlayoff(null)}
         />
       )}
     </div>
