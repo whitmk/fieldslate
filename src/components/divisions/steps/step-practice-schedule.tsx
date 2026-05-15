@@ -113,38 +113,6 @@ export function StepPracticeSchedule({ data, update, onSkip }: Props) {
         </p>
       </div>
 
-      {/* Practice dates */}
-      <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4">
-        <div>
-          <p className="text-sm font-semibold text-[#0C1F3F]">Practice dates</p>
-          <p className="mt-0.5 text-xs text-gray-400">Leave blank to use the game season dates.</p>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-              Practice season start
-            </label>
-            <input
-              type="date"
-              value={data.practice_season_start}
-              onChange={(e) => update({ practice_season_start: e.target.value })}
-              className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-              Practice season end
-            </label>
-            <input
-              type="date"
-              value={data.practice_season_end}
-              onChange={(e) => update({ practice_season_end: e.target.value })}
-              className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-            />
-          </div>
-        </div>
-      </div>
-
       {/* Activities-per-week context banner */}
       <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
         <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-400" />

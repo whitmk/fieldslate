@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   CheckCircle2, AlertTriangle, Edit2, Zap, Loader2,
-  ExternalLink, X, Save,
+  ExternalLink, X, Save, CalendarDays, Dumbbell,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -11,6 +11,9 @@ import { logActivity } from "@/lib/activity-log";
 import Link from "next/link";
 import type { WizardData } from "../wizard-types";
 import { generateSchedule, type ScheduleConflict } from "@/lib/schedule/generate-schedule";
+import { generatePractices } from "@/lib/schedule/generate-practices";
+
+type GenerateKind = "games" | "practices" | "all";
 
 const FORMAT_LABELS = {
   round_robin: "Round robin",
@@ -82,9 +85,12 @@ function fmtConflictDate(date: string) {
 // ─── Result types ──────────────────────────────────────────────────────────────
 
 type RegenResult = {
-  gamesCreated: number;
-  unscheduledCount: number;
+  kind: GenerateKind;
+  gamesCreated?: number;
+  unscheduledCount?: number;
   conflicts: ScheduleConflict[];
+  practicesCreated?: number;
+  practicesShortfall?: number;
   savedDivisionId: string;
 };
 
@@ -100,7 +106,8 @@ export function StepReview({
 }: Props) {
   const [savingOnly, setSavingOnly] = useState(false);
   const [savingRegen, setSavingRegen] = useState(false);
-  const [showRegenConfirm, setShowRegenConfirm] = useState(false);
+  const [regenKind, setRegenKind] = useState<GenerateKind | null>(null);
+  const [confirmingKind, setConfirmingKind] = useState<GenerateKind | null>(null);
   const [error, setError] = useState("");
   const [regenResult, setRegenResult] = useState<RegenResult | null>(null);
   const [saveOnlyResult, setSaveOnlyResult] = useState<SaveOnlyResult | null>(null);
@@ -435,44 +442,88 @@ export function StepReview({
     setSaveOnlyResult({ savedDivisionId: divId, warnings });
   }
 
-  // ── "Save & regenerate" — wipes + rebuilds schedule ───────────────────────
+  // ── "Save & generate" — wipes + rebuilds schedule for the chosen kind ─────
 
-  async function handleSaveAndRegen() {
+  async function handleSaveAndGenerate(kind: GenerateKind) {
     setSavingRegen(true);
+    setRegenKind(kind);
     setError("");
-    setShowRegenConfirm(false);
+    setConfirmingKind(null);
 
     const saved = await saveDivisionData();
-    if ("error" in saved) { setError(saved.error); setSavingRegen(false); return; }
-    const { divId } = saved;
-
-    const scheduleResult = await generateSchedule(divId);
-    if (!scheduleResult.success) {
-      setError(`Division saved, but schedule regeneration failed: ${scheduleResult.error}`);
+    if ("error" in saved) {
+      setError(saved.error);
       setSavingRegen(false);
+      setRegenKind(null);
       return;
     }
-    console.log("[logActivity] before call: schedule_generated (step-review)", { leagueId, divId });
-    const _r = await logActivity(leagueId, divId, "schedule_generated",
-      `${data.name} schedule generated — ${scheduleResult.gamesCreated} game${scheduleResult.gamesCreated === 1 ? "" : "s"} scheduled`);
-    console.log("[logActivity] result (step-review):", _r);
+    const { divId } = saved;
+
+    const result: RegenResult = { kind, conflicts: [], savedDivisionId: divId };
+
+    if (kind === "games" || kind === "all") {
+      const gameRes = await generateSchedule(divId);
+      if (!gameRes.success) {
+        setError(`Division saved, but game schedule generation failed: ${gameRes.error}`);
+        setSavingRegen(false);
+        setRegenKind(null);
+        return;
+      }
+      result.gamesCreated = gameRes.gamesCreated;
+      result.unscheduledCount = gameRes.unscheduledCount;
+      result.conflicts = gameRes.conflicts;
+      await logActivity(
+        leagueId,
+        divId,
+        "schedule_generated",
+        `${data.name} schedule generated — ${gameRes.gamesCreated} game${gameRes.gamesCreated === 1 ? "" : "s"} scheduled`,
+      );
+    }
+
+    if (kind === "practices" || kind === "all") {
+      const practiceRes = await generatePractices(divId);
+      if (!practiceRes.success) {
+        setError(`Division saved, but practice generation failed: ${practiceRes.error}`);
+        setSavingRegen(false);
+        setRegenKind(null);
+        return;
+      }
+      result.practicesCreated = practiceRes.practicesCreated;
+      result.practicesShortfall = practiceRes.shortfallCount;
+      await logActivity(
+        leagueId,
+        divId,
+        "practices_generated",
+        `${data.name} practices generated — ${practiceRes.practicesCreated} practice${practiceRes.practicesCreated === 1 ? "" : "s"} scheduled`,
+      );
+    }
 
     router.refresh();
     setSavingRegen(false);
-    setRegenResult({
-      gamesCreated: scheduleResult.gamesCreated,
-      unscheduledCount: scheduleResult.unscheduledCount,
-      conflicts: scheduleResult.conflicts,
-      savedDivisionId: divId,
-    });
+    setRegenKind(null);
+    setRegenResult(result);
   }
 
   // ── Post-regen result panel ────────────────────────────────────────────────
 
   if (regenResult) {
-    const hasUnscheduled = regenResult.unscheduledCount > 0;
+    const hasUnscheduled = (regenResult.unscheduledCount ?? 0) > 0;
     const hasFieldConflicts = regenResult.conflicts.length > 0;
-    const hasIssues = hasUnscheduled || hasFieldConflicts;
+    const hasPracticeShortfall = (regenResult.practicesShortfall ?? 0) > 0;
+    const hasIssues = hasUnscheduled || hasFieldConflicts || hasPracticeShortfall;
+
+    const headerTitle =
+      regenResult.kind === "games"
+        ? hasIssues
+          ? "Game schedule generated with issues"
+          : "Game schedule generated"
+        : regenResult.kind === "practices"
+        ? hasIssues
+          ? "Practice schedule generated with issues"
+          : "Practice schedule generated"
+        : hasIssues
+        ? "Schedules generated with issues"
+        : "Schedules generated";
 
     return (
       <div className="flex flex-col gap-5">
@@ -482,10 +533,20 @@ export function StepReview({
             : <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#22C55E]" />}
           <div className="min-w-0">
             <p className={`font-semibold ${hasIssues ? "text-amber-800" : "text-[#22C55E]"}`}>
-              {hasIssues ? "Schedule regenerated with issues" : "Schedule regenerated"}
+              {headerTitle}
             </p>
             <p className={`mt-0.5 text-sm ${hasIssues ? "text-amber-700" : "text-[#22C55E]/80"}`}>
-              {regenResult.gamesCreated} game{regenResult.gamesCreated !== 1 ? "s" : ""} scheduled
+              {regenResult.gamesCreated !== undefined && (
+                <>
+                  {regenResult.gamesCreated} game{regenResult.gamesCreated !== 1 ? "s" : ""} scheduled
+                </>
+              )}
+              {regenResult.gamesCreated !== undefined && regenResult.practicesCreated !== undefined && " · "}
+              {regenResult.practicesCreated !== undefined && (
+                <>
+                  {regenResult.practicesCreated} practice{regenResult.practicesCreated !== 1 ? "s" : ""} scheduled
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -500,6 +561,22 @@ export function StepReview({
                 </p>
                 <p className="mt-1 text-xs text-amber-700">
                   Not enough slots. Try extending dates, adding venues, or reducing games per team.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {hasPracticeShortfall && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+              <div>
+                <p className="text-sm font-semibold text-amber-800">
+                  {regenResult.practicesShortfall} practice{regenResult.practicesShortfall !== 1 ? "s" : ""} could not be scheduled
+                </p>
+                <p className="mt-1 text-xs text-amber-700">
+                  Not enough practice venue availability. Add more practice slots or reduce activities per week.
                 </p>
               </div>
             </div>
@@ -626,8 +703,16 @@ export function StepReview({
         <Row label="Division name" value={data.name} />
         <Row label="Teams" value={data.team_count} />
         <Row
-          label="Season"
+          label="Game dates"
           value={data.start_date && data.end_date ? `${fmt(data.start_date)} → ${fmt(data.end_date)}` : "—"}
+        />
+        <Row
+          label="Practice dates"
+          value={
+            data.practice_season_start && data.practice_season_end
+              ? `${fmt(data.practice_season_start)} → ${fmt(data.practice_season_end)}`
+              : "Uses game dates"
+          }
         />
       </Section>
 
@@ -665,14 +750,6 @@ export function StepReview({
       </Section>
 
       <Section title="Practice schedule" step={2} onEdit={onEdit}>
-        <Row
-          label="Practice season"
-          value={
-            data.practice_season_start && data.practice_season_end
-              ? `${fmt(data.practice_season_start)} → ${fmt(data.practice_season_end)}`
-              : "Uses game season dates"
-          }
-        />
         {(() => {
           const totalSlots = data.teams.reduce(
             (sum, t) => sum + (t.practice_slots ?? []).filter((s) => s.day).length,
@@ -724,90 +801,95 @@ export function StepReview({
       )}
 
       {/* ── Buttons ── */}
-      {isEditMode ? (
-        <>
-          {/* Primary: save without touching the schedule */}
+      {confirmingKind ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-2.5 mb-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+            <p className="text-sm text-amber-800">
+              {confirmingKind === "games" && "This will delete all existing games and rebuild the game schedule from scratch."}
+              {confirmingKind === "practices" && "This will delete all existing practices and rebuild the practice schedule from scratch."}
+              {confirmingKind === "all" && "This will delete all existing games and practices and rebuild both schedules from scratch."}
+              {" "}Are you sure?
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleSaveAndGenerate(confirmingKind)}
+              disabled={savingRegen}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#22C55E] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-60"
+            >
+              {savingRegen ? (
+                <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
+              ) : (
+                <><Zap className="h-4 w-4" />Confirm &amp; generate</>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingKind(null)}
+              disabled={savingRegen}
+              className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          <button
+            type="button"
+            onClick={() => (isEditMode ? setConfirmingKind("all") : handleSaveAndGenerate("all"))}
+            disabled={isBusy || !canSubmit}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#22C55E] py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {savingRegen && regenKind === "all" ? (
+              <><Loader2 className="h-5 w-5 animate-spin" />Generating all…</>
+            ) : (
+              <><Zap className="h-5 w-5" />Generate all schedules</>
+            )}
+          </button>
+
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => (isEditMode ? setConfirmingKind("games") : handleSaveAndGenerate("games"))}
+              disabled={isBusy || !canSubmit}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#22C55E] py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {savingRegen && regenKind === "games" ? (
+                <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
+              ) : (
+                <><CalendarDays className="h-4 w-4" />Generate game schedule</>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => (isEditMode ? setConfirmingKind("practices") : handleSaveAndGenerate("practices"))}
+              disabled={isBusy || !canSubmit}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#22C55E] py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {savingRegen && regenKind === "practices" ? (
+                <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
+              ) : (
+                <><Dumbbell className="h-4 w-4" />Generate practice schedule</>
+              )}
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={handleSaveOnly}
             disabled={isBusy || !canSubmit}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0C1F3F] py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[#0C1F3F]/80 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 py-3 text-sm font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {savingOnly ? (
-              <><Loader2 className="h-5 w-5 animate-spin" />Saving…</>
+              <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
             ) : (
-              <><Save className="h-5 w-5" />Save changes</>
+              <><Save className="h-4 w-4" />Save (don&apos;t generate)</>
             )}
           </button>
-
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-100" />
-            </div>
-            <div className="relative flex justify-center">
-              <span className="bg-white px-2 text-xs text-gray-400">or</span>
-            </div>
-          </div>
-
-          {/* Secondary: save & regenerate — with inline confirmation */}
-          {showRegenConfirm ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <div className="flex items-start gap-2.5 mb-3">
-                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
-                <p className="text-sm text-amber-800">
-                  This will delete all existing games and rebuild the schedule from scratch. Are you sure?
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveAndRegen}
-                  disabled={savingRegen}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#0C1F3F] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80 disabled:opacity-60"
-                >
-                  {savingRegen ? (
-                    <><Loader2 className="h-4 w-4 animate-spin" />Regenerating…</>
-                  ) : (
-                    <><Zap className="h-4 w-4" />Confirm & regenerate</>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowRegenConfirm(false)}
-                  disabled={savingRegen}
-                  className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700 disabled:opacity-60"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowRegenConfirm(true)}
-              disabled={isBusy || !canSubmit}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 py-3 text-sm font-medium text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Zap className="h-4 w-4" />
-              Save &amp; regenerate schedule
-            </button>
-          )}
-        </>
-      ) : (
-        /* Create mode: single generate button */
-        <button
-          type="button"
-          onClick={handleSaveAndRegen}
-          disabled={savingRegen || !canSubmit}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#22C55E] py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {savingRegen ? (
-            <><Loader2 className="h-5 w-5 animate-spin" />Saving division…</>
-          ) : (
-            <><Zap className="h-5 w-5" />Generate schedule</>
-          )}
-        </button>
+        </div>
       )}
 
       {!canSubmit && !isBusy && (
