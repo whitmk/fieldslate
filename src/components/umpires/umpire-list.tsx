@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, X, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Pencil, Trash2, X, Loader2, CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 
@@ -72,6 +73,13 @@ export function UmpireList({ umpires, showSeasonColumn }: Props) {
                 )}
                 <td className="py-3 text-right">
                   <div className="inline-flex items-center gap-1">
+                    <Link
+                      href={`/dashboard/umpires/${u.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
+                    >
+                      <CalendarDays className="h-3 w-3" />
+                      View schedule
+                    </Link>
                     <button
                       onClick={() => setEditing(u)}
                       disabled={pending === u.id}

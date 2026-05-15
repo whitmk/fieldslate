@@ -8,7 +8,7 @@ export async function Topbar() {
   const initials = user?.email?.slice(0, 2).toUpperCase() ?? "?";
 
   return (
-    <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-white/10 bg-[#0C1F3F] px-6">
+    <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-white/10 bg-[#0C1F3F] px-6 print:hidden">
       <div />
       <div className="flex items-center gap-3">
         <button className="flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/10 hover:text-white">

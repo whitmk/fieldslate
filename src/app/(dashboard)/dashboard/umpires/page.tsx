@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserCheck } from "lucide-react";
+import { UserCheck, Printer } from "lucide-react";
 import { AddUmpireButton } from "@/components/umpires/add-umpire-button";
 import { UmpireList, type UmpireRow } from "@/components/umpires/umpire-list";
 
@@ -35,7 +36,18 @@ export default async function UmpiresPage() {
             Manage the officials available to your seasons.
           </p>
         </div>
-        <AddUmpireButton seasons={seasons} />
+        <div className="flex items-center gap-2">
+          {umpires.length > 0 && (
+            <Link
+              href="/dashboard/umpires/print-all"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F]"
+            >
+              <Printer className="h-4 w-4" />
+              Print all schedules
+            </Link>
+          )}
+          <AddUmpireButton seasons={seasons} />
+        </div>
       </div>
 
       <Card>
