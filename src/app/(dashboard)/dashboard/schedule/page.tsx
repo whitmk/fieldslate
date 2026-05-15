@@ -1,124 +1,163 @@
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { DivisionFilter } from "@/components/schedule/division-filter";
-import { ViewToggle } from "@/components/schedule/view-toggle";
+import { TeamFilter } from "@/components/schedule/team-filter";
+import { HidePastToggle } from "@/components/schedule/hide-past-toggle";
+import { ViewToggle, type ScheduleView } from "@/components/schedule/view-toggle";
+import {
+  ScheduleList,
+  type ScheduleGame,
+  type SchedulePractice,
+} from "@/components/schedule/schedule-list";
 
-type GameRow = {
-  id: string;
-  scheduled_at: string;
-  status: string;
-  home_team: { name: string; division: { name: string } | null } | null;
-  away_team: { name: string } | null;
-  venue: { name: string } | null;
-};
+function parseView(raw: string | undefined): ScheduleView {
+  if (raw === "practices" || raw === "combined") return raw;
+  return "games";
+}
 
-type PracticeRow = {
-  id: string;
-  scheduled_date: string;
-  start_time: string;
-  status: string;
-  team: { name: string } | null;
-  division: { name: string } | null;
-  venue: { name: string } | null;
-};
-
-const gameStatusVariants: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
-  scheduled: "info",
-  in_progress: "warning",
-  completed: "success",
-  cancelled: "danger",
-  postponed: "default",
-};
-
-const practiceStatusVariants: Record<string, "default" | "success" | "danger"> = {
-  scheduled: "success",
-  cancelled: "danger",
-};
+function todayLocalDateString(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 export default async function SchedulePage({
   searchParams,
 }: {
-  searchParams: { division?: string; view?: string };
+  searchParams: {
+    division?: string;
+    team?: string;
+    view?: string;
+    past?: string;
+  };
 }) {
   const supabase = createClient();
   const selectedDivisionId = searchParams.division ?? "";
-  const view = searchParams.view === "practices" ? "practices" : "games";
+  const selectedTeamId = searchParams.team ?? "";
+  const view = parseView(searchParams.view);
+  // Default ON; the URL only carries `past=1` when the user has switched it OFF.
+  const hidePast = searchParams.past !== "1";
 
-  // Fetch all divisions for the filter dropdown
+  // Divisions for the dropdown
   const { data: divisionData } = await supabase
     .from("divisions")
     .select("id, name")
     .order("name");
   const divisions = (divisionData ?? []) as { id: string; name: string }[];
 
-  // ── Games view ────────────────────────────────────────────────────────────────
+  // All teams (with division_id so the team filter can scope by division)
+  const { data: teamData } = await supabase
+    .from("teams")
+    .select("id, name, division_id")
+    .order("name");
+  const teams = (teamData ?? []) as {
+    id: string;
+    name: string;
+    division_id: string | null;
+  }[];
 
-  let games: GameRow[] = [];
+  // If a team is selected that doesn't belong to the selected division, ignore it.
+  const effectiveTeamId = (() => {
+    if (!selectedTeamId) return "";
+    const team = teams.find((t) => t.id === selectedTeamId);
+    if (!team) return "";
+    if (selectedDivisionId && team.division_id !== selectedDivisionId) return "";
+    return selectedTeamId;
+  })();
 
-  if (view === "games") {
-    let teamIdFilter: string[] | null = null;
-    if (selectedDivisionId) {
-      const { data: teamData } = await supabase
-        .from("teams")
-        .select("id")
-        .eq("division_id", selectedDivisionId);
-      teamIdFilter = (teamData ?? []).map((t: { id: string }) => t.id);
+  const today = todayLocalDateString();
+  const todayIso = `${today}T00:00:00`;
+
+  // ── Games ────────────────────────────────────────────────────────────────────
+  let games: ScheduleGame[] = [];
+
+  const needGames = view === "games" || view === "combined";
+  if (needGames) {
+    // Determine which team IDs the games query should be scoped to.
+    let teamIdScope: string[] | null = null;
+    if (effectiveTeamId) {
+      teamIdScope = [effectiveTeamId];
+    } else if (selectedDivisionId) {
+      teamIdScope = teams
+        .filter((t) => t.division_id === selectedDivisionId)
+        .map((t) => t.id);
     }
 
     let gamesQuery = supabase
       .from("games")
       .select(`
-        id, scheduled_at, status,
-        home_team:teams!home_team_id(name, division:divisions(name)),
+        id, scheduled_at, status, league_id, home_team_id, away_team_id,
+        home_team:teams!home_team_id(name, division_id, division:divisions(name)),
         away_team:teams!away_team_id(name),
         venue:venues(name)
       `)
       .order("scheduled_at", { ascending: true })
-      .limit(50);
+      .limit(200);
 
-    if (teamIdFilter !== null) {
-      gamesQuery = teamIdFilter.length === 0
-        ? gamesQuery.in("home_team_id", ["00000000-0000-0000-0000-000000000000"])
-        : gamesQuery.in("home_team_id", teamIdFilter);
+    if (teamIdScope !== null) {
+      if (teamIdScope.length === 0) {
+        gamesQuery = gamesQuery.in("home_team_id", [
+          "00000000-0000-0000-0000-000000000000",
+        ]);
+      } else if (effectiveTeamId) {
+        // Match games where the team is on either side of the matchup.
+        gamesQuery = gamesQuery.or(
+          `home_team_id.eq.${effectiveTeamId},away_team_id.eq.${effectiveTeamId}`,
+        );
+      } else {
+        gamesQuery = gamesQuery.in("home_team_id", teamIdScope);
+      }
+    }
+
+    if (hidePast) {
+      gamesQuery = gamesQuery.gte("scheduled_at", todayIso);
     }
 
     const { data: rawGames } = await gamesQuery;
-    games = (rawGames as GameRow[] | null) ?? [];
+    games = (rawGames as unknown as ScheduleGame[] | null) ?? [];
   }
 
-  // ── Practices view ────────────────────────────────────────────────────────────
+  // ── Practices ────────────────────────────────────────────────────────────────
+  let practices: SchedulePractice[] = [];
 
-  let practices: PracticeRow[] = [];
-
-  if (view === "practices") {
+  const needPractices = view === "practices" || view === "combined";
+  if (needPractices) {
     let practicesQuery = supabase
       .from("practices")
       .select(`
-        id, scheduled_date, start_time, status,
+        id, scheduled_date, start_time, status, league_id, division_id, team_id,
         team:teams(name),
         division:divisions(name),
         venue:venues(name)
       `)
+      .neq("status", "unscheduled")
       .order("scheduled_date", { ascending: true })
       .order("start_time", { ascending: true })
-      .limit(50);
+      .limit(200);
 
     if (selectedDivisionId) {
       practicesQuery = practicesQuery.eq("division_id", selectedDivisionId);
     }
+    if (effectiveTeamId) {
+      practicesQuery = practicesQuery.eq("team_id", effectiveTeamId);
+    }
+    if (hidePast) {
+      practicesQuery = practicesQuery.gte("scheduled_date", today);
+    }
 
     const { data: rawPractices } = await practicesQuery;
-    practices = (rawPractices as unknown as PracticeRow[] | null) ?? [];
+    practices =
+      (rawPractices as unknown as SchedulePractice[] | null) ?? [];
   }
 
-  const isEmpty = view === "games" ? games.length === 0 : practices.length === 0;
-  const emptyMessage = view === "games"
-    ? (selectedDivisionId ? "No games found for this division." : "No games scheduled yet.")
-    : (selectedDivisionId ? "No practices found for this division." : "No practices scheduled yet.");
+  const cardTitle =
+    view === "games"
+      ? "All Games"
+      : view === "practices"
+      ? "All Practices"
+      : "All Games & Practices";
 
   return (
     <div className="flex flex-col gap-6">
@@ -133,97 +172,34 @@ export default async function SchedulePage({
         </Button>
       </div>
 
-      {/* Segmented control */}
-      <ViewToggle view={view} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <ViewToggle view={view} />
+        <HidePastToggle hidePast={hidePast} />
+      </div>
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>{view === "games" ? "All Games" : "All Practices"}</CardTitle>
-            {divisions.length > 0 && (
-              <DivisionFilter divisions={divisions} selectedId={selectedDivisionId} />
-            )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle>{cardTitle}</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              {divisions.length > 0 && (
+                <DivisionFilter
+                  divisions={divisions}
+                  selectedId={selectedDivisionId}
+                />
+              )}
+              {teams.length > 0 && (
+                <TeamFilter
+                  teams={teams}
+                  selectedId={effectiveTeamId}
+                  selectedDivisionId={selectedDivisionId}
+                />
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
-          {isEmpty ? (
-            <p className="text-sm text-gray-500">{emptyMessage}</p>
-          ) : view === "games" ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 text-left">
-                    <th className="pb-3 font-medium text-gray-500">Date & Time</th>
-                    <th className="pb-3 font-medium text-gray-500">Matchup</th>
-                    <th className="pb-3 font-medium text-gray-500">Division</th>
-                    <th className="pb-3 font-medium text-gray-500">Venue</th>
-                    <th className="pb-3 font-medium text-gray-500">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {games.map((game) => (
-                    <tr key={game.id} className="border-b border-gray-50 last:border-0">
-                      <td className="py-3 text-gray-600">
-                        {fmtGameDate(game.scheduled_at)}, {fmtGameTime(game.scheduled_at)}
-                      </td>
-                      <td className="py-3 font-medium text-gray-900">
-                        {game.home_team?.name ?? "TBD"} vs {game.away_team?.name ?? "TBD"}
-                      </td>
-                      <td className="py-3 text-gray-600">
-                        {game.home_team?.division?.name ?? "—"}
-                      </td>
-                      <td className="py-3 text-gray-600">
-                        {game.venue?.name ?? "—"}
-                      </td>
-                      <td className="py-3">
-                        <Badge variant={gameStatusVariants[game.status] ?? "default"}>
-                          {game.status.replace("_", " ")}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 text-left">
-                    <th className="pb-3 font-medium text-gray-500">Date & Time</th>
-                    <th className="pb-3 font-medium text-gray-500">Team</th>
-                    <th className="pb-3 font-medium text-gray-500">Division</th>
-                    <th className="pb-3 font-medium text-gray-500">Venue</th>
-                    <th className="pb-3 font-medium text-gray-500">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {practices.map((practice) => (
-                    <tr key={practice.id} className="border-b border-gray-50 last:border-0">
-                      <td className="py-3 text-gray-600">
-                        {fmtGameDate(practice.scheduled_date)},{" "}
-                        {fmtGameTime(`${practice.scheduled_date}T${practice.start_time}:00`)}
-                      </td>
-                      <td className="py-3 font-medium text-gray-900">
-                        {practice.team?.name ?? "TBD"}
-                      </td>
-                      <td className="py-3 text-gray-600">
-                        {practice.division?.name ?? "—"}
-                      </td>
-                      <td className="py-3 text-gray-600">
-                        {practice.venue?.name ?? "—"}
-                      </td>
-                      <td className="py-3">
-                        <Badge variant={practiceStatusVariants[practice.status] ?? "default"}>
-                          {practice.status}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <ScheduleList view={view} games={games} practices={practices} />
         </CardContent>
       </Card>
     </div>
