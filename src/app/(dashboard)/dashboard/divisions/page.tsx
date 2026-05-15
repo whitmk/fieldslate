@@ -3,9 +3,15 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Layers } from "lucide-react";
 import { DivisionBallIcon } from "@/components/divisions/division-ball-icon";
+import { AddDivisionButton } from "@/components/divisions/add-division-button";
 import type { Division, League } from "@/types/database";
 
-type DivisionWithLeague = Division & { league: Pick<League, "id" | "name" | "sport"> };
+type LeagueRow = Pick<League, "id" | "name" | "sport"> & {
+  start_date: string | null;
+  end_date: string | null;
+};
+
+type DivisionWithLeague = Division & { league: LeagueRow };
 
 const STATUS_STYLES: Record<Division["status"], string> = {
   active:   "bg-[#22C55E]/10 text-[#22C55E]",
@@ -19,11 +25,11 @@ export default async function DivisionsPage() {
 
   const { data: rawLeagues } = await supabase
     .from("leagues")
-    .select("id, name, sport")
+    .select("id, name, sport, start_date, end_date")
     .eq("owner_id", user!.id)
     .order("name", { ascending: true });
 
-  const leagues = (rawLeagues ?? []) as Pick<League, "id" | "name" | "sport">[];
+  const leagues = (rawLeagues ?? []) as LeagueRow[];
   const leagueIds = leagues.map((l) => l.id);
   const leagueMap = new Map(leagues.map((l) => [l.id, l]));
 
@@ -50,11 +56,19 @@ export default async function DivisionsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[#0C1F3F]">Divisions</h1>
           <p className="mt-1 text-sm text-gray-500">All divisions across your leagues.</p>
         </div>
+        <AddDivisionButton
+          leagues={leagues.map((l) => ({
+            id: l.id,
+            name: l.name,
+            start_date: l.start_date,
+            end_date: l.end_date,
+          }))}
+        />
       </div>
 
       {!hasAny ? (
