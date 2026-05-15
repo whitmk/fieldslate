@@ -57,9 +57,11 @@ type GameRow = {
   status: string;
   venue_id: string | null;
   home_team_id: string;
-  away_team_id: string;
+  away_team_id: string | null;
+  interleague_org_id: string | null;
   home_team: { name: string } | null;
   away_team: { name: string } | null;
+  interleague_org: { name: string } | null;
   venue: { name: string } | null;
 };
 
@@ -77,6 +79,11 @@ type PracticeRow = {
 type ScheduleEvent =
   | { kind: "game"; sortKey: string; data: GameRow }
   | { kind: "practice"; sortKey: string; data: PracticeRow };
+
+// Opponent label: real away team for intra games, org name for interleague.
+function opponentName(g: GameRow): string {
+  return g.away_team?.name ?? g.interleague_org?.name ?? "TBD";
+}
 
 export function DivisionSchedulePanel({
   divisionId, divisionName, leagueName, leagueId,
@@ -167,7 +174,16 @@ export function DivisionSchedulePanel({
       games_per_team?: number;
     };
 
-    setGamesPerTeam(Number(divData?.intra_division_games_per_team ?? settings.games_per_team ?? 0));
+    // gamesPerTeam = intra target + sum of interleague game counts across orgs.
+    // Each team plays both, so the per-team total drives the completeness display.
+    const intraTarget = Number(divData?.intra_division_games_per_team ?? settings.games_per_team ?? 0);
+    const { data: igRowsRaw } = await supabase
+      .from("division_interleague_games")
+      .select("game_count")
+      .eq("division_id", divisionId);
+    const interleagueTarget = ((igRowsRaw ?? []) as { game_count: number }[])
+      .reduce((sum, r) => sum + Number(r.game_count ?? 0), 0);
+    setGamesPerTeam(intraTarget + interleagueTarget);
     setActivitiesPerWeek(Number(divData?.activities_per_week ?? 0));
     setGameDurationMinutes(Number(settings.game_duration ?? 90));
 
@@ -185,9 +201,10 @@ export function DivisionSchedulePanel({
     const { data } = await supabase
       .from("games")
       .select(
-        `id, scheduled_at, status, venue_id, home_team_id, away_team_id,
+        `id, scheduled_at, status, venue_id, home_team_id, away_team_id, interleague_org_id,
          home_team:teams!home_team_id(name),
          away_team:teams!away_team_id(name),
+         interleague_org:interleague_orgs!interleague_org_id(name),
          venue:venues(name)`,
       )
       .in("home_team_id", teamIds)
@@ -253,7 +270,7 @@ export function DivisionSchedulePanel({
       venue_id: g.venue_id,
       venue_name: g.venue?.name ?? "Unknown venue",
       home_team_name: g.home_team?.name ?? "TBD",
-      away_team_name: g.away_team?.name ?? "TBD",
+      away_team_name: opponentName(g),
     }));
     setConflicts(
       detectScheduleConflicts(flat, settings.game_duration ?? 0, settings.buffer_minutes ?? 0),
@@ -406,7 +423,7 @@ export function DivisionSchedulePanel({
       leagueId,
       divisionId,
       "rainout_logged",
-      `${game.home_team?.name ?? "Home"} vs ${game.away_team?.name ?? "Away"} on ${fmtGameDate(game.scheduled_at)} marked as rained out`,
+      `${game.home_team?.name ?? "Home"} vs ${opponentName(game)} on ${fmtGameDate(game.scheduled_at)} marked as rained out`,
     );
     console.log("[logActivity] result (handleRainOut):", _r3);
     await fetchGames();
@@ -453,7 +470,7 @@ export function DivisionSchedulePanel({
           leagueId,
           divisionId,
           "rainout_logged",
-          `${g.home_team?.name ?? "Home"} vs ${g.away_team?.name ?? "Away"} on ${fmtGameDate(g.scheduled_at)} marked as rained out`,
+          `${g.home_team?.name ?? "Home"} vs ${opponentName(g)} on ${fmtGameDate(g.scheduled_at)} marked as rained out`,
         ),
       ),
     );
@@ -999,8 +1016,13 @@ export function DivisionSchedulePanel({
                           vs
                         </span>
                         <span className={`truncate text-sm font-medium ${isCancelled ? "text-gray-400" : "text-gray-600"}`}>
-                          {game.away_team?.name ?? "TBD"}
+                          {opponentName(game)}
                         </span>
+                        {game.interleague_org_id && (
+                          <span className="flex-shrink-0 rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-purple-600">
+                            Interleague
+                          </span>
+                        )}
                       </div>
 
                       {/* Right: venue + action */}
@@ -1016,13 +1038,15 @@ export function DivisionSchedulePanel({
                             <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-400">
                               Rained out
                             </span>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setRescheduleGame(game); }}
-                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
-                            >
-                              <CalendarClock className="h-3 w-3" />
-                              Reschedule
-                            </button>
+                            {!game.interleague_org_id && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setRescheduleGame(game); }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
+                              >
+                                <CalendarClock className="h-3 w-3" />
+                                Reschedule
+                              </button>
+                            )}
                           </div>
                         ) : !selectMode ? (
                           <button
@@ -1054,7 +1078,7 @@ export function DivisionSchedulePanel({
                               scheduled_at: game.scheduled_at,
                               duration_minutes: gameDurationMinutes,
                               home_team_name: game.home_team?.name ?? "TBD",
-                              away_team_name: game.away_team?.name ?? "TBD",
+                              away_team_name: opponentName(game),
                             }}
                             roles={umpireRoles}
                             assignments={gameAssignments}
@@ -1110,7 +1134,7 @@ export function DivisionSchedulePanel({
                       <td>{fmtGameDate(game.scheduled_at)}</td>
                       <td>{fmtGameTime(game.scheduled_at)}</td>
                       <td>{game.home_team?.name ?? "TBD"}</td>
-                      <td>{game.away_team?.name ?? "TBD"}</td>
+                      <td>{opponentName(game)}</td>
                       <td>{game.venue?.name ?? "—"}</td>
                     </tr>
                   ))}
@@ -1209,7 +1233,7 @@ export function DivisionSchedulePanel({
                             <td>{fmtGameDate(game.scheduled_at)}</td>
                             <td>{fmtGameTime(game.scheduled_at)}</td>
                             <td>{game.home_team?.name ?? "TBD"}</td>
-                            <td>{game.away_team?.name ?? "TBD"}</td>
+                            <td>{opponentName(game)}</td>
                             <td>{game.venue?.name ?? "—"}</td>
                           </tr>
                         ))}
@@ -1269,7 +1293,7 @@ export function DivisionSchedulePanel({
                   <li key={g.id} className="text-xs text-gray-600">
                     <span className="font-medium">{fmtGameDate(g.scheduled_at)}</span>
                     {" · "}
-                    {g.home_team?.name ?? "Home"} vs {g.away_team?.name ?? "Away"}
+                    {g.home_team?.name ?? "Home"} vs {opponentName(g)}
                     {g.venue?.name && <span className="text-gray-400"> @ {g.venue.name}</span>}
                   </li>
                 ))}
@@ -1301,7 +1325,7 @@ export function DivisionSchedulePanel({
         <RainoutRescheduleModal
           gameId={rescheduleGame.id}
           homeTeamId={rescheduleGame.home_team_id}
-          awayTeamId={rescheduleGame.away_team_id}
+          awayTeamId={rescheduleGame.away_team_id!}
           homeTeamName={rescheduleGame.home_team?.name ?? "Home"}
           awayTeamName={rescheduleGame.away_team?.name ?? "Away"}
           divisionId={divisionId}

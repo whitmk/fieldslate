@@ -56,6 +56,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     { data: blackoutDatesRaw },
     { data: allPracticesRaw },
     { data: roleRatesRaw },
+    { data: allInterleagueGamesRaw },
   ] = await Promise.all([
     supabase.from("divisions").select("*").eq("league_id", league.id).order("created_at", { ascending: true }),
     supabase.from("teams").select("id, division_id").eq("league_id", league.id),
@@ -70,6 +71,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     supabase.from("blackout_dates").select("date, label").eq("league_id", league.id),
     supabase.from("practices").select("division_id").eq("league_id", league.id).eq("status", "scheduled"),
     supabase.from("umpire_role_rates").select("role, rate").eq("season_id", league.id),
+    supabase.from("division_interleague_games").select("division_id, game_count"),
   ]);
 
   const allDivisions = (allDivisionsRaw ?? []) as import("@/types/database").Division[];
@@ -90,6 +92,15 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     divToVenues.get(dv.division_id)!.add(dv.venue_id);
   }
 
+  // Build division → total interleague games per team (sum across orgs)
+  const interleagueGamesByDivision = new Map<string, number>();
+  for (const ig of (allInterleagueGamesRaw ?? []) as { division_id: string; game_count: number }[]) {
+    interleagueGamesByDivision.set(
+      ig.division_id,
+      (interleagueGamesByDivision.get(ig.division_id) ?? 0) + Number(ig.game_count ?? 0),
+    );
+  }
+
   // Blackout date → label map (active games only)
   const blackoutMap = new Map<string, string | null>();
   for (const b of blackoutDates) blackoutMap.set(b.date, b.label);
@@ -103,25 +114,34 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       game_duration?: number;
       buffer_minutes?: number;
     };
-    const gamesPerTeam = Number(div.intra_division_games_per_team ?? s.games_per_team ?? 0);
+    const intraGamesPerTeam = Number(div.intra_division_games_per_team ?? s.games_per_team ?? 0);
+    const interleagueGamesPerTeam = interleagueGamesByDivision.get(div.id) ?? 0;
+    const totalGamesPerTeam = intraGamesPerTeam + interleagueGamesPerTeam;
     const gameDuration = Number(s.game_duration ?? 0);
     const bufferMins = Number(s.buffer_minutes ?? 0);
-    const expectedGames = Math.round((gamesPerTeam * div.team_count) / 2);
+    // Intra games involve 2 teams from this division (÷2); interleague involves 1 (×T)
+    const expectedGames =
+      Math.round((intraGamesPerTeam * div.team_count) / 2)
+      + interleagueGamesPerTeam * div.team_count;
 
     const divTeamArr = allTeams.filter((t) => t.division_id === div.id).map((t) => t.id);
     const divTeamIds = new Set(divTeamArr);
     const divGames = allGames.filter((g) => divTeamIds.has(g.home_team_id));
 
+    // Total games per team — counts each appearance once. away_team_id may be null
+    // (interleague), in which case only the home side is incremented.
     const teamGameCount: Record<string, number> = {};
     divTeamArr.forEach((id) => { teamGameCount[id] = 0; });
     for (const g of divGames) {
       teamGameCount[g.home_team_id] = (teamGameCount[g.home_team_id] ?? 0) + 1;
-      if (divTeamIds.has(g.away_team_id)) teamGameCount[g.away_team_id] = (teamGameCount[g.away_team_id] ?? 0) + 1;
+      if (g.away_team_id && divTeamIds.has(g.away_team_id)) {
+        teamGameCount[g.away_team_id] = (teamGameCount[g.away_team_id] ?? 0) + 1;
+      }
     }
     const allTeamsAtMinimum =
       divTeamArr.length > 0 &&
-      gamesPerTeam > 0 &&
-      divTeamArr.every((id) => (teamGameCount[id] ?? 0) >= gamesPerTeam);
+      totalGamesPerTeam > 0 &&
+      divTeamArr.every((id) => (teamGameCount[id] ?? 0) >= totalGamesPerTeam);
 
     const divVenueIds = divToVenues.get(div.id) ?? new Set<string>();
     const venueGames = allGames.filter((g) => g.venue_id !== null && divVenueIds.has(g.venue_id!));
