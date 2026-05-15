@@ -25,6 +25,7 @@ export default function VenuesPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState("");
   const [addType, setAddType] = useState<string>("game");
+  const [addCapacity, setAddCapacity] = useState("");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -32,6 +33,7 @@ export default function VenuesPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editType, setEditType] = useState<string>("game");
+  const [editCapacity, setEditCapacity] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -60,7 +62,12 @@ export default function VenuesPage() {
     if (!user) return;
     const { error } = await supabase
       .from("venues")
-      .insert([{ name: addName.trim(), venue_type: addType, owner_id: user.id }]);
+      .insert([{
+        name: addName.trim(),
+        venue_type: addType,
+        capacity: addCapacity ? parseInt(addCapacity, 10) : null,
+        owner_id: user.id,
+      }]);
     if (error) {
       setAddError(error.message);
       setAdding(false);
@@ -69,6 +76,7 @@ export default function VenuesPage() {
     await loadVenues();
     setAddName("");
     setAddType("game");
+    setAddCapacity("");
     setShowAdd(false);
     setAdding(false);
   }
@@ -77,6 +85,7 @@ export default function VenuesPage() {
     setEditId(venue.id);
     setEditName(venue.name);
     setEditType(venue.venue_type ?? "game");
+    setEditCapacity(venue.capacity ? String(venue.capacity) : "");
     setSaveError(null);
   }
 
@@ -92,7 +101,11 @@ export default function VenuesPage() {
     const supabase = createClient();
     const { error } = await supabase
       .from("venues")
-      .update({ name: editName.trim(), venue_type: editType } as never)
+      .update({
+        name: editName.trim(),
+        venue_type: editType,
+        capacity: editCapacity ? parseInt(editCapacity, 10) : null,
+      } as never)
       .eq("id", venueId);
     if (error) {
       setSaveError(error.message);
@@ -143,6 +156,14 @@ export default function VenuesPage() {
             <option value="practice">Practice</option>
             <option value="both">Both</option>
           </select>
+          <input
+            type="number"
+            placeholder="Capacity (optional)"
+            value={addCapacity}
+            onChange={(e) => setAddCapacity(e.target.value)}
+            min="0"
+            className="h-10 w-36 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+          />
           <button
             onClick={handleAdd}
             disabled={adding || !addName.trim()}
@@ -152,7 +173,7 @@ export default function VenuesPage() {
             {adding ? "Adding…" : "Add venue"}
           </button>
           <button
-            onClick={() => { setShowAdd(false); setAddName(""); setAddType("game"); setAddError(null); }}
+            onClick={() => { setShowAdd(false); setAddName(""); setAddType("game"); setAddCapacity(""); setAddError(null); }}
             className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition-colors hover:text-gray-700"
           >
             Cancel
@@ -196,6 +217,14 @@ export default function VenuesPage() {
                   <option value="practice">Practice</option>
                   <option value="both">Both</option>
                 </select>
+                <input
+                  type="number"
+                  placeholder="Capacity (optional)"
+                  value={editCapacity}
+                  onChange={(e) => setEditCapacity(e.target.value)}
+                  min="0"
+                  className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+                />
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleSave(venue.id)}
@@ -228,6 +257,9 @@ export default function VenuesPage() {
                   {venue.address && <p className="text-xs text-gray-400">{venue.address}</p>}
                   {(venue.city || venue.state) && (
                     <p className="text-xs text-gray-400">{[venue.city, venue.state].filter(Boolean).join(", ")}</p>
+                  )}
+                  {venue.capacity != null && (
+                    <p className="text-xs text-gray-400">{venue.capacity.toLocaleString()} capacity</p>
                   )}
                 </div>
                 <button
