@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      interleague_orgs: {
+        Row: {
+          id: string
+          owner_id: string
+          name: string
+          admin_email: string
+          contact_name: string | null
+          contact_phone: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_id: string
+          name: string
+          admin_email: string
+          contact_name?: string | null
+          contact_phone?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          owner_id?: string
+          name?: string
+          admin_email?: string
+          contact_name?: string | null
+          contact_phone?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       activity_log: {
         Row: {
           created_at: string
@@ -1064,3 +1100,4 @@ export type UmpireRoleRate    = Database["public"]["Tables"]["umpire_role_rates"
 export type SnackShackSettings = Database["public"]["Tables"]["snack_shack_settings"]["Row"];
 export type SnackShackBlock    = Database["public"]["Tables"]["snack_shack_blocks"]["Row"];
 export type PracticeSlot   = Database["public"]["Tables"]["team_practice_slots"]["Row"];
+export type InterleagueOrg = Database["public"]["Tables"]["interleague_orgs"]["Row"];
