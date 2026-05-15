@@ -7,20 +7,65 @@ import { TeamFilter } from "@/components/schedule/team-filter";
 import { HidePastToggle } from "@/components/schedule/hide-past-toggle";
 import { ViewToggle, type ScheduleView } from "@/components/schedule/view-toggle";
 import {
+  ViewModeToggle,
+  type ViewMode,
+} from "@/components/schedule/view-mode-toggle";
+import {
   ScheduleList,
   type ScheduleGame,
   type SchedulePractice,
 } from "@/components/schedule/schedule-list";
+import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
 
 function parseView(raw: string | undefined): ScheduleView {
   if (raw === "practices" || raw === "combined") return raw;
   return "games";
 }
 
+function parseMode(raw: string | undefined): ViewMode {
+  return raw === "calendar" ? "calendar" : "list";
+}
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function localDateStr(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
 function todayLocalDateString(): string {
+  return localDateStr(new Date());
+}
+
+function defaultMonth(): string {
   const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+}
+
+function parseMonth(s: string | undefined): string {
+  if (!s || !/^\d{4}-\d{2}$/.test(s)) return defaultMonth();
+  return s;
+}
+
+function buildGridRange(month: string): {
+  gridStart: string;
+  gridEnd: string;
+  dayAfterGridEnd: string;
+} {
+  const [yr, mo] = month.split("-").map(Number);
+  const first = new Date(yr, mo - 1, 1);
+  const startOffset = first.getDay(); // 0 = Sunday
+  const gridStart = new Date(yr, mo - 1, 1 - startOffset);
+  const gridEnd = new Date(gridStart);
+  gridEnd.setDate(gridStart.getDate() + 41);
+  const dayAfterGridEnd = new Date(gridStart);
+  dayAfterGridEnd.setDate(gridStart.getDate() + 42);
+  return {
+    gridStart: localDateStr(gridStart),
+    gridEnd: localDateStr(gridEnd),
+    dayAfterGridEnd: localDateStr(dayAfterGridEnd),
+  };
 }
 
 export default async function SchedulePage({
@@ -31,23 +76,25 @@ export default async function SchedulePage({
     team?: string;
     view?: string;
     past?: string;
+    mode?: string;
+    month?: string;
   };
 }) {
   const supabase = createClient();
   const selectedDivisionId = searchParams.division ?? "";
   const selectedTeamId = searchParams.team ?? "";
   const view = parseView(searchParams.view);
+  const mode = parseMode(searchParams.mode);
+  const month = parseMonth(searchParams.month);
   // Default ON; the URL only carries `past=1` when the user has switched it OFF.
   const hidePast = searchParams.past !== "1";
 
-  // Divisions for the dropdown
   const { data: divisionData } = await supabase
     .from("divisions")
     .select("id, name")
     .order("name");
   const divisions = (divisionData ?? []) as { id: string; name: string }[];
 
-  // All teams (with division_id so the team filter can scope by division)
   const { data: teamData } = await supabase
     .from("teams")
     .select("id, name, division_id")
@@ -58,7 +105,6 @@ export default async function SchedulePage({
     division_id: string | null;
   }[];
 
-  // If a team is selected that doesn't belong to the selected division, ignore it.
   const effectiveTeamId = (() => {
     if (!selectedTeamId) return "";
     const team = teams.find((t) => t.id === selectedTeamId);
@@ -69,13 +115,13 @@ export default async function SchedulePage({
 
   const today = todayLocalDateString();
   const todayIso = `${today}T00:00:00`;
+  const gridRange = mode === "calendar" ? buildGridRange(month) : null;
 
   // ── Games ────────────────────────────────────────────────────────────────────
   let games: ScheduleGame[] = [];
 
   const needGames = view === "games" || view === "combined";
   if (needGames) {
-    // Determine which team IDs the games query should be scoped to.
     let teamIdScope: string[] | null = null;
     if (effectiveTeamId) {
       teamIdScope = [effectiveTeamId];
@@ -94,7 +140,7 @@ export default async function SchedulePage({
         venue:venues(name)
       `)
       .order("scheduled_at", { ascending: true })
-      .limit(200);
+      .limit(mode === "calendar" ? 1000 : 200);
 
     if (teamIdScope !== null) {
       if (teamIdScope.length === 0) {
@@ -102,7 +148,6 @@ export default async function SchedulePage({
           "00000000-0000-0000-0000-000000000000",
         ]);
       } else if (effectiveTeamId) {
-        // Match games where the team is on either side of the matchup.
         gamesQuery = gamesQuery.or(
           `home_team_id.eq.${effectiveTeamId},away_team_id.eq.${effectiveTeamId}`,
         );
@@ -111,6 +156,11 @@ export default async function SchedulePage({
       }
     }
 
+    if (gridRange) {
+      gamesQuery = gamesQuery
+        .gte("scheduled_at", `${gridRange.gridStart}T00:00:00`)
+        .lt("scheduled_at", `${gridRange.dayAfterGridEnd}T00:00:00`);
+    }
     if (hidePast) {
       gamesQuery = gamesQuery.gte("scheduled_at", todayIso);
     }
@@ -135,13 +185,18 @@ export default async function SchedulePage({
       .neq("status", "unscheduled")
       .order("scheduled_date", { ascending: true })
       .order("start_time", { ascending: true })
-      .limit(200);
+      .limit(mode === "calendar" ? 1000 : 200);
 
     if (selectedDivisionId) {
       practicesQuery = practicesQuery.eq("division_id", selectedDivisionId);
     }
     if (effectiveTeamId) {
       practicesQuery = practicesQuery.eq("team_id", effectiveTeamId);
+    }
+    if (gridRange) {
+      practicesQuery = practicesQuery
+        .gte("scheduled_date", gridRange.gridStart)
+        .lte("scheduled_date", gridRange.gridEnd);
     }
     if (hidePast) {
       practicesQuery = practicesQuery.gte("scheduled_date", today);
@@ -161,15 +216,18 @@ export default async function SchedulePage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Schedule</h1>
           <p className="mt-1 text-sm text-gray-500">All games across your leagues.</p>
         </div>
-        <Button size="sm">
-          <Plus className="mr-2 h-4 w-4" />
-          Add game
-        </Button>
+        <div className="flex items-center gap-2">
+          <ViewModeToggle mode={mode} />
+          <Button size="sm">
+            <Plus className="mr-2 h-4 w-4" />
+            Add game
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -199,7 +257,17 @@ export default async function SchedulePage({
           </div>
         </CardHeader>
         <CardContent>
-          <ScheduleList view={view} games={games} practices={practices} />
+          {mode === "calendar" ? (
+            <ScheduleCalendar
+              view={view}
+              games={games}
+              practices={practices}
+              month={month}
+              today={today}
+            />
+          ) : (
+            <ScheduleList view={view} games={games} practices={practices} />
+          )}
         </CardContent>
       </Card>
     </div>
