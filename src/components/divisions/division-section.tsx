@@ -262,13 +262,12 @@ export function DivisionSection({
         allow_practices: r.allow_practices,
       }),
     );
-    const interleagueGames: InterleagueGameEntry[] = (igRows ?? []).map(
-      (r: { interleague_org_id: string; game_count: number; interleague_orgs: { name: string } | null }) => ({
-        interleague_org_id: r.interleague_org_id,
-        org_name: r.interleague_orgs?.name ?? "",
-        game_count: r.game_count,
-      }),
-    );
+    type IgRow = { interleague_org_id: string; game_count: number; interleague_orgs: { name: string } | null };
+    const interleagueGames: InterleagueGameEntry[] = ((igRows ?? []) as unknown as IgRow[]).map((r) => ({
+      interleague_org_id: r.interleague_org_id,
+      org_name: r.interleague_orgs?.name ?? "",
+      game_count: r.game_count,
+    }));
     setEditInitialData(
       divisionToWizardData(
         div,
