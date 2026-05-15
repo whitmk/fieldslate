@@ -380,10 +380,17 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
   }
 
   const settings = div.settings as unknown as DivisionSettings;
-  // Prefer the dedicated column; fall back to the settings JSON for old divisions
-  const intraDivisionGamesPerTeam =
+  // Prefer the dedicated column; fall back to the settings JSON for old divisions.
+  // Number() coercion guards against JSONB returning a string or undefined.
+  const intraDivisionGamesPerTeam = Number(
     (div as unknown as { intra_division_games_per_team: number | null }).intra_division_games_per_team
-    ?? settings.games_per_team;
+    ?? settings.games_per_team
+    ?? 0,
+  );
+
+  if (intraDivisionGamesPerTeam <= 0) {
+    return { success: false, error: "Games per team must be at least 1. Check the Format step in division settings." };
+  }
 
   if (!settings.playing_days?.length) {
     return { success: false, error: "No playing days configured for this division." };
@@ -702,7 +709,10 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
 
   const settings = div.settings as unknown as DivisionSettings;
   if (!settings.playing_days?.length) return { success: false, error: "No playing days configured for this division." };
-  const intraDivisionGamesPerTeamFinish = div.intra_division_games_per_team ?? settings.games_per_team;
+  const intraDivisionGamesPerTeamFinish = Number(div.intra_division_games_per_team ?? settings.games_per_team ?? 0);
+  if (intraDivisionGamesPerTeamFinish <= 0) {
+    return { success: false, error: "Games per team must be at least 1. Check the Format step in division settings." };
+  }
 
   // ── 2. Load teams ────────────────────────────────────────────────────────────
 

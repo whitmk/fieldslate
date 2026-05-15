@@ -150,7 +150,7 @@ export function DivisionSchedulePanel({
 
     const { data: divDataRaw } = await supabase
       .from("divisions")
-      .select("settings, activities_per_week, umpires_per_game, umpire_roles")
+      .select("settings, activities_per_week, umpires_per_game, umpire_roles, intra_division_games_per_team")
       .eq("id", divisionId)
       .single();
 
@@ -159,6 +159,7 @@ export function DivisionSchedulePanel({
       activities_per_week: number | null;
       umpires_per_game: number | null;
       umpire_roles: unknown;
+      intra_division_games_per_team: number | null;
     } | null;
     const settings = (divData?.settings ?? {}) as {
       game_duration?: number;
@@ -166,7 +167,7 @@ export function DivisionSchedulePanel({
       games_per_team?: number;
     };
 
-    setGamesPerTeam(Number(settings.games_per_team ?? 0));
+    setGamesPerTeam(Number(divData?.intra_division_games_per_team ?? settings.games_per_team ?? 0));
     setActivitiesPerWeek(Number(divData?.activities_per_week ?? 0));
     setGameDurationMinutes(Number(settings.game_duration ?? 90));
 

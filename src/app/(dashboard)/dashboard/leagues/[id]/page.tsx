@@ -103,7 +103,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       game_duration?: number;
       buffer_minutes?: number;
     };
-    const gamesPerTeam = s.games_per_team ?? 0;
+    const gamesPerTeam = Number(div.intra_division_games_per_team ?? s.games_per_team ?? 0);
     const gameDuration = Number(s.game_duration ?? 0);
     const bufferMins = Number(s.buffer_minutes ?? 0);
     const expectedGames = Math.round((gamesPerTeam * div.team_count) / 2);
