@@ -1,31 +1,51 @@
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Plus, Users } from "lucide-react";
+import { Users } from "lucide-react";
+import { AddTeamButton } from "@/components/teams/add-team-button";
 import type { Team } from "@/types/database";
 
-type TeamWithLeague = Team & { league: { name: string } | null };
+type TeamWithLeague = Team & {
+  league: { name: string } | null;
+  division: { name: string } | null;
+};
 
 export default async function TeamsPage() {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const { data: rawTeams } = await supabase
-    .from("teams")
-    .select("*, league:leagues(name)")
-    .order("name", { ascending: true });
-  const teams = rawTeams as TeamWithLeague[] | null;
+  const [{ data: rawTeams }, { data: rawLeagues }, { data: rawDivisions }] =
+    await Promise.all([
+      supabase
+        .from("teams")
+        .select("*, league:leagues(name), division:divisions(name)")
+        .order("name", { ascending: true }),
+      supabase
+        .from("leagues")
+        .select("id, name")
+        .eq("owner_id", user!.id)
+        .order("name", { ascending: true }),
+      supabase
+        .from("divisions")
+        .select("id, name, league_id")
+        .order("name", { ascending: true }),
+    ]);
+
+  const teams = (rawTeams as TeamWithLeague[] | null) ?? [];
+  const leagues = (rawLeagues ?? []) as { id: string; name: string }[];
+  const divisions =
+    (rawDivisions as { id: string; name: string; league_id: string }[] | null) ??
+    [];
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Teams</h1>
           <p className="mt-1 text-sm text-gray-500">All teams across your leagues.</p>
         </div>
-        <Button size="sm">
-          <Plus className="mr-2 h-4 w-4" />
-          Add team
-        </Button>
+        <AddTeamButton leagues={leagues} divisions={divisions} />
       </div>
 
       <Card>
@@ -33,11 +53,13 @@ export default async function TeamsPage() {
           <CardTitle>All Teams</CardTitle>
         </CardHeader>
         <CardContent>
-          {!teams || teams.length === 0 ? (
+          {teams.length === 0 ? (
             <div className="flex flex-col items-center py-12 text-center">
               <Users className="mb-3 h-8 w-8 text-gray-300" />
               <p className="font-medium text-gray-900">No teams yet</p>
-              <p className="mt-1 text-sm text-gray-500">Add teams to your leagues to get started.</p>
+              <p className="mt-1 text-sm text-gray-500">
+                Add teams to your leagues to get started.
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -46,7 +68,7 @@ export default async function TeamsPage() {
                   <tr className="border-b border-gray-100 text-left">
                     <th className="pb-3 font-medium text-gray-500">Team</th>
                     <th className="pb-3 font-medium text-gray-500">League</th>
-                    <th className="pb-3 font-medium text-gray-500">Contact</th>
+                    <th className="pb-3 font-medium text-gray-500">Division</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -54,7 +76,7 @@ export default async function TeamsPage() {
                     <tr key={team.id} className="border-b border-gray-50 last:border-0">
                       <td className="py-3 font-medium text-gray-900">{team.name}</td>
                       <td className="py-3 text-gray-600">{team.league?.name ?? "—"}</td>
-                      <td className="py-3 text-gray-600">{team.contact_email ?? "—"}</td>
+                      <td className="py-3 text-gray-600">{team.division?.name ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>
