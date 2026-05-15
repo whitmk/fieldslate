@@ -195,7 +195,7 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
         </p>
       </div>
 
-      {/* ── League / Per-division scope toggle ── */}
+      {/* ── Season / Per-division scope toggle ── */}
       <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-gray-700">Schedule scope</label>
         <div className="flex w-fit rounded-lg border border-gray-200 bg-gray-50 p-1 gap-1">
@@ -209,7 +209,7 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
             }`}
           >
             <Globe className="h-3.5 w-3.5" />
-            Apply to entire league
+            Apply to entire season
           </button>
           <button
             type="button"
@@ -227,10 +227,10 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
         <p className="text-xs text-gray-400">
           {data.use_league_schedule
             ? hasLeagueDefaults
-              ? "League defaults loaded — changes here will update the league-wide schedule when saved."
-              : "No league defaults exist yet — these settings will become the league defaults when saved."
+              ? "Season defaults loaded — changes here will update the season-wide schedule when saved."
+              : "No season defaults exist yet — these settings will become the season defaults when saved."
             : hasLeagueDefaults
-            ? "Custom windows for this division only — the league defaults are unchanged."
+            ? "Custom windows for this division only — the season defaults are unchanged."
             : "Settings apply to this division only."}
         </p>
       </div>

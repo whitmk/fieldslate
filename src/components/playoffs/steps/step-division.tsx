@@ -85,7 +85,7 @@ export function StepDivision({ data, update, leagueId }: Props) {
             No divisions found
           </p>
           <p className="mt-1 text-xs text-gray-400">
-            Add divisions to this league before setting up playoffs.
+            Add divisions to this season before setting up playoffs.
           </p>
         </div>
       ) : (

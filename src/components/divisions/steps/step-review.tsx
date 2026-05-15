@@ -717,7 +717,7 @@ export function StepReview({
       </Section>
 
       <Section title="Playing schedule" step={1} onEdit={onEdit}>
-        <Row label="Schedule scope" value={data.use_league_schedule ? "League-wide" : "Per division"} />
+        <Row label="Schedule scope" value={data.use_league_schedule ? "Season-wide" : "Per division"} />
         <Row label="Games per team" value={data.games_per_team} />
         <Row label="Max per week" value={data.max_games_per_week} />
         <Row label="Max per day" value={data.max_games_per_team_per_day} />

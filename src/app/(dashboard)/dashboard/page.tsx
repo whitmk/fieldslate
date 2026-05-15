@@ -61,14 +61,14 @@ export default async function DashboardPage() {
             className="inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
           >
             <Plus className="h-4 w-4" />
-            New league
+            New season
           </Link>
         )}
       </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatsCard title="Active Leagues" value={leagueCount ?? 0} icon={Trophy} />
+        <StatsCard title="Active Seasons" value={leagueCount ?? 0} icon={Trophy} />
         <StatsCard title="Teams" value={teamCount ?? 0} icon={Users} />
         <StatsCard title="Scheduled Games" value={gameCount ?? 0} icon={CalendarDays} />
         <StatsCard title="Venues" value={venueCount ?? 0} icon={MapPin} />
@@ -81,17 +81,17 @@ export default async function DashboardPage() {
             <Trophy className="h-6 w-6 text-[#0C1F3F]/40" />
           </div>
           <h2 className="mt-5 text-lg font-semibold text-[#0C1F3F]">
-            Create your first league
+            Create your first season
           </h2>
           <p className="mt-2 max-w-sm text-sm leading-relaxed text-gray-500">
-            Set up a league to start building your schedule. You can add divisions, teams, and venues once it&apos;s created.
+            Set up a season to start building your schedule. You can add divisions, teams, and venues once it&apos;s created.
           </p>
           <Link
             href="/dashboard/leagues/new"
             className="mt-6 inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
           >
             <Plus className="h-4 w-4" />
-            Create a league
+            Create a season
           </Link>
           <div className="mt-8 flex flex-col items-center gap-2 sm:flex-row sm:gap-6">
             {[

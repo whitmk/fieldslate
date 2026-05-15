@@ -14,8 +14,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "FieldSlate — Sports League Scheduling",
-  description: "Manage your sports league schedules, teams, venues, and results all in one place.",
+  title: "FieldSlate — Sports Season Scheduling",
+  description: "Manage your sports season schedules, teams, venues, and results all in one place.",
 };
 
 export default function RootLayout({

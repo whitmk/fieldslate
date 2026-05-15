@@ -24,9 +24,9 @@ const features = [
   },
   {
     icon: ArrowLeftRight,
-    title: "Interleague scheduling",
+    title: "Cross-season scheduling",
     description:
-      "Run shared schedules across multiple leagues or organizations. Perfect for travel teams, all-star events, and cross-division playoffs.",
+      "Run shared schedules across multiple seasons or organizations. Perfect for travel teams, all-star events, and cross-division playoffs.",
     tag: null,
   },
 ];
@@ -37,10 +37,10 @@ export function Features() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-3xl font-bold tracking-tight text-[#0C1F3F] sm:text-4xl">
-            Built for how leagues actually work
+            Built for how seasons actually work
           </h2>
           <p className="mt-4 text-lg text-gray-500">
-            Every feature was designed around the real problems league admins face every spring.
+            Every feature was designed around the real problems season admins face every spring.
           </p>
         </div>
 

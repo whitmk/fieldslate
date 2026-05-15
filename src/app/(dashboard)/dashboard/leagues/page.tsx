@@ -25,15 +25,15 @@ export default async function LeaguesPage() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#0C1F3F]">Leagues</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Manage your sports leagues and seasons.</p>
+          <h1 className="text-2xl font-bold text-[#0C1F3F]">Seasons</h1>
+          <p className="mt-0.5 text-sm text-gray-500">Manage your seasons across sports.</p>
         </div>
         <Link
           href="/dashboard/leagues/new"
           className="inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
         >
           <Plus className="h-4 w-4" />
-          New league
+          New season
         </Link>
       </div>
 
@@ -42,16 +42,16 @@ export default async function LeaguesPage() {
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#0C1F3F]/6">
             <Trophy className="h-6 w-6 text-[#0C1F3F]/40" />
           </div>
-          <h3 className="mt-5 font-semibold text-[#0C1F3F]">No leagues yet</h3>
+          <h3 className="mt-5 font-semibold text-[#0C1F3F]">No seasons yet</h3>
           <p className="mt-1.5 max-w-xs text-sm text-gray-400">
-            Create your first league to start building your schedule.
+            Create your first season to start building your schedule.
           </p>
           <Link
             href="/dashboard/leagues/new"
             className="mt-6 inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
           >
             <Plus className="h-4 w-4" />
-            Create a league
+            Create a season
           </Link>
         </div>
       ) : (

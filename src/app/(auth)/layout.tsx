@@ -23,7 +23,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             {[
               "Per-division parameters",
               "Automatic field conflict detection",
-              "Interleague scheduling",
+              "Cross-season scheduling",
               "No spreadsheets. No phone calls.",
             ].map((point) => (
               <li key={point} className="flex items-center gap-3">

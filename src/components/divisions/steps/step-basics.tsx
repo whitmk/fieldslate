@@ -17,7 +17,7 @@ export function StepBasics({ data, update }: Props) {
         <label className="text-sm font-medium text-gray-700">Division name</label>
         <input
           type="text"
-          placeholder="e.g. 10U, Varsity, Rec League A"
+          placeholder="e.g. 10U, Varsity, Rec A"
           value={data.name}
           onChange={(e) => update({ name: e.target.value })}
           className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"

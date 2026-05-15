@@ -119,7 +119,7 @@ export function StepCrossDivision({ data, update, leagueId }: Props) {
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-6 text-center">
               <Trophy className="h-6 w-6 text-gray-300" />
               <p className="mt-2 text-sm text-gray-400">
-                No other divisions in this league.
+                No other divisions in this season.
               </p>
             </div>
           ) : (

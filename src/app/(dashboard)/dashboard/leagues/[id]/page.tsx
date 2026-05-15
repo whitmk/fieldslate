@@ -214,10 +214,10 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         className="inline-flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-[#0C1F3F]"
       >
         <ArrowLeft className="h-4 w-4" />
-        All leagues
+        All seasons
       </Link>
 
-      {/* League header */}
+      {/* Season header */}
       <div className="flex items-start justify-between">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-3">

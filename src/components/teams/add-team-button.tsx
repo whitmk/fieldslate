@@ -89,7 +89,7 @@ export function AddTeamButton({ leagues, divisions }: Props) {
         size="sm"
         onClick={openModal}
         disabled={disabled}
-        title={disabled ? "Create a league first" : undefined}
+        title={disabled ? "Create a season first" : undefined}
       >
         <Plus className="mr-2 h-4 w-4" />
         Add team
@@ -133,14 +133,14 @@ export function AddTeamButton({ leagues, divisions }: Props) {
 
               {leagues.length > 1 && (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-gray-700">League</label>
+                  <label className="text-sm font-medium text-gray-700">Season</label>
                   <select
                     value={leagueId}
                     onChange={(e) => handleLeagueChange(e.target.value)}
                     required
                     className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
                   >
-                    <option value="">Select a league…</option>
+                    <option value="">Select a season…</option>
                     {leagues.map((l) => (
                       <option key={l.id} value={l.id}>
                         {l.name}
@@ -168,7 +168,7 @@ export function AddTeamButton({ leagues, divisions }: Props) {
                 </select>
                 {noDivisionsInLeague && (
                   <p className="text-xs text-amber-600">
-                    This league has no divisions yet — create one on the Divisions tab first.
+                    This season has no divisions yet — create one on the Divisions tab first.
                   </p>
                 )}
               </div>

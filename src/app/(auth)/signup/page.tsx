@@ -72,7 +72,7 @@ export default function SignupPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">Create your account</h1>
         <p className="mt-1.5 text-sm text-white/50">
-          Start scheduling your league in minutes
+          Start scheduling your season in minutes
         </p>
       </div>
 
@@ -90,7 +90,7 @@ export default function SignupPage() {
         />
         <Input
           id="leagueName"
-          label="League name"
+          label="Season name"
           type="text"
           placeholder="Riverside Youth Baseball"
           value={leagueName}

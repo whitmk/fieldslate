@@ -224,7 +224,7 @@ export default function PlayoffsPage() {
 
             return (
               <section key={league.id}>
-                {/* League heading */}
+                {/* Season heading */}
                 <div className="mb-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-[#0C1F3F]">{league.name}</span>

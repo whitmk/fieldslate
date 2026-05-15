@@ -1,9 +1,9 @@
 const steps = [
   {
     number: "01",
-    title: "Set up your league",
+    title: "Set up your season",
     description:
-      "Enter your league name, sport, season dates, and venues. FieldSlate builds your availability calendar automatically.",
+      "Enter your season name, sport, dates, and venues. FieldSlate builds your availability calendar automatically.",
   },
   {
     number: "02",
@@ -28,7 +28,7 @@ export function HowItWorks() {
             Up and running in three steps
           </h2>
           <p className="mt-4 text-lg text-white/50">
-            Most leagues publish their first schedule within 20 minutes.
+            Most seasons publish their first schedule within 20 minutes.
           </p>
         </div>
 

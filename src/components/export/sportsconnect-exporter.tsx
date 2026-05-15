@@ -188,14 +188,14 @@ export function SportsConnectExporter({ leagues }: { leagues: LeagueOption[] }) 
 
       {leagues.length === 0 ? (
         <p className="mt-5 text-sm text-gray-500">
-          You haven&apos;t created any leagues yet. Create a league first, then return here to export.
+          You haven&apos;t created any seasons yet. Create a season first, then return here to export.
         </p>
       ) : (
         <div className="mt-5 flex flex-col gap-4">
-          {/* League picker — only shown when there are multiple leagues */}
+          {/* Season picker — only shown when there are multiple seasons */}
           {leagues.length > 1 && (
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">League</label>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Season</label>
               <select
                 className={selectClass}
                 value={selectedLeagueId}
@@ -204,7 +204,7 @@ export function SportsConnectExporter({ leagues }: { leagues: LeagueOption[] }) 
                   setStatus("idle");
                 }}
               >
-                <option value="">Select a league…</option>
+                <option value="">Select a season…</option>
                 {leagues.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}
@@ -217,7 +217,7 @@ export function SportsConnectExporter({ leagues }: { leagues: LeagueOption[] }) 
           {/* Division picker — only shown when selected league has multiple divisions */}
           {selectedLeague && selectedLeague.divisions.length === 0 && (
             <p className="text-sm text-gray-500">
-              This league has no divisions yet. Add divisions before exporting.
+              This season has no divisions yet. Add divisions before exporting.
             </p>
           )}
 

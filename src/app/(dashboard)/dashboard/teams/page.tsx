@@ -43,7 +43,7 @@ export default async function TeamsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Teams</h1>
-          <p className="mt-1 text-sm text-gray-500">All teams across your leagues.</p>
+          <p className="mt-1 text-sm text-gray-500">All teams across your seasons.</p>
         </div>
         <AddTeamButton leagues={leagues} divisions={divisions} />
       </div>
@@ -58,7 +58,7 @@ export default async function TeamsPage() {
               <Users className="mb-3 h-8 w-8 text-gray-300" />
               <p className="font-medium text-gray-900">No teams yet</p>
               <p className="mt-1 text-sm text-gray-500">
-                Add teams to your leagues to get started.
+                Add teams to your seasons to get started.
               </p>
             </div>
           ) : (
@@ -67,7 +67,7 @@ export default async function TeamsPage() {
                 <thead>
                   <tr className="border-b border-gray-100 text-left">
                     <th className="pb-3 font-medium text-gray-500">Team</th>
-                    <th className="pb-3 font-medium text-gray-500">League</th>
+                    <th className="pb-3 font-medium text-gray-500">Season</th>
                     <th className="pb-3 font-medium text-gray-500">Division</th>
                   </tr>
                 </thead>

@@ -53,7 +53,7 @@ export function AddDivisionButton({ leagues }: Props) {
         size="sm"
         onClick={handleClick}
         disabled={disabled}
-        title={disabled ? "Create a league first" : undefined}
+        title={disabled ? "Create a season first" : undefined}
       >
         <Plus className="mr-2 h-4 w-4" />
         Add division
@@ -78,7 +78,7 @@ export function AddDivisionButton({ leagues }: Props) {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="mb-3 text-sm text-gray-500">Choose which league the new division belongs to.</p>
+            <p className="mb-3 text-sm text-gray-500">Choose which season the new division belongs to.</p>
             <ul className="flex flex-col gap-1">
               {leagues.map((l) => (
                 <li key={l.id}>

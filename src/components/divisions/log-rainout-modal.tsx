@@ -278,7 +278,7 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut }: P
                 <div>
                   <p className="font-semibold text-[#0C1F3F]">Multiple games</p>
                   <p className="mt-0.5 text-xs text-gray-400">
-                    See all upcoming league games starting today and select any to rain out
+                    See all upcoming season games starting today and select any to rain out
                   </p>
                 </div>
                 <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-300" />
@@ -457,7 +457,7 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut }: P
                 <CalendarDays className="h-8 w-8 text-gray-200" />
                 <p className="font-medium text-gray-500">No upcoming games found</p>
                 <p className="text-sm text-gray-400">
-                  No scheduled games in this league from today onward.
+                  No scheduled games in this season from today onward.
                 </p>
                 <button
                   onClick={() => setMode(null)}

@@ -20,13 +20,13 @@ import {
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/dashboard/leagues", label: "Leagues", icon: Trophy },
+  { href: "/dashboard/leagues", label: "Seasons", icon: Trophy },
   { href: "/dashboard/schedule", label: "Schedule", icon: CalendarDays },
   { href: "/dashboard/teams", label: "Teams", icon: Users },
   { href: "/dashboard/venues", label: "Venues", icon: MapPin },
   { href: "/dashboard/divisions", label: "Divisions", icon: Layers },
   { href: "/dashboard/fields", label: "Fields", icon: Flag },
-  { href: "/dashboard/interleague", label: "Interleague", icon: ArrowLeftRight },
+  { href: "/dashboard/interleague", label: "Cross-season", icon: ArrowLeftRight },
   { href: "/dashboard/playoffs", label: "Playoffs", icon: Medal },
   { href: "/dashboard/export", label: "Export", icon: FileDown },
 ];

@@ -88,12 +88,12 @@ export default function NewLeaguePage() {
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-[#0C1F3F]"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to leagues
+        Back to seasons
       </Link>
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#0C1F3F]">Create a league</h1>
+        <h1 className="text-2xl font-bold text-[#0C1F3F]">Create a season</h1>
         <p className="mt-1 text-sm text-gray-500">
           Enter the basics — you can add divisions and teams after.
         </p>
@@ -103,10 +103,10 @@ export default function NewLeaguePage() {
       <div className="rounded-xl border border-gray-100 bg-white p-8 shadow-sm">
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
 
-          {/* League name */}
+          {/* Season name */}
           <div className="flex flex-col gap-1.5">
             <label htmlFor="name" className="text-sm font-medium text-gray-700">
-              League name
+              Season name
             </label>
             <input
               id="name"
@@ -215,7 +215,7 @@ export default function NewLeaguePage() {
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
               ) : null}
-              {loading ? "Creating…" : "Create league"}
+              {loading ? "Creating…" : "Create season"}
             </button>
           </div>
         </form>

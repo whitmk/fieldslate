@@ -17,7 +17,7 @@ export function Hero() {
           {/* Pill tag */}
           <div className="mb-6 inline-flex items-center rounded-full border border-[#22C55E]/30 bg-[#22C55E]/10 px-4 py-1.5">
             <span className="text-sm font-medium text-[#22C55E]">
-              Built for multi-league admins
+              Built for multi-season admins
             </span>
           </div>
 
@@ -29,7 +29,7 @@ export function Hero() {
 
           {/* Subheadline */}
           <p className="mt-6 text-lg leading-8 text-white/60">
-            Per-division parameters, automatic field conflict detection, and interleague
+            Per-division parameters, automatic field conflict detection, and cross-season
             scheduling — all in one place. No spreadsheets. No phone calls.
           </p>
 

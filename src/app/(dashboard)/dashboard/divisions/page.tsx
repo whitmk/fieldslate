@@ -59,7 +59,7 @@ export default async function DivisionsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[#0C1F3F]">Divisions</h1>
-          <p className="mt-1 text-sm text-gray-500">All divisions across your leagues.</p>
+          <p className="mt-1 text-sm text-gray-500">All divisions across your seasons.</p>
         </div>
         <AddDivisionButton
           leagues={leagues.map((l) => ({
@@ -77,7 +77,7 @@ export default async function DivisionsPage() {
             <Layers className="mb-4 h-10 w-10 text-gray-300" />
             <h3 className="font-semibold text-gray-900">No divisions yet</h3>
             <p className="mt-1 text-sm text-gray-500">
-              Create a league and add divisions to get started.
+              Create a season and add divisions to get started.
             </p>
           </CardContent>
         </Card>

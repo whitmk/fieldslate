@@ -174,7 +174,7 @@ const QUICK_ACTIONS = [
   },
   {
     icon: ArrowLeftRight,
-    label: "Request interleague",
+    label: "Request cross-season",
     description: "Coming soon",
     available: false,
     iconBg: "bg-purple-50",
