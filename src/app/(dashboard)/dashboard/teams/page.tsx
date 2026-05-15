@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users } from "lucide-react";
 import { AddTeamButton } from "@/components/teams/add-team-button";
+import { TeamSnackShackButton } from "@/components/teams/team-snack-shack-button";
 import type { Team } from "@/types/database";
 
 type TeamWithLeague = Team & {
@@ -69,6 +70,7 @@ export default async function TeamsPage() {
                     <th className="pb-3 font-medium text-gray-500">Team</th>
                     <th className="pb-3 font-medium text-gray-500">Season</th>
                     <th className="pb-3 font-medium text-gray-500">Division</th>
+                    <th className="pb-3 font-medium text-gray-500" />
                   </tr>
                 </thead>
                 <tbody>
@@ -77,6 +79,9 @@ export default async function TeamsPage() {
                       <td className="py-3 font-medium text-gray-900">{team.name}</td>
                       <td className="py-3 text-gray-600">{team.league?.name ?? "—"}</td>
                       <td className="py-3 text-gray-600">{team.division?.name ?? "—"}</td>
+                      <td className="py-2 text-right">
+                        <TeamSnackShackButton teamId={team.id} teamName={team.name} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>

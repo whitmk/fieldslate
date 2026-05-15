@@ -157,3 +157,41 @@ body {
     size: letter portrait;
   }
 }
+
+/* ── Snack Shack print regions ──────────────────────────────────────────── */
+/* Hidden in normal view; shown when .print-active is added just before
+   window.print(), then removed immediately after. */
+.fieldslate-snack-print-ready {
+  display: none;
+}
+
+@media print {
+  .fieldslate-snack-print-ready.print-active {
+    display: block !important;
+    visibility: visible !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: auto !important;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  .fieldslate-snack-print-ready.print-active * {
+    visibility: visible !important;
+  }
+
+  /* When a snack print region is active, suppress any regular print region
+     (e.g. umpire schedule print regions that might also be in the DOM). */
+  body:has(.fieldslate-snack-print-ready.print-active) .fieldslate-print-region {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Page-break separator for per-team pages in bulk print */
+  .snack-print-team-page + .snack-print-team-page {
+    page-break-before: always;
+    break-before: page;
+  }
+}

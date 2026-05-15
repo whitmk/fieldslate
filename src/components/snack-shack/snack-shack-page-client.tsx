@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ShoppingBag, Settings2, Plus } from "lucide-react";
+import { ShoppingBag, Settings2, Plus, Printer, Mail } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SnackShackWizard } from "./snack-shack-wizard";
 import { SnackShackSchedule, AddOneOffBlockButton, type BlockRow, type TeamOption } from "./snack-shack-schedule";
+import { SnackShackEmailModal } from "./snack-shack-email-modal";
 import type { SnackShackWizardData, DayCode, TimeBlock } from "./wizard-types";
 
 type Season = { id: string; name: string; season: string };
@@ -57,6 +58,22 @@ function settingsToWizardData(s: Settings): SnackShackWizardData {
 
 function fmtDate(d: string) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function fmtTime(t: string) {
+  const [h, m] = t.split(":").map(Number);
+  const ampm = h < 12 ? "am" : "pm";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${String(m).padStart(2, "0")}${ampm}`;
+}
+
+function fmtSettingsDate(d: string) {
+  return new Date(d + "T12:00:00").toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -72,6 +89,10 @@ export function SnackShackPageClient({
   const router = useRouter();
   const [selectedSeasonId, setSelectedSeasonId] = useState(seasons[0]?.id ?? "");
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [emailTarget, setEmailTarget] = useState<"full" | null>(null);
+
+  const fullPrintRef = useRef<HTMLDivElement>(null);
+  const allTeamsPrintRef = useRef<HTMLDivElement>(null);
 
   const season = seasons.find((s) => s.id === selectedSeasonId);
   const settings = allSettings.find((s) => s.season_id === selectedSeasonId) ?? null;
@@ -90,6 +111,40 @@ export function SnackShackPageClient({
       is_recurring: b.is_recurring,
       team_name: b.team?.name ?? null,
     }));
+
+  const seasonLabel = season ? `${season.name} · ${season.season}` : "";
+
+  // Teams that have at least one block, for the bulk per-team print
+  const teamsWithBlocks = teams.filter((t) =>
+    blocks.some((b) => b.assigned_team_id === t.id),
+  );
+
+  function printFullSchedule() {
+    const el = fullPrintRef.current;
+    if (!el) return;
+    el.classList.add("print-active");
+    window.print();
+    el.classList.remove("print-active");
+  }
+
+  function printAllTeamSchedules() {
+    const el = allTeamsPrintRef.current;
+    if (!el) return;
+    el.classList.add("print-active");
+    window.print();
+    el.classList.remove("print-active");
+  }
+
+  async function sendFullEmail(email: string) {
+    if (!settings) return;
+    const res = await fetch(`/api/snack-shack/${settings.id}/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = (await res.json()) as { error?: string };
+    if (!res.ok) throw new Error(data.error ?? "Failed to send.");
+  }
 
   return (
     <>
@@ -159,7 +214,7 @@ export function SnackShackPageClient({
                     Open
                   </p>
                   <p className="mt-0.5 text-gray-900">
-                    {fmtDate(settings.start_date)} → {fmtDate(settings.end_date)}
+                    {fmtSettingsDate(settings.start_date)} → {fmtSettingsDate(settings.end_date)}
                   </p>
                 </div>
                 <div>
@@ -195,12 +250,41 @@ export function SnackShackPageClient({
           {/* Schedule */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <CardTitle>Schedule</CardTitle>
-                <AddOneOffBlockButton
-                  snackShackId={settings.id}
-                  teams={teams}
-                />
+                <div className="flex flex-wrap items-center gap-2">
+                  {blocks.length > 0 && (
+                    <>
+                      <button
+                        onClick={printFullSchedule}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F]"
+                      >
+                        <Printer className="h-3.5 w-3.5" />
+                        Print full schedule
+                      </button>
+                      <button
+                        onClick={() => setEmailTarget("full")}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F]"
+                      >
+                        <Mail className="h-3.5 w-3.5" />
+                        Email full schedule
+                      </button>
+                      {teamsWithBlocks.length > 0 && (
+                        <button
+                          onClick={printAllTeamSchedules}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F]"
+                        >
+                          <Printer className="h-3.5 w-3.5" />
+                          Print all team schedules
+                        </button>
+                      )}
+                    </>
+                  )}
+                  <AddOneOffBlockButton
+                    snackShackId={settings.id}
+                    teams={teams}
+                  />
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -218,7 +302,7 @@ export function SnackShackPageClient({
       {wizardOpen && season && (
         <SnackShackWizard
           seasonId={selectedSeasonId}
-          seasonName={`${season.name} · ${season.season}`}
+          seasonName={seasonLabel}
           leagueId={selectedSeasonId}
           existingData={settings ? settingsToWizardData(settings) : undefined}
           existingId={settings?.id}
@@ -229,6 +313,99 @@ export function SnackShackPageClient({
           }}
         />
       )}
+
+      {/* Email modal */}
+      {emailTarget === "full" && settings && (
+        <SnackShackEmailModal
+          title="Email full schedule"
+          onSend={sendFullEmail}
+          onClose={() => setEmailTarget(null)}
+        />
+      )}
+
+      {/* ── Hidden print regions ───────────────────────────────────────────── */}
+
+      {/* Full season schedule print region */}
+      <div ref={fullPrintRef} className="fieldslate-snack-print-ready" aria-hidden>
+        <div className="fieldslate-print-header">
+          <div className="fieldslate-print-wordmark">
+            Field<span>Slate</span>
+          </div>
+          <div className="fieldslate-print-league">
+            Snack Shack Schedule — {seasonLabel}
+          </div>
+          <div className="fieldslate-print-meta">
+            Full season · {blocks.length} block{blocks.length !== 1 ? "s" : ""}
+          </div>
+        </div>
+        {blocks.length === 0 ? (
+          <p style={{ fontSize: "10pt", color: "#666" }}>No blocks scheduled.</p>
+        ) : (
+          <table className="fieldslate-print-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Assigned Team</th>
+              </tr>
+            </thead>
+            <tbody>
+              {blocks.map((b) => (
+                <tr key={b.id}>
+                  <td>{fmtDate(b.date)}</td>
+                  <td>
+                    {fmtTime(b.start_time)} – {fmtTime(b.end_time)}
+                  </td>
+                  <td>{b.team_name ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Per-team bulk print region */}
+      <div ref={allTeamsPrintRef} className="fieldslate-snack-print-ready" aria-hidden>
+        {teamsWithBlocks.map((team) => {
+          const teamBlocks = blocks.filter(
+            (b) => b.assigned_team_id === team.id,
+          );
+          return (
+            <div key={team.id} className="snack-print-team-page">
+              <div className="fieldslate-print-header">
+                <div className="fieldslate-print-wordmark">
+                  Field<span>Slate</span>
+                </div>
+                <div className="fieldslate-print-league">
+                  Snack Shack — {team.name}
+                </div>
+                <div className="fieldslate-print-meta">
+                  {seasonLabel} · {teamBlocks.length} block
+                  {teamBlocks.length !== 1 ? "s" : ""}
+                </div>
+              </div>
+              <table className="fieldslate-print-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {teamBlocks.map((b) => (
+                    <tr key={b.id}>
+                      <td>{fmtDate(b.date)}</td>
+                      <td>
+                        {fmtTime(b.start_time)} – {fmtTime(b.end_time)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
+      </div>
     </>
   );
 }
