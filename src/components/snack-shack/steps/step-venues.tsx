@@ -70,7 +70,7 @@ export function StepVenues({ data, update, leagueId }: Props) {
       <div>
         <h3 className="text-lg font-semibold text-[#0C1F3F]">Home venues</h3>
         <p className="mt-0.5 text-sm text-gray-500">
-          Select the venues considered "home" for Snack Shack duty. These are
+          Select the venues considered &ldquo;home&rdquo; for Snack Shack duty. These are
           used when applying the scheduling preference.
         </p>
       </div>

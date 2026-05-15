@@ -68,7 +68,6 @@ export function SnackShackWizard({
       data={data}
       leagueId={leagueId}
       existingId={existingId}
-      isEditMode={isEditMode}
       onEdit={setStep}
       onComplete={onComplete}
     />,

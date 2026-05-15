@@ -72,7 +72,7 @@ export function SnackShackSchedule({ snackShackId, blocks, teams }: Props) {
       <div className="flex flex-col items-center py-16 text-center">
         <p className="text-sm text-gray-500">No blocks scheduled yet.</p>
         <p className="mt-0.5 text-xs text-gray-400">
-          Use "Generate schedule" in the wizard, or add one-off blocks above.
+          Use &ldquo;Generate schedule&rdquo; in the wizard, or add one-off blocks above.
         </p>
       </div>
     );

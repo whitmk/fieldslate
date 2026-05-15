@@ -139,7 +139,7 @@ export function LeaguePaySettings({
               <span className="text-sm font-medium text-gray-700">Role rates</span>
               {availableRoles.length === 0 ? (
                 <p className="text-xs text-gray-400">
-                  No umpire roles are configured for this season's divisions yet.
+                  No umpire roles are configured for this season&apos;s divisions yet.
                 </p>
               ) : (
                 <>

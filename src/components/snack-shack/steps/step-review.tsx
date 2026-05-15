@@ -11,7 +11,6 @@ interface Props {
   data: SnackShackWizardData;
   leagueId: string;
   existingId?: string;
-  isEditMode: boolean;
   onEdit: (step: number) => void;
   onComplete: () => void;
 }
@@ -78,7 +77,6 @@ export function StepReview({
   data,
   leagueId,
   existingId,
-  isEditMode,
   onEdit,
   onComplete,
 }: Props) {

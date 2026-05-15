@@ -73,7 +73,7 @@ export default async function UmpireSchedulePage({
   const payMode = umpire.season?.pay_rate_mode === "per_role" ? "per_role" : "per_umpire";
 
   // Load per-role rates if needed
-  let roleRateMap: Record<string, number> = {};
+  const roleRateMap: Record<string, number> = {};
   if (payEnabled && payMode === "per_role") {
     const { data: ratesRaw } = await supabase
       .from("umpire_role_rates")

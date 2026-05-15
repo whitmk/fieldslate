@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/client";
-import { DAY_TO_JS_INDEX } from "@/components/snack-shack/wizard-types";
 import type { SnackShackWizardData, DayCode } from "@/components/snack-shack/wizard-types";
 
 type Result = { success: boolean; blocksCreated: number; error?: string };
