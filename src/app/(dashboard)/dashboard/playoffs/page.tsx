@@ -315,6 +315,7 @@ export default function PlayoffsPage() {
                             <BracketView
                               playoffId={playoff.id}
                               divisionName={playoff.division?.name ?? ""}
+                              format={playoff.format}
                             />
                           </div>
                         )}
