@@ -164,6 +164,8 @@ export function StepReview({
           practice_season_end: data.practice_season_end || null,
           settings: settingsPayload,
           activities_per_week: data.activities_per_week,
+          umpires_per_game: data.umpires_per_game,
+          umpire_roles: data.umpire_roles,
         } as never)
         .eq("id", divisionId);
 
@@ -196,6 +198,8 @@ export function StepReview({
           settings: settingsPayload,
           status: "active",
           activities_per_week: data.activities_per_week,
+          umpires_per_game: data.umpires_per_game,
+          umpire_roles: data.umpire_roles,
         } as never])
         .select("id")
         .single();
@@ -783,14 +787,31 @@ export function StepReview({
         )}
       </Section>
 
-      <Section title="Format" step={4} onEdit={onEdit}>
+      <Section title="Umpires" step={4} onEdit={onEdit}>
+        <Row
+          label="Umpires per game"
+          value={
+            data.umpires_per_game === 0
+              ? "Not required"
+              : data.umpires_per_game
+          }
+        />
+        {data.umpires_per_game > 0 && (
+          <Row
+            label="Roles"
+            value={data.umpire_roles.filter((r) => r.trim() !== "").join(", ") || "—"}
+          />
+        )}
+      </Section>
+
+      <Section title="Format" step={5} onEdit={onEdit}>
         <Row label="Format" value={FORMAT_LABELS[data.format]} />
         <Row label="Playoffs" value={data.include_playoffs ? "Yes" : "No"} />
         <Row label="Home/away rotation" value={data.auto_rotate ? "Yes" : "No"} />
         <Row label="Track standings" value={data.track_standings ? "Yes" : "No"} />
       </Section>
 
-      <Section title="Coaches" step={5} onEdit={onEdit}>
+      <Section title="Coaches" step={6} onEdit={onEdit}>
         <Row label="Coach conflicts" value={conflictCount > 0 ? `${conflictCount} flagged` : "None"} />
       </Section>
 

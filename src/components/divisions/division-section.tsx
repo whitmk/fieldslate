@@ -35,6 +35,11 @@ function divisionToWizardData(
   const asStr = (v: unknown, fb: string) => (typeof v === "string" ? v : fb);
   const asBool = (v: unknown, fb: boolean) => (typeof v === "boolean" ? v : fb);
 
+  const umpireRolesRaw = div.umpire_roles;
+  const umpireRoles: string[] = Array.isArray(umpireRolesRaw)
+    ? umpireRolesRaw.filter((r): r is string => typeof r === "string")
+    : [];
+
   const playingDays: PlayingDay[] = Array.isArray(s.playing_days)
     ? (s.playing_days as PlayingDay[])
     : DEFAULT_WIZARD_DATA.playing_days;
@@ -85,6 +90,8 @@ function divisionToWizardData(
     practice_season_start: div.practice_season_start ?? "",
     practice_season_end: div.practice_season_end ?? "",
     venue_assignments: venueAssignments,
+    umpires_per_game: div.umpires_per_game ?? DEFAULT_WIZARD_DATA.umpires_per_game,
+    umpire_roles: umpireRoles,
     format: (s.format as ScheduleFormat) ?? DEFAULT_WIZARD_DATA.format,
     include_playoffs: asBool(s.include_playoffs, DEFAULT_WIZARD_DATA.include_playoffs),
     auto_rotate: asBool(s.auto_rotate, DEFAULT_WIZARD_DATA.auto_rotate),

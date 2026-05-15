@@ -63,12 +63,15 @@ export type WizardData = {
   practice_season_end: string;
   // Step 3 – Fields
   venue_assignments: VenueAssignment[];
-  // Step 4 – Format
+  // Step 4 – Umpires
+  umpires_per_game: number;
+  umpire_roles: string[];
+  // Step 5 – Format
   format: ScheduleFormat;
   include_playoffs: boolean;
   auto_rotate: boolean;
   track_standings: boolean;
-  // Step 5 – Coaches
+  // Step 6 – Coaches
   teams: TeamEntry[];
 };
 
@@ -99,6 +102,8 @@ export const DEFAULT_WIZARD_DATA: WizardData = {
   practice_season_start: "",
   practice_season_end: "",
   venue_assignments: [],
+  umpires_per_game: 0,
+  umpire_roles: [],
   format: "round_robin",
   include_playoffs: true,
   auto_rotate: true,

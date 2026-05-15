@@ -6,6 +6,7 @@ import { StepBasics } from "./steps/step-basics";
 import { StepPlayingSchedule } from "./steps/step-playing-schedule";
 import { StepPracticeSchedule } from "./steps/step-practice-schedule";
 import { StepFields } from "./steps/step-fields";
+import { StepUmpires } from "./steps/step-umpires";
 import { StepFormat } from "./steps/step-format";
 import { StepCoaches } from "./steps/step-coaches";
 import { StepReview } from "./steps/step-review";
@@ -17,6 +18,7 @@ const STEPS = [
   { label: "Schedule" },
   { label: "Practice" },
   { label: "Fields" },
+  { label: "Umpires" },
   { label: "Format" },
   { label: "Coaches" },
   { label: "Review" },
@@ -102,6 +104,7 @@ export function DivisionWizard({ leagueId, leagueName, leagueStartDate, leagueEn
       onSkip={() => setStep((s) => s + 1)}
     />,
     <StepFields key="fields" data={data} update={update} leagueId={leagueId} />,
+    <StepUmpires key="umpires" data={data} update={update} />,
     <StepFormat key="format" data={data} update={update} />,
     <StepCoaches key="coaches" data={data} update={update} leagueId={leagueId} />,
     <StepReview
@@ -180,7 +183,7 @@ export function DivisionWizard({ leagueId, leagueName, leagueStartDate, leagueEn
         <div className="flex-1 overflow-y-auto px-6 py-6">{stepContent[step]}</div>
 
         {/* Footer — hidden on review step (has its own CTA) */}
-        {step < 6 && (
+        {step < STEPS.length - 1 && (
           <div className="flex flex-shrink-0 items-center justify-between border-t border-gray-100 px-6 py-4">
             <button
               onClick={() => setStep((s) => s - 1)}

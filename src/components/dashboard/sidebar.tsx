@@ -16,6 +16,7 @@ import {
   FileDown,
   Settings,
   LogOut,
+  UserCheck,
 } from "lucide-react";
 
 const navItems = [
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/dashboard/venues", label: "Venues", icon: MapPin },
   { href: "/dashboard/divisions", label: "Divisions", icon: Layers },
   { href: "/dashboard/fields", label: "Fields", icon: Flag },
+  { href: "/dashboard/umpires", label: "Umpires", icon: UserCheck },
   { href: "/dashboard/interleague", label: "Cross-season", icon: ArrowLeftRight },
   { href: "/dashboard/playoffs", label: "Playoffs", icon: Medal },
   { href: "/dashboard/export", label: "Export", icon: FileDown },

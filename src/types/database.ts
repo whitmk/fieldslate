@@ -139,6 +139,8 @@ export type Database = {
           start_date: string | null
           status: string
           team_count: number
+          umpires_per_game: number
+          umpire_roles: Json
           updated_at: string
         }
         Insert: {
@@ -155,6 +157,8 @@ export type Database = {
           start_date?: string | null
           status?: string
           team_count?: number
+          umpires_per_game?: number
+          umpire_roles?: Json
           updated_at?: string
         }
         Update: {
@@ -171,6 +175,8 @@ export type Database = {
           start_date?: string | null
           status?: string
           team_count?: number
+          umpires_per_game?: number
+          umpire_roles?: Json
           updated_at?: string
         }
         Relationships: [
@@ -644,6 +650,38 @@ export type Database = {
           },
         ]
       }
+      umpires: {
+        Row: {
+          created_at: string
+          designation: string
+          id: string
+          name: string
+          season_id: string
+        }
+        Insert: {
+          created_at?: string
+          designation: string
+          id?: string
+          name: string
+          season_id: string
+        }
+        Update: {
+          created_at?: string
+          designation?: string
+          id?: string
+          name?: string
+          season_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "umpires_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       venues: {
         Row: {
           address: string | null
@@ -842,4 +880,5 @@ export type ActivityLog  = Database["public"]["Tables"]["activity_log"]["Row"];
 export type Practice     = Database["public"]["Tables"]["practices"]["Row"];
 export type Playoff      = Database["public"]["Tables"]["playoffs"]["Row"];
 export type PlayoffGame  = Database["public"]["Tables"]["playoff_games"]["Row"];
+export type Umpire       = Database["public"]["Tables"]["umpires"]["Row"];
 export type PracticeSlot = Database["public"]["Tables"]["team_practice_slots"]["Row"];
