@@ -135,9 +135,7 @@ export function StepReview({
     max_games_per_field_per_day: data.max_games_per_field_per_day,
     bye_weeks: data.bye_weeks,
     format: data.format,
-    include_playoffs: data.include_playoffs,
     auto_rotate: data.auto_rotate,
-    track_standings: data.track_standings,
     teams: data.teams,
   };
 
@@ -685,9 +683,7 @@ export function StepReview({
           );
         })()}
         <Row label="Format" value={FORMAT_LABELS[data.format]} />
-        <Row label="Playoffs" value={data.include_playoffs ? "Yes" : "No"} />
         <Row label="Home/away rotation" value={data.auto_rotate ? "Yes" : "No"} />
-        <Row label="Track standings" value={data.track_standings ? "Yes" : "No"} />
       </Section>
 
       {data.plays_interleague && (

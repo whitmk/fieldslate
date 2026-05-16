@@ -155,19 +155,9 @@ export function StepFormat({ data, update }: Props) {
 
       <div className="divide-y divide-gray-100 rounded-xl border border-gray-100 bg-gray-50/50 px-4">
         <Toggle
-          label="Include playoffs"
-          checked={data.include_playoffs}
-          onChange={(v) => update({ include_playoffs: v })}
-        />
-        <Toggle
           label="Auto-rotate home and away"
           checked={data.auto_rotate}
           onChange={(v) => update({ auto_rotate: v })}
-        />
-        <Toggle
-          label="Track standings"
-          checked={data.track_standings}
-          onChange={(v) => update({ track_standings: v })}
         />
       </div>
     </div>

@@ -74,9 +74,7 @@ export type WizardData = {
   umpire_roles: string[];
   // Step 5 – Format
   format: ScheduleFormat;
-  include_playoffs: boolean;
   auto_rotate: boolean;
-  track_standings: boolean;
   // Step 6 – Interleague
   plays_interleague: boolean;
   interleague_games: InterleagueGameEntry[];
@@ -114,9 +112,7 @@ export const DEFAULT_WIZARD_DATA: WizardData = {
   umpires_per_game: 0,
   umpire_roles: [],
   format: "round_robin",
-  include_playoffs: true,
   auto_rotate: true,
-  track_standings: true,
   plays_interleague: false,
   interleague_games: [],
   teams: [],

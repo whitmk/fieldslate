@@ -94,9 +94,7 @@ function divisionToWizardData(
     umpires_per_game: div.umpires_per_game ?? DEFAULT_WIZARD_DATA.umpires_per_game,
     umpire_roles: umpireRoles,
     format: (s.format as ScheduleFormat) ?? DEFAULT_WIZARD_DATA.format,
-    include_playoffs: asBool(s.include_playoffs, DEFAULT_WIZARD_DATA.include_playoffs),
     auto_rotate: asBool(s.auto_rotate, DEFAULT_WIZARD_DATA.auto_rotate),
-    track_standings: asBool(s.track_standings, DEFAULT_WIZARD_DATA.track_standings),
     plays_interleague: div.plays_interleague ?? false,
     interleague_games: interleagueGames,
     teams: (() => {
