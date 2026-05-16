@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Check, Loader2, MapPin, Send, Trophy } from "lucide-react";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 
@@ -64,8 +63,6 @@ export function InviteForm({
   orgName,
   games,
 }: Props) {
-  const router = useRouter();
-
   const [responses, setResponses] = useState<Record<string, GameState>>(() => {
     const init: Record<string, GameState> = {};
     for (const g of games) {
@@ -145,11 +142,13 @@ export function InviteForm({
         setSubmitting(false);
         return;
       }
+      // Don't call router.refresh() here — the invite is now flipped to
+      // 'accepted', so a server re-fetch would render the InviteNotFound
+      // screen on top of the success state.
       setSuccess({
         accepted: Number(data.accepted ?? 0),
         countered: Number(data.countered ?? 0),
       });
-      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error. Please try again.");
       setSubmitting(false);
