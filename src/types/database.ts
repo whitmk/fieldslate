@@ -255,6 +255,7 @@ export type Database = {
           division_id: string
           interleague_org_id: string
           game_count: number
+          home_games_per_team: number
           created_at: string
           updated_at: string
         }
@@ -263,6 +264,7 @@ export type Database = {
           division_id: string
           interleague_org_id: string
           game_count?: number
+          home_games_per_team?: number
           created_at?: string
           updated_at?: string
         }
@@ -271,6 +273,7 @@ export type Database = {
           division_id?: string
           interleague_org_id?: string
           game_count?: number
+          home_games_per_team?: number
           created_at?: string
           updated_at?: string
         }
@@ -359,12 +362,16 @@ export type Database = {
           away_score: number | null
           away_team_id: string | null
           created_at: string
+          external_team_name: string | null
           home_score: number | null
           home_team_id: string
           id: string
           interleague_org_id: string | null
+          is_away: boolean
           league_id: string
           notes: string | null
+          proposed_scheduled_at: string | null
+          proposed_venue_name: string | null
           scheduled_at: string
           status: string
           updated_at: string
@@ -374,12 +381,16 @@ export type Database = {
           away_score?: number | null
           away_team_id?: string | null
           created_at?: string
+          external_team_name?: string | null
           home_score?: number | null
           home_team_id: string
           id?: string
           interleague_org_id?: string | null
+          is_away?: boolean
           league_id: string
           notes?: string | null
+          proposed_scheduled_at?: string | null
+          proposed_venue_name?: string | null
           scheduled_at: string
           status?: string
           updated_at?: string
@@ -389,12 +400,16 @@ export type Database = {
           away_score?: number | null
           away_team_id?: string | null
           created_at?: string
+          external_team_name?: string | null
           home_score?: number | null
           home_team_id?: string
           id?: string
           interleague_org_id?: string | null
+          is_away?: boolean
           league_id?: string
           notes?: string | null
+          proposed_scheduled_at?: string | null
+          proposed_venue_name?: string | null
           scheduled_at?: string
           status?: string
           updated_at?: string

@@ -32,7 +32,8 @@ export type PracticeSlotEntry = {
 export type InterleagueGameEntry = {
   interleague_org_id: string;
   org_name: string;
-  game_count: number;
+  game_count: number;            // total games per team against this org
+  home_games_per_team: number;   // of those, how many are hosted by us (rest are away)
 };
 
 export type TeamEntry = {

@@ -255,6 +255,10 @@ export function StepReview({
           division_id: divId,
           interleague_org_id: g.interleague_org_id,
           game_count: g.game_count,
+          home_games_per_team: Math.max(
+            0,
+            Math.min(g.game_count, g.home_games_per_team ?? g.game_count),
+          ),
         })) as never[]
       );
     }
@@ -694,15 +698,19 @@ export function StepReview({
             <>
               {data.interleague_games
                 .filter((g) => g.game_count > 0)
-                .map((g) => (
-                  <Row
-                    key={g.interleague_org_id}
-                    label={g.org_name}
-                    value={`${g.game_count} game${g.game_count !== 1 ? "s" : ""}`}
-                  />
-                ))}
+                .map((g) => {
+                  const home = Math.max(0, Math.min(g.game_count, g.home_games_per_team ?? g.game_count));
+                  const away = g.game_count - home;
+                  return (
+                    <Row
+                      key={g.interleague_org_id}
+                      label={g.org_name}
+                      value={`${g.game_count} per team (${home} home / ${away} away)`}
+                    />
+                  );
+                })}
               <Row
-                label="Total"
+                label="Total per team"
                 value={`${data.interleague_games.reduce((s, g) => s + g.game_count, 0)} games`}
               />
             </>

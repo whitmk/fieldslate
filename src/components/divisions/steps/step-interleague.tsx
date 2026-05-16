@@ -65,18 +65,40 @@ export function StepInterleague({ data, update }: Props) {
       });
   }, []);
 
+  function getEntry(orgId: string): InterleagueGameEntry | undefined {
+    return data.interleague_games.find((g) => g.interleague_org_id === orgId);
+  }
+
   function getCount(orgId: string): number {
-    return data.interleague_games.find((g) => g.interleague_org_id === orgId)?.game_count ?? 0;
+    return getEntry(orgId)?.game_count ?? 0;
+  }
+
+  function getHome(orgId: string): number {
+    return getEntry(orgId)?.home_games_per_team ?? 0;
+  }
+
+  function upsertEntry(org: InterleagueOrg, patch: Partial<InterleagueGameEntry>) {
+    const existing = getEntry(org.id) ?? {
+      interleague_org_id: org.id,
+      org_name: org.name,
+      game_count: 0,
+      home_games_per_team: 0,
+    };
+    const merged: InterleagueGameEntry = { ...existing, ...patch };
+    // Clamp home to [0, game_count]
+    merged.home_games_per_team = Math.max(0, Math.min(merged.game_count, merged.home_games_per_team));
+    const rest = data.interleague_games.filter((g) => g.interleague_org_id !== org.id);
+    update({ interleague_games: [...rest, merged] });
   }
 
   function setCount(org: InterleagueOrg, raw: string) {
-    const count = Math.max(0, Math.min(20, parseInt(raw, 10) || 0));
-    const rest = data.interleague_games.filter((g) => g.interleague_org_id !== org.id);
-    const updated: InterleagueGameEntry[] = [
-      ...rest,
-      { interleague_org_id: org.id, org_name: org.name, game_count: count },
-    ];
-    update({ interleague_games: updated });
+    const game_count = Math.max(0, Math.min(20, parseInt(raw, 10) || 0));
+    upsertEntry(org, { game_count });
+  }
+
+  function setHome(org: InterleagueOrg, raw: string) {
+    const home = Math.max(0, parseInt(raw, 10) || 0);
+    upsertEntry(org, { home_games_per_team: home });
   }
 
   const totalGames = data.interleague_games.reduce((s, g) => s + g.game_count, 0);
@@ -86,7 +108,8 @@ export function StepInterleague({ data, update }: Props) {
       <div>
         <h3 className="text-lg font-semibold text-[#0C1F3F]">Interleague games</h3>
         <p className="mt-0.5 text-sm text-gray-500">
-          Configure games this division plays against external organizations.
+          Configure games each team in this division plays against external
+          organizations. Counts are <span className="font-medium text-[#0C1F3F]">per team</span>.
         </p>
       </div>
 
@@ -117,32 +140,63 @@ export function StepInterleague({ data, update }: Props) {
           ) : (
             <>
               <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
-                {orgs.map((org, i) => (
-                  <div
-                    key={org.id}
-                    className={`flex items-center justify-between px-4 py-3 ${
-                      i !== 0 ? "border-t border-gray-50" : ""
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-[#0C1F3F]">{org.name}</p>
-                      {org.contact_name && (
-                        <p className="truncate text-xs text-gray-400">{org.contact_name}</p>
-                      )}
+                {orgs.map((org, i) => {
+                  const total = getCount(org.id);
+                  const home = getHome(org.id);
+                  const away = Math.max(0, total - home);
+                  return (
+                    <div
+                      key={org.id}
+                      className={`flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${
+                        i !== 0 ? "border-t border-gray-50" : ""
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[#0C1F3F]">{org.name}</p>
+                        {org.contact_name && (
+                          <p className="truncate text-xs text-gray-400">{org.contact_name}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-shrink-0 flex-wrap items-end gap-3">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                            Games per team
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="20"
+                            value={total}
+                            onChange={(e) => setCount(org, e.target.value)}
+                            className="h-8 w-16 rounded-lg border border-gray-200 px-2 text-center text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                            Home per team
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max={total}
+                            value={home}
+                            disabled={total === 0}
+                            onChange={(e) => setHome(org, e.target.value)}
+                            className="h-8 w-16 rounded-lg border border-gray-200 px-2 text-center text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20 disabled:bg-gray-50 disabled:text-gray-300"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                            Away
+                          </span>
+                          <span className="flex h-8 w-16 items-center justify-center rounded-lg border border-gray-100 bg-gray-50 px-2 text-center text-sm font-semibold text-gray-500">
+                            {total === 0 ? 0 : away}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="ml-4 flex flex-shrink-0 items-center gap-2">
-                      <span className="text-xs text-gray-500">Games</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="20"
-                        value={getCount(org.id)}
-                        onChange={(e) => setCount(org, e.target.value)}
-                        className="h-8 w-16 rounded-lg border border-gray-200 px-2 text-center text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-                      />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="flex items-center justify-between rounded-xl bg-[#0C1F3F]/5 px-4 py-3">

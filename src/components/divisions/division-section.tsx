@@ -250,7 +250,7 @@ export function DivisionSection({
       supabase.from("teams").select("id, name").eq("division_id", div.id),
       supabase
         .from("division_interleague_games")
-        .select("interleague_org_id, game_count, interleague_orgs(name)")
+        .select("interleague_org_id, game_count, home_games_per_team, interleague_orgs(name)")
         .eq("division_id", div.id),
     ]);
     const venueAssignments: VenueAssignment[] = (dvRows ?? []).map(
@@ -260,11 +260,17 @@ export function DivisionSection({
         allow_practices: r.allow_practices,
       }),
     );
-    type IgRow = { interleague_org_id: string; game_count: number; interleague_orgs: { name: string } | null };
+    type IgRow = {
+      interleague_org_id: string;
+      game_count: number;
+      home_games_per_team: number | null;
+      interleague_orgs: { name: string } | null;
+    };
     const interleagueGames: InterleagueGameEntry[] = ((igRows ?? []) as unknown as IgRow[]).map((r) => ({
       interleague_org_id: r.interleague_org_id,
       org_name: r.interleague_orgs?.name ?? "",
       game_count: r.game_count,
+      home_games_per_team: r.home_games_per_team ?? r.game_count,
     }));
     setEditInitialData(
       divisionToWizardData(
