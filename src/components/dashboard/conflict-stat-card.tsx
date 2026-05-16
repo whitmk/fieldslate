@@ -8,6 +8,14 @@ import {
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
 
+export type ConflictPeer = {
+  id: string;
+  scheduled_at: string;
+  home_team_name: string;
+  away_team_name: string;
+  division_id: string | null;
+};
+
 export type ConflictGame = {
   id: string;
   scheduled_at: string;
@@ -18,6 +26,7 @@ export type ConflictGame = {
   venue: { name: string } | null;
   conflictType: "schedule" | "blackout";
   blackoutLabel: string | null;
+  conflictsWith: ConflictPeer[];
 };
 
 interface Props {
@@ -146,6 +155,28 @@ export function ConflictStatCard({ initialConflictGames, leagueId, divisionNames
                             </span>
                           )}
                         </div>
+
+                        {/* Conflicting siblings */}
+                        {game.conflictType === "schedule" && game.conflictsWith.length > 0 && (
+                          <div className="mt-1.5 ml-0.5 text-xs text-red-600">
+                            <span className="font-medium">Conflicts with:</span>
+                            <ul className="mt-0.5 ml-3 list-disc space-y-0.5 text-red-500/90 marker:text-red-300">
+                              {game.conflictsWith.map((peer) => {
+                                const peerDivision = peer.division_id ? divisionNames[peer.division_id] : null;
+                                const venueName = game.venue?.name;
+                                const meta = [peerDivision, venueName, fmtGameTime(peer.scheduled_at)]
+                                  .filter(Boolean)
+                                  .join(", ");
+                                return (
+                                  <li key={peer.id}>
+                                    {peer.home_team_name} vs {peer.away_team_name}
+                                    {meta && <span className="text-red-400"> ({meta})</span>}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        )}
 
                         {/* Action */}
                         <div className="mt-3">

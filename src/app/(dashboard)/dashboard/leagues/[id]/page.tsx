@@ -172,6 +172,51 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     }
   }
 
+  // Per-game gap (game_duration + buffer) from the home team's division settings
+  const gapByDivisionId = new Map<string, number>();
+  for (const div of allDivisions) {
+    const ds = (div.settings ?? {}) as { game_duration?: number; buffer_minutes?: number };
+    gapByDivisionId.set(
+      div.id,
+      Number(ds.game_duration ?? 0) + Number(ds.buffer_minutes ?? 0),
+    );
+  }
+  function gapFor(g: GameRow): number {
+    const divId = g.home_team?.division_id;
+    return (divId ? gapByDivisionId.get(divId) : undefined) ?? 105;
+  }
+  function timeMin(hhmm: string): number {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  }
+
+  // Pairwise peer detection: same venue + same date + within max(gapA, gapB) minutes.
+  // Powers the "conflicts with" list shown under each Double-booked badge.
+  const peersByGameId = new Map<string, GameRow[]>();
+  const venueDayBuckets = new Map<string, GameRow[]>();
+  for (const g of allGames) {
+    if (g.status === "cancelled" || !g.venue_id) continue;
+    const key = `${g.venue_id}:${g.scheduled_at.substring(0, 10)}`;
+    if (!venueDayBuckets.has(key)) venueDayBuckets.set(key, []);
+    venueDayBuckets.get(key)!.push(g);
+  }
+  for (const group of Array.from(venueDayBuckets.values())) {
+    if (group.length < 2) continue;
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const a = group[i], b = group[j];
+        const minsA = timeMin(a.scheduled_at.substring(11, 16));
+        const minsB = timeMin(b.scheduled_at.substring(11, 16));
+        if (Math.abs(minsA - minsB) < Math.max(gapFor(a), gapFor(b))) {
+          if (!peersByGameId.has(a.id)) peersByGameId.set(a.id, []);
+          if (!peersByGameId.has(b.id)) peersByGameId.set(b.id, []);
+          peersByGameId.get(a.id)!.push(b);
+          peersByGameId.get(b.id)!.push(a);
+        }
+      }
+    }
+  }
+
   // Build unified conflict list for ConflictStatCard (schedule conflicts take priority if both)
   const conflictGames: ConflictGame[] = [];
   for (const g of allGames) {
@@ -179,6 +224,18 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     const isSchedule = allConflictingGameIds.has(g.id);
     const isBlackout = allBlackoutGameIds.has(g.id);
     if (!isSchedule && !isBlackout) continue;
+    const peers = isSchedule
+      ? (peersByGameId.get(g.id) ?? [])
+          .slice()
+          .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
+          .map((p) => ({
+            id: p.id,
+            scheduled_at: p.scheduled_at,
+            home_team_name: p.home_team?.name ?? "TBD",
+            away_team_name: p.away_team?.name ?? "TBD",
+            division_id: p.home_team?.division_id ?? null,
+          }))
+      : [];
     conflictGames.push({
       id: g.id,
       scheduled_at: g.scheduled_at,
@@ -191,6 +248,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       blackoutLabel: isBlackout && !isSchedule
         ? (blackoutMap.get(g.scheduled_at.substring(0, 10)) ?? null)
         : null,
+      conflictsWith: peers,
     });
   }
 
