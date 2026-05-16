@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, MapPin, Send, Trophy } from "lucide-react";
+import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 
 export type PendingGame = {
   id: string;
@@ -33,43 +34,27 @@ interface Props {
   games: PendingGame[];
 }
 
-function fmtDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+/**
+ * Times in the DB use the codebase's wall-clock UTC convention: a value like
+ * "2026-05-23T09:00:00+00:00" means 9:00 AM in the season's local time, with
+ * the +00:00 acting as a literal marker (no timezone conversion intended).
+ * So every formatter / picker round-trip here must avoid `new Date()`-driven
+ * UTC shifts and operate on the raw substring instead.
+ */
 
-function fmtTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-/** Convert an ISO timestamp into the format <input type="datetime-local"> expects. */
+/** Strip the time half off and convert to the format <input type="datetime-local"> expects. */
 function isoToLocalDatetime(iso: string): string {
-  const d = new Date(iso);
-  return (
-    `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` +
-    `T${pad2(d.getHours())}:${pad2(d.getMinutes())}`
-  );
+  // "2026-05-23T09:00:00+00:00" → "2026-05-23T09:00"
+  return iso.substring(0, 16);
 }
 
-/** Convert a local datetime-local value back to a full ISO string. */
+/** Convert a datetime-local value back to a wall-clock-UTC ISO string. */
 function localDatetimeToIso(local: string): string {
   if (!local) return "";
-  // datetime-local has no timezone — interpret as local
-  const d = new Date(local);
-  return d.toISOString();
+  // Append ":00+00:00" so Postgres reads the literal wall clock without applying
+  // the user's browser timezone offset. Treating the +00:00 as a literal keeps
+  // the value symmetric with how the generator stores schedule_at.
+  return `${local}:00+00:00`;
 }
 
 export function InviteForm({
@@ -333,7 +318,7 @@ function GameRow({ game, state, onChange }: GameRowProps) {
             <span className="text-gray-600">your team</span>
           </p>
           <p className="mt-0.5 text-xs text-gray-500">
-            {game.division.name} · {fmtDate(game.scheduled_at)}, {fmtTime(game.scheduled_at)}
+            {game.division.name} · {fmtGameDate(game.scheduled_at)}, {fmtGameTime(game.scheduled_at)}
             {game.venue?.name && !game.is_away && (
               <> · {game.venue.name}</>
             )}

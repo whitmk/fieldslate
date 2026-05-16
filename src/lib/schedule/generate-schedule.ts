@@ -562,6 +562,20 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
     home_games_per_team: number;
   }>;
 
+  // Pull field_count for each org — caps how many away games we can place
+  // against an org on the same date.
+  const orgIds = interleagueConfig.map((c) => c.interleague_org_id);
+  const orgFieldCount = new Map<string, number>();
+  if (orgIds.length > 0) {
+    const { data: orgRowsRaw } = await supabase
+      .from("interleague_orgs")
+      .select("id, field_count")
+      .in("id", orgIds);
+    for (const o of (orgRowsRaw ?? []) as Array<{ id: string; field_count: number | null }>) {
+      orgFieldCount.set(o.id, Math.max(1, Number(o.field_count ?? 1)));
+    }
+  }
+
   // Count accepted interleague games per (team, org) so we don't re-create
   // ones that survived the upcoming delete (status='scheduled' interleague).
   const acceptedByTeamOrg = new Map<string, { home: number; away: number }>();
@@ -644,6 +658,29 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
     .select("home_team_id, scheduled_at")
     .in("home_team_id", teamIds);
 
+  // Pre-seed the per-org per-date away count: any existing away game against
+  // one of this division's orgs (across the league — even other divisions)
+  // counts against that org's field_count for the day. We only need this map
+  // when there are orgs to scope by.
+  const awayByOrgDate = new Map<string, number>();
+  if (orgIds.length > 0) {
+    const { data: existingAwayRaw } = await supabase
+      .from("games")
+      .select("interleague_org_id, scheduled_at")
+      .eq("league_id", div.league_id)
+      .eq("is_away", true)
+      .in("interleague_org_id", orgIds);
+    for (const g of (existingAwayRaw ?? []) as Array<{
+      interleague_org_id: string | null;
+      scheduled_at: string;
+    }>) {
+      if (!g.interleague_org_id) continue;
+      const date = g.scheduled_at.substring(0, 10);
+      const key = `${g.interleague_org_id}|${date}`;
+      awayByOrgDate.set(key, (awayByOrgDate.get(key) ?? 0) + 1);
+    }
+  }
+
   // "venueId:YYYY-MM-DD" → start times (minutes from midnight) already booked
   const venueBookings = new Map<string, number[]>();
 
@@ -721,6 +758,12 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
       if (!isAway) {
         const bookedMins = venueBookings.get(vKey) ?? [];
         if (bookedMins.some((t) => Math.abs(t - slotMins) < minVenueGap)) continue;
+      } else if (interleagueOrgId) {
+        // Away cap: the host org has a limited number of fields, so we can't
+        // schedule more than `field_count` away games against them per day.
+        const cap = orgFieldCount.get(interleagueOrgId) ?? 1;
+        const used = awayByOrgDate.get(`${interleagueOrgId}|${slot.date}`) ?? 0;
+        if (used >= cap) continue;
       }
 
       // Either team already has a game at this datetime (away may be null for interleague)
@@ -747,6 +790,9 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
       if (!isAway) {
         if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
         venueBookings.get(vKey)!.push(slotMins);
+      } else if (interleagueOrgId) {
+        const key = `${interleagueOrgId}|${slot.date}`;
+        awayByOrgDate.set(key, (awayByOrgDate.get(key) ?? 0) + 1);
       }
       teamTimes.get(homeId)!.add(slot.isoString);
       if (awayId) teamTimes.get(awayId)!.add(slot.isoString);
@@ -984,6 +1030,20 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
     home_games_per_team: number;
   }>;
 
+  // Field count per org caps how many away games we can place against them
+  // on the same date.
+  const orgIdsFinish = interleagueConfig.map((c) => c.interleague_org_id);
+  const orgFieldCountFinish = new Map<string, number>();
+  if (orgIdsFinish.length > 0) {
+    const { data: orgRowsRaw } = await supabase
+      .from("interleague_orgs")
+      .select("id, field_count")
+      .in("id", orgIdsFinish);
+    for (const o of (orgRowsRaw ?? []) as Array<{ id: string; field_count: number | null }>) {
+      orgFieldCountFinish.set(o.id, Math.max(1, Number(o.field_count ?? 1)));
+    }
+  }
+
   // ── 7. Compute per-team deficit and build only the needed matchups ────────────
 
   const gamesPerTeam = intraDivisionGamesPerTeamFinish;
@@ -1120,6 +1180,26 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
   const minVenueGap = Number(settings.game_duration ?? 0) + Number(settings.buffer_minutes ?? 0);
   const maxPerTeamDay = Math.max(1, Number(settings.max_games_per_team_per_day ?? 1));
 
+  // Pre-seed per-org per-date away count for the field_count cap.
+  const awayByOrgDateFinish = new Map<string, number>();
+  if (orgIdsFinish.length > 0) {
+    const { data: existingAwayRaw } = await supabase
+      .from("games")
+      .select("interleague_org_id, scheduled_at")
+      .eq("league_id", div.league_id)
+      .eq("is_away", true)
+      .in("interleague_org_id", orgIdsFinish);
+    for (const g of (existingAwayRaw ?? []) as Array<{
+      interleague_org_id: string | null;
+      scheduled_at: string;
+    }>) {
+      if (!g.interleague_org_id) continue;
+      const date = g.scheduled_at.substring(0, 10);
+      const key = `${g.interleague_org_id}|${date}`;
+      awayByOrgDateFinish.set(key, (awayByOrgDateFinish.get(key) ?? 0) + 1);
+    }
+  }
+
   // ── 10. Assign deficit matchups to slots (greedy, same logic as generateSchedule)
 
   type GameInsert = {
@@ -1161,6 +1241,10 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
       if (!isAway) {
         const bookedMins = venueBookings.get(vKey) ?? [];
         if (bookedMins.some((t) => Math.abs(t - slotMins) < minVenueGap)) continue;
+      } else if (interleagueOrgId) {
+        const cap = orgFieldCountFinish.get(interleagueOrgId) ?? 1;
+        const used = awayByOrgDateFinish.get(`${interleagueOrgId}|${slot.date}`) ?? 0;
+        if (used >= cap) continue;
       }
       if (teamTimes.get(homeId)!.has(slot.isoString)) continue;
       if (awayId && teamTimes.get(awayId)!.has(slot.isoString)) continue;
@@ -1181,6 +1265,9 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
       if (!isAway) {
         if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
         venueBookings.get(vKey)!.push(slotMins);
+      } else if (interleagueOrgId) {
+        const key = `${interleagueOrgId}|${slot.date}`;
+        awayByOrgDateFinish.set(key, (awayByOrgDateFinish.get(key) ?? 0) + 1);
       }
       teamTimes.get(homeId)!.add(slot.isoString);
       if (awayId) teamTimes.get(awayId)!.add(slot.isoString);

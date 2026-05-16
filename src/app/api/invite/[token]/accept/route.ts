@@ -35,17 +35,21 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+// Wall-clock UTC formatting (matches src/lib/utils/game-time.ts): read the
+// literal date/time substrings without `new Date()`-driven timezone shifts.
 function fmtIso(iso: string): string {
-  const d = new Date(iso);
-  const dateStr = d.toLocaleDateString("en-US", {
+  const [year, month, day] = iso.substring(0, 10).split("-").map(Number);
+  const [hourStr, minStr] = iso.substring(11, 16).split(":");
+  const hour = parseInt(hourStr, 10);
+  const min = parseInt(minStr, 10);
+  const dateStr = new Date(year, month - 1, day, 12).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
-  const timeStr = d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const period = hour >= 12 ? "PM" : "AM";
+  const h12 = hour % 12 || 12;
+  const timeStr = `${h12}:${String(min).padStart(2, "0")} ${period}`;
   return `${dateStr}, ${timeStr}`;
 }
 

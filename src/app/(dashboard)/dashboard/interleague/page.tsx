@@ -62,6 +62,7 @@ function OrgModal({ initial, onSave, onClose }: OrgModalProps) {
   const [contactName, setContactName] = useState(initial?.contact_name ?? "");
   const [contactPhone, setContactPhone] = useState(initial?.contact_phone ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [fieldCount, setFieldCount] = useState<number>(initial?.field_count ?? 1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -89,6 +90,7 @@ function OrgModal({ initial, onSave, onClose }: OrgModalProps) {
       contact_name: contactName.trim() || null,
       contact_phone: contactPhone.trim() || null,
       notes: notes.trim() || null,
+      field_count: Math.max(1, Math.floor(Number(fieldCount) || 1)),
     };
 
     const { error: dbError } = isEdit
@@ -184,6 +186,26 @@ function OrgModal({ initial, onSave, onClose }: OrgModalProps) {
                 className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
               />
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-600">
+              Number of fields
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={fieldCount}
+              onChange={(e) =>
+                setFieldCount(Math.max(1, parseInt(e.target.value, 10) || 1))
+              }
+              className="h-10 w-28 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+            />
+            <p className="text-[11px] text-gray-400">
+              Caps how many away games we can schedule against this org on the
+              same day. Defaults to 1.
+            </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
