@@ -64,6 +64,9 @@ interface Matchup {
   awayId: string | null;
   // set only for interleague matchups
   interleagueOrgId: string | null;
+  // true when this is an interleague matchup at the other org's venue
+  // (homeId still references our team that's playing — they're the "away" team)
+  isAway: boolean;
 }
 
 // ─── Pure helpers ──────────────────────────────────────────────────────────────
@@ -189,7 +192,7 @@ function buildMatchups(
         homeId = b; awayId = a;
       }
 
-      matchups.push({ homeId, awayId, interleagueOrgId: null });
+      matchups.push({ homeId, awayId, interleagueOrgId: null, isAway: false });
       homeCount[homeId] = (homeCount[homeId] ?? 0) + 1;
       gameCount[a] = (gameCount[a] ?? 0) + 1;
       gameCount[b] = (gameCount[b] ?? 0) + 1;
@@ -207,18 +210,45 @@ function buildMatchups(
  * Expand `division_interleague_games` rows into one matchup per team per
  * configured game. Interleague matchups have no away_team_id — the opponent
  * is the external org represented by interleagueOrgId.
+ *
+ * Each org config specifies `home_games_per_team` (we host) and the rest
+ * (game_count - home_games_per_team) are away games (other org hosts).
  */
 function buildInterleagueMatchups(
   teamIds: string[],
-  interleagueConfig: Array<{ interleague_org_id: string; game_count: number }>,
+  interleagueConfig: Array<{
+    interleague_org_id: string;
+    game_count: number;
+    home_games_per_team: number;
+  }>,
+  alreadyHaveByTeamOrg?: Map<string, { home: number; away: number }>,
 ): Matchup[] {
   const out: Matchup[] = [];
-  for (const { interleague_org_id, game_count } of interleagueConfig) {
-    const count = Number(game_count);
-    if (!Number.isFinite(count) || count <= 0) continue;
+  for (const cfg of interleagueConfig) {
+    const total = Number(cfg.game_count);
+    if (!Number.isFinite(total) || total <= 0) continue;
+    const homeTarget = Math.max(0, Math.min(total, Number(cfg.home_games_per_team) || 0));
+    const awayTarget = total - homeTarget;
     for (const teamId of teamIds) {
-      for (let i = 0; i < count; i++) {
-        out.push({ homeId: teamId, awayId: null, interleagueOrgId: interleague_org_id });
+      const have = alreadyHaveByTeamOrg?.get(`${teamId}|${cfg.interleague_org_id}`)
+        ?? { home: 0, away: 0 };
+      const needHome = Math.max(0, homeTarget - have.home);
+      const needAway = Math.max(0, awayTarget - have.away);
+      for (let i = 0; i < needHome; i++) {
+        out.push({
+          homeId: teamId,
+          awayId: null,
+          interleagueOrgId: cfg.interleague_org_id,
+          isAway: false,
+        });
+      }
+      for (let i = 0; i < needAway; i++) {
+        out.push({
+          homeId: teamId,
+          awayId: null,
+          interleagueOrgId: cfg.interleague_org_id,
+          isAway: true,
+        });
       }
     }
   }
@@ -524,15 +554,47 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
   // Pull interleague game counts per org for this division (if any)
   const { data: igRowsRaw } = await supabase
     .from("division_interleague_games")
-    .select("interleague_org_id, game_count")
+    .select("interleague_org_id, game_count, home_games_per_team")
     .eq("division_id", divisionId);
   const interleagueConfig = (igRowsRaw ?? []) as unknown as Array<{
-    interleague_org_id: string; game_count: number;
+    interleague_org_id: string;
+    game_count: number;
+    home_games_per_team: number;
   }>;
-  const interleagueMatchups = shuffle(buildInterleagueMatchups(teamIds, interleagueConfig));
 
-  // Intra first so they claim prime slots; interleague placeholders fill remaining slots
-  const matchups = [...intraMatchups, ...interleagueMatchups];
+  // Count accepted interleague games per (team, org) so we don't re-create
+  // ones that survived the upcoming delete (status='scheduled' interleague).
+  const acceptedByTeamOrg = new Map<string, { home: number; away: number }>();
+  {
+    const { data: acceptedRaw } = await supabase
+      .from("games")
+      .select("home_team_id, interleague_org_id, is_away")
+      .in("home_team_id", teamIds)
+      .eq("status", "scheduled")
+      .not("interleague_org_id", "is", null);
+    for (const g of (acceptedRaw ?? []) as Array<{
+      home_team_id: string;
+      interleague_org_id: string | null;
+      is_away: boolean | null;
+    }>) {
+      if (!g.interleague_org_id) continue;
+      const key = `${g.home_team_id}|${g.interleague_org_id}`;
+      const cur = acceptedByTeamOrg.get(key) ?? { home: 0, away: 0 };
+      if (g.is_away) cur.away += 1;
+      else cur.home += 1;
+      acceptedByTeamOrg.set(key, cur);
+    }
+  }
+
+  const interleagueMatchups = shuffle(
+    buildInterleagueMatchups(teamIds, interleagueConfig, acceptedByTeamOrg),
+  );
+
+  // Intra and home-interleague need real venues so go first; away-interleague
+  // can fit any remaining (date, time) the team is free.
+  const homeInterleague = interleagueMatchups.filter((m) => !m.isAway);
+  const awayInterleague = interleagueMatchups.filter((m) => m.isAway);
+  const matchups = [...intraMatchups, ...homeInterleague, ...awayInterleague];
 
   if (!matchups.length) {
     return { success: false, error: "Could not generate matchups. Check team count and games-per-team settings." };
@@ -553,12 +615,15 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
   // ── 8. Assign matchups to slots (greedy) ─────────────────────────────────────
 
   // Delete this division's old games BEFORE querying existing venue bookings so
-  // they don't falsely block slots in the new schedule.
+  // they don't falsely block slots in the new schedule. Preserve accepted
+  // interleague games (status='scheduled' AND interleague_org_id IS NOT NULL)
+  // so the recipient's confirmed bookings aren't wiped.
   const { error: delErr } = await supabase
     .from("games")
     .delete()
     .eq("league_id", div.league_id)
-    .in("home_team_id", teamIds);
+    .in("home_team_id", teamIds)
+    .or("status.neq.scheduled,interleague_org_id.is.null");
 
   if (delErr) {
     console.warn("[generateSchedule] failed to clear old games:", delErr.message);
@@ -571,6 +636,13 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
     .from("games")
     .select("venue_id, scheduled_at")
     .in("venue_id", venueIds);
+
+  // Also pre-load the preserved accepted interleague games for our teams so we
+  // don't double-book those teams at the same datetime in this run.
+  const { data: preservedForTeams } = await supabase
+    .from("games")
+    .select("home_team_id, scheduled_at")
+    .in("home_team_id", teamIds);
 
   // "venueId:YYYY-MM-DD" → start times (minutes from midnight) already booked
   const venueBookings = new Map<string, number[]>();
@@ -592,30 +664,64 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
 
   teamIds.forEach((id) => teamTimes.set(id, new Set()));
 
+  // Seed team caps with any preserved accepted interleague games so we don't
+  // double-book the same team at the same time / push past per-day or per-week caps.
+  for (const g of (preservedForTeams ?? []) as Array<{
+    home_team_id: string;
+    scheduled_at: string;
+  }>) {
+    const iso = g.scheduled_at.substring(0, 19);
+    const date = g.scheduled_at.substring(0, 10);
+    teamTimes.get(g.home_team_id)?.add(iso);
+    const hdk = `${g.home_team_id}|${date}`;
+    teamDay.set(hdk, (teamDay.get(hdk) ?? 0) + 1);
+    const hwk = `${g.home_team_id}|${weekKey(date)}`;
+    teamWeek.set(hwk, (teamWeek.get(hwk) ?? 0) + 1);
+  }
+
   type GameInsert = {
     league_id: string;
     home_team_id: string;
     away_team_id: string | null;
     interleague_org_id: string | null;
-    venue_id: string;
+    venue_id: string | null;
     scheduled_at: string;
-    status: "scheduled";
+    status: "scheduled" | "pending_interleague";
+    is_away: boolean;
   };
 
   const scheduled: GameInsert[] = [];
   const unscheduled: Matchup[] = [];
 
-  for (const { homeId, awayId, interleagueOrgId } of matchups) {
+  // Deduped (date, time) view for away matchups: they don't claim a venue,
+  // so iterating venues for the same time is wasted work.
+  const dateTimeOnlySlots: Slot[] = [];
+  {
+    const seenIso = new Set<string>();
+    for (const s of slots) {
+      if (!seenIso.has(s.isoString)) {
+        seenIso.add(s.isoString);
+        dateTimeOnlySlots.push(s);
+      }
+    }
+  }
+
+  for (const { homeId, awayId, interleagueOrgId, isAway } of matchups) {
+    const status: "scheduled" | "pending_interleague" =
+      interleagueOrgId ? "pending_interleague" : "scheduled";
     let assigned = false;
 
-    for (const slot of slots) {
-      // ── Venue overlap check ──────────────────────────────────────────────────
-      // Reject if any already-booked game at this venue on this day starts within
-      // (game_duration + buffer_minutes) minutes of the proposed start.
+    // Away interleague games skip venue checks — they're at the other org's venue.
+    const pool = isAway ? dateTimeOnlySlots : slots;
+
+    for (const slot of pool) {
+      // ── Venue overlap check (home/intra only) ────────────────────────────────
       const vKey = `${slot.venueId}:${slot.date}`;
       const slotMins = timeToMinutes(slot.isoString.substring(11, 16));
-      const bookedMins = venueBookings.get(vKey) ?? [];
-      if (bookedMins.some((t) => Math.abs(t - slotMins) < minVenueGap)) continue;
+      if (!isAway) {
+        const bookedMins = venueBookings.get(vKey) ?? [];
+        if (bookedMins.some((t) => Math.abs(t - slotMins) < minVenueGap)) continue;
+      }
 
       // Either team already has a game at this datetime (away may be null for interleague)
       if (teamTimes.get(homeId)!.has(slot.isoString)) continue;
@@ -638,8 +744,10 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
       if (awayId && blocked.get(awayId)!.has(slot.isoString)) continue;
 
       // ✓ All constraints satisfied — claim this slot
-      if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
-      venueBookings.get(vKey)!.push(slotMins);
+      if (!isAway) {
+        if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
+        venueBookings.get(vKey)!.push(slotMins);
+      }
       teamTimes.get(homeId)!.add(slot.isoString);
       if (awayId) teamTimes.get(awayId)!.add(slot.isoString);
       teamDay.set(hdk, (teamDay.get(hdk) ?? 0) + 1);
@@ -652,16 +760,17 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
         home_team_id: homeId,
         away_team_id: awayId,
         interleague_org_id: interleagueOrgId,
-        venue_id: slot.venueId,
+        venue_id: isAway ? null : slot.venueId,
         scheduled_at: slot.isoString,
-        status: "scheduled",
+        status,
+        is_away: isAway,
       });
 
       assigned = true;
       break;
     }
 
-    if (!assigned) unscheduled.push({ homeId, awayId, interleagueOrgId });
+    if (!assigned) unscheduled.push({ homeId, awayId, interleagueOrgId, isAway });
   }
 
   if (!scheduled.length) {
@@ -828,7 +937,7 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
 
   const { data: existingRaw } = await supabase
     .from("games")
-    .select("id, home_team_id, away_team_id, interleague_org_id, venue_id, scheduled_at")
+    .select("id, home_team_id, away_team_id, interleague_org_id, is_away, venue_id, scheduled_at")
     .in("home_team_id", teamIds);
 
   type ExistingGame = {
@@ -836,6 +945,7 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
     home_team_id: string;
     away_team_id: string | null;
     interleague_org_id: string | null;
+    is_away: boolean | null;
     venue_id: string | null;
     scheduled_at: string;
   };
@@ -852,21 +962,26 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
     }
   }
 
-  // Interleague per-team-per-org count: "teamId|orgId" → count of existing games
-  const existingInterleagueCount = new Map<string, number>();
+  // Interleague per-team-per-org count split by home/away.
+  const existingInterleagueCount = new Map<string, { home: number; away: number }>();
   for (const g of existingGames) {
     if (!g.interleague_org_id) continue;
     const key = `${g.home_team_id}|${g.interleague_org_id}`;
-    existingInterleagueCount.set(key, (existingInterleagueCount.get(key) ?? 0) + 1);
+    const cur = existingInterleagueCount.get(key) ?? { home: 0, away: 0 };
+    if (g.is_away) cur.away += 1;
+    else cur.home += 1;
+    existingInterleagueCount.set(key, cur);
   }
 
   // Load interleague config for this division
   const { data: igRowsRaw } = await supabase
     .from("division_interleague_games")
-    .select("interleague_org_id, game_count")
+    .select("interleague_org_id, game_count, home_games_per_team")
     .eq("division_id", divisionId);
   const interleagueConfig = (igRowsRaw ?? []) as unknown as Array<{
-    interleague_org_id: string; game_count: number;
+    interleague_org_id: string;
+    game_count: number;
+    home_games_per_team: number;
   }>;
 
   // ── 7. Compute per-team deficit and build only the needed matchups ────────────
@@ -880,10 +995,15 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
   const actualCount = { ...existingIntraCount };
 
   const intraDeficitExists = teamIds.some((id) => (actualCount[id] ?? 0) < gamesPerTeam);
-  const interleagueDeficitExists = interleagueConfig.some(({ interleague_org_id, game_count }) => {
-    const target = Number(game_count);
-    if (!Number.isFinite(target) || target <= 0) return false;
-    return teamIds.some((id) => (existingInterleagueCount.get(`${id}|${interleague_org_id}`) ?? 0) < target);
+  const interleagueDeficitExists = interleagueConfig.some((cfg) => {
+    const total = Number(cfg.game_count);
+    if (!Number.isFinite(total) || total <= 0) return false;
+    const homeTarget = Math.max(0, Math.min(total, Number(cfg.home_games_per_team) || 0));
+    const awayTarget = total - homeTarget;
+    return teamIds.some((id) => {
+      const have = existingInterleagueCount.get(`${id}|${cfg.interleague_org_id}`) ?? { home: 0, away: 0 };
+      return have.home < homeTarget || have.away < awayTarget;
+    });
   });
 
   // If nothing is missing, return early
@@ -924,7 +1044,7 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
           homeId = b; awayId = a;
         }
 
-        matchups.push({ homeId, awayId, interleagueOrgId: null });
+        matchups.push({ homeId, awayId, interleagueOrgId: null, isAway: false });
         homeCountFinish[homeId] = (homeCountFinish[homeId] ?? 0) + 1;
         actualCount[a] = (actualCount[a] ?? 0) + 1;
         actualCount[b] = (actualCount[b] ?? 0) + 1;
@@ -936,18 +1056,8 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
     }
   }
 
-  // Build interleague deficit matchups — one per missing team-org game
-  for (const { interleague_org_id, game_count } of interleagueConfig) {
-    const target = Number(game_count);
-    if (!Number.isFinite(target) || target <= 0) continue;
-    for (const teamId of teamIds) {
-      const have = existingInterleagueCount.get(`${teamId}|${interleague_org_id}`) ?? 0;
-      const need = target - have;
-      for (let i = 0; i < need; i++) {
-        matchups.push({ homeId: teamId, awayId: null, interleagueOrgId: interleague_org_id });
-      }
-    }
-  }
+  // Build interleague deficit matchups — split home/away per config.
+  matchups.push(...buildInterleagueMatchups(teamIds, interleagueConfig, existingInterleagueCount));
 
   if (!matchups.length) {
     return {
@@ -1017,22 +1127,41 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
     home_team_id: string;
     away_team_id: string | null;
     interleague_org_id: string | null;
-    venue_id: string;
+    venue_id: string | null;
     scheduled_at: string;
-    status: "scheduled";
+    status: "scheduled" | "pending_interleague";
+    is_away: boolean;
   };
 
   const scheduled: GameInsert[] = [];
   const unscheduled: Matchup[] = [];
 
-  for (const { homeId, awayId, interleagueOrgId } of matchups) {
+  // Deduped (date, time) pool for away matchups — they don't claim a venue.
+  const dateTimeOnlySlotsFinish: Slot[] = [];
+  {
+    const seenIso = new Set<string>();
+    for (const s of slots) {
+      if (!seenIso.has(s.isoString)) {
+        seenIso.add(s.isoString);
+        dateTimeOnlySlotsFinish.push(s);
+      }
+    }
+  }
+
+  for (const { homeId, awayId, interleagueOrgId, isAway } of matchups) {
+    const status: "scheduled" | "pending_interleague" =
+      interleagueOrgId ? "pending_interleague" : "scheduled";
     let assigned = false;
 
-    for (const slot of slots) {
+    const pool = isAway ? dateTimeOnlySlotsFinish : slots;
+
+    for (const slot of pool) {
       const vKey = `${slot.venueId}:${slot.date}`;
       const slotMins = timeToMinutes(slot.isoString.substring(11, 16));
-      const bookedMins = venueBookings.get(vKey) ?? [];
-      if (bookedMins.some((t) => Math.abs(t - slotMins) < minVenueGap)) continue;
+      if (!isAway) {
+        const bookedMins = venueBookings.get(vKey) ?? [];
+        if (bookedMins.some((t) => Math.abs(t - slotMins) < minVenueGap)) continue;
+      }
       if (teamTimes.get(homeId)!.has(slot.isoString)) continue;
       if (awayId && teamTimes.get(awayId)!.has(slot.isoString)) continue;
 
@@ -1049,8 +1178,10 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
       if (blocked.get(homeId)!.has(slot.isoString)) continue;
       if (awayId && blocked.get(awayId)!.has(slot.isoString)) continue;
 
-      if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
-      venueBookings.get(vKey)!.push(slotMins);
+      if (!isAway) {
+        if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
+        venueBookings.get(vKey)!.push(slotMins);
+      }
       teamTimes.get(homeId)!.add(slot.isoString);
       if (awayId) teamTimes.get(awayId)!.add(slot.isoString);
       teamDay.set(hdk, (teamDay.get(hdk) ?? 0) + 1);
@@ -1063,15 +1194,16 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
         home_team_id: homeId,
         away_team_id: awayId,
         interleague_org_id: interleagueOrgId,
-        venue_id: slot.venueId,
+        venue_id: isAway ? null : slot.venueId,
         scheduled_at: slot.isoString,
-        status: "scheduled",
+        status,
+        is_away: isAway,
       });
       assigned = true;
       break;
     }
 
-    if (!assigned) unscheduled.push({ homeId, awayId, interleagueOrgId });
+    if (!assigned) unscheduled.push({ homeId, awayId, interleagueOrgId, isAway });
   }
 
   if (!scheduled.length) {

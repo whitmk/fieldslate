@@ -29,7 +29,10 @@ export type ScheduleGame = {
   status: string;
   league_id: string;
   home_team_id: string;
-  away_team_id: string;
+  away_team_id: string | null;
+  interleague_org_id?: string | null;
+  is_away?: boolean | null;
+  external_team_name?: string | null;
   home_team: {
     name: string;
     division_id: string | null;
@@ -40,6 +43,7 @@ export type ScheduleGame = {
     } | null;
   } | null;
   away_team: { name: string } | null;
+  interleague_org?: { name: string } | null;
   venue: { name: string } | null;
   game_umpires?: ScheduleGameUmpire[];
 };
@@ -56,11 +60,39 @@ const gameStatusVariants: Record<string, "default" | "success" | "warning" | "da
   // a game through the UI), so amber + a "Rained out" label.
   cancelled: "warning",
   postponed: "default",
+  pending_interleague: "warning",
 };
 
 function gameStatusLabel(status: string) {
   if (status === "cancelled") return "Rained out";
+  if (status === "pending_interleague") return "Pending";
   return status.replace("_", " ");
+}
+
+/**
+ * Opponent label for the Matchup cell. Interleague games may have:
+ *  - is_away=true  → we're playing AT [Org]; opponent line reads "AT [Org]"
+ *  - is_away=false → we host; opponent is the external team name once accepted,
+ *    else "TBD — [Org]"
+ * Intra-division games use the real away team name.
+ */
+function matchupLabel(g: ScheduleGame): string {
+  const home = g.home_team?.name ?? "TBD";
+  if (g.interleague_org_id) {
+    const orgName = g.interleague_org?.name ?? "Other org";
+    const opp = g.external_team_name?.trim() || `TBD — ${orgName}`;
+    if (g.is_away) {
+      return `${home} AT ${orgName}${g.external_team_name ? ` (${g.external_team_name})` : ""}`;
+    }
+    return `${home} vs ${opp}`;
+  }
+  return `${home} vs ${g.away_team?.name ?? "TBD"}`;
+}
+
+function venueLabel(g: ScheduleGame): string {
+  if (g.venue?.name) return g.venue.name;
+  if (g.is_away && g.interleague_org?.name) return `TBD — ${g.interleague_org.name} venue`;
+  return "—";
 }
 
 export function ScheduleList({ games }: Props) {
@@ -139,7 +171,7 @@ export function ScheduleList({ games }: Props) {
         </tbody>
       </table>
 
-      {rescheduleGame && (
+      {rescheduleGame && rescheduleGame.away_team_id && (
         <RainoutRescheduleModal
           gameId={rescheduleGame.id}
           homeTeamId={rescheduleGame.home_team_id}
@@ -200,11 +232,9 @@ function GameRowCells({
       <td className="py-3 text-gray-600">
         {fmtGameDate(game.scheduled_at)}, {fmtGameTime(game.scheduled_at)}
       </td>
-      <td className="py-3 font-medium text-gray-900">
-        {game.home_team?.name ?? "TBD"} vs {game.away_team?.name ?? "TBD"}
-      </td>
+      <td className="py-3 font-medium text-gray-900">{matchupLabel(game)}</td>
       <td className="py-3 text-gray-600">{game.home_team?.division?.name ?? "—"}</td>
-      <td className="py-3 text-gray-600">{game.venue?.name ?? "—"}</td>
+      <td className="py-3 text-gray-600">{venueLabel(game)}</td>
       <td className="py-3">
         {umpiresPerGame === 0 ? (
           <span className="text-xs text-gray-300">—</span>

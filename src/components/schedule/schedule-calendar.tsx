@@ -67,6 +67,22 @@ type GamePill = { kind: "game"; date: string; time: string; data: ScheduleGame }
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MAX_VISIBLE_PER_DAY = 3;
 
+// Render a matchup line that handles interleague away ("AT [Org] (Wildcats)")
+// and pending placeholders ("vs TBD — [Org]") consistently with the list view.
+function pillMatchupLabel(g: ScheduleGame): string {
+  const home = g.home_team?.name ?? "TBD";
+  if (g.away_team?.name) return `${home} vs ${g.away_team.name}`;
+  if (g.interleague_org_id) {
+    const orgName = g.interleague_org?.name ?? "Other org";
+    const team = g.external_team_name?.trim();
+    if (g.is_away) {
+      return `${home} AT ${orgName}${team ? ` (${team})` : ""}`;
+    }
+    return `${home} vs ${team ? team : `TBD — ${orgName}`}`;
+  }
+  return `${home} vs TBD`;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ScheduleCalendar({ games, month, today }: Props) {
@@ -281,9 +297,14 @@ export function ScheduleCalendar({ games, month, today }: Props) {
                       Scheduled
                     </span>
                   )}
+                  {pill.data.status === "pending_interleague" && (
+                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700">
+                      Pending
+                    </span>
+                  )}
                 </p>
                 <p className="mt-1 text-sm font-semibold text-[#0C1F3F]">
-                  {pill.data.home_team?.name ?? "TBD"} vs {pill.data.away_team?.name ?? "TBD"}
+                  {pillMatchupLabel(pill.data)}
                 </p>
                 <div className="mt-2 flex flex-col gap-1 text-xs text-gray-500">
                   <span className="inline-flex items-center gap-1.5">
@@ -292,12 +313,17 @@ export function ScheduleCalendar({ games, month, today }: Props) {
                     {", "}
                     {fmtGameTime(pill.data.scheduled_at)}
                   </span>
-                  {pill.data.venue?.name && (
+                  {pill.data.venue?.name ? (
                     <span className="inline-flex items-center gap-1.5">
                       <MapPin className="h-3 w-3" />
                       {pill.data.venue.name}
                     </span>
-                  )}
+                  ) : pill.data.is_away && pill.data.interleague_org?.name ? (
+                    <span className="inline-flex items-center gap-1.5 italic">
+                      <MapPin className="h-3 w-3" />
+                      TBD — {pill.data.interleague_org.name} venue
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <button
@@ -368,7 +394,7 @@ export function ScheduleCalendar({ games, month, today }: Props) {
           );
         })()}
 
-      {rescheduleGame && (
+      {rescheduleGame && rescheduleGame.away_team_id && (
         <RainoutRescheduleModal
           gameId={rescheduleGame.id}
           homeTeamId={rescheduleGame.home_team_id}
@@ -410,7 +436,7 @@ function PillButton({ pill, muted, loading, size = "sm", onClick }: PillButtonPr
     ? "bg-gray-100 text-gray-400"
     : "bg-orange-100 text-orange-700 hover:bg-orange-200";
 
-  const label = `${pill.data.home_team?.name ?? "TBD"} vs ${pill.data.away_team?.name ?? "TBD"}`;
+  const label = pillMatchupLabel(pill.data);
   const timeStr = fmtGameTime(pill.data.scheduled_at);
 
   const padding = size === "lg" ? "px-2.5 py-1.5" : "px-1.5 py-0.5";

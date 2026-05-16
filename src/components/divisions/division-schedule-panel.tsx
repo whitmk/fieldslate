@@ -48,6 +48,8 @@ type GameRow = {
   home_team_id: string;
   away_team_id: string | null;
   interleague_org_id: string | null;
+  is_away: boolean | null;
+  external_team_name: string | null;
   home_team: { name: string } | null;
   away_team: { name: string } | null;
   interleague_org: { name: string } | null;
@@ -56,9 +58,22 @@ type GameRow = {
 
 type ScheduleEvent = { kind: "game"; sortKey: string; data: GameRow };
 
-// Opponent label: real away team for intra games, org name for interleague.
+// Opponent label: real away team for intra, recipient's team name once
+// accepted for interleague (else "TBD — Org"). The vs/AT prefix is rendered
+// separately so this returns just the opponent identifier.
 function opponentName(g: GameRow): string {
-  return g.away_team?.name ?? g.interleague_org?.name ?? "TBD";
+  if (g.away_team?.name) return g.away_team.name;
+  if (g.interleague_org_id) {
+    const orgName = g.interleague_org?.name ?? "Other org";
+    const team = g.external_team_name?.trim();
+    if (g.is_away) return team ? `${orgName} (${team})` : orgName;
+    return team ? team : `TBD — ${orgName}`;
+  }
+  return "TBD";
+}
+
+function vsLabel(g: GameRow): string {
+  return g.is_away ? "AT" : "vs";
 }
 
 export function DivisionSchedulePanel({
@@ -73,6 +88,7 @@ export function DivisionSchedulePanel({
   const [generating, setGenerating] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [confirmRegenOpen, setConfirmRegenOpen] = useState(false);
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<GameRow | null>(null);
@@ -169,7 +185,7 @@ export function DivisionSchedulePanel({
     const { data } = await supabase
       .from("games")
       .select(
-        `id, scheduled_at, status, venue_id, home_team_id, away_team_id, interleague_org_id,
+        `id, scheduled_at, status, venue_id, home_team_id, away_team_id, interleague_org_id, is_away, external_team_name,
          home_team:teams!home_team_id(name),
          away_team:teams!away_team_id(name),
          interleague_org:interleague_orgs!interleague_org_id(name),
@@ -247,7 +263,16 @@ export function DivisionSchedulePanel({
     }
   }, [triggerPrint, loadingGames, onPrintDone]);
 
+  function requestGenerate() {
+    if (games.length > 0) {
+      setConfirmRegenOpen(true);
+    } else {
+      void handleGenerate();
+    }
+  }
+
   async function handleGenerate() {
+    setConfirmRegenOpen(false);
     setGenerating(true);
     setResult(null);
     const res = await generateSchedule(divisionId);
@@ -582,7 +607,7 @@ export function DivisionSchedulePanel({
                 : <><PlusCircle className="h-4 w-4" />Finish scheduling</>}
             </button>
             <button
-              onClick={handleGenerate}
+              onClick={requestGenerate}
               disabled={finishing || generating}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:border-red-200 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -593,7 +618,7 @@ export function DivisionSchedulePanel({
           </>
         ) : (
           <button
-            onClick={handleGenerate}
+            onClick={requestGenerate}
             disabled={generating}
             className="inline-flex items-center gap-2 rounded-lg bg-[#0C1F3F] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -830,7 +855,7 @@ export function DivisionSchedulePanel({
                           {game.home_team?.name ?? "TBD"}
                         </span>
                         <span className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${isCancelled ? "bg-gray-100 text-gray-300" : "bg-gray-100 text-gray-400"}`}>
-                          vs
+                          {vsLabel(game)}
                         </span>
                         <span className={`truncate text-sm font-medium ${isCancelled ? "text-gray-400" : "text-gray-600"}`}>
                           {opponentName(game)}
@@ -840,15 +865,24 @@ export function DivisionSchedulePanel({
                             Interleague
                           </span>
                         )}
+                        {game.status === "pending_interleague" && (
+                          <span className="flex-shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-600">
+                            Pending
+                          </span>
+                        )}
                       </div>
 
                       {/* Right: venue + action */}
                       <div className="ml-3 flex flex-shrink-0 items-center gap-2">
-                        {game.venue?.name && (
+                        {game.venue?.name ? (
                           <span className={`text-xs ${isCancelled ? "text-gray-300" : "text-gray-400"}`}>
                             {game.venue.name}
                           </span>
-                        )}
+                        ) : game.is_away && game.interleague_org?.name ? (
+                          <span className="text-xs italic text-gray-400">
+                            TBD — {game.interleague_org.name} venue
+                          </span>
+                        ) : null}
 
                         {isCancelled ? (
                           <div className="flex items-center gap-2">
@@ -1003,6 +1037,42 @@ export function DivisionSchedulePanel({
                 {bulkRainoutLoading
                   ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Cancelling…</>
                   : <><CloudRain className="h-3.5 w-3.5" />Confirm rainout</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Regenerate confirmation ── */}
+      {confirmRegenOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => e.target === e.currentTarget && setConfirmRegenOpen(false)}
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
+            <div className="flex flex-col items-center gap-3 px-6 pb-2 pt-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-[#0C1F3F]">Regenerate schedule?</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Regenerating will wipe pending interleague games but preserve accepted ones. Continue?
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 px-6 py-5">
+              <button
+                onClick={() => setConfirmRegenOpen(false)}
+                className="flex-1 rounded-lg border border-gray-200 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { void handleGenerate(); }}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#0C1F3F] py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80"
+              >
+                Continue
               </button>
             </div>
           </div>

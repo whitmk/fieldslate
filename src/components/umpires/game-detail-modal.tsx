@@ -19,7 +19,7 @@ export type GameDetailGame = {
   status: string;
   league_id: string;
   home_team_id: string;
-  away_team_id: string;
+  away_team_id: string | null;
   home_team: {
     name: string;
     division_id: string | null;

@@ -124,8 +124,10 @@ export default async function SchedulePage({
     .from("games")
     .select(`
       id, scheduled_at, status, league_id, home_team_id, away_team_id,
+      interleague_org_id, is_away, external_team_name,
       home_team:teams!home_team_id(name, division_id, division:divisions(name, umpires_per_game, umpire_roles)),
       away_team:teams!away_team_id(name),
+      interleague_org:interleague_orgs(name),
       venue:venues(name),
       game_umpires:game_umpires(id, role, umpire:umpires(id, name))
     `)
