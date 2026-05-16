@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { computeInviteSlots, type InviteSlot } from "@/lib/interleague/invite-slots";
-import { InviteForm } from "@/components/interleague/invite-form";
+import { InviteForm, type PendingGame } from "@/components/interleague/invite-form";
 import { InviteHeader, InviteFooter } from "@/components/interleague/invite-shell";
 import { AlertTriangle } from "lucide-react";
 
@@ -23,17 +22,8 @@ type InvitePayload = {
     season: string | null;
     start_date: string | null;
     end_date: string | null;
-    schedule_settings: unknown;
   } | null;
-  divisions: {
-    id: string;
-    name: string;
-    game_count: number;
-    team_names: string[];
-  }[];
-  blackouts: { date: string; label: string | null }[];
-  venues: { id: string; name: string }[];
-  existing_games: { venue_id: string | null; scheduled_at: string }[];
+  games: PendingGame[];
 };
 
 export default async function PublicInvitePage({
@@ -68,21 +58,6 @@ export default async function PublicInvitePage({
       : payload.season.name
     : "this season";
 
-  const slots: InviteSlot[] = payload.season
-    ? computeInviteSlots({
-        season: {
-          start_date: payload.season.start_date,
-          end_date: payload.season.end_date,
-          schedule_settings: payload.season.schedule_settings,
-        },
-        venues: payload.venues,
-        blackouts: payload.blackouts,
-        existingGames: payload.existing_games,
-      })
-    : [];
-
-  const totalGames = payload.divisions.reduce((sum, d) => sum + d.game_count, 0);
-
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       <InviteHeader senderName={senderName} seasonLabel={seasonLabel} />
@@ -105,9 +80,7 @@ export default async function PublicInvitePage({
             senderName={senderName}
             seasonLabel={seasonLabel}
             orgName={payload.org?.name ?? "your league"}
-            divisions={payload.divisions}
-            slots={slots}
-            totalGames={totalGames}
+            games={payload.games}
           />
         </div>
       </main>

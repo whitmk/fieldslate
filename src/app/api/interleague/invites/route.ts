@@ -217,8 +217,30 @@ export async function POST(request: Request) {
     user.email ||
     "A FieldSlate admin";
 
-  // Load division/game proposals for this org, scoped to this season.
-  // Two-step: divisions for the season, then their interleague game counts.
+  // Block the send if the admin hasn't generated the season schedule yet —
+  // the public invite page renders the pre-generated pending_interleague games,
+  // and there'd be nothing to show.
+  const { count: pendingCount, error: pendingErr } = await supabase
+    .from("games")
+    .select("id", { count: "exact", head: true })
+    .eq("league_id", seasonId)
+    .eq("interleague_org_id", orgId)
+    .eq("status", "pending_interleague");
+  if (pendingErr) {
+    return NextResponse.json({ error: pendingErr.message }, { status: 500 });
+  }
+  if (!pendingCount || pendingCount === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Generate the season's game schedule first to create proposed interleague games.",
+      },
+      { status: 400 },
+    );
+  }
+
+  // Load division/game proposals for this org (used only in the invite email
+  // preview now — actual game rows the recipient sees come from games table).
   const { data: divsRaw, error: divsErr } = await supabase
     .from("divisions")
     .select("id, name")

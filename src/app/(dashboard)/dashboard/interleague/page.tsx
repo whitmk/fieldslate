@@ -13,6 +13,7 @@ import {
   Send,
   Inbox,
   ExternalLink,
+  CalendarClock,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { InterleagueOrg, InterleagueInvite } from "@/types/database";
@@ -32,6 +33,19 @@ type DivisionGameRow = {
 
 type SentInviteRow = InterleagueInvite & {
   org: { name: string } | null;
+};
+
+type CounterProposedGame = {
+  id: string;
+  scheduled_at: string;
+  proposed_scheduled_at: string;
+  proposed_venue_name: string | null;
+  external_team_name: string | null;
+  is_away: boolean;
+  home_team: { name: string; division: { name: string } | null } | null;
+  venue: { name: string } | null;
+  interleague_org: { name: string } | null;
+  league: { name: string; season: string | null } | null;
 };
 
 // ── Org Modal ─────────────────────────────────────────────────────────────────
@@ -486,6 +500,15 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function fmtDateTime(iso: string): string {
+  const d = new Date(iso);
+  return (
+    d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) +
+    ", " +
+    d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+  );
+}
+
 function fmtSentDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
@@ -510,6 +533,7 @@ export default function InterleaguePage() {
   const [deleting, setDeleting] = useState(false);
 
   const [inviteTarget, setInviteTarget] = useState<InterleagueOrg | null>(null);
+  const [counterGames, setCounterGames] = useState<CounterProposedGame[]>([]);
 
   const selectedSeason = useMemo(
     () => seasons.find((s) => s.id === selectedSeasonId) ?? null,
@@ -523,7 +547,7 @@ export default function InterleaguePage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [orgsRes, seasonsRes, invitesRes] = await Promise.all([
+    const [orgsRes, seasonsRes, invitesRes, counterRes] = await Promise.all([
       supabase.from("interleague_orgs").select("*").order("name"),
       supabase
         .from("leagues")
@@ -534,6 +558,22 @@ export default function InterleaguePage() {
         .from("interleague_invites")
         .select("*, org:interleague_orgs(name)")
         .order("created_at", { ascending: false }),
+      // Counter-proposed games: pending_interleague with a recipient response
+      // (external_team_name) and either a proposed time or proposed venue.
+      supabase
+        .from("games")
+        .select(
+          `id, scheduled_at, proposed_scheduled_at, proposed_venue_name,
+           external_team_name, is_away,
+           home_team:teams!home_team_id(name, division:divisions(name)),
+           venue:venues(name),
+           interleague_org:interleague_orgs(name),
+           league:leagues!inner(name, season, owner_id)`
+        )
+        .eq("status", "pending_interleague")
+        .eq("league.owner_id", user.id)
+        .not("external_team_name", "is", null)
+        .order("scheduled_at", { ascending: true }),
     ]);
 
     setOrgs((orgsRes.data as InterleagueOrg[]) ?? []);
@@ -541,6 +581,10 @@ export default function InterleaguePage() {
     setSeasons(seasonRows);
     setSelectedSeasonId((prev) => prev ?? seasonRows[0]?.id ?? null);
     setInvites((invitesRes.data as SentInviteRow[]) ?? []);
+    // Filter to games where the recipient actually counter-proposed something
+    const counter = ((counterRes.data as unknown as CounterProposedGame[]) ?? [])
+      .filter((g) => g.proposed_scheduled_at || g.proposed_venue_name);
+    setCounterGames(counter);
   }, []);
 
   useEffect(() => {
@@ -714,6 +758,75 @@ export default function InterleaguePage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Counter-proposals ───────────────────────────────────────────────── */}
+        {!loading && counterGames.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-start gap-2">
+              <div className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-amber-50">
+                <CalendarClock className="h-3.5 w-3.5 text-amber-500" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-[#0C1F3F]">
+                  Counter-proposed games ({counterGames.length})
+                </h2>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  Recipients proposed different times or venues. Review and
+                  resolve each one before regenerating the schedule.
+                </p>
+              </div>
+            </div>
+            <div className="overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-amber-100 bg-amber-50 text-left text-xs font-medium uppercase tracking-wide text-amber-700">
+                    <th className="px-5 py-3">Game</th>
+                    <th className="px-5 py-3">Proposed by recipient</th>
+                    <th className="px-5 py-3">Original</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-amber-50">
+                  {counterGames.map((g) => {
+                    const orgName = g.interleague_org?.name ?? "Other org";
+                    const team = g.external_team_name ?? "(no team)";
+                    const matchup = g.is_away
+                      ? `${g.home_team?.name ?? "TBD"} AT ${orgName} (${team})`
+                      : `${g.home_team?.name ?? "TBD"} vs ${team}`;
+                    return (
+                      <tr key={g.id} className="hover:bg-amber-50/40">
+                        <td className="px-5 py-3.5">
+                          <p className="font-medium text-[#0C1F3F]">{matchup}</p>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {g.home_team?.division?.name ?? "—"}
+                            {g.league?.name ? ` · ${g.league.name}` : ""}
+                          </p>
+                        </td>
+                        <td className="px-5 py-3.5 text-gray-700">
+                          {g.proposed_scheduled_at && (
+                            <div>
+                              <span className="font-medium text-amber-700">Time:</span>{" "}
+                              {fmtDateTime(g.proposed_scheduled_at)}
+                            </div>
+                          )}
+                          {g.proposed_venue_name && (
+                            <div>
+                              <span className="font-medium text-amber-700">Venue:</span>{" "}
+                              {g.proposed_venue_name}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-gray-500">
+                          {fmtDateTime(g.scheduled_at)}
+                          {g.venue?.name && <div className="text-xs">{g.venue.name}</div>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
