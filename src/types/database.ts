@@ -14,6 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      interleague_invite_responses: {
+        Row: {
+          id: string
+          invite_id: string
+          team_names: Json
+          selected_slots: Json
+          status: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          invite_id: string
+          team_names?: Json
+          selected_slots?: Json
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          invite_id?: string
+          team_names?: Json
+          selected_slots?: Json
+          status?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interleague_invite_responses_invite_id_fkey"
+            columns: ["invite_id"]
+            isOneToOne: false
+            referencedRelation: "interleague_invites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       interleague_invites: {
         Row: {
           id: string
@@ -1193,3 +1228,4 @@ export type PracticeSlot   = Database["public"]["Tables"]["team_practice_slots"]
 export type InterleagueOrg = Database["public"]["Tables"]["interleague_orgs"]["Row"];
 export type DivisionInterleagueGame = Database["public"]["Tables"]["division_interleague_games"]["Row"];
 export type InterleagueInvite = Database["public"]["Tables"]["interleague_invites"]["Row"];
+export type InterleagueInviteResponse = Database["public"]["Tables"]["interleague_invite_responses"]["Row"];
