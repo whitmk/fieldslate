@@ -14,6 +14,7 @@ import {
   Inbox,
   ExternalLink,
   CalendarClock,
+  Check,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { InterleagueOrg, InterleagueInvite } from "@/types/database";
@@ -504,6 +505,124 @@ function SendInviteModal({ org, season, onSent, onClose }: SendInviteModalProps)
   );
 }
 
+// ── Resolve / edit modal for counter-proposed games ───────────────────────────
+
+interface ResolveEditModalProps {
+  game: CounterProposedGame;
+  busy: boolean;
+  onSave: (payload: { scheduled_at: string; venue_name?: string }) => void;
+  onClose: () => void;
+}
+
+function ResolveEditModal({ game, busy, onSave, onClose }: ResolveEditModalProps) {
+  // Seed from proposal if there is one, else original.
+  const [datetime, setDatetime] = useState<string>(
+    isoToDatetimeLocal(game.proposed_scheduled_at ?? game.scheduled_at),
+  );
+  const [venueName, setVenueName] = useState<string>(
+    game.proposed_venue_name ?? game.venue?.name ?? "",
+  );
+
+  const isAway = game.is_away;
+  const canSave =
+    !!datetime &&
+    !busy &&
+    (!isAway || venueName.trim().length > 0);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => e.target === e.currentTarget && !busy && onClose()}
+    >
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-[#0C1F3F]">Edit and confirm</h2>
+            <p className="mt-0.5 text-xs text-gray-500">
+              {game.home_team?.name ?? "—"}{" "}
+              <span className="mx-1 font-bold uppercase tracking-wider text-gray-400">
+                {isAway ? "AT" : "vs"}
+              </span>
+              {game.interleague_org?.name ?? "Other org"}
+              {game.external_team_name ? ` (${game.external_team_name})` : ""}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!canSave) return;
+            onSave({
+              scheduled_at: datetimeLocalToWallClockIso(datetime),
+              venue_name: isAway ? venueName.trim() : undefined,
+            });
+          }}
+          className="flex flex-col gap-4 px-6 py-5"
+        >
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-600">
+              Date &amp; time <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="datetime-local"
+              value={datetime}
+              onChange={(e) => setDatetime(e.target.value)}
+              required
+              className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+            />
+            <p className="text-[11px] text-gray-400">
+              Use the time as it will appear on the schedule (no timezone conversion).
+            </p>
+          </div>
+
+          {isAway && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-600">
+                Venue (host org) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={venueName}
+                onChange={(e) => setVenueName(e.target.value)}
+                required
+                placeholder="e.g. Riverside Field A"
+                className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!canSave}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
+            >
+              {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {busy ? "Saving…" : "Confirm game"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Sent invite status badge ──────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
@@ -522,13 +641,30 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// Wall-clock UTC formatting (matches lib/utils/game-time.ts): read literal
+// HH:MM substring instead of letting `new Date()` apply the viewer's TZ offset.
 function fmtDateTime(iso: string): string {
-  const d = new Date(iso);
-  return (
-    d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) +
-    ", " +
-    d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-  );
+  const [year, month, day] = iso.substring(0, 10).split("-").map(Number);
+  const [hourStr, minStr] = iso.substring(11, 16).split(":");
+  const hour = parseInt(hourStr, 10);
+  const min = parseInt(minStr, 10);
+  const dateStr = new Date(year, month - 1, day, 12).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const period = hour >= 12 ? "PM" : "AM";
+  const h12 = hour % 12 || 12;
+  return `${dateStr}, ${h12}:${String(min).padStart(2, "0")} ${period}`;
+}
+
+function isoToDatetimeLocal(iso: string): string {
+  return iso.substring(0, 16);
+}
+
+function datetimeLocalToWallClockIso(local: string): string {
+  if (!local) return "";
+  return `${local}:00+00:00`;
 }
 
 function fmtSentDate(iso: string): string {
@@ -556,6 +692,9 @@ export default function InterleaguePage() {
 
   const [inviteTarget, setInviteTarget] = useState<InterleagueOrg | null>(null);
   const [counterGames, setCounterGames] = useState<CounterProposedGame[]>([]);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<CounterProposedGame | null>(null);
 
   const selectedSeason = useMemo(
     () => seasons.find((s) => s.id === selectedSeasonId) ?? null,
@@ -646,6 +785,41 @@ export default function InterleaguePage() {
   function handleInviteSent() {
     setInviteTarget(null);
     loadAll();
+  }
+
+  async function resolveGame(
+    gameId: string,
+    payload:
+      | { action: "accept_proposal" | "keep_original" }
+      | { action: "edit"; scheduled_at: string; venue_name?: string },
+  ) {
+    setResolvingId(gameId);
+    setResolveError(null);
+    try {
+      const res = await fetch(
+        `/api/interleague/games/${encodeURIComponent(gameId)}/resolve`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setResolveError(data.error ?? "Failed to resolve.");
+        setResolvingId(null);
+        return false;
+      }
+      await loadAll();
+      setResolvingId(null);
+      return true;
+    } catch (err) {
+      setResolveError(
+        err instanceof Error ? err.message : "Network error. Please try again.",
+      );
+      setResolvingId(null);
+      return false;
+    }
   }
 
   const canSendInvite = !!selectedSeason;
@@ -800,6 +974,11 @@ export default function InterleaguePage() {
                 </p>
               </div>
             </div>
+            {resolveError && (
+              <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+                {resolveError}
+              </p>
+            )}
             <div className="overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm">
               <table className="w-full text-sm">
                 <thead>
@@ -807,6 +986,7 @@ export default function InterleaguePage() {
                     <th className="px-5 py-3">Game</th>
                     <th className="px-5 py-3">Proposed by recipient</th>
                     <th className="px-5 py-3">Original</th>
+                    <th className="px-5 py-3 text-right">Resolve</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-amber-50">
@@ -816,6 +996,8 @@ export default function InterleaguePage() {
                     const matchup = g.is_away
                       ? `${g.home_team?.name ?? "TBD"} AT ${orgName} (${team})`
                       : `${g.home_team?.name ?? "TBD"} vs ${team}`;
+                    const busy = resolvingId === g.id;
+                    const canAcceptProposal = !!g.proposed_scheduled_at;
                     return (
                       <tr key={g.id} className="hover:bg-amber-50/40">
                         <td className="px-5 py-3.5">
@@ -842,6 +1024,45 @@ export default function InterleaguePage() {
                         <td className="px-5 py-3.5 text-gray-500">
                           {fmtDateTime(g.scheduled_at)}
                           {g.venue?.name && <div className="text-xs">{g.venue.name}</div>}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            <button
+                              disabled={busy || !canAcceptProposal}
+                              onClick={() =>
+                                resolveGame(g.id, { action: "accept_proposal" })
+                              }
+                              title={
+                                canAcceptProposal
+                                  ? "Apply their proposed time"
+                                  : "No time proposal on this game"
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg border border-[#22C55E]/40 bg-[#22C55E]/10 px-2.5 py-1.5 text-xs font-semibold text-[#16a34a] transition-colors hover:bg-[#22C55E]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                              Accept proposal
+                            </button>
+                            <button
+                              disabled={busy}
+                              onClick={() =>
+                                resolveGame(g.id, { action: "keep_original" })
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-[#0C1F3F] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Keep original
+                            </button>
+                            <button
+                              disabled={busy}
+                              onClick={() => {
+                                setResolveError(null);
+                                setEditTarget(g);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-[#0C1F3F] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -944,6 +1165,22 @@ export default function InterleaguePage() {
           season={selectedSeason}
           onSent={handleInviteSent}
           onClose={() => setInviteTarget(null)}
+        />
+      )}
+
+      {editTarget && (
+        <ResolveEditModal
+          game={editTarget}
+          busy={resolvingId === editTarget.id}
+          onSave={async ({ scheduled_at, venue_name }) => {
+            const ok = await resolveGame(editTarget.id, {
+              action: "edit",
+              scheduled_at,
+              venue_name,
+            });
+            if (ok) setEditTarget(null);
+          }}
+          onClose={() => setEditTarget(null)}
         />
       )}
     </>
