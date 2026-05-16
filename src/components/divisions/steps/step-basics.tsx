@@ -39,7 +39,7 @@ export function StepBasics({ data, update }: Props) {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-gray-700">Game start date</label>
+          <label className="text-sm font-medium text-gray-700">Start date</label>
           <input
             type="date"
             value={data.start_date}
@@ -49,7 +49,7 @@ export function StepBasics({ data, update }: Props) {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-gray-700">Game end date</label>
+          <label className="text-sm font-medium text-gray-700">End date</label>
           <input
             type="date"
             value={data.end_date}
@@ -58,27 +58,6 @@ export function StepBasics({ data, update }: Props) {
             required
             className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
           />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-gray-700">Practice start date</label>
-          <input
-            type="date"
-            value={data.practice_season_start}
-            onChange={(e) => update({ practice_season_start: e.target.value })}
-            className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-          />
-          <p className="text-xs text-gray-400">Leave blank to use the game start date.</p>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-gray-700">Practice end date</label>
-          <input
-            type="date"
-            value={data.practice_season_end}
-            min={data.practice_season_start || undefined}
-            onChange={(e) => update({ practice_season_end: e.target.value })}
-            className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-          />
-          <p className="text-xs text-gray-400">Leave blank to use the game end date.</p>
         </div>
       </div>
     </div>

@@ -611,7 +611,7 @@ export function StepReview({
         <Row label="Division name" value={data.name} />
         <Row label="Teams" value={data.team_count} />
         <Row
-          label="Game dates"
+          label="Dates"
           value={data.start_date && data.end_date ? `${fmt(data.start_date)} → ${fmt(data.end_date)}` : "—"}
         />
       </Section>
