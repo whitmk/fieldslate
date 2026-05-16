@@ -8,7 +8,6 @@ import {
   CloudRain,
   CalendarClock,
   Eye,
-  XCircle,
   MapPin,
   Clock,
   Loader2,
@@ -17,16 +16,11 @@ import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
 import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
-import { SchedulePracticeModal } from "@/components/divisions/schedule-practice-modal";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
-import type { ScheduleGame, SchedulePractice } from "./schedule-list";
-
-type View = "games" | "practices" | "combined";
+import type { ScheduleGame } from "./schedule-list";
 
 interface Props {
-  view: View;
   games: ScheduleGame[];
-  practices: SchedulePractice[];
   month: string; // "YYYY-MM"
   today: string; // "YYYY-MM-DD"
 }
@@ -39,23 +33,6 @@ function pad2(n: number) {
 
 function localDateStr(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-function mondayOfWeek(dateStr: string) {
-  const [yr, mo, dy] = dateStr.split("-").map(Number);
-  const d = new Date(yr, mo - 1, dy);
-  const day = d.getDay();
-  const offset = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + offset);
-  return localDateStr(d);
-}
-
-function weekLabel(monday: string) {
-  const [yr, mo, dy] = monday.split("-").map(Number);
-  return new Date(yr, mo - 1, dy, 12).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function buildGrid(month: string): Date[] {
@@ -86,30 +63,22 @@ function shiftMonth(month: string, delta: number) {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type GamePill = { kind: "game"; date: string; time: string; data: ScheduleGame };
-type PracticePill = {
-  kind: "practice";
-  date: string;
-  time: string;
-  data: SchedulePractice;
-};
-type Pill = GamePill | PracticePill;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MAX_VISIBLE_PER_DAY = 3;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ScheduleCalendar({ view, games, practices, month, today }: Props) {
+export function ScheduleCalendar({ games, month, today }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const [selected, setSelected] = useState<{
     pos: { x: number; y: number };
-    pill: Pill;
+    pill: GamePill;
   } | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<ScheduleGame | null>(null);
-  const [reschedulePractice, setReschedulePractice] = useState<SchedulePractice | null>(null);
   const [dayDetail, setDayDetail] = useState<string | null>(null);
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -143,27 +112,13 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
   }
 
   // Build pills indexed by date
-  const pillsByDate = new Map<string, Pill[]>();
-  if (view !== "practices") {
-    for (const g of games) {
-      const date = g.scheduled_at.substring(0, 10);
-      const time = g.scheduled_at.substring(11, 16);
-      const pill: GamePill = { kind: "game", date, time, data: g };
-      if (!pillsByDate.has(date)) pillsByDate.set(date, []);
-      pillsByDate.get(date)!.push(pill);
-    }
-  }
-  if (view !== "games") {
-    for (const p of practices) {
-      const pill: PracticePill = {
-        kind: "practice",
-        date: p.scheduled_date,
-        time: p.start_time,
-        data: p,
-      };
-      if (!pillsByDate.has(p.scheduled_date)) pillsByDate.set(p.scheduled_date, []);
-      pillsByDate.get(p.scheduled_date)!.push(pill);
-    }
+  const pillsByDate = new Map<string, GamePill[]>();
+  for (const g of games) {
+    const date = g.scheduled_at.substring(0, 10);
+    const time = g.scheduled_at.substring(11, 16);
+    const pill: GamePill = { kind: "game", date, time, data: g };
+    if (!pillsByDate.has(date)) pillsByDate.set(date, []);
+    pillsByDate.get(date)!.push(pill);
   }
   for (const arr of pillsByDate.values()) {
     arr.sort((a, b) => a.time.localeCompare(b.time));
@@ -190,25 +145,7 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
     router.refresh();
   }
 
-  async function handleCancelPractice(p: SchedulePractice) {
-    setActionLoadingId(p.id);
-    setSelected(null);
-    const supabase = createClient();
-    await supabase
-      .from("practices")
-      .update({ status: "cancelled" } as never)
-      .eq("id", p.id);
-    await logActivity(
-      p.league_id,
-      p.division_id,
-      "practice_cancelled",
-      `${p.team?.name ?? "Team"} practice on ${fmtGameDate(p.scheduled_date)} cancelled`,
-    );
-    setActionLoadingId(null);
-    router.refresh();
-  }
-
-  function openPopover(e: React.MouseEvent, pill: Pill) {
+  function openPopover(e: React.MouseEvent, pill: GamePill) {
     e.stopPropagation();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const x = Math.min(rect.left, window.innerWidth - 280);
@@ -243,16 +180,7 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
         <h3 className="text-base font-semibold text-[#0C1F3F]">
           {monthLabel(month)}
         </h3>
-        <div className="flex items-center gap-3 text-xs text-gray-500">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-orange-500" />
-            Games
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-indigo-500" />
-            Practices
-          </span>
-        </div>
+        <div className="text-xs text-gray-500" />
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
@@ -302,7 +230,7 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
                 <div className="flex flex-col gap-1">
                   {visible.map((pill) => (
                     <PillButton
-                      key={`${pill.kind}-${pill.data.id}`}
+                      key={`game-${pill.data.id}`}
                       pill={pill}
                       muted={isPast}
                       loading={actionLoadingId === pill.data.id}
@@ -340,24 +268,12 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
             >
               <div className="border-b border-gray-100 px-4 py-3">
                 <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider">
-                  <span
-                    className={`rounded px-1.5 py-0.5 ${
-                      pill.kind === "game"
-                        ? "bg-orange-100 text-orange-700"
-                        : "bg-indigo-100 text-indigo-500"
-                    }`}
-                  >
-                    {pill.kind === "game" ? "Game" : "Practice"}
+                  <span className="rounded bg-orange-100 px-1.5 py-0.5 text-orange-700">
+                    Game
                   </span>
                   {pill.data.status === "cancelled" && (
-                    <span
-                      className={`rounded px-1.5 py-0.5 ${
-                        pill.kind === "game"
-                          ? "bg-yellow-100 text-yellow-700"
-                          : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {pill.kind === "game" ? "Rained out" : "Cancelled"}
+                    <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-yellow-700">
+                      Rained out
                     </span>
                   )}
                   {pill.data.status === "scheduled" && (
@@ -367,24 +283,14 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
                   )}
                 </p>
                 <p className="mt-1 text-sm font-semibold text-[#0C1F3F]">
-                  {pill.kind === "game"
-                    ? `${pill.data.home_team?.name ?? "TBD"} vs ${pill.data.away_team?.name ?? "TBD"}`
-                    : pill.data.team?.name ?? "Team"}
+                  {pill.data.home_team?.name ?? "TBD"} vs {pill.data.away_team?.name ?? "TBD"}
                 </p>
                 <div className="mt-2 flex flex-col gap-1 text-xs text-gray-500">
                   <span className="inline-flex items-center gap-1.5">
                     <Clock className="h-3 w-3" />
-                    {fmtGameDate(
-                      pill.kind === "game"
-                        ? pill.data.scheduled_at
-                        : pill.data.scheduled_date,
-                    )}
+                    {fmtGameDate(pill.data.scheduled_at)}
                     {", "}
-                    {fmtGameTime(
-                      pill.kind === "game"
-                        ? pill.data.scheduled_at
-                        : `${pill.data.scheduled_date}T${pill.data.start_time}:00`,
-                    )}
+                    {fmtGameTime(pill.data.scheduled_at)}
                   </span>
                   {pill.data.venue?.name && (
                     <span className="inline-flex items-center gap-1.5">
@@ -394,59 +300,34 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
                   )}
                 </div>
               </div>
-              {pill.kind === "game" ? (
-                <>
-                  <button
-                    onClick={() => handleRainout(pill.data)}
-                    disabled={actionLoadingId === pill.data.id}
-                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    <CloudRain className="h-3.5 w-3.5 text-blue-400" />
-                    Mark as rained out
-                  </button>
-                  <button
-                    onClick={() => {
-                      setRescheduleGame(pill.data);
-                      setSelected(null);
-                    }}
-                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
-                  >
-                    <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
-                    Reschedule
-                  </button>
-                  <button
-                    onClick={() => {
-                      setDetailGame(pill.data);
-                      setSelected(null);
-                    }}
-                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
-                  >
-                    <Eye className="h-3.5 w-3.5 text-gray-400" />
-                    View details
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={() => handleCancelPractice(pill.data)}
-                    disabled={actionLoadingId === pill.data.id}
-                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    <XCircle className="h-3.5 w-3.5 text-red-400" />
-                    Cancel practice
-                  </button>
-                  <button
-                    onClick={() => {
-                      setReschedulePractice(pill.data);
-                      setSelected(null);
-                    }}
-                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
-                  >
-                    <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
-                    Reschedule practice
-                  </button>
-                </>
-              )}
+              <button
+                onClick={() => handleRainout(pill.data)}
+                disabled={actionLoadingId === pill.data.id}
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              >
+                <CloudRain className="h-3.5 w-3.5 text-blue-400" />
+                Mark as rained out
+              </button>
+              <button
+                onClick={() => {
+                  setRescheduleGame(pill.data);
+                  setSelected(null);
+                }}
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
+                Reschedule
+              </button>
+              <button
+                onClick={() => {
+                  setDetailGame(pill.data);
+                  setSelected(null);
+                }}
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <Eye className="h-3.5 w-3.5 text-gray-400" />
+                View details
+              </button>
             </div>
           );
         })()}
@@ -470,7 +351,7 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
                 <div className="flex flex-col gap-2">
                   {items.map((pill) => (
                     <PillButton
-                      key={`detail-${pill.kind}-${pill.data.id}`}
+                      key={`detail-game-${pill.data.id}`}
                       pill={pill}
                       muted={dayDetail < today}
                       loading={actionLoadingId === pill.data.id}
@@ -503,22 +384,6 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
           }}
         />
       )}
-      {reschedulePractice && (
-        <SchedulePracticeModal
-          practiceId={reschedulePractice.id}
-          teamId={reschedulePractice.team_id}
-          teamName={reschedulePractice.team?.name ?? "Team"}
-          weekMonday={mondayOfWeek(reschedulePractice.scheduled_date)}
-          weekLabel={weekLabel(mondayOfWeek(reschedulePractice.scheduled_date))}
-          divisionId={reschedulePractice.division_id}
-          leagueId={reschedulePractice.league_id}
-          onClose={() => setReschedulePractice(null)}
-          onScheduled={() => {
-            setReschedulePractice(null);
-            router.refresh();
-          }}
-        />
-      )}
 
       {detailGame && (
         <GameDetailModal game={detailGame} onClose={() => setDetailGame(null)} />
@@ -530,7 +395,7 @@ export function ScheduleCalendar({ view, games, practices, month, today }: Props
 // ── Pill button ───────────────────────────────────────────────────────────────
 
 interface PillButtonProps {
-  pill: Pill;
+  pill: GamePill;
   muted: boolean;
   loading: boolean;
   size?: "sm" | "lg";
@@ -541,25 +406,12 @@ function PillButton({ pill, muted, loading, size = "sm", onClick }: PillButtonPr
   const isCancelled = pill.data.status === "cancelled";
   const dim = muted || isCancelled;
 
-  const colors =
-    pill.kind === "game"
-      ? dim
-        ? "bg-gray-100 text-gray-400"
-        : "bg-orange-100 text-orange-700 hover:bg-orange-200"
-      : dim
-      ? "bg-gray-100 text-gray-400"
-      : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100";
+  const colors = dim
+    ? "bg-gray-100 text-gray-400"
+    : "bg-orange-100 text-orange-700 hover:bg-orange-200";
 
-  const label =
-    pill.kind === "game"
-      ? `${pill.data.home_team?.name ?? "TBD"} vs ${pill.data.away_team?.name ?? "TBD"}`
-      : pill.data.team?.name ?? "Team";
-
-  const timeStr = fmtGameTime(
-    pill.kind === "game"
-      ? pill.data.scheduled_at
-      : `${pill.data.scheduled_date}T${pill.data.start_time}:00`,
-  );
+  const label = `${pill.data.home_team?.name ?? "TBD"} vs ${pill.data.away_team?.name ?? "TBD"}`;
+  const timeStr = fmtGameTime(pill.data.scheduled_at);
 
   const padding = size === "lg" ? "px-2.5 py-1.5" : "px-1.5 py-0.5";
   const fontSize = size === "lg" ? "text-xs" : "text-[11px]";

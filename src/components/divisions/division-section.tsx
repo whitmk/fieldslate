@@ -403,9 +403,6 @@ export function DivisionSection({
                         <span className="text-[11px] text-gray-400">
                           {stat.gameCount}
                           {stat.expectedGames > 0 ? ` / ${stat.expectedGames}` : ""} games
-                          {stat.practiceCount > 0 && (
-                            <span className="ml-1 text-indigo-400">· {stat.practiceCount} practices</span>
-                          )}
                         </span>
                         {progressPct > 0 && (
                           <span className="text-[11px] text-gray-400">{progressPct}%</span>
@@ -425,15 +422,6 @@ export function DivisionSection({
                       <span className="hidden items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 sm:inline-flex">
                         <Users className="h-3 w-3" />
                         {div.team_count}
-                      </span>
-
-                      {/* Practice status badge */}
-                      <span className={`hidden rounded-full px-2.5 py-0.5 text-xs font-semibold sm:inline-block ${
-                        stat.practiceCount > 0
-                          ? "bg-indigo-50 text-indigo-600"
-                          : "bg-gray-100 text-gray-400"
-                      }`}>
-                        {stat.practiceCount > 0 ? "Practices set" : "No practices"}
                       </span>
 
                       {/* Game schedule status badge */}

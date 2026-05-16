@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Zap, Loader2, CheckCircle2, AlertTriangle, CalendarDays,
   RefreshCw, PlusCircle, Printer, CloudRain, CalendarClock,
-  Pencil, Trash2, Check, Users, Dumbbell, ListChecks,
+  Pencil, Trash2, Check, Users, ListChecks,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -14,10 +14,8 @@ import {
   detectScheduleConflicts,
 } from "@/lib/schedule/generate-schedule";
 import type { ScheduleConflict } from "@/lib/schedule/generate-schedule";
-import { generatePractices } from "@/lib/schedule/generate-practices";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
-import { SchedulePracticeModal } from "./schedule-practice-modal";
 import { logActivity } from "@/lib/activity-log";
 import { AutoAssignUmpiresButton } from "@/components/umpires/auto-assign-button";
 import {
@@ -27,16 +25,7 @@ import {
 } from "@/components/umpires/umpire-slots";
 
 
-type UnscheduledPractice = {
-  key: string;
-  practiceId: string;
-  teamId: string;
-  teamName: string;
-  weekMonday: string; // YYYY-MM-DD (the week's Monday, stored as scheduled_date)
-  weekLabel: string;  // "Jun 2"
-};
-
-type PrintMode = "games" | "practices" | "combined";
+type PrintMode = "games";
 
 interface Props {
   divisionId: string;
@@ -65,20 +54,7 @@ type GameRow = {
   venue: { name: string } | null;
 };
 
-type PracticeRow = {
-  id: string;
-  scheduled_date: string; // YYYY-MM-DD
-  start_time: string;     // HH:MM
-  status: string;
-  team_id: string;
-  venue_id: string | null;
-  team: { name: string } | null;
-  venue: { name: string } | null;
-};
-
-type ScheduleEvent =
-  | { kind: "game"; sortKey: string; data: GameRow }
-  | { kind: "practice"; sortKey: string; data: PracticeRow };
+type ScheduleEvent = { kind: "game"; sortKey: string; data: GameRow };
 
 // Opponent label: real away team for intra games, org name for interleague.
 function opponentName(g: GameRow): string {
@@ -93,16 +69,11 @@ export function DivisionSchedulePanel({
   const [teams, setTeams] = useState<Team[]>([]);
   const [gamesPerTeam, setGamesPerTeam] = useState(0);
   const [games, setGames] = useState<GameRow[]>([]);
-  const [practices, setPractices] = useState<PracticeRow[]>([]);
   const [loadingGames, setLoadingGames] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [finishing, setFinishing] = useState(false);
-  const [generatingPractices, setGeneratingPractices] = useState(false);
   const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
-  const [practiceShortfall, setPracticeShortfall] = useState<{ count: number; target: number } | null>(null);
-  const [activitiesPerWeek, setActivitiesPerWeek] = useState(0);
-  const [schedulingPractice, setSchedulingPractice] = useState<UnscheduledPractice | null>(null);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<GameRow | null>(null);
 
@@ -149,7 +120,6 @@ export function DivisionSchedulePanel({
 
     if (!teamIds.length) {
       setGames([]);
-      setPractices([]);
       setConflicts([]);
       setLoadingGames(false);
       return;
@@ -157,13 +127,12 @@ export function DivisionSchedulePanel({
 
     const { data: divDataRaw } = await supabase
       .from("divisions")
-      .select("settings, activities_per_week, umpires_per_game, umpire_roles, intra_division_games_per_team")
+      .select("settings, umpires_per_game, umpire_roles, intra_division_games_per_team")
       .eq("id", divisionId)
       .single();
 
     const divData = divDataRaw as unknown as {
       settings: Record<string, unknown>;
-      activities_per_week: number | null;
       umpires_per_game: number | null;
       umpire_roles: unknown;
       intra_division_games_per_team: number | null;
@@ -184,7 +153,6 @@ export function DivisionSchedulePanel({
     const interleagueTarget = ((igRowsRaw ?? []) as { game_count: number }[])
       .reduce((sum, r) => sum + Number(r.game_count ?? 0), 0);
     setGamesPerTeam(intraTarget + interleagueTarget);
-    setActivitiesPerWeek(Number(divData?.activities_per_week ?? 0));
     setGameDurationMinutes(Number(settings.game_duration ?? 90));
 
     const upg = Number(divData?.umpires_per_game ?? 0);
@@ -253,15 +221,6 @@ export function DivisionSchedulePanel({
     }
     setAssignmentsByGame(map);
 
-    const { data: practiceData } = await supabase
-      .from("practices")
-      .select("id, scheduled_date, start_time, status, team_id, venue_id, team:teams(name), venue:venues(name)")
-      .eq("division_id", divisionId)
-      .order("scheduled_date")
-      .order("start_time");
-
-    setPractices((practiceData as unknown as PracticeRow[]) ?? []);
-
     // Only count scheduled/active games for conflict detection
     const activeRows = rows.filter((g) => g.status !== "cancelled");
     const flat = activeRows.map((g) => ({
@@ -329,31 +288,6 @@ export function DivisionSchedulePanel({
       setResult({ type: "error", message: res.error });
     }
     setFinishing(false);
-  }
-
-  async function handleGeneratePractices() {
-    setGeneratingPractices(true);
-    setResult(null);
-    setPracticeShortfall(null);
-    const res = await generatePractices(divisionId);
-    if (res.success) {
-      setResult({
-        type: "success",
-        message: res.practicesCreated === 0
-          ? "No practices to schedule"
-          : `${res.practicesCreated} practice${res.practicesCreated === 1 ? "" : "s"} scheduled`,
-      });
-      if (res.shortfallCount > 0) {
-        setPracticeShortfall({ count: res.shortfallCount, target: activitiesPerWeek });
-      }
-      await logActivity(leagueId, divisionId, "practices_generated",
-        `${divisionName} practices generated — ${res.practicesCreated} practice${res.practicesCreated === 1 ? "" : "s"} scheduled`);
-      fetchGames();
-      onScheduleChange?.();
-    } else {
-      setResult({ type: "error", message: res.error });
-    }
-    setGeneratingPractices(false);
   }
 
   function startEdit(team: Team) {
@@ -500,43 +434,19 @@ export function DivisionSchedulePanel({
 
   const isIncomplete = games.length > 0 && teamsWithDeficit.length > 0;
 
-  // ── Unscheduled practice slots (status = "unscheduled" rows from generator) ───
-  // The generator inserts placeholder rows for slots it couldn't fill; they are
-  // deleted on every re-run and updated to "scheduled" when manually placed.
+  // ── Sorted timeline of games ─────────────────────────────────────────────────
 
-  const unscheduledPractices: UnscheduledPractice[] = practices
-    .filter((p) => p.status === "unscheduled")
-    .map((p) => ({
-      key: p.id,
-      practiceId: p.id,
-      teamId: p.team_id,
-      teamName: p.team?.name ?? "Unknown",
-      weekMonday: p.scheduled_date,
-      weekLabel: new Date(p.scheduled_date + "T00:00:00").toLocaleDateString("en-US", {
-        month: "short", day: "numeric",
-      }),
-    }));
-
-  // ── Merge games and practices into a unified sorted timeline ─────────────────
-
-  const allEvents: ScheduleEvent[] = [
-    ...games.map((g): ScheduleEvent => ({
+  const allEvents: ScheduleEvent[] = games
+    .map((g): ScheduleEvent => ({
       kind: "game",
       sortKey: g.scheduled_at.substring(0, 16),
       data: g,
-    })),
-    ...practices.filter((p) => p.status !== "unscheduled").map((p): ScheduleEvent => ({
-      kind: "practice",
-      sortKey: `${p.scheduled_date}T${p.start_time}`,
-      data: p,
-    })),
-  ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    }))
+    .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
   const grouped = new Map<string, ScheduleEvent[]>();
   for (const ev of allEvents) {
-    const key = ev.kind === "game"
-      ? ev.data.scheduled_at.substring(0, 10)
-      : ev.data.scheduled_date;
+    const key = ev.data.scheduled_at.substring(0, 10);
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(ev);
   }
@@ -693,16 +603,6 @@ export function DivisionSchedulePanel({
           </button>
         )}
 
-        <button
-          onClick={handleGeneratePractices}
-          disabled={generatingPractices || generating || finishing}
-          className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {generatingPractices
-            ? <><Loader2 className="h-4 w-4 animate-spin" />Scheduling practices…</>
-            : <><Dumbbell className="h-4 w-4" />Generate Practices</>}
-        </button>
-
         {result && (
           <span className={`flex items-center gap-1.5 text-sm font-medium ${result.type === "success" ? "text-[#22C55E]" : "text-red-500"}`}>
             {result.type === "success"
@@ -740,56 +640,6 @@ export function DivisionSchedulePanel({
           </button>
         )}
       </div>
-
-      {/* ── Practice shortage warning ── */}
-      {practiceShortfall && practiceShortfall.count > 0 && (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
-            <div>
-              <p className="text-sm font-semibold text-amber-800">
-                Warning: Not enough venue availability to meet {practiceShortfall.target} practice{practiceShortfall.target !== 1 ? "s" : ""} per week for all teams.
-              </p>
-              <p className="mt-0.5 text-xs text-amber-700">
-                {practiceShortfall.count} practice{practiceShortfall.count !== 1 ? "s" : ""} could not be scheduled. Add more venue availability or adjust practice slots.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Unscheduled practice slots ── */}
-      {unscheduledPractices.length > 0 && (
-        <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3">
-          <div className="mb-2 flex items-center gap-2">
-            <Dumbbell className="h-4 w-4 flex-shrink-0 text-indigo-400" />
-            <p className="text-sm font-semibold text-indigo-800">
-              {unscheduledPractices.length} unscheduled practice slot{unscheduledPractices.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {unscheduledPractices.slice(0, 10).map((item) => (
-              <div key={item.key} className="flex items-center justify-between rounded-lg bg-white/70 px-3 py-2">
-                <div>
-                  <span className="text-xs font-semibold text-indigo-900">{item.teamName}</span>
-                  <span className="ml-1.5 text-xs text-indigo-600">week of {item.weekLabel}</span>
-                </div>
-                <button
-                  onClick={() => setSchedulingPractice(item)}
-                  className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-indigo-700"
-                >
-                  Schedule
-                </button>
-              </div>
-            ))}
-            {unscheduledPractices.length > 10 && (
-              <p className="mt-0.5 text-xs text-indigo-500">
-                and {unscheduledPractices.length - 10} more…
-              </p>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* ── Rained out pending banner ── */}
       {cancelledGames.length > 0 && (
@@ -919,11 +769,6 @@ export function DivisionSchedulePanel({
                 <div className="flex items-center gap-3">
                   <p className="text-xs text-gray-400">
                     {activeGames.length} game{activeGames.length !== 1 ? "s" : ""}
-                    {practices.filter((p) => p.status !== "cancelled").length > 0 && (
-                      <span className="ml-1.5 text-indigo-400">
-                        · {practices.filter((p) => p.status !== "cancelled").length} practice{practices.filter((p) => p.status !== "cancelled").length !== 1 ? "s" : ""}
-                      </span>
-                    )}
                     {cancelledGames.length > 0 && (
                       <span className="ml-1.5 text-blue-400">· {cancelledGames.length} rained out</span>
                     )}
@@ -942,35 +787,7 @@ export function DivisionSchedulePanel({
               </div>
               <div className="divide-y divide-gray-50">
                 {dayEvents.map((ev) => {
-                  if (ev.kind === "practice") {
-                    const practice = ev.data;
-                    return (
-                      <div
-                        key={practice.id}
-                        className="flex items-center justify-between bg-indigo-50/40 px-4 py-3"
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <Dumbbell className="h-3.5 w-3.5 flex-shrink-0 text-indigo-400" />
-                          <span className="w-16 flex-shrink-0 text-xs tabular-nums text-indigo-400">
-                            {fmtGameTime(`${practice.scheduled_date}T${practice.start_time}:00`)}
-                          </span>
-                          <span className="truncate text-sm font-semibold text-indigo-700">
-                            {practice.team?.name ?? "TBD"}
-                          </span>
-                          <span className="flex-shrink-0 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-500">
-                            Practice
-                          </span>
-                        </div>
-                        <div className="ml-3 flex flex-shrink-0 items-center gap-2">
-                          {practice.venue?.name && (
-                            <span className="text-xs text-indigo-400">{practice.venue.name}</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  const game = ev.data as GameRow;
+                  const game = ev.data;
                   const isCancelled = game.status === "cancelled";
                   const isRaining = rainoutId === game.id;
                   const isSelected = selectedGameIds.has(game.id);
@@ -1145,134 +962,6 @@ export function DivisionSchedulePanel({
         </div>
       )}
 
-      {/* Practices */}
-      {printMode === "practices" && practices.filter((p) => p.status === "scheduled").length > 0 && (() => {
-        const scheduledPractices = practices.filter((p) => p.status === "scheduled");
-        const grouped = scheduledPractices.reduce((map, p) => {
-          if (!map.has(p.scheduled_date)) map.set(p.scheduled_date, []);
-          map.get(p.scheduled_date)!.push(p);
-          return map;
-        }, new Map<string, PracticeRow[]>());
-        return (
-          <div className="fieldslate-print-region hidden">
-            <div className="fieldslate-print-header">
-              <div className="fieldslate-print-wordmark">Field<span>Slate</span></div>
-              <p className="fieldslate-print-league">{leagueName}</p>
-              <p className="fieldslate-print-division">{divisionName} — Practice Schedule</p>
-              <p className="fieldslate-print-meta">
-                Printed {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-                {" "}· {scheduledPractices.length} practice{scheduledPractices.length !== 1 ? "s" : ""}
-              </p>
-            </div>
-            {Array.from(grouped.entries()).map(([date, dayPractices]) => (
-              <div key={date}>
-                <div className="fieldslate-print-date-group">{fmtGameDate(date)}</div>
-                <table className="fieldslate-print-table">
-                  <thead>
-                    <tr><th>Date</th><th>Time</th><th>Team</th><th>Field / Venue</th></tr>
-                  </thead>
-                  <tbody>
-                    {dayPractices.map((p) => (
-                      <tr key={p.id}>
-                        <td>{fmtGameDate(p.scheduled_date)}</td>
-                        <td>{fmtGameTime(`${p.scheduled_date}T${p.start_time}:00`)}</td>
-                        <td>{p.team?.name ?? "TBD"}</td>
-                        <td>{p.venue?.name ?? "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-          </div>
-        );
-      })()}
-
-      {/* Combined */}
-      {printMode === "combined" && (games.length > 0 || practices.filter((p) => p.status === "scheduled").length > 0) && (() => {
-        const scheduledPractices = practices.filter((p) => p.status === "scheduled");
-        const gamesByDate = games
-          .filter((g) => g.status !== "cancelled")
-          .reduce((map, g) => {
-            const k = g.scheduled_at.substring(0, 10);
-            if (!map.has(k)) map.set(k, []);
-            map.get(k)!.push(g);
-            return map;
-          }, new Map<string, GameRow[]>());
-        const practicesByDate = scheduledPractices.reduce((map, p) => {
-          if (!map.has(p.scheduled_date)) map.set(p.scheduled_date, []);
-          map.get(p.scheduled_date)!.push(p);
-          return map;
-        }, new Map<string, PracticeRow[]>());
-        return (
-          <div className="fieldslate-print-region hidden">
-            <div className="fieldslate-print-header">
-              <div className="fieldslate-print-wordmark">Field<span>Slate</span></div>
-              <p className="fieldslate-print-league">{leagueName}</p>
-              <p className="fieldslate-print-division">{divisionName} — Full Schedule</p>
-              <p className="fieldslate-print-meta">
-                Printed {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-                {" "}· {activeGames.length} game{activeGames.length !== 1 ? "s" : ""}
-                {scheduledPractices.length > 0 ? ` · ${scheduledPractices.length} practice${scheduledPractices.length !== 1 ? "s" : ""}` : ""}
-              </p>
-            </div>
-            {/* Games section */}
-            {gamesByDate.size > 0 && (
-              <>
-                <div className="fieldslate-print-date-group" style={{ marginTop: 0, borderTop: "none", paddingTop: 0 }}>Games</div>
-                {Array.from(gamesByDate.entries()).map(([, dayGames]) => (
-                  <div key={dayGames[0].scheduled_at.substring(0, 10)}>
-                    <div className="fieldslate-print-date-group">{fmtGameDate(dayGames[0].scheduled_at)}</div>
-                    <table className="fieldslate-print-table">
-                      <thead>
-                        <tr><th>Date</th><th>Time</th><th>Home Team</th><th>Away Team</th><th>Field / Venue</th></tr>
-                      </thead>
-                      <tbody>
-                        {dayGames.map((game) => (
-                          <tr key={game.id}>
-                            <td>{fmtGameDate(game.scheduled_at)}</td>
-                            <td>{fmtGameTime(game.scheduled_at)}</td>
-                            <td>{game.home_team?.name ?? "TBD"}</td>
-                            <td>{opponentName(game)}</td>
-                            <td>{game.venue?.name ?? "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
-              </>
-            )}
-            {/* Practices section */}
-            {practicesByDate.size > 0 && (
-              <>
-                <div className="fieldslate-print-date-group">Practices</div>
-                {Array.from(practicesByDate.entries()).map(([date, dayPractices]) => (
-                  <div key={date}>
-                    <div className="fieldslate-print-date-group">{fmtGameDate(date)}</div>
-                    <table className="fieldslate-print-table">
-                      <thead>
-                        <tr><th>Date</th><th>Time</th><th>Team</th><th>Field / Venue</th></tr>
-                      </thead>
-                      <tbody>
-                        {dayPractices.map((p) => (
-                          <tr key={p.id}>
-                            <td>{fmtGameDate(p.scheduled_date)}</td>
-                            <td>{fmtGameTime(`${p.scheduled_date}T${p.start_time}:00`)}</td>
-                            <td>{p.team?.name ?? "TBD"}</td>
-                            <td>{p.venue?.name ?? "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        );
-      })()}
-
       {/* ── Bulk rainout confirmation modal ── */}
       {confirmingBulkRainout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -1339,23 +1028,6 @@ export function DivisionSchedulePanel({
         />
       )}
 
-      {schedulingPractice && (
-        <SchedulePracticeModal
-          practiceId={schedulingPractice.practiceId}
-          teamId={schedulingPractice.teamId}
-          teamName={schedulingPractice.teamName}
-          weekMonday={schedulingPractice.weekMonday}
-          weekLabel={schedulingPractice.weekLabel}
-          divisionId={divisionId}
-          leagueId={leagueId}
-          onClose={() => setSchedulingPractice(null)}
-          onScheduled={() => {
-            setSchedulingPractice(null);
-            fetchGames();
-            onScheduleChange?.();
-          }}
-        />
-      )}
     </div>
   );
 }

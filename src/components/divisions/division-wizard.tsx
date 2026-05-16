@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { StepBasics } from "./steps/step-basics";
 import { StepPlayingSchedule } from "./steps/step-playing-schedule";
-import { StepPracticeSchedule } from "./steps/step-practice-schedule";
 import { StepFields } from "./steps/step-fields";
 import { StepUmpires } from "./steps/step-umpires";
 import { StepFormat } from "./steps/step-format";
@@ -17,7 +16,6 @@ import type { Division } from "@/types/database";
 const STEPS = [
   { label: "Basics" },
   { label: "Schedule" },
-  { label: "Practice" },
   { label: "Fields" },
   { label: "Umpires" },
   { label: "Format" },
@@ -99,12 +97,6 @@ export function DivisionWizard({ leagueId, leagueName, leagueStartDate, leagueEn
   const stepContent = [
     <StepBasics key="basics" data={data} update={update} />,
     <StepPlayingSchedule key="schedule" data={data} update={update} leagueId={leagueId} />,
-    <StepPracticeSchedule
-      key="practice"
-      data={data}
-      update={update}
-      onSkip={() => setStep((s) => s + 1)}
-    />,
     <StepFields key="fields" data={data} update={update} leagueId={leagueId} />,
     <StepUmpires key="umpires" data={data} update={update} />,
     <StepFormat key="format" data={data} update={update} />,

@@ -5,7 +5,6 @@ import { Plus } from "lucide-react";
 import { DivisionFilter } from "@/components/schedule/division-filter";
 import { TeamFilter } from "@/components/schedule/team-filter";
 import { HidePastToggle } from "@/components/schedule/hide-past-toggle";
-import { ViewToggle, type ScheduleView } from "@/components/schedule/view-toggle";
 import {
   ViewModeToggle,
   type ViewMode,
@@ -13,14 +12,8 @@ import {
 import {
   ScheduleList,
   type ScheduleGame,
-  type SchedulePractice,
 } from "@/components/schedule/schedule-list";
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
-
-function parseView(raw: string | undefined): ScheduleView {
-  if (raw === "practices" || raw === "combined") return raw;
-  return "games";
-}
 
 function parseMode(raw: string | undefined): ViewMode {
   return raw === "calendar" ? "calendar" : "list";
@@ -74,7 +67,6 @@ export default async function SchedulePage({
   searchParams: {
     division?: string;
     team?: string;
-    view?: string;
     past?: string;
     mode?: string;
     month?: string;
@@ -83,7 +75,6 @@ export default async function SchedulePage({
   const supabase = createClient();
   const selectedDivisionId = searchParams.division ?? "";
   const selectedTeamId = searchParams.team ?? "";
-  const view = parseView(searchParams.view);
   const mode = parseMode(searchParams.mode);
   const month = parseMonth(searchParams.month);
   // Default ON; the URL only carries `past=1` when the user has switched it OFF.
@@ -120,100 +111,52 @@ export default async function SchedulePage({
   // ── Games ────────────────────────────────────────────────────────────────────
   let games: ScheduleGame[] = [];
 
-  const needGames = view === "games" || view === "combined";
-  if (needGames) {
-    let teamIdScope: string[] | null = null;
-    if (effectiveTeamId) {
-      teamIdScope = [effectiveTeamId];
-    } else if (selectedDivisionId) {
-      teamIdScope = teams
-        .filter((t) => t.division_id === selectedDivisionId)
-        .map((t) => t.id);
-    }
-
-    let gamesQuery = supabase
-      .from("games")
-      .select(`
-        id, scheduled_at, status, league_id, home_team_id, away_team_id,
-        home_team:teams!home_team_id(name, division_id, division:divisions(name, umpires_per_game, umpire_roles)),
-        away_team:teams!away_team_id(name),
-        venue:venues(name),
-        game_umpires:game_umpires(id, role, umpire:umpires(id, name))
-      `)
-      .order("scheduled_at", { ascending: true })
-      .limit(mode === "calendar" ? 1000 : 200);
-
-    if (teamIdScope !== null) {
-      if (teamIdScope.length === 0) {
-        gamesQuery = gamesQuery.in("home_team_id", [
-          "00000000-0000-0000-0000-000000000000",
-        ]);
-      } else if (effectiveTeamId) {
-        gamesQuery = gamesQuery.or(
-          `home_team_id.eq.${effectiveTeamId},away_team_id.eq.${effectiveTeamId}`,
-        );
-      } else {
-        gamesQuery = gamesQuery.in("home_team_id", teamIdScope);
-      }
-    }
-
-    if (gridRange) {
-      gamesQuery = gamesQuery
-        .gte("scheduled_at", `${gridRange.gridStart}T00:00:00`)
-        .lt("scheduled_at", `${gridRange.dayAfterGridEnd}T00:00:00`);
-    }
-    if (hidePast) {
-      gamesQuery = gamesQuery.gte("scheduled_at", todayIso);
-    }
-
-    const { data: rawGames } = await gamesQuery;
-    games = (rawGames as unknown as ScheduleGame[] | null) ?? [];
+  let teamIdScope: string[] | null = null;
+  if (effectiveTeamId) {
+    teamIdScope = [effectiveTeamId];
+  } else if (selectedDivisionId) {
+    teamIdScope = teams
+      .filter((t) => t.division_id === selectedDivisionId)
+      .map((t) => t.id);
   }
 
-  // ── Practices ────────────────────────────────────────────────────────────────
-  let practices: SchedulePractice[] = [];
+  let gamesQuery = supabase
+    .from("games")
+    .select(`
+      id, scheduled_at, status, league_id, home_team_id, away_team_id,
+      home_team:teams!home_team_id(name, division_id, division:divisions(name, umpires_per_game, umpire_roles)),
+      away_team:teams!away_team_id(name),
+      venue:venues(name),
+      game_umpires:game_umpires(id, role, umpire:umpires(id, name))
+    `)
+    .order("scheduled_at", { ascending: true })
+    .limit(mode === "calendar" ? 1000 : 200);
 
-  const needPractices = view === "practices" || view === "combined";
-  if (needPractices) {
-    let practicesQuery = supabase
-      .from("practices")
-      .select(`
-        id, scheduled_date, start_time, status, league_id, division_id, team_id,
-        team:teams(name),
-        division:divisions(name),
-        venue:venues(name)
-      `)
-      .neq("status", "unscheduled")
-      .order("scheduled_date", { ascending: true })
-      .order("start_time", { ascending: true })
-      .limit(mode === "calendar" ? 1000 : 200);
-
-    if (selectedDivisionId) {
-      practicesQuery = practicesQuery.eq("division_id", selectedDivisionId);
+  if (teamIdScope !== null) {
+    if (teamIdScope.length === 0) {
+      gamesQuery = gamesQuery.in("home_team_id", [
+        "00000000-0000-0000-0000-000000000000",
+      ]);
+    } else if (effectiveTeamId) {
+      gamesQuery = gamesQuery.or(
+        `home_team_id.eq.${effectiveTeamId},away_team_id.eq.${effectiveTeamId}`,
+      );
+    } else {
+      gamesQuery = gamesQuery.in("home_team_id", teamIdScope);
     }
-    if (effectiveTeamId) {
-      practicesQuery = practicesQuery.eq("team_id", effectiveTeamId);
-    }
-    if (gridRange) {
-      practicesQuery = practicesQuery
-        .gte("scheduled_date", gridRange.gridStart)
-        .lte("scheduled_date", gridRange.gridEnd);
-    }
-    if (hidePast) {
-      practicesQuery = practicesQuery.gte("scheduled_date", today);
-    }
-
-    const { data: rawPractices } = await practicesQuery;
-    practices =
-      (rawPractices as unknown as SchedulePractice[] | null) ?? [];
   }
 
-  const cardTitle =
-    view === "games"
-      ? "All Games"
-      : view === "practices"
-      ? "All Practices"
-      : "All Games & Practices";
+  if (gridRange) {
+    gamesQuery = gamesQuery
+      .gte("scheduled_at", `${gridRange.gridStart}T00:00:00`)
+      .lt("scheduled_at", `${gridRange.dayAfterGridEnd}T00:00:00`);
+  }
+  if (hidePast) {
+    gamesQuery = gamesQuery.gte("scheduled_at", todayIso);
+  }
+
+  const { data: rawGames } = await gamesQuery;
+  games = (rawGames as unknown as ScheduleGame[] | null) ?? [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -231,15 +174,14 @@ export default async function SchedulePage({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <ViewToggle view={view} />
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <HidePastToggle hidePast={hidePast} />
       </div>
 
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle>{cardTitle}</CardTitle>
+            <CardTitle>All Games</CardTitle>
             <div className="flex flex-wrap items-center gap-2">
               {divisions.length > 0 && (
                 <DivisionFilter
@@ -260,14 +202,12 @@ export default async function SchedulePage({
         <CardContent>
           {mode === "calendar" ? (
             <ScheduleCalendar
-              view={view}
               games={games}
-              practices={practices}
               month={month}
               today={today}
             />
           ) : (
-            <ScheduleList view={view} games={games} practices={practices} />
+            <ScheduleList games={games} />
           )}
         </CardContent>
       </Card>

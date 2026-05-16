@@ -12,41 +12,12 @@ interface Props {
   leagueId: string;
 }
 
-function CheckboxCell({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <label className="flex cursor-pointer flex-col items-center gap-1 select-none">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{label}</span>
-      <div
-        onClick={(e) => { e.stopPropagation(); onChange(!checked); }}
-        className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 transition-colors ${
-          checked ? "border-[#22C55E] bg-[#22C55E]" : "border-gray-300 hover:border-gray-400"
-        }`}
-      >
-        {checked && (
-          <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-          </svg>
-        )}
-      </div>
-    </label>
-  );
-}
-
 export function StepFields({ data, update, leagueId }: Props) {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
   const [conflictMap, setConflictMap] = useState<Record<string, string>>({});
   const [showAddForm, setShowAddForm] = useState(false);
   const [newVenueName, setNewVenueName] = useState("");
-  const [newVenueType, setNewVenueType] = useState<"game" | "practice" | "both">("game");
   const [addingVenue, setAddingVenue] = useState(false);
 
   useEffect(() => {
@@ -91,23 +62,15 @@ export function StepFields({ data, update, leagueId }: Props) {
     load();
   }, [leagueId]);
 
-  // ── Assignment helpers ──────────────────────────────────────────────────────
-
-  function getAssignment(venueId: string): VenueAssignment | undefined {
-    return data.venue_assignments.find((a) => a.venue_id === venueId);
+  function isSelected(venueId: string): boolean {
+    return data.venue_assignments.some((a) => a.venue_id === venueId);
   }
 
-  function setAssignment(venueId: string, patch: Partial<Omit<VenueAssignment, "venue_id">>) {
-    const current = getAssignment(venueId);
-    const next: VenueAssignment = current
-      ? { ...current, ...patch }
-      : { venue_id: venueId, allow_games: false, allow_practices: false, ...patch };
-
-    if (!next.allow_games && !next.allow_practices) {
+  function toggleAssignment(venueId: string) {
+    if (isSelected(venueId)) {
       update({ venue_assignments: data.venue_assignments.filter((a) => a.venue_id !== venueId) });
-    } else if (current) {
-      update({ venue_assignments: data.venue_assignments.map((a) => a.venue_id === venueId ? next : a) });
     } else {
+      const next: VenueAssignment = { venue_id: venueId, allow_games: true, allow_practices: false };
       update({ venue_assignments: [...data.venue_assignments, next] });
     }
   }
@@ -121,25 +84,22 @@ export function StepFields({ data, update, leagueId }: Props) {
 
     const { data: newV } = await supabase
       .from("venues")
-      .insert([{ name: newVenueName.trim(), owner_id: user.id, venue_type: newVenueType }])
+      .insert([{ name: newVenueName.trim(), owner_id: user.id }])
       .select("*")
       .single();
 
     if (newV) {
       const venue = newV as Venue;
       setVenues((prev) => [...prev, venue].sort((a, b) => a.name.localeCompare(b.name)));
-      const allow_games = newVenueType === "game" || newVenueType === "both";
-      const allow_practices = newVenueType === "practice" || newVenueType === "both";
       update({
         venue_assignments: [
           ...data.venue_assignments,
-          { venue_id: venue.id, allow_games, allow_practices },
+          { venue_id: venue.id, allow_games: true, allow_practices: false },
         ],
       });
     }
 
     setNewVenueName("");
-    setNewVenueType("game");
     setShowAddForm(false);
     setAddingVenue(false);
   }
@@ -149,7 +109,7 @@ export function StepFields({ data, update, leagueId }: Props) {
       <div>
         <h3 className="text-lg font-semibold text-[#0C1F3F]">Fields & venues</h3>
         <p className="mt-0.5 text-sm text-gray-500">
-          Choose which venues this division can use, and for what.
+          Choose which venues this division can use for games.
         </p>
       </div>
 
@@ -171,20 +131,20 @@ export function StepFields({ data, update, leagueId }: Props) {
       ) : (
         <div className="flex flex-col gap-2">
           {venues.map((venue) => {
-            const assignment = getAssignment(venue.id);
-            const isSelected = !!assignment;
+            const selected = isSelected(venue.id);
             const conflict = conflictMap[venue.id];
 
             return (
-              <div
+              <button
                 key={venue.id}
-                className={`flex items-center justify-between rounded-xl border px-4 py-3 transition-all ${
-                  isSelected
+                type="button"
+                onClick={() => toggleAssignment(venue.id)}
+                className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-all ${
+                  selected
                     ? "border-[#22C55E] bg-[#22C55E]/5 ring-1 ring-[#22C55E]/30"
-                    : "border-gray-200"
+                    : "border-gray-200 hover:border-gray-300"
                 }`}
               >
-                {/* Left: venue info */}
                 <div className="flex items-center gap-3 min-w-0">
                   <MapPin className="h-4 w-4 flex-shrink-0 text-gray-300" />
                   <div className="min-w-0">
@@ -203,20 +163,18 @@ export function StepFields({ data, update, leagueId }: Props) {
                   </div>
                 </div>
 
-                {/* Right: Games / Practices checkboxes */}
-                <div className="flex items-center gap-5 flex-shrink-0 ml-4">
-                  <CheckboxCell
-                    label="Games"
-                    checked={assignment?.allow_games ?? false}
-                    onChange={(v) => setAssignment(venue.id, { allow_games: v, allow_practices: assignment?.allow_practices ?? false })}
-                  />
-                  <CheckboxCell
-                    label="Practices"
-                    checked={assignment?.allow_practices ?? false}
-                    onChange={(v) => setAssignment(venue.id, { allow_games: assignment?.allow_games ?? false, allow_practices: v })}
-                  />
+                <div
+                  className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 transition-colors ${
+                    selected ? "border-[#22C55E] bg-[#22C55E]" : "border-gray-300"
+                  }`}
+                >
+                  {selected && (
+                    <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -233,15 +191,6 @@ export function StepFields({ data, update, leagueId }: Props) {
             autoFocus
             className="h-10 min-w-0 flex-1 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
           />
-          <select
-            value={newVenueType}
-            onChange={(e) => setNewVenueType(e.target.value as "game" | "practice" | "both")}
-            className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-gray-700 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-          >
-            <option value="game">Game only</option>
-            <option value="practice">Practice only</option>
-            <option value="both">Games & practices</option>
-          </select>
           <button
             type="button"
             onClick={addVenue}
@@ -252,7 +201,7 @@ export function StepFields({ data, update, leagueId }: Props) {
           </button>
           <button
             type="button"
-            onClick={() => { setShowAddForm(false); setNewVenueName(""); setNewVenueType("game"); }}
+            onClick={() => { setShowAddForm(false); setNewVenueName(""); }}
             className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 hover:text-gray-700"
           >
             Cancel

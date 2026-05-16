@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   CheckCircle2, AlertTriangle, Edit2, Zap, Loader2,
-  ExternalLink, X, Save, CalendarDays, Dumbbell,
+  ExternalLink, X, Save, CalendarDays,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -11,9 +11,8 @@ import { logActivity } from "@/lib/activity-log";
 import Link from "next/link";
 import type { WizardData } from "../wizard-types";
 import { generateSchedule, type ScheduleConflict } from "@/lib/schedule/generate-schedule";
-import { generatePractices } from "@/lib/schedule/generate-practices";
 
-type GenerateKind = "games" | "practices" | "all";
+type GenerateKind = "games";
 
 const FORMAT_LABELS = {
   round_robin: "Round robin",
@@ -89,8 +88,6 @@ type RegenResult = {
   gamesCreated?: number;
   unscheduledCount?: number;
   conflicts: ScheduleConflict[];
-  practicesCreated?: number;
-  practicesShortfall?: number;
   savedDivisionId: string;
 };
 
@@ -129,8 +126,6 @@ export function StepReview({
     max_games_per_team_per_day: data.max_games_per_team_per_day,
     playing_days: data.playing_days,
     day_windows: data.day_windows,
-    practice_days: data.practice_days,
-    practice_day_windows: data.practice_day_windows,
     use_league_schedule: data.use_league_schedule,
     // Backward-compat fields — schedule generator uses day_windows when present
     earliest_start: firstWin.start,
@@ -160,10 +155,7 @@ export function StepReview({
           team_count: data.team_count,
           start_date: data.start_date || null,
           end_date: data.end_date || null,
-          practice_season_start: data.practice_season_start || null,
-          practice_season_end: data.practice_season_end || null,
           settings: settingsPayload,
-          activities_per_week: data.activities_per_week,
           umpires_per_game: data.umpires_per_game,
           umpire_roles: data.umpire_roles,
           plays_interleague: data.plays_interleague,
@@ -181,7 +173,6 @@ export function StepReview({
             division_id: divisionId,
             venue_id: a.venue_id,
             allow_games: a.allow_games,
-            allow_practices: a.allow_practices,
           })) as never[]);
       }
 
@@ -195,11 +186,8 @@ export function StepReview({
           team_count: data.team_count,
           start_date: data.start_date || null,
           end_date: data.end_date || null,
-          practice_season_start: data.practice_season_start || null,
-          practice_season_end: data.practice_season_end || null,
           settings: settingsPayload,
           status: "active",
-          activities_per_week: data.activities_per_week,
           umpires_per_game: data.umpires_per_game,
           umpire_roles: data.umpire_roles,
           plays_interleague: data.plays_interleague,
@@ -219,7 +207,6 @@ export function StepReview({
             division_id: divId,
             venue_id: a.venue_id,
             allow_games: a.allow_games,
-            allow_practices: a.allow_practices,
           })) as never[]);
       }
     }
@@ -256,57 +243,9 @@ export function StepReview({
           schedule_settings: {
             playing_days: data.playing_days,
             day_windows: data.day_windows,
-            practice_days: data.practice_days,
-            practice_day_windows: data.practice_day_windows,
           },
         } as never)
         .eq("id", leagueId);
-    }
-
-    // Sync team practice slots
-    const hasAnySlots = data.teams.some((t) =>
-      (t.practice_slots ?? []).some((s) => s.day),
-    );
-    if (isEditMode || hasAnySlots) {
-      const { data: teamRows } = await supabase
-        .from("teams")
-        .select("id, name")
-        .eq("division_id", divId);
-
-      const teamIdByName = new Map(
-        (teamRows ?? []).map((t: { id: string; name: string }) => [
-          t.name.toLowerCase().trim(),
-          t.id,
-        ]),
-      );
-
-      // In edit mode wipe first so removals are handled
-      if (isEditMode) {
-        await supabase
-          .from("team_practice_slots")
-          .delete()
-          .eq("division_id", divId);
-      }
-
-      const slotsToInsert = data.teams.flatMap((t) => {
-        const teamId = teamIdByName.get(t.name.toLowerCase().trim());
-        if (!teamId) return [];
-        return (t.practice_slots ?? [])
-          .filter((s) => s.day)
-          .map((s) => ({
-            team_id: teamId,
-            division_id: divId,
-            day_of_week: s.day!,
-            start_time: s.start ?? "09:00",
-            venue_id: s.venue_id ?? null,
-          }));
-      });
-
-      if (slotsToInsert.length > 0) {
-        await supabase
-          .from("team_practice_slots")
-          .insert(slotsToInsert as never[]);
-      }
     }
 
     // Sync interleague game counts — always wipe+replace so removals are handled
@@ -482,42 +421,22 @@ export function StepReview({
 
     const result: RegenResult = { kind, conflicts: [], savedDivisionId: divId };
 
-    if (kind === "games" || kind === "all") {
-      const gameRes = await generateSchedule(divId);
-      if (!gameRes.success) {
-        setError(`Division saved, but game schedule generation failed: ${gameRes.error}`);
-        setSavingRegen(false);
-        setRegenKind(null);
-        return;
-      }
-      result.gamesCreated = gameRes.gamesCreated;
-      result.unscheduledCount = gameRes.unscheduledCount;
-      result.conflicts = gameRes.conflicts;
-      await logActivity(
-        leagueId,
-        divId,
-        "schedule_generated",
-        `${data.name} schedule generated — ${gameRes.gamesCreated} game${gameRes.gamesCreated === 1 ? "" : "s"} scheduled`,
-      );
+    const gameRes = await generateSchedule(divId);
+    if (!gameRes.success) {
+      setError(`Division saved, but game schedule generation failed: ${gameRes.error}`);
+      setSavingRegen(false);
+      setRegenKind(null);
+      return;
     }
-
-    if (kind === "practices" || kind === "all") {
-      const practiceRes = await generatePractices(divId);
-      if (!practiceRes.success) {
-        setError(`Division saved, but practice generation failed: ${practiceRes.error}`);
-        setSavingRegen(false);
-        setRegenKind(null);
-        return;
-      }
-      result.practicesCreated = practiceRes.practicesCreated;
-      result.practicesShortfall = practiceRes.shortfallCount;
-      await logActivity(
-        leagueId,
-        divId,
-        "practices_generated",
-        `${data.name} practices generated — ${practiceRes.practicesCreated} practice${practiceRes.practicesCreated === 1 ? "" : "s"} scheduled`,
-      );
-    }
+    result.gamesCreated = gameRes.gamesCreated;
+    result.unscheduledCount = gameRes.unscheduledCount;
+    result.conflicts = gameRes.conflicts;
+    await logActivity(
+      leagueId,
+      divId,
+      "schedule_generated",
+      `${data.name} schedule generated — ${gameRes.gamesCreated} game${gameRes.gamesCreated === 1 ? "" : "s"} scheduled`,
+    );
 
     router.refresh();
     setSavingRegen(false);
@@ -530,21 +449,11 @@ export function StepReview({
   if (regenResult) {
     const hasUnscheduled = (regenResult.unscheduledCount ?? 0) > 0;
     const hasFieldConflicts = regenResult.conflicts.length > 0;
-    const hasPracticeShortfall = (regenResult.practicesShortfall ?? 0) > 0;
-    const hasIssues = hasUnscheduled || hasFieldConflicts || hasPracticeShortfall;
+    const hasIssues = hasUnscheduled || hasFieldConflicts;
 
-    const headerTitle =
-      regenResult.kind === "games"
-        ? hasIssues
-          ? "Game schedule generated with issues"
-          : "Game schedule generated"
-        : regenResult.kind === "practices"
-        ? hasIssues
-          ? "Practice schedule generated with issues"
-          : "Practice schedule generated"
-        : hasIssues
-        ? "Schedules generated with issues"
-        : "Schedules generated";
+    const headerTitle = hasIssues
+      ? "Game schedule generated with issues"
+      : "Game schedule generated";
 
     return (
       <div className="flex flex-col gap-5">
@@ -562,12 +471,6 @@ export function StepReview({
                   {regenResult.gamesCreated} game{regenResult.gamesCreated !== 1 ? "s" : ""} scheduled
                 </>
               )}
-              {regenResult.gamesCreated !== undefined && regenResult.practicesCreated !== undefined && " · "}
-              {regenResult.practicesCreated !== undefined && (
-                <>
-                  {regenResult.practicesCreated} practice{regenResult.practicesCreated !== 1 ? "s" : ""} scheduled
-                </>
-              )}
             </p>
           </div>
         </div>
@@ -582,22 +485,6 @@ export function StepReview({
                 </p>
                 <p className="mt-1 text-xs text-amber-700">
                   Not enough slots. Try extending dates, adding venues, or reducing games per team.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {hasPracticeShortfall && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <div className="flex items-start gap-2.5">
-              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
-              <div>
-                <p className="text-sm font-semibold text-amber-800">
-                  {regenResult.practicesShortfall} practice{regenResult.practicesShortfall !== 1 ? "s" : ""} could not be scheduled
-                </p>
-                <p className="mt-1 text-xs text-amber-700">
-                  Not enough practice venue availability. Add more practice slots or reduce activities per week.
                 </p>
               </div>
             </div>
@@ -727,14 +614,6 @@ export function StepReview({
           label="Game dates"
           value={data.start_date && data.end_date ? `${fmt(data.start_date)} → ${fmt(data.end_date)}` : "—"}
         />
-        <Row
-          label="Practice dates"
-          value={
-            data.practice_season_start && data.practice_season_end
-              ? `${fmt(data.practice_season_start)} → ${fmt(data.practice_season_end)}`
-              : "Uses game dates"
-          }
-        />
       </Section>
 
       <Section title="Playing schedule" step={1} onEdit={onEdit}>
@@ -752,58 +631,20 @@ export function StepReview({
               : "—"
           }
         />
-        <Row
-          label="Practice days"
-          value={
-            data.practice_days.length > 0
-              ? data.practice_days.map((d) => {
-                  const w = data.practice_day_windows[d];
-                  return w ? `${d} (${fmtTime(w.start)}–${fmtTime(w.end)})` : d;
-                }).join(", ")
-              : "—"
-          }
-        />
         <Row label="Game duration" value={`${data.game_duration} min`} />
         <Row label="Buffer" value={`${data.buffer_minutes} min`} />
         <Row label="Bye weeks" value={data.bye_weeks} />
-        <Row label="Activities per week" value={data.activities_per_week} />
       </Section>
 
-      <Section title="Practice schedule" step={2} onEdit={onEdit}>
-        {(() => {
-          const totalSlots = data.teams.reduce(
-            (sum, t) => sum + (t.practice_slots ?? []).filter((s) => s.day).length,
-            0,
-          );
-          const teamsWithSlots = data.teams.filter((t) =>
-            (t.practice_slots ?? []).some((s) => s.day),
-          ).length;
-          return (
-            <Row
-              label="Pinned slots"
-              value={
-                totalSlots > 0
-                  ? `${totalSlots} slot${totalSlots !== 1 ? "s" : ""} across ${teamsWithSlots} team${teamsWithSlots !== 1 ? "s" : ""}`
-                  : "None — auto-assign all"
-              }
-            />
-          );
-        })()}
-      </Section>
-
-      <Section title="Fields" step={3} onEdit={onEdit}>
+      <Section title="Fields" step={2} onEdit={onEdit}>
         {data.venue_assignments.length === 0 ? (
           <Row label="Fields selected" value="None" />
         ) : (
-          <>
-            <Row label="Fields selected" value={`${data.venue_assignments.length} venue${data.venue_assignments.length > 1 ? "s" : ""}`} />
-            <Row label="For games" value={`${data.venue_assignments.filter((a) => a.allow_games).length} venue${data.venue_assignments.filter((a) => a.allow_games).length !== 1 ? "s" : ""}`} />
-            <Row label="For practices" value={`${data.venue_assignments.filter((a) => a.allow_practices).length} venue${data.venue_assignments.filter((a) => a.allow_practices).length !== 1 ? "s" : ""}`} />
-          </>
+          <Row label="Fields selected" value={`${data.venue_assignments.length} venue${data.venue_assignments.length > 1 ? "s" : ""}`} />
         )}
       </Section>
 
-      <Section title="Umpires" step={4} onEdit={onEdit}>
+      <Section title="Umpires" step={3} onEdit={onEdit}>
         <Row
           label="Umpires per game"
           value={
@@ -820,7 +661,7 @@ export function StepReview({
         )}
       </Section>
 
-      <Section title="Format" step={5} onEdit={onEdit}>
+      <Section title="Format" step={4} onEdit={onEdit}>
         {(() => {
           const interleagueGames = data.plays_interleague
             ? data.interleague_games.reduce((s, g) => s + g.game_count, 0)
@@ -850,7 +691,7 @@ export function StepReview({
       </Section>
 
       {data.plays_interleague && (
-        <Section title="Interleague" step={6} onEdit={onEdit}>
+        <Section title="Interleague" step={5} onEdit={onEdit}>
           {data.interleague_games.filter((g) => g.game_count > 0).length === 0 ? (
             <Row label="Games configured" value="None" />
           ) : (
@@ -873,7 +714,7 @@ export function StepReview({
         </Section>
       )}
 
-      <Section title="Coaches" step={7} onEdit={onEdit}>
+      <Section title="Coaches" step={6} onEdit={onEdit}>
         <Row label="Coach conflicts" value={conflictCount > 0 ? `${conflictCount} flagged` : "None"} />
       </Section>
 
@@ -889,10 +730,7 @@ export function StepReview({
           <div className="flex items-start gap-2.5 mb-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
             <p className="text-sm text-amber-800">
-              {confirmingKind === "games" && "This will delete all existing games and rebuild the game schedule from scratch."}
-              {confirmingKind === "practices" && "This will delete all existing practices and rebuild the practice schedule from scratch."}
-              {confirmingKind === "all" && "This will delete all existing games and practices and rebuild both schedules from scratch."}
-              {" "}Are you sure?
+              This will delete all existing games and rebuild the game schedule from scratch. Are you sure?
             </p>
           </div>
           <div className="flex gap-2">
@@ -922,43 +760,16 @@ export function StepReview({
         <div className="flex flex-col gap-2.5">
           <button
             type="button"
-            onClick={() => (isEditMode ? setConfirmingKind("all") : handleSaveAndGenerate("all"))}
+            onClick={() => (isEditMode ? setConfirmingKind("games") : handleSaveAndGenerate("games"))}
             disabled={isBusy || !canSubmit}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#22C55E] py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {savingRegen && regenKind === "all" ? (
-              <><Loader2 className="h-5 w-5 animate-spin" />Generating all…</>
+            {savingRegen && regenKind === "games" ? (
+              <><Loader2 className="h-5 w-5 animate-spin" />Generating…</>
             ) : (
-              <><Zap className="h-5 w-5" />Generate all schedules</>
+              <><CalendarDays className="h-5 w-5" />Generate game schedule</>
             )}
           </button>
-
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => (isEditMode ? setConfirmingKind("games") : handleSaveAndGenerate("games"))}
-              disabled={isBusy || !canSubmit}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#22C55E] py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {savingRegen && regenKind === "games" ? (
-                <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
-              ) : (
-                <><CalendarDays className="h-4 w-4" />Generate game schedule</>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => (isEditMode ? setConfirmingKind("practices") : handleSaveAndGenerate("practices"))}
-              disabled={isBusy || !canSubmit}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#22C55E] py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {savingRegen && regenKind === "practices" ? (
-                <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
-              ) : (
-                <><Dumbbell className="h-4 w-4" />Generate practice schedule</>
-              )}
-            </button>
-          </div>
 
           <button
             type="button"

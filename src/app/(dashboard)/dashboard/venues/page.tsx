@@ -5,18 +5,6 @@ import { MapPin, Plus, Pencil, Check, X, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Venue } from "@/types/database";
 
-const TYPE_LABELS: Record<string, string> = {
-  game:     "Game",
-  practice: "Practice",
-  both:     "Both",
-};
-
-const TYPE_STYLES: Record<string, string> = {
-  game:     "bg-blue-50 text-blue-700",
-  practice: "bg-violet-50 text-violet-700",
-  both:     "bg-emerald-50 text-emerald-700",
-};
-
 export default function VenuesPage() {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,7 +12,6 @@ export default function VenuesPage() {
   // Add form
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState("");
-  const [addType, setAddType] = useState<string>("game");
   const [addCapacity, setAddCapacity] = useState("");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -32,7 +19,6 @@ export default function VenuesPage() {
   // Inline edit
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const [editType, setEditType] = useState<string>("game");
   const [editCapacity, setEditCapacity] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -64,7 +50,6 @@ export default function VenuesPage() {
       .from("venues")
       .insert([{
         name: addName.trim(),
-        venue_type: addType,
         capacity: addCapacity ? parseInt(addCapacity, 10) : null,
         owner_id: user.id,
       }]);
@@ -75,7 +60,6 @@ export default function VenuesPage() {
     }
     await loadVenues();
     setAddName("");
-    setAddType("game");
     setAddCapacity("");
     setShowAdd(false);
     setAdding(false);
@@ -84,7 +68,6 @@ export default function VenuesPage() {
   function startEdit(venue: Venue) {
     setEditId(venue.id);
     setEditName(venue.name);
-    setEditType(venue.venue_type ?? "game");
     setEditCapacity(venue.capacity ? String(venue.capacity) : "");
     setSaveError(null);
   }
@@ -103,7 +86,6 @@ export default function VenuesPage() {
       .from("venues")
       .update({
         name: editName.trim(),
-        venue_type: editType,
         capacity: editCapacity ? parseInt(editCapacity, 10) : null,
       } as never)
       .eq("id", venueId);
@@ -147,15 +129,6 @@ export default function VenuesPage() {
             autoFocus
             className="h-10 min-w-0 flex-1 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
           />
-          <select
-            value={addType}
-            onChange={(e) => setAddType(e.target.value)}
-            className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-gray-700 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-          >
-            <option value="game">Game</option>
-            <option value="practice">Practice</option>
-            <option value="both">Both</option>
-          </select>
           <input
             type="number"
             placeholder="Capacity (optional)"
@@ -173,7 +146,7 @@ export default function VenuesPage() {
             {adding ? "Adding…" : "Add venue"}
           </button>
           <button
-            onClick={() => { setShowAdd(false); setAddName(""); setAddType("game"); setAddCapacity(""); setAddError(null); }}
+            onClick={() => { setShowAdd(false); setAddName(""); setAddCapacity(""); setAddError(null); }}
             className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition-colors hover:text-gray-700"
           >
             Cancel
@@ -208,15 +181,6 @@ export default function VenuesPage() {
                   autoFocus
                   className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
                 />
-                <select
-                  value={editType}
-                  onChange={(e) => setEditType(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-700 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-                >
-                  <option value="game">Game</option>
-                  <option value="practice">Practice</option>
-                  <option value="both">Both</option>
-                </select>
                 <input
                   type="number"
                   placeholder="Capacity (optional)"
@@ -251,9 +215,6 @@ export default function VenuesPage() {
               <div key={venue.id} className="group flex items-start justify-between rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
                 <div className="flex flex-col gap-1.5">
                   <p className="font-semibold text-[#0C1F3F]">{venue.name}</p>
-                  <span className={`self-start rounded-full px-2 py-0.5 text-xs font-medium ${TYPE_STYLES[venue.venue_type ?? ""] ?? "bg-gray-100 text-gray-600"}`}>
-                    {TYPE_LABELS[venue.venue_type ?? ""] ?? venue.venue_type}
-                  </span>
                   {venue.address && <p className="text-xs text-gray-400">{venue.address}</p>}
                   {(venue.city || venue.state) && (
                     <p className="text-xs text-gray-400">{[venue.city, venue.state].filter(Boolean).join(", ")}</p>
