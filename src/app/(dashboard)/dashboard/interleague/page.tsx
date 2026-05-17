@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { InterleagueOrg, InterleagueInvite } from "@/types/database";
+import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,25 @@ type CounterProposedGame = {
   venue: { name: string } | null;
   interleague_org: { name: string } | null;
   league: { name: string; season: string | null } | null;
+};
+
+type PendingRescheduleRequest = {
+  id: string;
+  proposed_scheduled_at: string;
+  proposed_venue_name: string | null;
+  note: string | null;
+  created_at: string;
+  game: {
+    id: string;
+    scheduled_at: string;
+    is_away: boolean;
+    external_team_name: string | null;
+    proposed_venue_name: string | null;
+    home_team: { name: string; division: { name: string } | null } | null;
+    venue: { name: string } | null;
+    interleague_org: { name: string } | null;
+    league: { name: string; season: string | null } | null;
+  } | null;
 };
 
 // ── Org Modal ─────────────────────────────────────────────────────────────────
@@ -696,6 +716,11 @@ export default function InterleaguePage() {
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<CounterProposedGame | null>(null);
   const [declineTarget, setDeclineTarget] = useState<CounterProposedGame | null>(null);
+  const [reschedRequests, setReschedRequests] = useState<PendingRescheduleRequest[]>([]);
+  const [reschedBusyId, setReschedBusyId] = useState<string | null>(null);
+  const [reschedError, setReschedError] = useState<string | null>(null);
+  const [reschedCounterTarget, setReschedCounterTarget] =
+    useState<PendingRescheduleRequest | null>(null);
 
   const selectedSeason = useMemo(
     () => seasons.find((s) => s.id === selectedSeasonId) ?? null,
@@ -709,7 +734,7 @@ export default function InterleaguePage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [orgsRes, seasonsRes, invitesRes, counterRes] = await Promise.all([
+    const [orgsRes, seasonsRes, invitesRes, counterRes, reschedRes] = await Promise.all([
       supabase.from("interleague_orgs").select("*").order("name"),
       supabase
         .from("leagues")
@@ -736,6 +761,24 @@ export default function InterleaguePage() {
         .eq("league.owner_id", user.id)
         .not("external_team_name", "is", null)
         .order("scheduled_at", { ascending: true }),
+      // Inbound reschedule requests: pending, externally initiated
+      // (requested_by_user_id IS NULL), on games we own via league.
+      supabase
+        .from("interleague_reschedule_requests")
+        .select(
+          `id, proposed_scheduled_at, proposed_venue_name, note, created_at,
+           game:games!inner(
+             id, scheduled_at, is_away, external_team_name, proposed_venue_name,
+             home_team:teams!home_team_id(name, division:divisions(name)),
+             venue:venues(name),
+             interleague_org:interleague_orgs(name),
+             league:leagues!inner(name, season, owner_id)
+           )`
+        )
+        .eq("status", "pending")
+        .is("requested_by_user_id", null)
+        .eq("game.league.owner_id", user.id)
+        .order("created_at", { ascending: false }),
     ]);
 
     setOrgs((orgsRes.data as InterleagueOrg[]) ?? []);
@@ -747,6 +790,7 @@ export default function InterleaguePage() {
     const counter = ((counterRes.data as unknown as CounterProposedGame[]) ?? [])
       .filter((g) => g.proposed_scheduled_at || g.proposed_venue_name);
     setCounterGames(counter);
+    setReschedRequests((reschedRes.data as unknown as PendingRescheduleRequest[]) ?? []);
   }, []);
 
   useEffect(() => {
@@ -786,6 +830,44 @@ export default function InterleaguePage() {
   function handleInviteSent() {
     setInviteTarget(null);
     loadAll();
+  }
+
+  async function respondReschedule(
+    requestId: string,
+    payload:
+      | { action: "accept" | "decline" }
+      | {
+          action: "counter";
+          scheduled_at: string;
+          venue_name?: string;
+          note?: string;
+        },
+  ) {
+    setReschedBusyId(requestId);
+    setReschedError(null);
+    try {
+      const res = await fetch(
+        `/api/interleague/reschedule/${encodeURIComponent(requestId)}/respond`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setReschedError(data.error ?? "Failed to respond.");
+        setReschedBusyId(null);
+        return false;
+      }
+      await loadAll();
+      setReschedBusyId(null);
+      return true;
+    } catch (err) {
+      setReschedError(err instanceof Error ? err.message : "Network error.");
+      setReschedBusyId(null);
+      return false;
+    }
   }
 
   async function resolveGame(
@@ -955,6 +1037,123 @@ export default function InterleaguePage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Reschedule requests ────────────────────────────────────────────── */}
+        {!loading && reschedRequests.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-start gap-2">
+              <div className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-orange-50">
+                <CalendarClock className="h-3.5 w-3.5 text-orange-500" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-[#0C1F3F]">
+                  Reschedule requests ({reschedRequests.length})
+                </h2>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  Requests from the other side to move confirmed interleague games.
+                </p>
+              </div>
+            </div>
+            {reschedError && (
+              <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+                {reschedError}
+              </p>
+            )}
+            <div className="overflow-hidden rounded-xl border border-orange-200 bg-white shadow-sm">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-orange-100 bg-orange-50 text-left text-xs font-medium uppercase tracking-wide text-orange-700">
+                    <th className="px-5 py-3">Game</th>
+                    <th className="px-5 py-3">Proposed change</th>
+                    <th className="px-5 py-3">Current</th>
+                    <th className="px-5 py-3 text-right">Respond</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-orange-50">
+                  {reschedRequests.map((r) => {
+                    if (!r.game) return null;
+                    const orgName = r.game.interleague_org?.name ?? "Other org";
+                    const team = r.game.external_team_name ?? "their team";
+                    const matchup = r.game.is_away
+                      ? `${r.game.home_team?.name ?? "TBD"} AT ${orgName} (${team})`
+                      : `${r.game.home_team?.name ?? "TBD"} vs ${team}`;
+                    const busy = reschedBusyId === r.id;
+                    return (
+                      <tr key={r.id} className="hover:bg-orange-50/40">
+                        <td className="px-5 py-3.5">
+                          <p className="font-medium text-[#0C1F3F]">{matchup}</p>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {r.game.home_team?.division?.name ?? "—"}
+                            {r.game.league?.name ? ` · ${r.game.league.name}` : ""}
+                          </p>
+                          {r.note && (
+                            <p className="mt-1.5 rounded border-l-2 border-orange-300 bg-orange-50/60 px-2 py-1 text-xs text-[#0C1F3F]">
+                              {r.note}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-gray-700">
+                          <div className="font-medium">
+                            {fmtDateTime(r.proposed_scheduled_at)}
+                          </div>
+                          {r.proposed_venue_name && (
+                            <div className="text-xs text-gray-500">
+                              {r.proposed_venue_name}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-gray-500">
+                          {fmtDateTime(r.game.scheduled_at)}
+                          {r.game.venue?.name && (
+                            <div className="text-xs">{r.game.venue.name}</div>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            <button
+                              disabled={busy}
+                              onClick={() =>
+                                respondReschedule(r.id, { action: "accept" })
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg border border-[#22C55E]/40 bg-[#22C55E]/10 px-2.5 py-1.5 text-xs font-semibold text-[#16a34a] transition-colors hover:bg-[#22C55E]/20 disabled:opacity-50"
+                            >
+                              {busy ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Check className="h-3 w-3" />
+                              )}
+                              Accept
+                            </button>
+                            <button
+                              disabled={busy}
+                              onClick={() => {
+                                setReschedError(null);
+                                setReschedCounterTarget(r);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
+                            >
+                              Counter
+                            </button>
+                            <button
+                              disabled={busy}
+                              onClick={() =>
+                                respondReschedule(r.id, { action: "decline" })
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-500 transition-colors hover:border-red-300 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              <X className="h-3 w-3" />
+                              Decline
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
@@ -1193,6 +1392,40 @@ export default function InterleaguePage() {
             if (ok) setEditTarget(null);
           }}
           onClose={() => setEditTarget(null)}
+        />
+      )}
+
+      {reschedCounterTarget && reschedCounterTarget.game && (
+        <RescheduleRequestModal
+          title="Counter-propose reschedule"
+          submitLabel="Send counter-proposal"
+          game={{
+            scheduled_at: reschedCounterTarget.game.scheduled_at,
+            is_away: reschedCounterTarget.game.is_away,
+            external_team_name: reschedCounterTarget.game.external_team_name,
+            proposed_venue_name: reschedCounterTarget.game.proposed_venue_name,
+            home_team: reschedCounterTarget.game.home_team
+              ? { name: reschedCounterTarget.game.home_team.name }
+              : null,
+            venue: reschedCounterTarget.game.venue,
+            interleague_org: reschedCounterTarget.game.interleague_org,
+          }}
+          initial={{
+            scheduled_at: reschedCounterTarget.proposed_scheduled_at,
+            venue_name: reschedCounterTarget.proposed_venue_name ?? "",
+          }}
+          busy={reschedBusyId === reschedCounterTarget.id}
+          error={reschedError}
+          onSubmit={async ({ scheduled_at, venue_name, note }) => {
+            const ok = await respondReschedule(reschedCounterTarget.id, {
+              action: "counter",
+              scheduled_at,
+              venue_name,
+              note,
+            });
+            if (ok) setReschedCounterTarget(null);
+          }}
+          onClose={() => setReschedCounterTarget(null)}
         />
       )}
 

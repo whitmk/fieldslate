@@ -9,12 +9,14 @@ import {
   Eye,
   Loader2,
   UserCheck,
+  Repeat,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { createClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/activity-log";
 import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
+import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
 
 export type ScheduleGameUmpire = {
@@ -52,7 +54,7 @@ interface Props {
   games: ScheduleGame[];
 }
 
-const gameStatusVariants: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
+const gameStatusVariants: Record<string, "default" | "success" | "warning" | "danger" | "info" | "orange"> = {
   scheduled: "success",
   in_progress: "info",
   completed: "default",
@@ -61,11 +63,13 @@ const gameStatusVariants: Record<string, "default" | "success" | "warning" | "da
   cancelled: "warning",
   postponed: "default",
   pending_interleague: "warning",
+  reschedule_pending: "orange",
 };
 
 function gameStatusLabel(status: string) {
   if (status === "cancelled") return "Rained out";
   if (status === "pending_interleague") return "Pending";
+  if (status === "reschedule_pending") return "Reschedule pending";
   return status.replace("_", " ");
 }
 
@@ -101,6 +105,9 @@ export function ScheduleList({ games }: Props) {
   const [rainoutId, setRainoutId] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<ScheduleGame | null>(null);
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
+  const [requestRescheduleGame, setRequestRescheduleGame] = useState<ScheduleGame | null>(null);
+  const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -112,6 +119,40 @@ export function ScheduleList({ games }: Props) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  async function submitRescheduleRequest(payload: {
+    scheduled_at: string;
+    venue_name?: string;
+    note?: string;
+  }) {
+    if (!requestRescheduleGame) return;
+    setRescheduleError(null);
+    setRescheduleSubmitting(true);
+    try {
+      const res = await fetch(
+        `/api/interleague/games/${encodeURIComponent(requestRescheduleGame.id)}/reschedule`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setRescheduleError(data.error ?? "Failed to send request.");
+        setRescheduleSubmitting(false);
+        return;
+      }
+      setRequestRescheduleGame(null);
+      setRescheduleSubmitting(false);
+      router.refresh();
+    } catch (err) {
+      setRescheduleError(
+        err instanceof Error ? err.message : "Network error.",
+      );
+      setRescheduleSubmitting(false);
+    }
+  }
 
   async function handleRainout(game: ScheduleGame) {
     setRainoutId(game.id);
@@ -161,6 +202,11 @@ export function ScheduleList({ games }: Props) {
                 setOpenMenuId(null);
                 setRescheduleGame(g);
               }}
+              onRequestReschedule={() => {
+                setOpenMenuId(null);
+                setRescheduleError(null);
+                setRequestRescheduleGame(g);
+              }}
               onViewDetails={() => {
                 setOpenMenuId(null);
                 setDetailGame(g);
@@ -191,6 +237,26 @@ export function ScheduleList({ games }: Props) {
       {detailGame && (
         <GameDetailModal game={detailGame} onClose={() => setDetailGame(null)} />
       )}
+
+      {requestRescheduleGame && (
+        <RescheduleRequestModal
+          game={{
+            scheduled_at: requestRescheduleGame.scheduled_at,
+            is_away: !!requestRescheduleGame.is_away,
+            external_team_name: requestRescheduleGame.external_team_name ?? null,
+            proposed_venue_name: null,
+            home_team: requestRescheduleGame.home_team
+              ? { name: requestRescheduleGame.home_team.name }
+              : null,
+            venue: requestRescheduleGame.venue ?? null,
+            interleague_org: requestRescheduleGame.interleague_org ?? null,
+          }}
+          busy={rescheduleSubmitting}
+          error={rescheduleError}
+          onSubmit={submitRescheduleRequest}
+          onClose={() => setRequestRescheduleGame(null)}
+        />
+      )}
     </div>
   );
 }
@@ -201,6 +267,7 @@ interface GameRowProps {
   onMenuToggle: () => void;
   onRainout: () => void;
   onReschedule: () => void;
+  onRequestReschedule: () => void;
   onViewDetails: () => void;
   rainoutLoading: boolean;
 }
@@ -211,9 +278,14 @@ function GameRowCells({
   onMenuToggle,
   onRainout,
   onReschedule,
+  onRequestReschedule,
   onViewDetails,
   rainoutLoading,
 }: GameRowProps) {
+  const canRequestReschedule =
+    !!game.interleague_org_id &&
+    game.status === "scheduled" &&
+    new Date(game.scheduled_at).getTime() > Date.now();
   const umpiresPerGame = Number(game.home_team?.division?.umpires_per_game ?? 0);
   const umpireRoles: string[] = Array.isArray(game.home_team?.division?.umpire_roles)
     ? (game.home_team!.division!.umpire_roles as unknown[]).filter(
@@ -290,13 +362,23 @@ function GameRowCells({
               <CloudRain className="h-3.5 w-3.5 text-blue-400" />
               Mark as rained out
             </button>
-            <button
-              onClick={onReschedule}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
-            >
-              <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
-              Reschedule
-            </button>
+            {canRequestReschedule ? (
+              <button
+                onClick={onRequestReschedule}
+                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <Repeat className="h-3.5 w-3.5 text-[#22C55E]" />
+                Request reschedule
+              </button>
+            ) : (
+              <button
+                onClick={onReschedule}
+                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
+                Reschedule
+              </button>
+            )}
             <button
               onClick={onViewDetails}
               className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"

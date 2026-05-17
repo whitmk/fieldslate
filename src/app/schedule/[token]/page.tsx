@@ -16,6 +16,7 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
+import { ScheduleGameActions } from "@/components/interleague/schedule-game-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -119,6 +120,7 @@ export default async function PublicSchedulePage({
                           game={game}
                           orgName={orgName}
                           isLast={idx === arr.length - 1}
+                          scheduleToken={params.token}
                         />
                       ))}
                     </div>
@@ -143,10 +145,12 @@ function GameRow({
   game,
   orgName,
   isLast,
+  scheduleToken,
 }: {
   game: Game;
   orgName: string;
   isLast: boolean;
+  scheduleToken: string;
 }) {
   const ourTeam = game.home_team.name;
   const theirTeam = game.external_team_name ?? "TBD";
@@ -157,6 +161,7 @@ function GameRow({
   const venueName =
     game.venue?.name ??
     (game.is_away ? game.proposed_venue_name ?? "Your venue" : "TBD");
+  const isFuture = new Date(game.scheduled_at).getTime() > Date.now();
 
   return (
     <div
@@ -201,6 +206,22 @@ function GameRow({
           <MapPin className="h-3 w-3" />
           {venueName}
         </span>
+        {isFuture && (
+          <ScheduleGameActions
+            scheduleToken={scheduleToken}
+            game={{
+              id: game.id,
+              scheduled_at: game.scheduled_at,
+              is_away: game.is_away,
+              external_team_name: game.external_team_name,
+              proposed_venue_name: game.proposed_venue_name,
+              home_team: game.home_team,
+              division: game.division,
+              venue: game.venue,
+              interleague_org: { name: orgName },
+            }}
+          />
+        )}
       </div>
     </div>
   );

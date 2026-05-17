@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      interleague_reschedule_requests: {
+        Row: {
+          id: string
+          game_id: string
+          token: string
+          requested_by_user_id: string | null
+          proposed_scheduled_at: string
+          proposed_venue_name: string | null
+          note: string | null
+          status: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          game_id: string
+          token?: string
+          requested_by_user_id?: string | null
+          proposed_scheduled_at: string
+          proposed_venue_name?: string | null
+          note?: string | null
+          status?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          game_id?: string
+          token?: string
+          requested_by_user_id?: string | null
+          proposed_scheduled_at?: string
+          proposed_venue_name?: string | null
+          note?: string | null
+          status?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interleague_reschedule_requests_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       interleague_invite_responses: {
         Row: {
           id: string
@@ -1253,3 +1300,4 @@ export type InterleagueOrg = Database["public"]["Tables"]["interleague_orgs"]["R
 export type DivisionInterleagueGame = Database["public"]["Tables"]["division_interleague_games"]["Row"];
 export type InterleagueInvite = Database["public"]["Tables"]["interleague_invites"]["Row"];
 export type InterleagueInviteResponse = Database["public"]["Tables"]["interleague_invite_responses"]["Row"];
+export type InterleagueRescheduleRequest = Database["public"]["Tables"]["interleague_reschedule_requests"]["Row"];
