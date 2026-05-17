@@ -48,8 +48,8 @@ export function InviteFooter() {
             Try it free
           </Link>{" "}
           — use code{" "}
-          <span className="font-mono text-[#0C1F3F]">INTERLEAGUE</span> for 30
-          days free.
+          <span className="font-mono text-[#0C1F3F]">INTERLEAGUE</span> for 20%
+          off your first season.
         </p>
       </div>
     </footer>

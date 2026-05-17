@@ -102,6 +102,11 @@ function buildInviteEmail(params: {
       <p style="margin:0;color:#9ca3af;font-size:11px;line-height:1.5;">
         FieldSlate is a scheduling tool for youth sports leagues. No account required to respond to this invite.
       </p>
+      <p style="margin:8px 0 0;color:#9ca3af;font-size:11px;line-height:1.5;">
+        Curious about FieldSlate for your own league?
+        <a href="https://thefieldslate.com/?utm_source=invite&amp;utm_medium=email&amp;promo=INTERLEAGUE" style="color:#22C55E;text-decoration:none;font-weight:600;">Try it free</a>
+        — use code <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#0C1F3F;">INTERLEAGUE</span> for 20% off your first season.
+      </p>
     </div>
   </div>
 </body></html>`;
@@ -120,6 +125,7 @@ function buildInviteEmail(params: {
     `View invite: ${inviteUrl}`,
     "",
     "— FieldSlate, a scheduling tool for youth sports leagues.",
+    "Curious about FieldSlate for your own league? Use code INTERLEAGUE for 20% off your first season at https://thefieldslate.com",
   ]
     .filter((l) => l !== "")
     .join("\n");
