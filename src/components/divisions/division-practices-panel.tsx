@@ -2,14 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
+  CalendarRange,
+  CheckCircle2,
   Clock,
   Loader2,
   MapPin,
   Plus,
   Trash2,
   Users,
+  Wand2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  PracticeSlotModal,
+  type EditableSlot,
+} from "./practice-slot-modal";
+import { autoAssignPractices } from "@/lib/practices/auto-assign";
 
 const DAY_OPTIONS: { key: string; label: string }[] = [
   { key: "Mo", label: "Mon" },
@@ -37,6 +46,14 @@ type TeamRow = {
   preferred_time_id: string | null;
   preferred_field_id: string | null;
 };
+type PracticeSlotRow = {
+  id: string;
+  team_id: string;
+  time_slot_id: string | null;
+  field_id: string | null;
+  practice_days: string[];
+  notes: string | null;
+};
 
 interface Props {
   divisionId: string;
@@ -54,6 +71,7 @@ export function DivisionPracticesPanel({ divisionId }: Props) {
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [practiceVenues, setPracticeVenues] = useState<Venue[]>([]);
+  const [practiceSlots, setPracticeSlots] = useState<PracticeSlotRow[]>([]);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -80,12 +98,27 @@ export function DivisionPracticesPanel({ divisionId }: Props) {
       ]);
 
     setTimeSlots((slotRows as TimeSlot[]) ?? []);
-    setTeams((teamRows as TeamRow[]) ?? []);
+    const teamsLoaded = (teamRows as TeamRow[]) ?? [];
+    setTeams(teamsLoaded);
     const venues = ((dvRows ?? []) as Array<{ venue: Venue | null }>)
       .map((r) => r.venue)
       .filter((v): v is Venue => !!v)
       .sort((a, b) => a.name.localeCompare(b.name));
     setPracticeVenues(venues);
+
+    // Practice slots: filter to this division's teams (RLS allows any of our
+    // teams, but we only want this division's grid).
+    const teamIds = teamsLoaded.map((t) => t.id);
+    if (teamIds.length === 0) {
+      setPracticeSlots([]);
+      return;
+    }
+    const { data: slotsForTeams } = await supabase
+      .from("practice_slots")
+      .select("id, team_id, time_slot_id, field_id, practice_days, notes, type")
+      .in("team_id", teamIds)
+      .eq("type", "recurring");
+    setPracticeSlots((slotsForTeams as PracticeSlotRow[]) ?? []);
   }, [divisionId]);
 
   useEffect(() => {
@@ -115,7 +148,14 @@ export function DivisionPracticesPanel({ divisionId }: Props) {
         timeSlots={timeSlots}
         onChange={load}
       />
-      <Placeholder title="Weekly slot grid (Phase 2)" />
+      <WeeklySlotGrid
+        divisionId={divisionId}
+        timeSlots={timeSlots}
+        teams={teams}
+        venues={practiceVenues}
+        practiceSlots={practiceSlots}
+        onChange={load}
+      />
       <Placeholder title="Custom practices (Phase 3)" />
     </div>
   );
@@ -514,6 +554,286 @@ function TimeSlotRow({
       >
         <Trash2 className="h-4 w-4" />
       </button>
+    </div>
+  );
+}
+
+// ── Weekly slot grid ──────────────────────────────────────────────────────────
+
+interface WeeklySlotGridProps {
+  divisionId: string;
+  timeSlots: TimeSlot[];
+  teams: TeamRow[];
+  venues: Venue[];
+  practiceSlots: PracticeSlotRow[];
+  onChange: () => Promise<void>;
+}
+
+function WeeklySlotGrid({
+  divisionId: _divisionId,
+  timeSlots,
+  teams,
+  venues,
+  practiceSlots,
+  onChange,
+}: WeeklySlotGridProps) {
+  const [running, setRunning] = useState(false);
+  const [feedback, setFeedback] = useState<
+    | { kind: "success"; message: string }
+    | { kind: "error"; message: string }
+    | null
+  >(null);
+  const [modalSlot, setModalSlot] = useState<EditableSlot | null>(null);
+
+  const teamById = useMemo(
+    () => new Map(teams.map((t) => [t.id, t])),
+    [teams],
+  );
+  const venueById = useMemo(
+    () => new Map(venues.map((v) => [v.id, v])),
+    [venues],
+  );
+
+  // Index slots by `${day}|${time_slot_id}` so each cell can pull its occupants.
+  type CellSlot = PracticeSlotRow & { collides: boolean };
+  const cells = useMemo(() => {
+    const map = new Map<string, CellSlot[]>();
+    for (const s of practiceSlots) {
+      if (!s.time_slot_id) continue;
+      for (const day of s.practice_days) {
+        const key = `${day}|${s.time_slot_id}`;
+        const arr = map.get(key) ?? [];
+        arr.push({ ...s, collides: false });
+        map.set(key, arr);
+      }
+    }
+    // Mark collisions: 2+ slots in the same cell that share field_id.
+    for (const arr of map.values()) {
+      const byField = new Map<string, CellSlot[]>();
+      for (const s of arr) {
+        const fid = s.field_id ?? "_none";
+        const g = byField.get(fid) ?? [];
+        g.push(s);
+        byField.set(fid, g);
+      }
+      for (const g of byField.values()) {
+        if (g.length >= 2) g.forEach((s) => (s.collides = true));
+      }
+    }
+    return map;
+  }, [practiceSlots]);
+
+  async function handleAutoAssign() {
+    setRunning(true);
+    setFeedback(null);
+    const res = await autoAssignPractices(_divisionId);
+    setRunning(false);
+    if (!res.success) {
+      setFeedback({ kind: "error", message: res.error });
+      return;
+    }
+    if (res.placed === 0 && res.unassigned.length === 0) {
+      setFeedback({
+        kind: "success",
+        message:
+          "No teams needed assignment — every team is already on the grid or doesn't practice.",
+      });
+    } else {
+      const unassignedLabel =
+        res.unassigned.length > 0
+          ? `, ${res.unassigned.length} couldn't be placed: ${res.unassigned.map((u) => u.team_name).join(", ")}`
+          : "";
+      setFeedback({
+        kind: res.unassigned.length > 0 ? "error" : "success",
+        message: `Placed ${res.placed} team${res.placed === 1 ? "" : "s"}${unassignedLabel}.`,
+      });
+    }
+    await onChange();
+  }
+
+  function openNewSlot(timeSlotId: string, day: string) {
+    setModalSlot({
+      time_slot_id: timeSlotId,
+      practice_days: [day],
+    });
+  }
+
+  function openEditSlot(slot: PracticeSlotRow) {
+    setModalSlot({
+      id: slot.id,
+      team_id: slot.team_id,
+      time_slot_id: slot.time_slot_id ?? undefined,
+      field_id: slot.field_id ?? undefined,
+      practice_days: slot.practice_days,
+      notes: slot.notes,
+    });
+  }
+
+  const disabledReason =
+    timeSlots.length === 0
+      ? "Add at least one practice time slot first."
+      : venues.length === 0
+        ? "Assign a practice-eligible venue to this division first."
+        : teams.length === 0
+          ? "Add teams to this division first."
+          : null;
+
+  return (
+    <Card
+      title="Weekly slot grid"
+      icon={<CalendarRange className="h-4 w-4 text-[#22C55E]" />}
+      subtitle="Click any cell to add or edit a practice. Colored cells mean two recurring slots are sharing the same field at the same time."
+      action={
+        <button
+          onClick={handleAutoAssign}
+          disabled={running || !!disabledReason}
+          title={disabledReason ?? "Auto-fill empty cells honoring team preferences"}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {running ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Wand2 className="h-3.5 w-3.5" />
+          )}
+          {running ? "Assigning…" : "Auto-assign practices"}
+        </button>
+      }
+    >
+      {disabledReason && (
+        <p className="px-4 pt-3 text-xs text-gray-500">{disabledReason}</p>
+      )}
+      {feedback && (
+        <div
+          className={`mx-4 mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${
+            feedback.kind === "success"
+              ? "border-[#22C55E]/30 bg-[#22C55E]/5 text-[#16a34a]"
+              : "border-amber-200 bg-amber-50 text-amber-700"
+          }`}
+        >
+          {feedback.kind === "success" ? (
+            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+          ) : (
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+          )}
+          <span>{feedback.message}</span>
+        </div>
+      )}
+
+      {timeSlots.length === 0 ? (
+        <p className="px-4 py-8 text-center text-sm text-gray-500">
+          The grid will appear here once you add a practice time slot above.
+        </p>
+      ) : (
+        <div className="overflow-x-auto px-4 py-3">
+          <table className="w-full min-w-[680px] text-xs">
+            <thead>
+              <tr className="text-left text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                <th className="w-28 py-2 pr-2 font-medium">Time</th>
+                {DAY_OPTIONS.map((d) => (
+                  <th key={d.key} className="w-1/6 py-2 pr-2 font-medium">
+                    {d.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {timeSlots.map((slot) => (
+                <tr key={slot.id} className="border-t border-gray-100 align-top">
+                  <td className="py-2 pr-2">
+                    <div className="font-semibold text-[#0C1F3F]">{slot.label}</div>
+                    <div className="text-[10px] text-gray-400">
+                      {fmtTime(slot.start_time)} · {slot.duration_minutes}m
+                    </div>
+                  </td>
+                  {DAY_OPTIONS.map((d) => {
+                    const occupants = cells.get(`${d.key}|${slot.id}`) ?? [];
+                    return (
+                      <td key={d.key} className="py-2 pr-2 align-top">
+                        <GridCell
+                          occupants={occupants}
+                          teamById={teamById}
+                          venueById={venueById}
+                          onEmptyClick={() => openNewSlot(slot.id, d.key)}
+                          onOccupantClick={openEditSlot}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {modalSlot && (
+        <PracticeSlotModal
+          initial={modalSlot}
+          teams={teams.map((t) => ({ id: t.id, name: t.name }))}
+          timeSlots={timeSlots.map((s) => ({
+            id: s.id,
+            label: s.label,
+            start_time: s.start_time,
+          }))}
+          venues={venues}
+          onSaved={onChange}
+          onClose={() => setModalSlot(null)}
+        />
+      )}
+    </Card>
+  );
+}
+
+function GridCell({
+  occupants,
+  teamById,
+  venueById,
+  onEmptyClick,
+  onOccupantClick,
+}: {
+  occupants: (PracticeSlotRow & { collides: boolean })[];
+  teamById: Map<string, TeamRow>;
+  venueById: Map<string, Venue>;
+  onEmptyClick: () => void;
+  onOccupantClick: (slot: PracticeSlotRow) => void;
+}) {
+  if (occupants.length === 0) {
+    return (
+      <button
+        type="button"
+        onClick={onEmptyClick}
+        className="flex h-14 w-full items-center justify-center rounded-md border border-dashed border-gray-200 text-[10px] text-gray-300 transition-colors hover:border-[#22C55E]/40 hover:bg-[#22C55E]/5 hover:text-[#22C55E]"
+      >
+        +
+      </button>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      {occupants.map((slot) => {
+        const team = teamById.get(slot.team_id);
+        const venue = slot.field_id ? venueById.get(slot.field_id) : null;
+        return (
+          <button
+            key={slot.id}
+            type="button"
+            onClick={() => onOccupantClick(slot)}
+            className={`flex flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left text-[11px] transition-colors hover:ring-2 hover:ring-[#22C55E]/30 ${
+              slot.collides
+                ? "border-amber-300 bg-amber-50"
+                : "border-[#22C55E]/30 bg-[#22C55E]/5"
+            }`}
+            title={slot.collides ? "Field collision on this day/time" : undefined}
+          >
+            <span className="font-semibold text-[#0C1F3F]">
+              {team?.name ?? "Unknown team"}
+            </span>
+            <span className="text-[10px] text-gray-500">
+              {venue?.name ?? "TBD field"}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
