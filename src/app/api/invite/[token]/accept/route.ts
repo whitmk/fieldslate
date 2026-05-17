@@ -24,6 +24,25 @@ type AcceptRpcReturn = {
   season_name: string | null;
   season_label: string | null;
   recipient_email: string;
+  schedule_token: string | null;
+};
+
+type ScheduleGame = {
+  id: string;
+  scheduled_at: string;
+  is_away: boolean;
+  external_team_name: string | null;
+  proposed_venue_name: string | null;
+  home_team: { name: string };
+  division: { name: string };
+  venue: { name: string } | null;
+};
+
+type SchedulePayload = {
+  sender: { full_name: string | null; email: string | null } | null;
+  org: { name: string } | null;
+  season: { name: string; season: string | null } | null;
+  games: ScheduleGame[];
 };
 
 function escapeHtml(s: string): string {
@@ -220,6 +239,135 @@ function buildAcceptanceEmail(params: {
   return { html, text, subject };
 }
 
+function buildRecipientConfirmationEmail(params: {
+  senderName: string;
+  orgName: string;
+  seasonLabelDisplay: string;
+  games: ScheduleGame[];
+  counteredCount: number;
+  scheduleUrl: string;
+}): { html: string; text: string; subject: string } {
+  const {
+    senderName,
+    orgName,
+    seasonLabelDisplay,
+    games,
+    counteredCount,
+    scheduleUrl,
+  } = params;
+
+  const subject = `Your interleague schedule with ${senderName}`;
+
+  const gameRows = games
+    .map((g) => {
+      const recipientIsHome = g.is_away;
+      const venue = g.venue?.name ?? g.proposed_venue_name ?? "TBD";
+      const matchup = `${g.external_team_name ?? "Your team"} vs ${g.home_team.name}`;
+      const tag = recipientIsHome ? "HOME" : "AWAY";
+      return `<tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;color:#0C1F3F;font-weight:600;width:30%;">${escapeHtml(fmtIso(g.scheduled_at))}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(matchup)}<div style="color:#9ca3af;font-size:12px;margin-top:2px;">${escapeHtml(g.division.name)} · ${escapeHtml(venue)}</div></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;"><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;letter-spacing:0.5px;background:${recipientIsHome ? "#dcfce7" : "#dbeafe"};color:${recipientIsHome ? "#16a34a" : "#2563eb"};">${tag}</span></td>
+      </tr>`;
+    })
+    .join("");
+
+  const html = `<!doctype html>
+<html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;background:#f6f7f9;margin:0;padding:24px;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+    <div style="background:#0C1F3F;padding:24px 28px;">
+      <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.2px;">FieldSlate</p>
+      <p style="margin:2px 0 0;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Interleague schedule</p>
+    </div>
+
+    <div style="padding:28px;">
+      <h1 style="margin:0 0 12px;font-size:20px;color:#0C1F3F;">
+        Your interleague schedule with ${escapeHtml(senderName)}
+      </h1>
+      <p style="margin:0 0 18px;color:#4b5563;font-size:14px;line-height:1.55;">
+        Thanks for responding! Here are your interleague games against
+        ${escapeHtml(senderName)}&apos;s teams for <strong>${escapeHtml(seasonLabelDisplay)}</strong>.
+      </p>
+
+      ${
+        games.length === 0
+          ? `<p style="margin:0 0 16px;color:#6b7280;font-size:14px;">No games are confirmed yet${
+              counteredCount > 0
+                ? ` — your counter-proposals are pending ${escapeHtml(senderName)}&apos;s confirmation.`
+                : "."
+            }</p>`
+          : `<table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 18px;border:1px solid #eee;border-radius:6px;overflow:hidden;">
+        <tbody>${gameRows}</tbody>
+      </table>`
+      }
+
+      ${
+        counteredCount > 0
+          ? `<p style="margin:0 0 18px;padding:10px 14px;background:#fef3c7;border-left:3px solid #d97706;border-radius:4px;color:#92400e;font-size:13px;">
+        ${counteredCount} of your responses suggested a different time —
+        ${escapeHtml(senderName)} will review and confirm those separately.
+        You&apos;ll see them on the live schedule once resolved.
+      </p>`
+          : ""
+      }
+
+      <div style="margin:24px 0 4px;">
+        <a href="${scheduleUrl}" style="display:inline-block;background:#22C55E;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 22px;border-radius:8px;">View live schedule</a>
+      </div>
+      <p style="margin:14px 0 0;color:#6b7280;font-size:12px;line-height:1.55;">
+        Bookmark this link to always see the latest schedule — it updates
+        automatically if any game is rescheduled.
+        <br/><a href="${scheduleUrl}" style="color:#22C55E;word-break:break-all;">${escapeHtml(scheduleUrl)}</a>
+      </p>
+    </div>
+
+    <div style="padding:18px 28px;border-top:1px solid #f3f4f6;background:#fafafa;">
+      <p style="margin:0;color:#9ca3af;font-size:11px;line-height:1.5;">
+        FieldSlate is a scheduling tool for youth sports leagues.
+      </p>
+      <p style="margin:8px 0 0;color:#9ca3af;font-size:11px;line-height:1.5;">
+        Curious about FieldSlate for ${escapeHtml(orgName)}?
+        <a href="https://thefieldslate.com/?utm_source=invite&amp;utm_medium=email&amp;promo=INTERLEAGUE" style="color:#22C55E;text-decoration:none;font-weight:600;">Try it free</a>
+        — use code <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#0C1F3F;">INTERLEAGUE</span> for 20% off your first season.
+      </p>
+    </div>
+  </div>
+</body></html>`;
+
+  const text = [
+    `Your interleague schedule with ${senderName} — ${seasonLabelDisplay}`,
+    "",
+    ...(games.length === 0
+      ? [
+          counteredCount > 0
+            ? `No games are confirmed yet — your counter-proposals are pending ${senderName}'s confirmation.`
+            : "No games are confirmed yet.",
+        ]
+      : [
+          "Confirmed games:",
+          ...games.map((g) => {
+            const recipientIsHome = g.is_away;
+            const venue = g.venue?.name ?? g.proposed_venue_name ?? "TBD";
+            return `  • ${fmtIso(g.scheduled_at)} — ${g.external_team_name ?? "Your team"} vs ${g.home_team.name} (${recipientIsHome ? "HOME" : "AWAY"}, ${venue})`;
+          }),
+        ]),
+    "",
+    counteredCount > 0
+      ? `${counteredCount} of your responses suggested a different time — ${senderName} will review and confirm those separately.`
+      : "",
+    "",
+    `View live schedule: ${scheduleUrl}`,
+    "Bookmark this link to always see the latest schedule.",
+    "",
+    "— FieldSlate, a scheduling tool for youth sports leagues.",
+    `Curious about FieldSlate for ${orgName}? Use code INTERLEAGUE for 20% off your first season at https://thefieldslate.com`,
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
+
+  return { html, text, subject };
+}
+
 export async function POST(
   request: Request,
   { params }: { params: { token: string } },
@@ -274,20 +422,22 @@ export async function POST(
     );
   }
 
+  const seasonLabelDisplay =
+    result.season_label
+      ? `${result.season_name ?? ""}${result.season_label ? ` · ${result.season_label}` : ""}`.trim() ||
+        "your season"
+      : result.season_name ?? "your season";
+
+  const origin =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
+    new URL(request.url).origin ??
+    "https://thefieldslate.com";
+  const baseOrigin = origin.replace(/\/$/, "");
+  const dashboardUrl = `${baseOrigin}/dashboard/interleague`;
+
+  // Notify the FieldSlate admin (sender) — best-effort.
   if (result.sender_email) {
-    const seasonLabelDisplay =
-      result.season_label
-        ? `${result.season_name ?? ""}${result.season_label ? ` · ${result.season_label}` : ""}`.trim() ||
-          "your season"
-        : result.season_name ?? "your season";
-
-    const origin =
-      process.env.NEXT_PUBLIC_APP_URL ??
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
-      new URL(request.url).origin ??
-      "https://thefieldslate.com";
-    const dashboardUrl = `${origin.replace(/\/$/, "")}/dashboard/interleague`;
-
     const { html, text, subject } = buildAcceptanceEmail({
       senderName: result.sender_name?.trim() || result.sender_email,
       orgName: result.org_name ?? "the invited org",
@@ -300,6 +450,34 @@ export async function POST(
     });
 
     await sendEmail(result.sender_email, subject, html, text);
+  }
+
+  // Confirmation email to the non-FieldSlate admin (recipient) with the live
+  // schedule link. Only sent when we have both an email and a token — best-effort.
+  if (result.recipient_email && result.schedule_token) {
+    const scheduleUrl = `${baseOrigin}/schedule/${result.schedule_token}`;
+    const senderDisplay =
+      result.sender_name?.trim() || result.sender_email || "the FieldSlate admin";
+
+    // Pull the freshly-confirmed games via the public schedule RPC.
+    const { data: scheduleRaw } = await supabase.rpc(
+      // @ts-expect-error — RPC isn't in generated types
+      "get_interleague_schedule_by_token",
+      { p_token: result.schedule_token },
+    );
+    const scheduleData = (scheduleRaw as SchedulePayload | null) ?? null;
+    const games: ScheduleGame[] = scheduleData?.games ?? [];
+
+    const { html, text, subject } = buildRecipientConfirmationEmail({
+      senderName: senderDisplay,
+      orgName: result.org_name ?? "your league",
+      seasonLabelDisplay,
+      games,
+      counteredCount: result.countered,
+      scheduleUrl,
+    });
+
+    await sendEmail(result.recipient_email, subject, html, text);
   }
 
   return NextResponse.json({

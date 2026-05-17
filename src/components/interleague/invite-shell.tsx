@@ -1,5 +1,27 @@
 import Link from "next/link";
 
+export function ScheduleHeader({ seasonLabel }: { seasonLabel: string }) {
+  return (
+    <header className="border-b border-gray-100 bg-[#0C1F3F]">
+      <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-4 sm:px-6 lg:px-8">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#22C55E]">
+          <span className="text-sm font-bold text-white">FS</span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-base font-bold leading-tight">
+            <span className="text-white">Field</span>
+            <span className="text-[#22C55E]">Slate</span>
+          </span>
+          <span className="text-xs text-gray-300">
+            Interleague schedule with{" "}
+            <span className="font-medium text-white">{seasonLabel}</span>
+          </span>
+        </div>
+      </div>
+    </header>
+  );
+}
+
 export function InviteHeader({
   senderName,
   seasonLabel,

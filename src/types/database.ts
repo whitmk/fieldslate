@@ -53,6 +53,7 @@ export type Database = {
         Row: {
           id: string
           token: string
+          schedule_token: string | null
           sender_user_id: string
           interleague_org_id: string
           season_id: string
@@ -65,6 +66,7 @@ export type Database = {
         Insert: {
           id?: string
           token: string
+          schedule_token?: string | null
           sender_user_id: string
           interleague_org_id: string
           season_id: string
@@ -77,6 +79,7 @@ export type Database = {
         Update: {
           id?: string
           token?: string
+          schedule_token?: string | null
           sender_user_id?: string
           interleague_org_id?: string
           season_id?: string
