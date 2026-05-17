@@ -716,99 +716,107 @@ export type Database = {
           },
         ]
       }
-      practices: {
+      practice_time_slots: {
         Row: {
-          created_at: string
-          division_id: string
           id: string
-          league_id: string
-          scheduled_date: string
+          division_id: string
+          label: string
           start_time: string
-          status: string
-          team_id: string
-          venue_id: string | null
+          duration_minutes: number
+          sort_order: number
+          created_at: string
+          updated_at: string
         }
         Insert: {
-          created_at?: string
-          division_id: string
           id?: string
-          league_id: string
-          scheduled_date: string
+          division_id: string
+          label: string
           start_time: string
-          status?: string
-          team_id: string
-          venue_id?: string | null
+          duration_minutes?: number
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
         }
         Update: {
-          created_at?: string
-          division_id?: string
           id?: string
-          league_id?: string
-          scheduled_date?: string
+          division_id?: string
+          label?: string
           start_time?: string
-          status?: string
-          team_id?: string
-          venue_id?: string | null
+          duration_minutes?: number
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "practices_division_id_fkey"
+            foreignKeyName: "practice_time_slots_division_id_fkey"
             columns: ["division_id"]
             isOneToOne: false
             referencedRelation: "divisions"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      practice_slots: {
+        Row: {
+          id: string
+          team_id: string
+          time_slot_id: string | null
+          field_id: string | null
+          type: string
+          practice_days: string[]
+          date: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          team_id: string
+          time_slot_id?: string | null
+          field_id?: string | null
+          type?: string
+          practice_days?: string[]
+          date?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          team_id?: string
+          time_slot_id?: string | null
+          field_id?: string | null
+          type?: string
+          practice_days?: string[]
+          date?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
           {
-            foreignKeyName: "practices_league_id_fkey"
-            columns: ["league_id"]
-            isOneToOne: false
-            referencedRelation: "leagues"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "practices_team_id_fkey"
+            foreignKeyName: "practice_slots_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "practices_venue_id_fkey"
-            columns: ["venue_id"]
+            foreignKeyName: "practice_slots_time_slot_id_fkey"
+            columns: ["time_slot_id"]
+            isOneToOne: false
+            referencedRelation: "practice_time_slots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "practice_slots_field_id_fkey"
+            columns: ["field_id"]
             isOneToOne: false
             referencedRelation: "venues"
             referencedColumns: ["id"]
           },
         ]
-      }
-      team_practice_slots: {
-        Row: {
-          id: string
-          team_id: string
-          division_id: string
-          day_of_week: "Mo" | "Tu" | "We" | "Th" | "Fr" | "Sa" | "Su"
-          start_time: string
-          venue_id: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          team_id: string
-          division_id: string
-          day_of_week: "Mo" | "Tu" | "We" | "Th" | "Fr" | "Sa" | "Su"
-          start_time: string
-          venue_id?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          team_id?: string
-          division_id?: string
-          day_of_week?: "Mo" | "Tu" | "We" | "Th" | "Fr" | "Sa" | "Su"
-          start_time?: string
-          venue_id?: string | null
-        }
-        Relationships: []
       }
       profiles: {
         Row: {
@@ -849,6 +857,10 @@ export type Database = {
           league_id: string
           logo_url: string | null
           name: string
+          practices_per_week: number
+          preferred_days: string[] | null
+          preferred_time_id: string | null
+          preferred_field_id: string | null
           updated_at: string
         }
         Insert: {
@@ -859,6 +871,10 @@ export type Database = {
           league_id: string
           logo_url?: string | null
           name: string
+          practices_per_week?: number
+          preferred_days?: string[] | null
+          preferred_time_id?: string | null
+          preferred_field_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -869,6 +885,10 @@ export type Database = {
           league_id?: string
           logo_url?: string | null
           name?: string
+          practices_per_week?: number
+          preferred_days?: string[] | null
+          preferred_time_id?: string | null
+          preferred_field_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1287,7 +1307,7 @@ export type Team        = Database["public"]["Tables"]["teams"]["Row"];
 export type Venue       = Database["public"]["Tables"]["venues"]["Row"];
 export type Game        = Database["public"]["Tables"]["games"]["Row"];
 export type ActivityLog  = Database["public"]["Tables"]["activity_log"]["Row"];
-export type Practice     = Database["public"]["Tables"]["practices"]["Row"];
+export type PracticeTimeSlot = Database["public"]["Tables"]["practice_time_slots"]["Row"];
 export type Playoff      = Database["public"]["Tables"]["playoffs"]["Row"];
 export type PlayoffGame  = Database["public"]["Tables"]["playoff_games"]["Row"];
 export type Umpire         = Database["public"]["Tables"]["umpires"]["Row"];
@@ -1295,7 +1315,7 @@ export type GameUmpire     = Database["public"]["Tables"]["game_umpires"]["Row"]
 export type UmpireRoleRate    = Database["public"]["Tables"]["umpire_role_rates"]["Row"];
 export type SnackShackSettings = Database["public"]["Tables"]["snack_shack_settings"]["Row"];
 export type SnackShackBlock    = Database["public"]["Tables"]["snack_shack_blocks"]["Row"];
-export type PracticeSlot   = Database["public"]["Tables"]["team_practice_slots"]["Row"];
+export type PracticeSlot   = Database["public"]["Tables"]["practice_slots"]["Row"];
 export type InterleagueOrg = Database["public"]["Tables"]["interleague_orgs"]["Row"];
 export type DivisionInterleagueGame = Database["public"]["Tables"]["division_interleague_games"]["Row"];
 export type InterleagueInvite = Database["public"]["Tables"]["interleague_invites"]["Row"];

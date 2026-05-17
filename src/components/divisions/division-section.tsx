@@ -10,6 +10,7 @@ import { DivisionBallIcon } from "./division-ball-icon";
 import { createClient } from "@/lib/supabase/client";
 import { DivisionWizard } from "./division-wizard";
 import { DivisionSchedulePanel } from "./division-schedule-panel";
+import { DivisionPracticesPanel } from "./division-practices-panel";
 import { ConflictResolverModal } from "./conflict-resolver-modal";
 import { LogRainoutModal } from "./log-rainout-modal";
 import { ExportPickerModal, type PrintMode } from "./export-picker-modal";
@@ -18,17 +19,12 @@ import type { DivisionStat } from "@/app/(dashboard)/dashboard/leagues/[id]/page
 import {
   DEFAULT_WIZARD_DATA, type WizardData, type PlayingDay,
   type ScheduleFormat, type TeamEntry, type DayWindowMap,
-  type PracticeSlotEntry, type VenueAssignment, type InterleagueGameEntry,
+  type VenueAssignment, type InterleagueGameEntry,
 } from "./wizard-types";
-import type { PracticeSlot } from "@/types/database";
-
-type DbTeam = { id: string; name: string };
 
 function divisionToWizardData(
   div: Division,
   venueAssignments: VenueAssignment[],
-  practiceSlots: PracticeSlot[] = [],
-  dbTeams: DbTeam[] = [],
   interleagueGames: InterleagueGameEntry[] = [],
 ): WizardData {
   const s = (div.settings ?? {}) as Record<string, unknown>;
@@ -97,27 +93,7 @@ function divisionToWizardData(
     auto_rotate: asBool(s.auto_rotate, DEFAULT_WIZARD_DATA.auto_rotate),
     plays_interleague: div.plays_interleague ?? false,
     interleague_games: interleagueGames,
-    teams: (() => {
-      const base: TeamEntry[] = Array.isArray(s.teams) ? (s.teams as TeamEntry[]) : [];
-      if (practiceSlots.length === 0) return base;
-      // Group all slots by team_id, then attach to matching TeamEntry by name
-      const slotsByTeamId = new Map<string, PracticeSlotEntry[]>();
-      for (const sl of practiceSlots) {
-        const entry: PracticeSlotEntry = {
-          day: sl.day_of_week as PlayingDay,
-          start: sl.start_time,
-          ...(sl.venue_id ? { venue_id: sl.venue_id } : {}),
-        };
-        slotsByTeamId.set(sl.team_id, [...(slotsByTeamId.get(sl.team_id) ?? []), entry]);
-      }
-      const teamIdByName = new Map(dbTeams.map((t) => [t.name.toLowerCase().trim(), t.id]));
-      return base.map((t) => {
-        const teamId = teamIdByName.get(t.name.toLowerCase().trim());
-        const slots = teamId ? slotsByTeamId.get(teamId) : undefined;
-        if (!slots?.length) return t;
-        return { ...t, practice_slots: slots };
-      });
-    })(),
+    teams: Array.isArray(s.teams) ? (s.teams as TeamEntry[]) : [],
   };
 }
 
@@ -206,6 +182,7 @@ export function DivisionSection({
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Record<string, "schedule" | "practices">>({});
   const [editingDiv, setEditingDiv] = useState<Division | null>(null);
   const [editInitialData, setEditInitialData] = useState<WizardData | null>(null);
   const [fixingDivision, setFixingDivision] = useState<Division | null>(null);
@@ -244,9 +221,8 @@ export function DivisionSection({
   async function handleEditClick(div: Division, e: React.MouseEvent) {
     e.stopPropagation();
     const supabase = createClient();
-    const [{ data: dvRows }, { data: slotRows }, { data: teamRows }, { data: igRows }] = await Promise.all([
+    const [{ data: dvRows }, { data: teamRows }, { data: igRows }] = await Promise.all([
       supabase.from("division_venues").select("venue_id, allow_games, allow_practices").eq("division_id", div.id),
-      supabase.from("team_practice_slots").select("*").eq("division_id", div.id),
       supabase.from("teams").select("id, name").eq("division_id", div.id),
       supabase
         .from("division_interleague_games")
@@ -272,14 +248,9 @@ export function DivisionSection({
       game_count: r.game_count,
       home_games_per_team: r.home_games_per_team ?? r.game_count,
     }));
+    void teamRows; // teams come from settings JSON, not the live teams table here
     setEditInitialData(
-      divisionToWizardData(
-        div,
-        venueAssignments,
-        (slotRows ?? []) as PracticeSlot[],
-        (teamRows ?? []) as DbTeam[],
-        interleagueGames,
-      ),
+      divisionToWizardData(div, venueAssignments, interleagueGames),
     );
     setEditingDiv(div);
   }
@@ -472,16 +443,44 @@ export function DivisionSection({
                   </div>
 
                   {isExpanded && (
-                    <DivisionSchedulePanel
-                      divisionId={div.id}
-                      divisionName={div.name}
-                      leagueName={leagueName}
-                      leagueId={leagueId}
-                      triggerPrint={printTriggerId === div.id}
-                      printMode={printMode}
-                      onPrintDone={() => setPrintTriggerId(null)}
-                      onScheduleChange={() => router.refresh()}
-                    />
+                    <div className="border-t border-gray-100">
+                      <div className="flex items-center gap-1 px-5 pt-3">
+                        {(["schedule", "practices"] as const).map((tab) => {
+                          const isActive = (activeTab[div.id] ?? "schedule") === tab;
+                          return (
+                            <button
+                              key={tab}
+                              onClick={() =>
+                                setActiveTab((prev) => ({ ...prev, [div.id]: tab }))
+                              }
+                              className={`rounded-t-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                isActive
+                                  ? "bg-gray-50 text-[#0C1F3F]"
+                                  : "text-gray-400 hover:text-[#0C1F3F]"
+                              }`}
+                            >
+                              {tab === "schedule" ? "Schedule" : "Practices"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="bg-gray-50/40 px-5 py-4">
+                        {(activeTab[div.id] ?? "schedule") === "schedule" ? (
+                          <DivisionSchedulePanel
+                            divisionId={div.id}
+                            divisionName={div.name}
+                            leagueName={leagueName}
+                            leagueId={leagueId}
+                            triggerPrint={printTriggerId === div.id}
+                            printMode={printMode}
+                            onPrintDone={() => setPrintTriggerId(null)}
+                            onScheduleChange={() => router.refresh()}
+                          />
+                        ) : (
+                          <DivisionPracticesPanel divisionId={div.id} />
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               );
