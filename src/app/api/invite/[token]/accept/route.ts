@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 type GameResponse = {
   game_id: string;
   team_name: string;
-  action: "accept" | "counter";
+  action: "accept" | "counter" | "decline";
   venue_name?: string | null;
   proposed_scheduled_at?: string | null;
 };
@@ -18,6 +18,7 @@ type AcceptRpcReturn = {
   total: number;
   accepted: number;
   countered: number;
+  declined: number;
   sender_email: string | null;
   sender_name: string | null;
   org_name: string | null;
@@ -79,10 +80,16 @@ function sanitizeResponses(raw: unknown): GameResponse[] {
     if (!r || typeof r !== "object") continue;
     const o = r as Record<string, unknown>;
     const game_id = typeof o.game_id === "string" ? o.game_id : null;
+    if (!game_id) continue;
+    const action: "accept" | "counter" | "decline" =
+      o.action === "decline"
+        ? "decline"
+        : o.action === "counter"
+          ? "counter"
+          : "accept";
     const team_name = typeof o.team_name === "string" ? o.team_name.trim() : "";
-    if (!game_id || !team_name) continue;
-    const action: "accept" | "counter" =
-      o.action === "counter" ? "counter" : "accept";
+    // Decline doesn't require a team name; accept/counter do.
+    if (action !== "decline" && !team_name) continue;
     const venue_name =
       typeof o.venue_name === "string" && o.venue_name.trim()
         ? o.venue_name.trim()
@@ -105,6 +112,7 @@ function buildAcceptanceEmail(params: {
   total: number;
   accepted: number;
   countered: number;
+  declined: number;
   dashboardUrl: string;
 }): { html: string; text: string; subject: string } {
   const {
@@ -115,8 +123,11 @@ function buildAcceptanceEmail(params: {
     total,
     accepted,
     countered,
+    declined,
     dashboardUrl,
   } = params;
+
+  const declinedCount = responses.filter((r) => r.action === "decline").length;
 
   const acceptedRows = responses
     .filter((r) => r.action === "accept")
@@ -148,7 +159,9 @@ function buildAcceptanceEmail(params: {
   const subject =
     countered > 0
       ? `${orgName} responded to your interleague invite — ${countered} counter-proposal${countered === 1 ? "" : "s"}`
-      : `${orgName} accepted your interleague invite — ${seasonLabelDisplay}`;
+      : declined > 0 && accepted === 0
+        ? `${orgName} declined your interleague games — ${seasonLabelDisplay}`
+        : `${orgName} accepted your interleague invite — ${seasonLabelDisplay}`;
 
   const html = `<!doctype html>
 <html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;background:#f6f7f9;margin:0;padding:24px;">
@@ -164,7 +177,7 @@ function buildAcceptanceEmail(params: {
       </h1>
       <p style="margin:0 0 18px;color:#4b5563;font-size:14px;line-height:1.55;">
         Hi ${escapeHtml(senderName)} — ${escapeHtml(orgName)} just submitted their response for <strong>${escapeHtml(seasonLabelDisplay)}</strong>:
-        ${accepted} accepted, ${countered} counter-proposed (of ${total} game${total === 1 ? "" : "s"}).
+        ${accepted} accepted, ${countered} counter-proposed, ${declined} declined (of ${total} game${total === 1 ? "" : "s"}).
       </p>
 
       ${
@@ -198,6 +211,13 @@ function buildAcceptanceEmail(params: {
           : ""
       }
 
+      ${
+        declinedCount > 0
+          ? `<p style="margin:18px 0 6px;font-size:13px;font-weight:600;color:#ef4444;">Declined (${declinedCount})</p>
+        <p style="margin:0 0 18px;color:#6b7280;font-size:14px;">These games have been removed from your schedule.</p>`
+          : ""
+      }
+
       <div style="margin:24px 0 4px;">
         <a href="${dashboardUrl}" style="display:inline-block;background:#22C55E;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 22px;border-radius:8px;">Open Interleague dashboard</a>
       </div>
@@ -213,20 +233,27 @@ function buildAcceptanceEmail(params: {
 
   const text = [
     `${orgName} responded to your invite for ${seasonLabelDisplay}.`,
-    `Accepted: ${accepted}, counter-proposed: ${countered} (of ${total}).`,
+    `Accepted: ${accepted}, counter-proposed: ${countered}, declined: ${declined} (of ${total}).`,
     "",
     ...(responses.length > 0
       ? [
           "Responses:",
           ...responses.map((r) => {
-            const verb = r.action === "accept" ? "accepted" : "counter-proposed";
+            const verb =
+              r.action === "accept"
+                ? "accepted"
+                : r.action === "decline"
+                  ? "declined"
+                  : "counter-proposed";
             const extra = [
               r.proposed_scheduled_at ? `proposed: ${fmtIso(r.proposed_scheduled_at)}` : null,
               r.venue_name ? `venue: ${r.venue_name}` : null,
             ]
               .filter(Boolean)
               .join(", ");
-            return `  • ${r.team_name} — ${verb}${extra ? ` (${extra})` : ""}`;
+            const label =
+              r.action === "decline" ? "(no team specified)" : r.team_name;
+            return `  • ${label} — ${verb}${extra ? ` (${extra})` : ""}`;
           }),
         ]
       : []),
@@ -446,6 +473,7 @@ export async function POST(
       total: result.total,
       accepted: result.accepted,
       countered: result.countered,
+      declined: result.declined ?? 0,
       dashboardUrl,
     });
 
@@ -484,6 +512,7 @@ export async function POST(
     ok: true,
     accepted: result.accepted,
     countered: result.countered,
+    declined: result.declined ?? 0,
     total: result.total,
   });
 }

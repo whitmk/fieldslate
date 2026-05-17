@@ -4,7 +4,7 @@ import { sendEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 
-type Action = "accept_proposal" | "keep_original" | "edit";
+type Action = "accept_proposal" | "keep_original" | "edit" | "decline";
 
 type GameRow = {
   id: string;
@@ -21,7 +21,12 @@ type GameRow = {
 };
 
 function isAction(s: unknown): s is Action {
-  return s === "accept_proposal" || s === "keep_original" || s === "edit";
+  return (
+    s === "accept_proposal" ||
+    s === "keep_original" ||
+    s === "edit" ||
+    s === "decline"
+  );
 }
 
 // Wall-clock UTC formatting (matches src/lib/utils/game-time.ts).
@@ -130,6 +135,93 @@ export async function POST(
       { error: "This game isn't an interleague game." },
       { status: 400 },
     );
+  }
+
+  // Decline branches out entirely — the row is deleted and the email is different.
+  if (action === "decline") {
+    const { error: delErr } = await supabase
+      .from("games")
+      .delete()
+      .eq("id", game.id);
+    if (delErr) {
+      return NextResponse.json({ error: delErr.message }, { status: 500 });
+    }
+
+    // Notify the recipient (best-effort).
+    const { data: inviteRow } = await supabase
+      .from("interleague_invites")
+      .select("recipient_email")
+      .eq("interleague_org_id", game.interleague_org_id)
+      .eq("season_id", game.league_id)
+      .eq("status", "accepted")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const recipientEmail = inviteRow?.recipient_email ?? null;
+
+    if (recipientEmail) {
+      const orgName = game.interleague_org?.name ?? "your league";
+      const ourTeam = game.home_team?.name ?? "Our team";
+      const theirTeam = game.external_team_name ?? "Your team";
+      const division = game.home_team?.division?.name ?? "";
+      const seasonLabel = game.league?.season
+        ? `${game.league.name} · ${game.league.season}`
+        : game.league?.name ?? "the season";
+      const originalTime = fmtIso(game.scheduled_at);
+      const matchup = game.is_away
+        ? `${ourTeam} AT ${orgName} (${theirTeam})`
+        : `${ourTeam} vs ${theirTeam}`;
+
+      const subject = `Counter-proposal declined: ${matchup}`;
+
+      const html = `<!doctype html>
+<html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;background:#f6f7f9;margin:0;padding:24px;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+    <div style="background:#0C1F3F;padding:24px 28px;">
+      <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.2px;">FieldSlate</p>
+      <p style="margin:2px 0 0;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Game declined</p>
+    </div>
+    <div style="padding:28px;">
+      <h1 style="margin:0 0 12px;font-size:20px;color:#0C1F3F;">
+        Your counter-proposal was declined
+      </h1>
+      <p style="margin:0 0 12px;color:#4b5563;font-size:14px;line-height:1.55;">
+        ${escapeHtml(matchup)} (${escapeHtml(seasonLabel)}) couldn&apos;t be rescheduled to your suggested time. The game has been removed from the schedule.
+      </p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin:14px 0 0;border:1px solid #eee;border-radius:6px;overflow:hidden;">
+        <tbody>
+          <tr><td style="padding:8px 12px;border-bottom:1px solid #eee;color:#6b7280;width:30%;">Division</td><td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(division || "—")}</td></tr>
+          <tr><td style="padding:8px 12px;color:#6b7280;">Originally proposed</td><td style="padding:8px 12px;">${escapeHtml(originalTime)}</td></tr>
+        </tbody>
+      </table>
+      <p style="margin:18px 0 0;color:#6b7280;font-size:13px;">
+        If you&apos;d like to schedule this game again, reach out to the league
+        admin directly.
+      </p>
+    </div>
+    <div style="padding:18px 28px;border-top:1px solid #f3f4f6;background:#fafafa;">
+      <p style="margin:0;color:#9ca3af;font-size:11px;">
+        FieldSlate · Scheduling for youth sports leagues.
+      </p>
+    </div>
+  </div>
+</body></html>`;
+
+      const text = [
+        `Your counter-proposal for ${matchup} was declined.`,
+        `The game has been removed from the schedule.`,
+        division ? `Division: ${division}` : "",
+        `Originally proposed: ${originalTime}`,
+        "",
+        "— FieldSlate",
+      ]
+        .filter((l) => l !== "")
+        .join("\n");
+
+      await sendEmail(recipientEmail, subject, html, text);
+    }
+
+    return NextResponse.json({ ok: true });
   }
 
   // Build the update based on action.

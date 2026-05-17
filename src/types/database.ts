@@ -59,6 +59,7 @@ export type Database = {
           season_id: string
           recipient_email: string
           personal_note: string | null
+          decline_reason: string | null
           status: string
           created_at: string
           updated_at: string
@@ -72,6 +73,7 @@ export type Database = {
           season_id: string
           recipient_email: string
           personal_note?: string | null
+          decline_reason?: string | null
           status?: string
           created_at?: string
           updated_at?: string
@@ -85,6 +87,7 @@ export type Database = {
           season_id?: string
           recipient_email?: string
           personal_note?: string | null
+          decline_reason?: string | null
           status?: string
           created_at?: string
           updated_at?: string

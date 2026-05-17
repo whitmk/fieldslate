@@ -695,6 +695,7 @@ export default function InterleaguePage() {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<CounterProposedGame | null>(null);
+  const [declineTarget, setDeclineTarget] = useState<CounterProposedGame | null>(null);
 
   const selectedSeason = useMemo(
     () => seasons.find((s) => s.id === selectedSeasonId) ?? null,
@@ -790,7 +791,7 @@ export default function InterleaguePage() {
   async function resolveGame(
     gameId: string,
     payload:
-      | { action: "accept_proposal" | "keep_original" }
+      | { action: "accept_proposal" | "keep_original" | "decline" }
       | { action: "edit"; scheduled_at: string; venue_name?: string },
   ) {
     setResolvingId(gameId);
@@ -1062,6 +1063,17 @@ export default function InterleaguePage() {
                               <Pencil className="h-3 w-3" />
                               Edit
                             </button>
+                            <button
+                              disabled={busy}
+                              onClick={() => {
+                                setResolveError(null);
+                                setDeclineTarget(g);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-500 transition-colors hover:border-red-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Decline
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1182,6 +1194,58 @@ export default function InterleaguePage() {
           }}
           onClose={() => setEditTarget(null)}
         />
+      )}
+
+      {declineTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && resolvingId !== declineTarget.id) {
+              setDeclineTarget(null);
+            }
+          }}
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
+            <div className="flex flex-col items-center gap-3 px-6 pb-2 pt-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
+                <AlertTriangle className="h-5 w-5 text-red-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-[#0C1F3F]">Decline this game?</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  It will be removed from the schedule and the recipient will be
+                  notified.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 px-6 py-5">
+              <button
+                onClick={() => setDeclineTarget(null)}
+                disabled={resolvingId === declineTarget.id}
+                className="flex-1 rounded-lg border border-gray-200 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const ok = await resolveGame(declineTarget.id, {
+                    action: "decline",
+                  });
+                  if (ok) setDeclineTarget(null);
+                }}
+                disabled={resolvingId === declineTarget.id}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-500 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:opacity-50"
+              >
+                {resolvingId === declineTarget.id ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                {resolvingId === declineTarget.id ? "Declining…" : "Decline"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
