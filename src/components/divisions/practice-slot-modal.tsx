@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Trash2, X } from "lucide-react";
+import { Loader2, Lock, Trash2, Wand2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const DAY_OPTIONS: { key: string; label: string }[] = [
@@ -37,6 +37,10 @@ export type EditableSlot = {
   field_id?: string;
   practice_days?: string[];
   notes?: string | null;
+  // 'manual' or 'auto' — used to render the badge when editing. Every save
+  // out of this modal writes 'manual', so opening + saving an auto slot
+  // promotes it.
+  placement_source?: "manual" | "auto";
   // For new slots opened from a (field, day, wall_time) cell. When the user
   // picks a team, the modal prefers the time slot in that team's division
   // whose start_time matches this hint.
@@ -130,6 +134,9 @@ export function PracticeSlotModal({
     setBusy(true);
     setError(null);
     const supabase = createClient();
+    // Every save from this modal counts as manual placement. Editing an
+    // auto slot through the UI promotes it so a subsequent auto-assign
+    // run won't surprise the admin by relocating their hand-tweaked slot.
     const payload = {
       team_id: teamId,
       time_slot_id: timeSlotId,
@@ -137,6 +144,7 @@ export function PracticeSlotModal({
       practice_days: sortedDays(),
       type: "recurring",
       notes: notes.trim() || null,
+      placement_source: "manual",
     };
     const op = isEdit
       ? supabase.from("practice_slots").update(payload as never).eq("id", initial.id!)
@@ -178,9 +186,14 @@ export function PracticeSlotModal({
     >
       <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h2 className="text-base font-semibold text-[#0C1F3F]">
-            {isEdit ? "Edit practice slot" : "Add practice slot"}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold text-[#0C1F3F]">
+              {isEdit ? "Edit practice slot" : "Add practice slot"}
+            </h2>
+            {isEdit && initial.placement_source && (
+              <PlacementBadge source={initial.placement_source} />
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -340,5 +353,28 @@ export function PracticeSlotModal({
         </form>
       </div>
     </div>
+  );
+}
+
+function PlacementBadge({ source }: { source: "manual" | "auto" }) {
+  if (source === "manual") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600"
+        title="Manually placed — won't be touched by auto-assign."
+      >
+        <Lock className="h-2.5 w-2.5" />
+        Manual
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-[#22C55E]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#16a34a]"
+      title="Placed by auto-assign. Editing here will mark it manual."
+    >
+      <Wand2 className="h-2.5 w-2.5" />
+      Auto
+    </span>
   );
 }

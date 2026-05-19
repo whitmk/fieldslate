@@ -10,6 +10,7 @@ import {
   Copy,
   Filter,
   Loader2,
+  Lock,
   MapPin,
   Plus,
   Trash2,
@@ -66,6 +67,14 @@ type PracticeSlotRow = {
   field_id: string | null;
   practice_days: string[];
   notes: string | null;
+  placement_source: "manual" | "auto";
+};
+type AvailabilityBlock = {
+  id: string;
+  team_id: string;
+  day_of_week: string;
+  start_time: string | null;
+  end_time: string | null;
 };
 
 type Feedback =
@@ -103,6 +112,9 @@ export function PracticesPageClient() {
   const [allVenues, setAllVenues] = useState<Venue[]>([]);
   const [divisionVenues, setDivisionVenues] = useState<DivisionVenue[]>([]);
   const [practiceSlots, setPracticeSlots] = useState<PracticeSlotRow[]>([]);
+  const [availabilityBlocks, setAvailabilityBlocks] = useState<
+    AvailabilityBlock[]
+  >([]);
 
   // UI state
   const [filterDivisions, setFilterDivisions] = useState<Set<string>>(new Set());
@@ -191,21 +203,40 @@ export function PracticesPageClient() {
       [...venueMap.values()].sort((a, b) => a.name.localeCompare(b.name)),
     );
 
-    // Load all recurring practice_slots for teams in our divisions.
+    // Load all recurring practice_slots and availability blocks for teams in
+    // our divisions.
     const ourTeamIds = teamsLoaded.map((t) => t.id);
     if (ourTeamIds.length === 0) {
       setPracticeSlots([]);
+      setAvailabilityBlocks([]);
       return;
     }
-    const { data: psRows, error: psErr } = await supabase
-      .from("practice_slots")
-      .select("id, team_id, time_slot_id, field_id, practice_days, notes, type")
-      .in("team_id", ourTeamIds)
-      .eq("type", "recurring");
-    if (psErr) {
-      notify("error", `Couldn't load practice placements: ${psErr.message}`);
+    const [psQ, abQ] = await Promise.all([
+      supabase
+        .from("practice_slots")
+        .select(
+          "id, team_id, time_slot_id, field_id, practice_days, notes, type, placement_source",
+        )
+        .in("team_id", ourTeamIds)
+        .eq("type", "recurring"),
+      supabase
+        .from("team_availability_blocks")
+        .select("id, team_id, day_of_week, start_time, end_time")
+        .in("team_id", ourTeamIds),
+    ]);
+    if (psQ.error) {
+      notify("error", `Couldn't load practice placements: ${psQ.error.message}`);
     }
-    setPracticeSlots((psRows as PracticeSlotRow[] | null) ?? []);
+    if (abQ.error) {
+      notify(
+        "error",
+        `Couldn't load availability blocks: ${abQ.error.message}`,
+      );
+    }
+    setPracticeSlots((psQ.data as PracticeSlotRow[] | null) ?? []);
+    setAvailabilityBlocks(
+      (abQ.data as AvailabilityBlock[] | null) ?? [],
+    );
   }, [notify]);
 
   useEffect(() => {
@@ -257,6 +288,16 @@ export function PracticesPageClient() {
     }
     return m;
   }, [allTimeSlots]);
+
+  const blocksByTeam = useMemo(() => {
+    const m = new Map<string, AvailabilityBlock[]>();
+    for (const b of availabilityBlocks) {
+      const arr = m.get(b.team_id) ?? [];
+      arr.push(b);
+      m.set(b.team_id, arr);
+    }
+    return m;
+  }, [availabilityBlocks]);
 
   // For each venue × day × wall-time row, list the practice_slots placed there.
   type CellOccupant = PracticeSlotRow & { start_time: string };
@@ -463,6 +504,7 @@ export function PracticesPageClient() {
         field_id: slot.field_id ?? undefined,
         practice_days: slot.practice_days,
         notes: slot.notes,
+        placement_source: slot.placement_source,
       },
       teams: buildTeamList([divId]),
       timeSlots: buildTimeSlotList([divId]),
@@ -720,6 +762,7 @@ export function PracticesPageClient() {
                 (dv) => dv.division_id === div.id && dv.venue_id === v.id,
               ),
             )}
+            blocksByTeam={blocksByTeam}
             onChange={load}
             notify={notify}
           />
@@ -840,6 +883,7 @@ function SlotRow({
         {row.occupants.map((slot) => {
           const team = teamById.get(slot.team_id);
           const div = team ? divisionById.get(team.division_id) : null;
+          const isManual = slot.placement_source === "manual";
           return (
             <button
               key={slot.id}
@@ -847,7 +891,13 @@ function SlotRow({
               onClick={() => onOccupantClick(slot)}
               className="flex flex-col items-start text-left transition-colors hover:opacity-80"
             >
-              <span className="text-[11px] font-semibold text-[#0C1F3F]">
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-[#0C1F3F]">
+                {isManual && (
+                  <Lock
+                    className="h-3 w-3 text-gray-500"
+                    aria-label="Manually placed"
+                  />
+                )}
                 {team?.name ?? "Unknown team"}
               </span>
               <span className="text-[10px] text-gray-500">
@@ -1493,12 +1543,14 @@ function TeamPreferencesBody({
   teams,
   timeSlots,
   venues,
+  blocksByTeam,
   onChange,
   notify,
 }: {
   teams: Team[];
   timeSlots: TimeSlot[];
   venues: Venue[];
+  blocksByTeam: Map<string, AvailabilityBlock[]>;
   onChange: () => Promise<void>;
   notify: Notify;
 }) {
@@ -1510,44 +1562,34 @@ function TeamPreferencesBody({
     );
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-100 bg-white">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-100 bg-gray-50 text-left text-[11px] font-medium uppercase tracking-wide text-gray-400">
-            <th className="px-4 py-2.5">Team</th>
-            <th className="px-4 py-2.5">Per week</th>
-            <th className="px-4 py-2.5">Preferred days</th>
-            <th className="px-4 py-2.5">Preferred time</th>
-            <th className="px-4 py-2.5">Preferred field</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {teams.map((t) => (
-            <TeamPreferenceRow
-              key={t.id}
-              team={t}
-              timeSlots={timeSlots}
-              venues={venues}
-              onSaved={onChange}
-              notify={notify}
-            />
-          ))}
-        </tbody>
-      </table>
+    <div className="flex flex-col gap-3">
+      {teams.map((t) => (
+        <TeamPreferenceCard
+          key={t.id}
+          team={t}
+          timeSlots={timeSlots}
+          venues={venues}
+          blocks={blocksByTeam.get(t.id) ?? []}
+          onSaved={onChange}
+          notify={notify}
+        />
+      ))}
     </div>
   );
 }
 
-function TeamPreferenceRow({
+function TeamPreferenceCard({
   team,
   timeSlots,
   venues,
+  blocks,
   onSaved,
   notify,
 }: {
   team: Team;
   timeSlots: TimeSlot[];
   venues: Venue[];
+  blocks: AvailabilityBlock[];
   onSaved: () => Promise<void>;
   notify: Notify;
 }) {
@@ -1588,80 +1630,323 @@ function TeamPreferenceRow({
   }
 
   return (
-    <tr className="hover:bg-gray-50/40">
-      <td className="px-4 py-2.5">
-        <p className="font-medium text-[#0C1F3F]">{team.name}</p>
-      </td>
-      <td className="px-4 py-2.5">
-        <input
-          type="number"
-          min={0}
-          max={4}
-          value={perWeek}
-          onChange={(e) => setPerWeek(Number(e.target.value))}
-          onBlur={() => {
-            const v = Math.max(0, Math.min(4, Number(perWeek) || 0));
-            if (v !== team.practices_per_week) patch({ practices_per_week: v });
-          }}
-          className="h-8 w-14 rounded-lg border border-gray-200 px-2 text-center text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-        />
-      </td>
-      <td className="px-4 py-2.5">
-        <div className="flex flex-wrap gap-1">
-          {DAY_OPTIONS.map((d) => (
-            <button
-              key={d.key}
-              type="button"
-              onClick={() => toggleDay(d.key)}
-              className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-                days.has(d.key)
-                  ? "bg-[#22C55E] text-white"
-                  : "border border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-[#0C1F3F]"
-              }`}
-            >
-              {d.label}
-            </button>
-          ))}
+    <div className="rounded-lg border border-gray-100 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-2.5">
+        <p className="font-semibold text-[#0C1F3F]">{team.name}</p>
+        <div className="flex items-center gap-2">
+          <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            Practices / week
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={4}
+            value={perWeek}
+            onChange={(e) => setPerWeek(Number(e.target.value))}
+            onBlur={() => {
+              const v = Math.max(0, Math.min(4, Number(perWeek) || 0));
+              if (v !== team.practices_per_week) patch({ practices_per_week: v });
+            }}
+            className="h-8 w-14 rounded-lg border border-gray-200 px-2 text-center text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+          />
+          {saving && (
+            <Loader2 className="h-3 w-3 animate-spin text-gray-300" />
+          )}
         </div>
-      </td>
-      <td className="px-4 py-2.5">
-        <select
-          value={timeId}
-          onChange={(e) => {
-            setTimeId(e.target.value);
-            patch({ preferred_time_id: e.target.value || null });
-          }}
-          className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-        >
-          <option value="">Any</option>
-          {timeSlots.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label} ({fmtTime(t.start_time)})
-            </option>
-          ))}
-        </select>
-      </td>
-      <td className="px-4 py-2.5">
-        <select
-          value={fieldId}
-          onChange={(e) => {
-            setFieldId(e.target.value);
-            patch({ preferred_field_id: e.target.value || null });
-          }}
-          className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-        >
-          <option value="">Any</option>
-          {venues.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.name}
-            </option>
-          ))}
-        </select>
-        {saving && (
-          <Loader2 className="ml-2 inline h-3 w-3 animate-spin text-gray-300" />
+      </div>
+      <div className="grid gap-4 px-4 py-3 sm:grid-cols-[2fr,1fr,1fr]">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            Preferred days
+          </label>
+          <div className="flex flex-wrap gap-1">
+            {DAY_OPTIONS.map((d) => (
+              <button
+                key={d.key}
+                type="button"
+                onClick={() => toggleDay(d.key)}
+                className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                  days.has(d.key)
+                    ? "bg-[#22C55E] text-white"
+                    : "border border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-[#0C1F3F]"
+                }`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            Preferred time
+          </label>
+          <select
+            value={timeId}
+            onChange={(e) => {
+              setTimeId(e.target.value);
+              patch({ preferred_time_id: e.target.value || null });
+            }}
+            className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+          >
+            <option value="">Any</option>
+            {timeSlots.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label} ({fmtTime(t.start_time)})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            Preferred field
+          </label>
+          <select
+            value={fieldId}
+            onChange={(e) => {
+              setFieldId(e.target.value);
+              patch({ preferred_field_id: e.target.value || null });
+            }}
+            className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+          >
+            <option value="">Any</option>
+            {venues.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <UnavailabilitySection
+        teamId={team.id}
+        teamName={team.name}
+        blocks={blocks}
+        onSaved={onSaved}
+        notify={notify}
+      />
+    </div>
+  );
+}
+
+// ── Unavailability subsection ────────────────────────────────────────────
+
+function formatBlockLine(b: AvailabilityBlock): string {
+  const dayName = dayFull(b.day_of_week);
+  if (b.start_time === null || b.end_time === null) {
+    return `${dayName}s — all day`;
+  }
+  return `${dayName}s — ${fmtTime(b.start_time)} to ${fmtTime(b.end_time)}`;
+}
+
+function UnavailabilitySection({
+  teamId,
+  teamName,
+  blocks,
+  onSaved,
+  notify,
+}: {
+  teamId: string;
+  teamName: string;
+  blocks: AvailabilityBlock[];
+  onSaved: () => Promise<void>;
+  notify: Notify;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [newDay, setNewDay] = useState<string>("Mo");
+  const [newStart, setNewStart] = useState<string>("");
+  const [newEnd, setNewEnd] = useState<string>("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const sortedBlocks = useMemo(() => {
+    return [...blocks].sort((a, b) => {
+      const di =
+        DAY_OPTIONS.findIndex((d) => d.key === a.day_of_week) -
+        DAY_OPTIONS.findIndex((d) => d.key === b.day_of_week);
+      if (di !== 0) return di;
+      return (a.start_time ?? "").localeCompare(b.start_time ?? "");
+    });
+  }, [blocks]);
+
+  function resetForm() {
+    setNewDay("Mo");
+    setNewStart("");
+    setNewEnd("");
+    setFormError(null);
+  }
+
+  async function addBlock() {
+    setFormError(null);
+    const hasStart = newStart.trim().length > 0;
+    const hasEnd = newEnd.trim().length > 0;
+    if (hasStart !== hasEnd) {
+      setFormError(
+        "Set both start and end times, or leave both blank for an all-day block.",
+      );
+      return;
+    }
+    if (hasStart && hasEnd && newEnd <= newStart) {
+      setFormError("End time must be after start time.");
+      return;
+    }
+    setBusy(true);
+    const supabase = createClient();
+    const payload: {
+      team_id: string;
+      day_of_week: string;
+      start_time: string | null;
+      end_time: string | null;
+    } = {
+      team_id: teamId,
+      day_of_week: newDay,
+      start_time: hasStart ? newStart : null,
+      end_time: hasEnd ? newEnd : null,
+    };
+    const { error } = await supabase
+      .from("team_availability_blocks")
+      .insert([payload] as never);
+    setBusy(false);
+    if (error) {
+      notify(
+        "error",
+        `Couldn't add unavailability for ${teamName}: ${error.message}`,
+      );
+      return;
+    }
+    setAdding(false);
+    resetForm();
+    await onSaved();
+  }
+
+  async function deleteBlock(id: string) {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("team_availability_blocks")
+      .delete()
+      .eq("id", id);
+    if (error) {
+      notify("error", `Couldn't delete block: ${error.message}`);
+      return;
+    }
+    await onSaved();
+  }
+
+  return (
+    <div className="border-t border-gray-100 bg-gray-50/40 px-4 py-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+          Unavailability
+        </h4>
+        {!adding && (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-[#0C1F3F] transition-colors hover:border-[#22C55E]/40 hover:text-[#22C55E]"
+          >
+            <Plus className="h-3 w-3" />
+            Add block
+          </button>
         )}
-      </td>
-    </tr>
+      </div>
+      {sortedBlocks.length === 0 && !adding ? (
+        <p className="mt-2 text-[11px] text-gray-400">
+          No unavailability set — every day and time is fair game for
+          auto-assign.
+        </p>
+      ) : (
+        <ul className="mt-2 flex flex-col gap-1">
+          {sortedBlocks.map((b) => (
+            <li
+              key={b.id}
+              className="flex items-center justify-between rounded-md border border-gray-100 bg-white px-2.5 py-1.5 text-xs text-[#0C1F3F]"
+            >
+              <span>{formatBlockLine(b)}</span>
+              <button
+                type="button"
+                onClick={() => deleteBlock(b.id)}
+                aria-label="Delete block"
+                className="text-gray-400 transition-colors hover:text-red-500"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {adding && (
+        <div className="mt-3 flex flex-col gap-2 rounded-md border border-gray-100 bg-white p-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                Day
+              </label>
+              <select
+                value={newDay}
+                onChange={(e) => setNewDay(e.target.value)}
+                className="h-8 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              >
+                {DAY_OPTIONS.map((d) => (
+                  <option key={d.key} value={d.key}>
+                    {d.full}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                Start{" "}
+                <span className="font-normal text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="time"
+                value={newStart}
+                onChange={(e) => setNewStart(e.target.value)}
+                className="h-8 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                End <span className="font-normal text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="time"
+                value={newEnd}
+                onChange={(e) => setNewEnd(e.target.value)}
+                className="h-8 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              />
+            </div>
+            <div className="ml-auto flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setAdding(false);
+                  resetForm();
+                }}
+                disabled={busy}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:text-gray-700 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={addBlock}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
+              >
+                {busy && <Loader2 className="h-3 w-3 animate-spin" />}
+                {busy ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+          {formError && (
+            <p className="text-[11px] font-medium text-red-500">{formError}</p>
+          )}
+          <p className="text-[10px] text-gray-400">
+            Leave both times blank to block the whole day.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

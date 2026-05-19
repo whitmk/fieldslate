@@ -770,6 +770,7 @@ export type Database = {
           practice_days: string[]
           date: string | null
           notes: string | null
+          placement_source: string
           created_at: string
           updated_at: string
         }
@@ -782,6 +783,7 @@ export type Database = {
           practice_days?: string[]
           date?: string | null
           notes?: string | null
+          placement_source?: string
           created_at?: string
           updated_at?: string
         }
@@ -794,6 +796,7 @@ export type Database = {
           practice_days?: string[]
           date?: string | null
           notes?: string | null
+          placement_source?: string
           created_at?: string
           updated_at?: string
         }
@@ -907,6 +910,47 @@ export type Database = {
             columns: ["league_id"]
             isOneToOne: false
             referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_availability_blocks: {
+        Row: {
+          id: string
+          team_id: string
+          day_of_week: string
+          start_time: string | null
+          end_time: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          team_id: string
+          day_of_week: string
+          start_time?: string | null
+          end_time?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          team_id?: string
+          day_of_week?: string
+          start_time?: string | null
+          end_time?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_availability_blocks_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
         ]

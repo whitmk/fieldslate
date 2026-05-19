@@ -26,12 +26,39 @@ type Team = {
   preferred_field_id: string | null;
 };
 
+type AvailabilityBlock = {
+  team_id: string;
+  day_of_week: string;
+  start_time: string | null;
+  end_time: string | null;
+};
+
 const DEFAULT_DAY_ORDER = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 /**
+ * Does any of `blocks` rule out this (day, wall_time)? A whole-day block
+ * (start/end null) rules out every wall_time on that day. Otherwise the
+ * wall_time has to fall in [start_time, end_time) — same half-open
+ * convention as a calendar event.
+ */
+function isBlocked(
+  blocks: AvailabilityBlock[],
+  day: string,
+  wallTime: string,
+): boolean {
+  for (const b of blocks) {
+    if (b.day_of_week !== day) continue;
+    if (b.start_time === null || b.end_time === null) return true;
+    if (wallTime >= b.start_time && wallTime < b.end_time) return true;
+  }
+  return false;
+}
+
+/**
  * Pick `count` days from `priorityDays` (preferred first, then fallbacks),
- * restricted to `slotDays` (the days the time slot is configured to cover)
- * and skipping any (day, start_time, field) combination already in `taken`.
+ * restricted to `slotDays` (the days the time slot is configured to cover),
+ * skipping any (day, start_time, field) combination already in `taken`, and
+ * skipping any day this team is unavailable at this wall time.
  * Returns null if it can't find `count` free days.
  */
 function chooseDays(
@@ -41,11 +68,13 @@ function chooseDays(
   startTime: string,
   fieldId: string,
   taken: Set<string>,
+  blocks: AvailabilityBlock[],
 ): string[] | null {
   const chosen: string[] = [];
   for (const day of priorityDays) {
     if (chosen.includes(day)) continue;
     if (!slotDays.has(day)) continue;
+    if (isBlocked(blocks, day, startTime)) continue;
     const key = `${day}|${startTime}|${fieldId}`;
     if (!taken.has(key)) chosen.push(day);
     if (chosen.length >= count) break;
@@ -116,6 +145,24 @@ export async function autoAssignPractices(
   if (teamErr) return { success: false, error: teamErr.message };
   const allTeams = (teamRows ?? []) as Team[];
 
+  // 3b. Availability blocks for this division's teams — hard constraints
+  //     that override every preference downstream.
+  const allTeamIds = allTeams.map((t) => t.id);
+  const { data: blockRows, error: blockErr } = allTeamIds.length
+    ? await supabase
+        .from("team_availability_blocks")
+        .select("team_id, day_of_week, start_time, end_time")
+        .in("team_id", allTeamIds)
+    : { data: [], error: null };
+  if (blockErr) return { success: false, error: blockErr.message };
+  const allBlocks = (blockRows ?? []) as AvailabilityBlock[];
+  const blocksByTeam = new Map<string, AvailabilityBlock[]>();
+  for (const b of allBlocks) {
+    const arr = blocksByTeam.get(b.team_id) ?? [];
+    arr.push(b);
+    blocksByTeam.set(b.team_id, arr);
+  }
+
   // 4. Existing recurring practice slots — pre-seed `taken` org-wide so we
   //    don't double-book a field that's shared across divisions. Any slot on
   //    a field this division can use blocks that (day, time, field) for us,
@@ -153,17 +200,21 @@ export async function autoAssignPractices(
   }
 
   // 5. Candidate teams: practices_per_week > 0 and no existing recurring slot.
-  //    Sort "most constrained first" — teams with more preferences set get
-  //    placed earlier so they don't get squeezed out by less-picky ones.
+  //    Sort "most constrained first" — teams with more preferences and more
+  //    availability blocks get placed earlier so they don't get squeezed out
+  //    by less-picky ones. preferred_days contributes its length (a team that
+  //    only practices on Sat is more constrained than one that practices on
+  //    M/W/F), not just 1.
   const candidates = allTeams
     .filter(
       (t) => t.practices_per_week > 0 && !teamsWithSlot.has(t.id),
     )
     .map((t) => {
       const constraints =
-        (t.preferred_days?.length ? 1 : 0) +
+        (t.preferred_days?.length ?? 0) +
         (t.preferred_time_id ? 1 : 0) +
-        (t.preferred_field_id ? 1 : 0);
+        (t.preferred_field_id ? 1 : 0) +
+        (blocksByTeam.get(t.id)?.length ?? 0);
       return { team: t, constraints };
     })
     .sort((a, b) => b.constraints - a.constraints || a.team.name.localeCompare(b.team.name))
@@ -211,6 +262,32 @@ export async function autoAssignPractices(
       }
     }
 
+    // Availability-block feasibility short-circuit: even before checking
+    // capacity, is there any (priority day, wall_time) the team could use
+    // at all? If every option is blocked, surface that as the reason
+    // rather than the generic "ran out of capacity" message.
+    const teamBlocks = blocksByTeam.get(team.id) ?? [];
+    const dayPrioritySet = new Set(dayPriority);
+    let hasAnyFeasibleSlot = false;
+    for (const slot of timeSlots) {
+      if (hasAnyFeasibleSlot) break;
+      for (const day of slot.days_of_week) {
+        if (!dayPrioritySet.has(day)) continue;
+        if (!isBlocked(teamBlocks, day, slot.start_time)) {
+          hasAnyFeasibleSlot = true;
+          break;
+        }
+      }
+    }
+    if (!hasAnyFeasibleSlot) {
+      unassigned.push({
+        team_id: team.id,
+        team_name: team.name,
+        reason: "Blocked by team availability constraints.",
+      });
+      continue;
+    }
+
     let placed = false;
     outer: for (const slot of orderedTimes) {
       const slotDays = new Set(slot.days_of_week);
@@ -222,6 +299,7 @@ export async function autoAssignPractices(
           slot.start_time,
           field.id,
           taken,
+          teamBlocks,
         );
         if (chosen) {
           chosen.forEach((d) => taken.add(`${d}|${slot.start_time}|${field.id}`));
@@ -254,6 +332,7 @@ export async function autoAssignPractices(
         field_id: p.field_id,
         practice_days: p.practice_days,
         type: "recurring",
+        placement_source: "auto",
       })) as never[],
     );
     if (insertErr) return { success: false, error: insertErr.message };
