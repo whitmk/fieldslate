@@ -239,13 +239,22 @@ export async function autoAssignPractices(
     const orderedTimes = reorderByPreference(timeSlots, team.preferred_time_id);
     const orderedFields = reorderByPreference(venues, team.preferred_field_id);
 
-    // Day priority: if the team has stated preferred days, honor them
-    // strictly — silently placing a "Sat-only" team on a Tuesday because no
-    // Sat slot exists hides a real config problem from the admin. With no
-    // preferences set, fall back to every day in the canonical order.
+    // Day priority: try preferred days first, then any other day. The
+    // fallback matters when preferred days produce SOME but not enough
+    // valid slots — e.g. a team that needs 2 practices/week with
+    // preferred=[Mo, Su] and only Sa/Su slots should land on Su (preferred)
+    // and Sa (fallback) rather than failing. The "preferred set but
+    // zero-overlap with any slot" case below still short-circuits to
+    // unassigned so a config mistake (e.g. Sat-only team in a weekday-only
+    // division) doesn't get silently placed on a weekday.
     const preferred = team.preferred_days ?? [];
     const dayPriority =
-      preferred.length > 0 ? [...preferred] : [...DEFAULT_DAY_ORDER];
+      preferred.length > 0
+        ? [
+            ...preferred,
+            ...DEFAULT_DAY_ORDER.filter((d) => !preferred.includes(d)),
+          ]
+        : [...DEFAULT_DAY_ORDER];
 
     // Short-circuit: preferred days set but none of them appear in any slot's
     // days_of_week → infeasible. Report a clear reason instead of letting the
@@ -262,17 +271,22 @@ export async function autoAssignPractices(
       }
     }
 
-    // Availability-block feasibility short-circuit: even before checking
-    // capacity, is there any (priority day, wall_time) the team could use
-    // at all? If every option is blocked, surface that as the reason
-    // rather than the generic "ran out of capacity" message.
+    // Availability-block feasibility short-circuit. We only check the
+    // team's PREFERRED days (or every day when no preferences are set) —
+    // the fallback days in dayPriority are filler for hitting the weekly
+    // count, not destinations the admin asked for. If a team's preferred
+    // days are all blocked, silently relocating them to a fallback day
+    // would mask the conflict, so we surface "Blocked" instead.
     const teamBlocks = blocksByTeam.get(team.id) ?? [];
-    const dayPrioritySet = new Set(dayPriority);
+    const considerDays =
+      preferred.length > 0
+        ? new Set(preferred)
+        : new Set(DEFAULT_DAY_ORDER);
     let hasAnyFeasibleSlot = false;
     for (const slot of timeSlots) {
       if (hasAnyFeasibleSlot) break;
       for (const day of slot.days_of_week) {
-        if (!dayPrioritySet.has(day)) continue;
+        if (!considerDays.has(day)) continue;
         if (!isBlocked(teamBlocks, day, slot.start_time)) {
           hasAnyFeasibleSlot = true;
           break;

@@ -77,9 +77,13 @@ type AvailabilityBlock = {
   end_time: string | null;
 };
 
-type Feedback =
-  | { kind: "success"; message: string }
-  | { kind: "error"; message: string };
+type Feedback = {
+  kind: "success" | "error";
+  message: string;
+  // Per-team reasons surfaced as a bulleted list under the headline. Empty
+  // when no unassignments to report.
+  unassigned?: { team_id: string; team_name: string; reason: string }[];
+};
 
 type Toast = { kind: "error" | "success"; message: string; id: number };
 export type Notify = (kind: "error" | "success", message: string) => void;
@@ -427,13 +431,14 @@ export function PracticesPageClient() {
         message: `${divName}: every team is already on the grid or doesn't practice.`,
       });
     } else {
-      const unassignedLabel =
+      const headline =
         res.unassigned.length > 0
-          ? `, ${res.unassigned.length} couldn't be placed: ${res.unassigned.map((u) => u.team_name).join(", ")}`
-          : "";
+          ? `${divName}: placed ${res.placed} team${res.placed === 1 ? "" : "s"}, ${res.unassigned.length} couldn't be placed.`
+          : `${divName}: placed ${res.placed} team${res.placed === 1 ? "" : "s"}.`;
       setFeedback({
         kind: res.unassigned.length > 0 ? "error" : "success",
-        message: `${divName}: placed ${res.placed} team${res.placed === 1 ? "" : "s"}${unassignedLabel}.`,
+        message: headline,
+        unassigned: res.unassigned,
       });
     }
     await load();
@@ -607,7 +612,20 @@ export function PracticesPageClient() {
             ) : (
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
             )}
-            <span>{feedback.message}</span>
+            <div className="flex flex-col gap-1">
+              <span>{feedback.message}</span>
+              {feedback.unassigned && feedback.unassigned.length > 0 && (
+                <ul className="ml-3 list-disc space-y-0.5">
+                  {feedback.unassigned.map((u) => (
+                    <li key={u.team_id}>
+                      <span className="font-semibold">{u.team_name}</span>
+                      {" — "}
+                      {u.reason}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
       </div>
