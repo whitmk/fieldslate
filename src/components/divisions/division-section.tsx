@@ -444,7 +444,7 @@ export function DivisionSection({
 
                   {isExpanded && (
                     <div className="border-t border-gray-100">
-                      <div className="flex items-center gap-1 px-5 pt-3">
+                      <div className="flex items-center gap-6 border-b border-gray-100 bg-white px-6">
                         {(["schedule", "practices"] as const).map((tab) => {
                           const isActive = (activeTab[div.id] ?? "schedule") === tab;
                           return (
@@ -453,10 +453,10 @@ export function DivisionSection({
                               onClick={() =>
                                 setActiveTab((prev) => ({ ...prev, [div.id]: tab }))
                               }
-                              className={`rounded-t-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                              className={`-mb-px border-b-2 px-1 py-3 text-sm font-semibold transition-colors ${
                                 isActive
-                                  ? "bg-gray-50 text-[#0C1F3F]"
-                                  : "text-gray-400 hover:text-[#0C1F3F]"
+                                  ? "border-[#22C55E] text-[#0C1F3F]"
+                                  : "border-transparent text-gray-400 hover:text-[#0C1F3F]"
                               }`}
                             >
                               {tab === "schedule" ? "Schedule" : "Practices"}
