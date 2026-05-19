@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CalendarRange,
@@ -72,6 +72,9 @@ type Feedback =
   | { kind: "success"; message: string }
   | { kind: "error"; message: string };
 
+type Toast = { kind: "error" | "success"; message: string; id: number };
+export type Notify = (kind: "error" | "success", message: string) => void;
+
 type ModalState = {
   initial: EditableSlot;
   teams: SlotTeam[];
@@ -110,6 +113,27 @@ export function PracticesPageClient() {
   const [modalState, setModalState] = useState<ModalState | null>(null);
   const [openPrefDivisions, setOpenPrefDivisions] = useState<Set<string>>(new Set());
   const [openTimeSlotDivisions, setOpenTimeSlotDivisions] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState<Toast | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const notify = useCallback<Notify>((kind, message) => {
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToast({ kind, message, id: Date.now() });
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, kind === "error" ? 8000 : 4000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -133,6 +157,12 @@ export function PracticesPageClient() {
         )
         .order("name"),
     ]);
+
+    const loadErr =
+      divQ.error ?? dvQ.error ?? tsQ.error ?? teamQ.error ?? null;
+    if (loadErr) {
+      notify("error", `Couldn't load practice data: ${loadErr.message}`);
+    }
 
     const divList = (divQ.data as Division[] | null) ?? [];
     setDivisions(divList);
@@ -167,13 +197,16 @@ export function PracticesPageClient() {
       setPracticeSlots([]);
       return;
     }
-    const { data: psRows } = await supabase
+    const { data: psRows, error: psErr } = await supabase
       .from("practice_slots")
       .select("id, team_id, time_slot_id, field_id, practice_days, notes, type")
       .in("team_id", ourTeamIds)
       .eq("type", "recurring");
+    if (psErr) {
+      notify("error", `Couldn't load practice placements: ${psErr.message}`);
+    }
     setPracticeSlots((psRows as PracticeSlotRow[] | null) ?? []);
-  }, []);
+  }, [notify]);
 
   useEffect(() => {
     setLoading(true);
@@ -476,6 +509,14 @@ export function PracticesPageClient() {
         </p>
       </div>
 
+      {toast && (
+        <ToastBanner
+          kind={toast.kind}
+          message={toast.message}
+          onDismiss={() => setToast(null)}
+        />
+      )}
+
       {/* Auto-assign bar */}
       <div className="flex flex-col gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center">
         <div className="flex flex-1 flex-wrap items-center gap-2">
@@ -656,6 +697,7 @@ export function PracticesPageClient() {
             divisionId={div.id}
             timeSlots={timeSlotsByDivision.get(div.id) ?? []}
             onChange={load}
+            notify={notify}
           />
         )}
       />
@@ -679,6 +721,7 @@ export function PracticesPageClient() {
               ),
             )}
             onChange={load}
+            notify={notify}
           />
         )}
       />
@@ -893,10 +936,12 @@ function TimeSlotsCardBody({
   divisionId,
   timeSlots,
   onChange,
+  notify,
 }: {
   divisionId: string;
   timeSlots: TimeSlot[];
   onChange: () => Promise<void>;
+  notify: Notify;
 }) {
   const [adding, setAdding] = useState(false);
   const [newLabel, setNewLabel] = useState("");
@@ -935,7 +980,7 @@ function TimeSlotsCardBody({
     setNewDaysError(null);
     const labelToUse = newLabel.trim() || fmtTime(newStart);
     const supabase = createClient();
-    await supabase
+    const { error } = await supabase
       .from("practice_time_slots")
       .insert([
         {
@@ -947,6 +992,10 @@ function TimeSlotsCardBody({
           days_of_week: sortDays(newDays),
         },
       ] as never);
+    if (error) {
+      notify("error", `Couldn't add time slot: ${error.message}`);
+      return;
+    }
     setNewLabel("");
     setNewStart("17:00");
     setNewDuration(90);
@@ -957,7 +1006,14 @@ function TimeSlotsCardBody({
 
   async function deleteSlot(id: string) {
     const supabase = createClient();
-    await supabase.from("practice_time_slots").delete().eq("id", id);
+    const { error } = await supabase
+      .from("practice_time_slots")
+      .delete()
+      .eq("id", id);
+    if (error) {
+      notify("error", `Couldn't delete time slot: ${error.message}`);
+      return;
+    }
     await onChange();
   }
 
@@ -1004,6 +1060,7 @@ function TimeSlotsCardBody({
                 slot={slot}
                 onDelete={() => deleteSlot(slot.id)}
                 onChange={onChange}
+                notify={notify}
               />
             ))}
           </div>
@@ -1116,10 +1173,12 @@ function TimeSlotRow({
   slot,
   onDelete,
   onChange,
+  notify,
 }: {
   slot: TimeSlot;
   onDelete: () => void;
   onChange: () => Promise<void>;
+  notify: Notify;
 }) {
   const [label, setLabel] = useState(slot.label);
   const [startTime, setStartTime] = useState(slot.start_time);
@@ -1138,10 +1197,14 @@ function TimeSlotRow({
 
   async function save(updates: Record<string, unknown>) {
     const supabase = createClient();
-    await supabase
+    const { error } = await supabase
       .from("practice_time_slots")
       .update(updates as never)
       .eq("id", slot.id);
+    if (error) {
+      notify("error", `Couldn't save time slot: ${error.message}`);
+      return;
+    }
     await onChange();
   }
 
@@ -1328,10 +1391,15 @@ function CopySlotsModal({
       // logically applied to it; idempotency is a feature, not silence.
       updated += 1;
       if (changed) {
-        await supabase
+        const { error: updErr } = await supabase
           .from("practice_time_slots")
           .update({ days_of_week: sortDays(merged) } as never)
           .eq("id", slot.id);
+        if (updErr) {
+          setBusy(false);
+          setError(`Failed on "${slot.label}": ${updErr.message}`);
+          return;
+        }
       }
     }
     setBusy(false);
@@ -1426,11 +1494,13 @@ function TeamPreferencesBody({
   timeSlots,
   venues,
   onChange,
+  notify,
 }: {
   teams: Team[];
   timeSlots: TimeSlot[];
   venues: Venue[];
   onChange: () => Promise<void>;
+  notify: Notify;
 }) {
   if (teams.length === 0) {
     return (
@@ -1459,6 +1529,7 @@ function TeamPreferencesBody({
               timeSlots={timeSlots}
               venues={venues}
               onSaved={onChange}
+              notify={notify}
             />
           ))}
         </tbody>
@@ -1472,11 +1543,13 @@ function TeamPreferenceRow({
   timeSlots,
   venues,
   onSaved,
+  notify,
 }: {
   team: Team;
   timeSlots: TimeSlot[];
   venues: Venue[];
   onSaved: () => Promise<void>;
+  notify: Notify;
 }) {
   const [perWeek, setPerWeek] = useState<number>(team.practices_per_week);
   const [days, setDays] = useState<Set<string>>(
@@ -1489,11 +1562,15 @@ function TeamPreferenceRow({
   async function patch(updates: Record<string, unknown>) {
     setSaving(true);
     const supabase = createClient();
-    await supabase
+    const { error } = await supabase
       .from("teams")
       .update(updates as never)
       .eq("id", team.id);
     setSaving(false);
+    if (error) {
+      notify("error", `Couldn't save ${team.name}: ${error.message}`);
+      return;
+    }
     onSaved();
   }
 
@@ -1678,6 +1755,45 @@ function MultiSelectPopover({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ── Toast banner ─────────────────────────────────────────────────────────
+
+function ToastBanner({
+  kind,
+  message,
+  onDismiss,
+}: {
+  kind: "error" | "success";
+  message: string;
+  onDismiss: () => void;
+}) {
+  const isError = kind === "error";
+  return (
+    <div
+      role="alert"
+      className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm shadow-sm ${
+        isError
+          ? "border-red-200 bg-red-50 text-red-700"
+          : "border-[#22C55E]/30 bg-[#22C55E]/5 text-[#16a34a]"
+      }`}
+    >
+      {isError ? (
+        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+      ) : (
+        <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
+      )}
+      <span className="flex-1">{message}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="-mr-1 -mt-1 rounded-md p-1 text-current/60 hover:bg-black/5"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
