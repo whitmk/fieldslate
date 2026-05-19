@@ -35,6 +35,28 @@ type AvailabilityBlock = {
 
 const DEFAULT_DAY_ORDER = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
+// Mo=0, Tu=1, … Su=6. Used for the "at least one rest day between
+// practices" soft constraint in chooseDays — distance is circular so
+// Sun+Mon counts as consecutive, not 6-apart.
+const DAY_INDEX: Record<string, number> = {
+  Mo: 0, Tu: 1, We: 2, Th: 3, Fr: 4, Sa: 5, Su: 6,
+};
+
+function circularDayDistance(a: string, b: string): number {
+  const ai = DAY_INDEX[a];
+  const bi = DAY_INDEX[b];
+  if (ai === undefined || bi === undefined) return 7;
+  const d = Math.abs(ai - bi);
+  return Math.min(d, 7 - d);
+}
+
+function spacedFromAll(chosen: string[], candidate: string): boolean {
+  for (const c of chosen) {
+    if (circularDayDistance(c, candidate) < 2) return false;
+  }
+  return true;
+}
+
 /**
  * Does any of `blocks` rule out this (day, wall_time)? A whole-day block
  * (start/end null) rules out every wall_time on that day. Otherwise the
@@ -59,7 +81,15 @@ function isBlocked(
  * restricted to `slotDays` (the days the time slot is configured to cover),
  * skipping any (day, start_time, field) combination already in `taken`, and
  * skipping any day this team is unavailable at this wall time.
- * Returns null if it can't find `count` free days.
+ *
+ * Soft spacing rule: by default we want at least one rest day between a
+ * team's practices, measured as circular day distance ≥ 2 (Mo+We is OK,
+ * Mo+Tu and Sa+Su are not). We do a first pass that enforces spacing,
+ * then a second relaxed pass to fill remaining slots. Better to place a
+ * team on consecutive days than leave them unassigned.
+ *
+ * Returns null if it can't find `count` free days even after the relaxed
+ * pass.
  */
 function chooseDays(
   count: number,
@@ -71,14 +101,23 @@ function chooseDays(
   blocks: AvailabilityBlock[],
 ): string[] | null {
   const chosen: string[] = [];
-  for (const day of priorityDays) {
-    if (chosen.includes(day)) continue;
-    if (!slotDays.has(day)) continue;
-    if (isBlocked(blocks, day, startTime)) continue;
-    const key = `${day}|${startTime}|${fieldId}`;
-    if (!taken.has(key)) chosen.push(day);
-    if (chosen.length >= count) break;
+
+  function pass(requireSpacing: boolean) {
+    for (const day of priorityDays) {
+      if (chosen.length >= count) return;
+      if (chosen.includes(day)) continue;
+      if (!slotDays.has(day)) continue;
+      if (isBlocked(blocks, day, startTime)) continue;
+      const key = `${day}|${startTime}|${fieldId}`;
+      if (taken.has(key)) continue;
+      if (requireSpacing && !spacedFromAll(chosen, day)) continue;
+      chosen.push(day);
+    }
   }
+
+  pass(true);
+  if (chosen.length < count) pass(false);
+
   return chosen.length >= count ? chosen : null;
 }
 
