@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
+  Copy,
   Filter,
   Loader2,
   MapPin,
@@ -14,6 +15,7 @@ import {
   Trash2,
   Users,
   Wand2,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -25,15 +27,16 @@ import {
 } from "@/components/divisions/practice-slot-modal";
 import { autoAssignPractices } from "@/lib/practices/auto-assign";
 
-const DAY_OPTIONS: { key: string; label: string }[] = [
-  { key: "Mo", label: "Mon" },
-  { key: "Tu", label: "Tue" },
-  { key: "We", label: "Wed" },
-  { key: "Th", label: "Thu" },
-  { key: "Fr", label: "Fri" },
-  { key: "Sa", label: "Sat" },
-  { key: "Su", label: "Sun" },
+const DAY_OPTIONS: { key: string; label: string; short: string; full: string }[] = [
+  { key: "Mo", label: "Mon", short: "M",  full: "Monday" },
+  { key: "Tu", label: "Tue", short: "T",  full: "Tuesday" },
+  { key: "We", label: "Wed", short: "W",  full: "Wednesday" },
+  { key: "Th", label: "Thu", short: "Th", full: "Thursday" },
+  { key: "Fr", label: "Fri", short: "F",  full: "Friday" },
+  { key: "Sa", label: "Sat", short: "Sa", full: "Saturday" },
+  { key: "Su", label: "Sun", short: "Su", full: "Sunday" },
 ];
+const ALL_DAY_KEYS = DAY_OPTIONS.map((d) => d.key);
 
 type Division = { id: string; name: string; league_id: string };
 type Venue = { id: string; name: string };
@@ -44,6 +47,7 @@ type TimeSlot = {
   start_time: string;
   duration_minutes: number;
   sort_order: number;
+  days_of_week: string[];
 };
 type Team = {
   id: string;
@@ -117,7 +121,9 @@ export function PracticesPageClient() {
         .eq("allow_practices", true),
       supabase
         .from("practice_time_slots")
-        .select("id, division_id, label, start_time, duration_minutes, sort_order")
+        .select(
+          "id, division_id, label, start_time, duration_minutes, sort_order, days_of_week",
+        )
         .order("sort_order")
         .order("start_time"),
       supabase
@@ -244,13 +250,21 @@ export function PracticesPageClient() {
         divIdSet.has(ts.division_id),
       );
 
-      // Unique wall times for this venue.
-      const wallTimeLabels = new Map<string, string>();
+      // Pre-compute per-day wall-time presence + labels. A wall-time row only
+      // shows up in a given day column when some relevant time slot covers
+      // that day at that wall time.
+      const wallTimesByDay = new Map<string, Map<string, string>>();
+      for (const d of DAY_OPTIONS) {
+        wallTimesByDay.set(d.key, new Map());
+      }
       for (const ts of relevantSlots) {
         const wt = normalizeTime(ts.start_time);
-        if (!wallTimeLabels.has(wt)) wallTimeLabels.set(wt, ts.label);
+        for (const day of ts.days_of_week) {
+          const m = wallTimesByDay.get(day);
+          if (!m) continue;
+          if (!m.has(wt)) m.set(wt, ts.label);
+        }
       }
-      const sortedWallTimes = [...wallTimeLabels.keys()].sort();
 
       // Occupants at this venue.
       const venueOccupants = practiceSlots.filter(
@@ -259,6 +273,8 @@ export function PracticesPageClient() {
 
       const days = new Map<string, CellRow[]>();
       for (const d of DAY_OPTIONS) {
+        const wallTimeLabels = wallTimesByDay.get(d.key) ?? new Map();
+        const sortedWallTimes = [...wallTimeLabels.keys()].sort();
         const rows: CellRow[] = sortedWallTimes.map((wt) => {
           const occupants: CellOccupant[] = [];
           for (const ps of venueOccupants) {
@@ -886,6 +902,12 @@ function TimeSlotsCardBody({
   const [newLabel, setNewLabel] = useState("");
   const [newStart, setNewStart] = useState("17:00");
   const [newDuration, setNewDuration] = useState<number>(90);
+  const [newDays, setNewDays] = useState<Set<string>>(
+    () => new Set(ALL_DAY_KEYS),
+  );
+  const [newDaysError, setNewDaysError] = useState<string | null>(null);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyNotice, setCopyNotice] = useState<string | null>(null);
 
   const nextSortOrder = useMemo(
     () =>
@@ -895,8 +917,22 @@ function TimeSlotsCardBody({
     [timeSlots],
   );
 
+  function toggleNewDay(key: string) {
+    setNewDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   async function addSlot() {
     if (!newStart) return;
+    if (newDays.size === 0) {
+      setNewDaysError("Pick at least one day this slot applies to.");
+      return;
+    }
+    setNewDaysError(null);
     const labelToUse = newLabel.trim() || fmtTime(newStart);
     const supabase = createClient();
     await supabase
@@ -908,11 +944,13 @@ function TimeSlotsCardBody({
           start_time: newStart,
           duration_minutes: Math.max(15, Math.floor(newDuration || 90)),
           sort_order: nextSortOrder,
+          days_of_week: sortDays(newDays),
         },
       ] as never);
     setNewLabel("");
     setNewStart("17:00");
     setNewDuration(90);
+    setNewDays(new Set(ALL_DAY_KEYS));
     setAdding(false);
     await onChange();
   }
@@ -925,6 +963,34 @@ function TimeSlotsCardBody({
 
   return (
     <div className="flex flex-col gap-2">
+      {/* Action row: lives at the top of the per-division section so it acts
+          as the section header for the "Add slot" / "Copy slots" controls. */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {copyNotice && (
+          <span className="mr-auto inline-flex items-center gap-1.5 rounded-full bg-[#22C55E]/10 px-2.5 py-1 text-[11px] font-medium text-[#16a34a]">
+            <CheckCircle2 className="h-3 w-3" />
+            {copyNotice}
+          </span>
+        )}
+        <button
+          onClick={() => setCopyOpen(true)}
+          disabled={timeSlots.length === 0}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0C1F3F] transition-colors hover:border-[#22C55E]/40 hover:text-[#22C55E] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          Copy slots between days
+        </button>
+        {!adding && (
+          <button
+            onClick={() => setAdding(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0C1F3F] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add slot
+          </button>
+        )}
+      </div>
+
       {timeSlots.length === 0 && !adding ? (
         <p className="px-1 py-4 text-center text-xs text-gray-500">
           No time slots in this division yet.
@@ -944,72 +1010,103 @@ function TimeSlotsCardBody({
         </div>
       )}
 
-      {adding ? (
-        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-100 bg-white p-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-              Label
-            </label>
-            <input
-              type="text"
-              value={newLabel}
-              onChange={(e) => setNewLabel(e.target.value)}
-              placeholder={fmtTime(newStart)}
-              autoFocus
-              className="h-9 w-32 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-            />
+      {adding && (
+        <div className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-white p-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                Label
+              </label>
+              <input
+                type="text"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                placeholder={fmtTime(newStart)}
+                autoFocus
+                className="h-9 w-32 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                Start
+              </label>
+              <input
+                type="time"
+                value={newStart}
+                onChange={(e) => setNewStart(e.target.value)}
+                className="h-9 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                Duration (min)
+              </label>
+              <input
+                type="number"
+                min={15}
+                max={300}
+                step={15}
+                value={newDuration}
+                onChange={(e) => setNewDuration(Number(e.target.value))}
+                className="h-9 w-20 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              />
+            </div>
+            <div className="ml-auto flex gap-2">
+              <button
+                onClick={() => {
+                  setAdding(false);
+                  setNewLabel("");
+                  setNewDaysError(null);
+                  setNewDays(new Set(ALL_DAY_KEYS));
+                }}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={addSlot}
+                className="rounded-lg bg-[#22C55E] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#16a34a]"
+              >
+                Save
+              </button>
+            </div>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-              Start
+              Days
             </label>
-            <input
-              type="time"
-              value={newStart}
-              onChange={(e) => setNewStart(e.target.value)}
-              className="h-9 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+            <DayPills
+              selected={newDays}
+              onToggle={toggleNewDay}
+              variant="short"
             />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-              Duration (min)
-            </label>
-            <input
-              type="number"
-              min={15}
-              max={300}
-              step={15}
-              value={newDuration}
-              onChange={(e) => setNewDuration(Number(e.target.value))}
-              className="h-9 w-20 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-            />
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                setAdding(false);
-                setNewLabel("");
-              }}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:text-gray-700"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={addSlot}
-              className="rounded-lg bg-[#22C55E] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#16a34a]"
-            >
-              Save
-            </button>
+            {newDaysError && (
+              <p className="text-[11px] font-medium text-red-500">
+                {newDaysError}
+              </p>
+            )}
           </div>
         </div>
-      ) : (
-        <button
-          onClick={() => setAdding(true)}
-          className="inline-flex w-fit items-center gap-1.5 self-end rounded-lg bg-[#0C1F3F] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add slot
-        </button>
+      )}
+
+      {copyOpen && (
+        <CopySlotsModal
+          timeSlots={timeSlots}
+          onClose={() => setCopyOpen(false)}
+          onDone={async (count, source, targets) => {
+            setCopyOpen(false);
+            await onChange();
+            if (count === 0) {
+              setCopyNotice(`No slots on ${dayFull(source)} to copy.`);
+            } else {
+              const targetLabels = targets.map((t) => dayLabel(t)).join(", ");
+              setCopyNotice(
+                `Copied ${count} slot${count === 1 ? "" : "s"} from ${dayFull(source)} to ${targetLabels}.`,
+              );
+            }
+            window.setTimeout(() => setCopyNotice(null), 6000);
+          }}
+        />
       )}
     </div>
   );
@@ -1027,6 +1124,17 @@ function TimeSlotRow({
   const [label, setLabel] = useState(slot.label);
   const [startTime, setStartTime] = useState(slot.start_time);
   const [duration, setDuration] = useState(slot.duration_minutes);
+  const [days, setDays] = useState<Set<string>>(
+    () => new Set(slot.days_of_week),
+  );
+  const [daysError, setDaysError] = useState<string | null>(null);
+
+  // Keep local day state in sync if the row is re-rendered with a fresh slot
+  // (e.g. after a successful save reloads parent data).
+  useEffect(() => {
+    setDays(new Set(slot.days_of_week));
+    setDaysError(null);
+  }, [slot.days_of_week]);
 
   async function save(updates: Record<string, unknown>) {
     const supabase = createClient();
@@ -1037,60 +1145,276 @@ function TimeSlotRow({
     await onChange();
   }
 
+  function toggleDay(key: string) {
+    const next = new Set(days);
+    if (next.has(key)) {
+      if (next.size === 1) {
+        setDaysError("At least one day is required.");
+        window.setTimeout(() => setDaysError(null), 3000);
+        return;
+      }
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    setDays(next);
+    setDaysError(null);
+    save({ days_of_week: sortDays(next) });
+  }
+
   return (
-    <div className="flex flex-wrap items-end gap-3 px-3 py-2.5">
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-          Label
-        </label>
-        <input
-          type="text"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          onBlur={() => label !== slot.label && save({ label })}
-          className="h-9 w-32 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-        />
+    <div className="flex flex-col gap-2 px-3 py-2.5">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            Label
+          </label>
+          <input
+            type="text"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            onBlur={() => label !== slot.label && save({ label })}
+            className="h-9 w-32 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            Start
+          </label>
+          <input
+            type="time"
+            value={startTime.substring(0, 5)}
+            onChange={(e) => setStartTime(e.target.value)}
+            onBlur={() =>
+              startTime.substring(0, 5) !== slot.start_time.substring(0, 5) &&
+              save({ start_time: startTime })
+            }
+            className="h-9 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            Duration (min)
+          </label>
+          <input
+            type="number"
+            min={15}
+            max={300}
+            step={15}
+            value={duration}
+            onChange={(e) => setDuration(Number(e.target.value))}
+            onBlur={() =>
+              duration !== slot.duration_minutes &&
+              save({ duration_minutes: duration })
+            }
+            className="h-9 w-20 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+          />
+        </div>
+        <button
+          onClick={onDelete}
+          aria-label="Delete time slot"
+          className="ml-auto inline-flex h-9 items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
       <div className="flex flex-col gap-1">
         <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-          Start
+          Days
         </label>
-        <input
-          type="time"
-          value={startTime.substring(0, 5)}
-          onChange={(e) => setStartTime(e.target.value)}
-          onBlur={() =>
-            startTime.substring(0, 5) !== slot.start_time.substring(0, 5) &&
-            save({ start_time: startTime })
-          }
-          className="h-9 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-        />
+        <DayPills selected={days} onToggle={toggleDay} variant="short" />
+        {daysError && (
+          <p className="text-[11px] font-medium text-red-500">{daysError}</p>
+        )}
       </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-          Duration (min)
-        </label>
-        <input
-          type="number"
-          min={15}
-          max={300}
-          step={15}
-          value={duration}
-          onChange={(e) => setDuration(Number(e.target.value))}
-          onBlur={() =>
-            duration !== slot.duration_minutes &&
-            save({ duration_minutes: duration })
-          }
-          className="h-9 w-20 rounded-lg border border-gray-200 px-2 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-        />
+    </div>
+  );
+}
+
+// ── Day pills ────────────────────────────────────────────────────────────
+
+function DayPills({
+  selected,
+  onToggle,
+  variant = "short",
+}: {
+  selected: Set<string>;
+  onToggle: (key: string) => void;
+  variant?: "short" | "label";
+}) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {DAY_OPTIONS.map((d) => {
+        const isOn = selected.has(d.key);
+        return (
+          <button
+            key={d.key}
+            type="button"
+            onClick={() => onToggle(d.key)}
+            aria-pressed={isOn}
+            title={d.full}
+            className={`min-w-[28px] rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+              isOn
+                ? "bg-[#22C55E] text-white"
+                : "border border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-[#0C1F3F]"
+            }`}
+          >
+            {variant === "short" ? d.short : d.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function sortDays(set: Set<string>): string[] {
+  return ALL_DAY_KEYS.filter((k) => set.has(k));
+}
+
+function dayLabel(key: string): string {
+  return DAY_OPTIONS.find((d) => d.key === key)?.label ?? key;
+}
+function dayFull(key: string): string {
+  return DAY_OPTIONS.find((d) => d.key === key)?.full ?? key;
+}
+
+// ── Copy slots modal ─────────────────────────────────────────────────────
+
+function CopySlotsModal({
+  timeSlots,
+  onClose,
+  onDone,
+}: {
+  timeSlots: TimeSlot[];
+  onClose: () => void;
+  onDone: (count: number, source: string, targets: string[]) => void | Promise<void>;
+}) {
+  const [source, setSource] = useState<string>("Mo");
+  const [targets, setTargets] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function toggleTarget(key: string) {
+    setTargets((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  async function run() {
+    setError(null);
+    if (targets.size === 0) {
+      setError("Pick at least one target day.");
+      return;
+    }
+    setBusy(true);
+    const matching = timeSlots.filter((s) => s.days_of_week.includes(source));
+    const targetKeys = [...targets];
+    const supabase = createClient();
+    // Update each matching slot's days_of_week additively, deduped + sorted.
+    let updated = 0;
+    for (const slot of matching) {
+      const merged = new Set(slot.days_of_week);
+      let changed = false;
+      for (const k of targetKeys) {
+        if (!merged.has(k)) {
+          merged.add(k);
+          changed = true;
+        }
+      }
+      // Even if nothing changed, count the slot as "copied" — the action
+      // logically applied to it; idempotency is a feature, not silence.
+      updated += 1;
+      if (changed) {
+        await supabase
+          .from("practice_time_slots")
+          .update({ days_of_week: sortDays(merged) } as never)
+          .eq("id", slot.id);
+      }
+    }
+    setBusy(false);
+    await onDone(updated, source, targetKeys);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => e.target === e.currentTarget && !busy && onClose()}
+    >
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <h2 className="text-base font-semibold text-[#0C1F3F]">
+            Copy slots between days
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex flex-col gap-4 px-6 py-5">
+          <p className="text-xs text-gray-500">
+            Add every selected target day to each time slot in this division
+            that currently runs on the source day. Existing slots on target
+            days are untouched.
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-600">
+              From day
+            </label>
+            <select
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+            >
+              {DAY_OPTIONS.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.full}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-600">
+              To days
+            </label>
+            <DayPills
+              selected={targets}
+              onToggle={toggleTarget}
+              variant="label"
+            />
+          </div>
+          {error && (
+            <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={run}
+              disabled={busy || targets.size === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
+            >
+              {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {busy ? "Copying…" : "Copy"}
+            </button>
+          </div>
+        </div>
       </div>
-      <button
-        onClick={onDelete}
-        aria-label="Delete time slot"
-        className="ml-auto inline-flex h-9 items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
     </div>
   );
 }

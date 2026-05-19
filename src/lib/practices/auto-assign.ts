@@ -10,7 +10,12 @@ export type AutoAssignResult =
     }
   | { success: false; error: string };
 
-type TimeSlot = { id: string; label: string; start_time: string };
+type TimeSlot = {
+  id: string;
+  label: string;
+  start_time: string;
+  days_of_week: string[];
+};
 type Venue = { id: string; name: string };
 type Team = {
   id: string;
@@ -25,12 +30,14 @@ const DEFAULT_DAY_ORDER = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 /**
  * Pick `count` days from `priorityDays` (preferred first, then fallbacks),
- * skipping any (day, start_time, field) combination already in `taken`.
+ * restricted to `slotDays` (the days the time slot is configured to cover)
+ * and skipping any (day, start_time, field) combination already in `taken`.
  * Returns null if it can't find `count` free days.
  */
 function chooseDays(
   count: number,
   priorityDays: string[],
+  slotDays: Set<string>,
   startTime: string,
   fieldId: string,
   taken: Set<string>,
@@ -38,6 +45,7 @@ function chooseDays(
   const chosen: string[] = [];
   for (const day of priorityDays) {
     if (chosen.includes(day)) continue;
+    if (!slotDays.has(day)) continue;
     const key = `${day}|${startTime}|${fieldId}`;
     if (!taken.has(key)) chosen.push(day);
     if (chosen.length >= count) break;
@@ -63,7 +71,7 @@ export async function autoAssignPractices(
   // 1. Time slots for this division
   const { data: slotRows, error: slotErr } = await supabase
     .from("practice_time_slots")
-    .select("id, label, start_time")
+    .select("id, label, start_time, days_of_week")
     .eq("division_id", divisionId)
     .order("sort_order", { ascending: true })
     .order("start_time", { ascending: true });
@@ -169,23 +177,48 @@ export async function autoAssignPractices(
   }> = [];
   const unassigned: { team_id: string; team_name: string; reason: string }[] = [];
 
+  // Days this division covers at all — union across every time slot. Used to
+  // diagnose the "team's preferred days don't intersect any slot" case.
+  const coveredDays = new Set<string>();
+  for (const s of timeSlots) {
+    for (const d of s.days_of_week) coveredDays.add(d);
+  }
+
   for (const team of candidates) {
     const orderedTimes = reorderByPreference(timeSlots, team.preferred_time_id);
     const orderedFields = reorderByPreference(venues, team.preferred_field_id);
 
-    // Day priority: preferred days first, then the rest, then never-preferred ones.
+    // Day priority: if the team has stated preferred days, honor them
+    // strictly — silently placing a "Sat-only" team on a Tuesday because no
+    // Sat slot exists hides a real config problem from the admin. With no
+    // preferences set, fall back to every day in the canonical order.
     const preferred = team.preferred_days ?? [];
-    const dayPriority = [
-      ...preferred,
-      ...DEFAULT_DAY_ORDER.filter((d) => !preferred.includes(d)),
-    ];
+    const dayPriority =
+      preferred.length > 0 ? [...preferred] : [...DEFAULT_DAY_ORDER];
+
+    // Short-circuit: preferred days set but none of them appear in any slot's
+    // days_of_week → infeasible. Report a clear reason instead of letting the
+    // loop fail with a generic message.
+    if (preferred.length > 0) {
+      const anyOverlap = preferred.some((d) => coveredDays.has(d));
+      if (!anyOverlap) {
+        unassigned.push({
+          team_id: team.id,
+          team_name: team.name,
+          reason: `No valid time slots for this team's preferred days (${preferred.join(", ")}). Division slots only cover: ${[...coveredDays].join(", ") || "no days"}.`,
+        });
+        continue;
+      }
+    }
 
     let placed = false;
     outer: for (const slot of orderedTimes) {
+      const slotDays = new Set(slot.days_of_week);
       for (const field of orderedFields) {
         const chosen = chooseDays(
           team.practices_per_week,
           dayPriority,
+          slotDays,
           slot.start_time,
           field.id,
           taken,

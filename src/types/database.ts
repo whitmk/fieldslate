@@ -724,6 +724,7 @@ export type Database = {
           start_time: string
           duration_minutes: number
           sort_order: number
+          days_of_week: string[]
           created_at: string
           updated_at: string
         }
@@ -734,6 +735,7 @@ export type Database = {
           start_time: string
           duration_minutes?: number
           sort_order?: number
+          days_of_week?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -744,6 +746,7 @@ export type Database = {
           start_time?: string
           duration_minutes?: number
           sort_order?: number
+          days_of_week?: string[]
           created_at?: string
           updated_at?: string
         }
