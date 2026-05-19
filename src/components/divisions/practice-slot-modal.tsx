@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -11,17 +11,24 @@ const DAY_OPTIONS: { key: string; label: string }[] = [
   { key: "Th", label: "Thu" },
   { key: "Fr", label: "Fri" },
   { key: "Sa", label: "Sat" },
+  { key: "Su", label: "Sun" },
 ];
 
 export type SlotTimeSlot = {
   id: string;
   label: string;
   start_time: string;
+  division_id: string;
 };
 
 export type SlotVenue = { id: string; name: string };
 
-export type SlotTeam = { id: string; name: string };
+export type SlotTeam = {
+  id: string;
+  name: string;
+  division_id: string;
+  division_name?: string;
+};
 
 export type EditableSlot = {
   id?: string;
@@ -30,6 +37,10 @@ export type EditableSlot = {
   field_id?: string;
   practice_days?: string[];
   notes?: string | null;
+  // For new slots opened from a (field, day, wall_time) cell. When the user
+  // picks a team, the modal prefers the time slot in that team's division
+  // whose start_time matches this hint.
+  preferred_start_time?: string;
 };
 
 interface Props {
@@ -59,11 +70,40 @@ export function PracticeSlotModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // If the slot's team disappears (e.g. someone deletes a team in another tab),
-  // make sure the dropdown still shows the missing one as "Unknown team".
+  const teamDivisionId = useMemo(
+    () => teams.find((t) => t.id === teamId)?.division_id ?? null,
+    [teamId, teams],
+  );
+
+  const availableTimeSlots = useMemo(() => {
+    if (!teamDivisionId) return [] as SlotTimeSlot[];
+    return timeSlots
+      .filter((t) => t.division_id === teamDivisionId)
+      .sort((a, b) => a.start_time.localeCompare(b.start_time));
+  }, [teamDivisionId, timeSlots]);
+
+  // When team changes, reconcile the selected time slot. If a preferred wall
+  // time is set, prefer that match in the new division; otherwise drop the
+  // selection if it no longer belongs to the team's division.
+  useEffect(() => {
+    if (!teamDivisionId) return;
+    if (timeSlotId && availableTimeSlots.some((t) => t.id === timeSlotId)) {
+      return;
+    }
+    const preferred = initial.preferred_start_time
+      ? initial.preferred_start_time.substring(0, 5)
+      : null;
+    const match = preferred
+      ? availableTimeSlots.find(
+          (t) => t.start_time.substring(0, 5) === preferred,
+        )
+      : null;
+    setTimeSlotId(match ? match.id : "");
+  }, [teamDivisionId, availableTimeSlots, timeSlotId, initial.preferred_start_time]);
+
   useEffect(() => {
     if (teamId && !teams.some((t) => t.id === teamId)) {
-      setError("This slot's team is no longer in the division.");
+      setError("This slot's team is no longer available.");
     }
   }, [teamId, teams]);
 
@@ -165,12 +205,13 @@ export function PracticeSlotModal({
               value={teamId}
               onChange={(e) => setTeamId(e.target.value)}
               required
-              className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              disabled={isEdit}
+              className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20 disabled:bg-gray-50 disabled:text-gray-500"
             >
               <option value="">Select a team…</option>
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name}
+                  {t.division_name ? `${t.name} · ${t.division_name}` : t.name}
                 </option>
               ))}
             </select>
@@ -185,10 +226,17 @@ export function PracticeSlotModal({
                 value={timeSlotId}
                 onChange={(e) => setTimeSlotId(e.target.value)}
                 required
-                className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+                disabled={!teamId}
+                className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20 disabled:bg-gray-50 disabled:text-gray-500"
               >
-                <option value="">Pick one…</option>
-                {timeSlots.map((t) => (
+                <option value="">
+                  {teamId
+                    ? availableTimeSlots.length === 0
+                      ? "No time slots in this division"
+                      : "Pick one…"
+                    : "Pick a team first"}
+                </option>
+                {availableTimeSlots.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.label}
                   </option>

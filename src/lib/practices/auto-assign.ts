@@ -21,24 +21,24 @@ type Team = {
   preferred_field_id: string | null;
 };
 
-const DEFAULT_DAY_ORDER = ["Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const DEFAULT_DAY_ORDER = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 /**
  * Pick `count` days from `priorityDays` (preferred first, then fallbacks),
- * skipping any (day, time, field) combination already in `taken`.
+ * skipping any (day, start_time, field) combination already in `taken`.
  * Returns null if it can't find `count` free days.
  */
 function chooseDays(
   count: number,
   priorityDays: string[],
-  timeSlotId: string,
+  startTime: string,
   fieldId: string,
   taken: Set<string>,
 ): string[] | null {
   const chosen: string[] = [];
   for (const day of priorityDays) {
     if (chosen.includes(day)) continue;
-    const key = `${day}|${timeSlotId}|${fieldId}`;
+    const key = `${day}|${startTime}|${fieldId}`;
     if (!taken.has(key)) chosen.push(day);
     if (chosen.length >= count) break;
   }
@@ -108,14 +108,16 @@ export async function autoAssignPractices(
   if (teamErr) return { success: false, error: teamErr.message };
   const allTeams = (teamRows ?? []) as Team[];
 
-  // 4. Existing recurring practice slots for this division — pre-seed `taken`
-  //    so we don't double-book against teams that already have a slot.
-  const teamIds = allTeams.map((t) => t.id);
-  const { data: existingRows } = teamIds.length
+  // 4. Existing recurring practice slots — pre-seed `taken` org-wide so we
+  //    don't double-book a field that's shared across divisions. Any slot on
+  //    a field this division can use blocks that (day, time, field) for us,
+  //    no matter which division owns it.
+  const eligibleFieldIds = venues.map((v) => v.id);
+  const { data: existingRows } = eligibleFieldIds.length
     ? await supabase
         .from("practice_slots")
-        .select("team_id, time_slot_id, field_id, practice_days, type")
-        .in("team_id", teamIds)
+        .select("team_id, time_slot_id, field_id, practice_days, type, start_time:practice_time_slots(start_time)")
+        .in("field_id", eligibleFieldIds)
         .eq("type", "recurring")
     : { data: [] };
   type ExistingSlot = {
@@ -124,14 +126,21 @@ export async function autoAssignPractices(
     field_id: string | null;
     practice_days: string[];
     type: string;
+    start_time: { start_time: string } | null;
   };
-  const existing = (existingRows ?? []) as ExistingSlot[];
-  const teamsWithSlot = new Set(existing.map((r) => r.team_id));
+  const existing = (existingRows ?? []) as unknown as ExistingSlot[];
+  // Our own teams that already have a slot — skip them in candidate selection.
+  const ourTeamIds = new Set(allTeams.map((t) => t.id));
+  const teamsWithSlot = new Set(
+    existing.filter((r) => ourTeamIds.has(r.team_id)).map((r) => r.team_id),
+  );
+  // Block (day, start_time, field) — clock-time, not time_slot_id, since
+  // different divisions have their own time_slot rows for the same wall clock.
   const taken = new Set<string>();
   for (const r of existing) {
-    if (!r.time_slot_id || !r.field_id) continue;
+    if (!r.field_id || !r.start_time?.start_time) continue;
     for (const day of r.practice_days) {
-      taken.add(`${day}|${r.time_slot_id}|${r.field_id}`);
+      taken.add(`${day}|${r.start_time.start_time}|${r.field_id}`);
     }
   }
 
@@ -177,12 +186,12 @@ export async function autoAssignPractices(
         const chosen = chooseDays(
           team.practices_per_week,
           dayPriority,
-          slot.id,
+          slot.start_time,
           field.id,
           taken,
         );
         if (chosen) {
-          chosen.forEach((d) => taken.add(`${d}|${slot.id}|${field.id}`));
+          chosen.forEach((d) => taken.add(`${d}|${slot.start_time}|${field.id}`));
           placements.push({
             team_id: team.id,
             time_slot_id: slot.id,

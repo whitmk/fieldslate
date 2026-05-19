@@ -10,7 +10,6 @@ import { DivisionBallIcon } from "./division-ball-icon";
 import { createClient } from "@/lib/supabase/client";
 import { DivisionWizard } from "./division-wizard";
 import { DivisionSchedulePanel } from "./division-schedule-panel";
-import { DivisionPracticesPanel } from "./division-practices-panel";
 import { ConflictResolverModal } from "./conflict-resolver-modal";
 import { LogRainoutModal } from "./log-rainout-modal";
 import { ExportPickerModal, type PrintMode } from "./export-picker-modal";
@@ -182,7 +181,6 @@ export function DivisionSection({
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Record<string, "schedule" | "practices">>({});
   const [editingDiv, setEditingDiv] = useState<Division | null>(null);
   const [editInitialData, setEditInitialData] = useState<WizardData | null>(null);
   const [fixingDivision, setFixingDivision] = useState<Division | null>(null);
@@ -444,41 +442,17 @@ export function DivisionSection({
 
                   {isExpanded && (
                     <div className="border-t border-gray-100">
-                      <div className="flex items-center gap-6 border-b border-gray-100 bg-white px-6">
-                        {(["schedule", "practices"] as const).map((tab) => {
-                          const isActive = (activeTab[div.id] ?? "schedule") === tab;
-                          return (
-                            <button
-                              key={tab}
-                              onClick={() =>
-                                setActiveTab((prev) => ({ ...prev, [div.id]: tab }))
-                              }
-                              className={`-mb-px border-b-2 px-1 py-3 text-sm font-semibold transition-colors ${
-                                isActive
-                                  ? "border-[#22C55E] text-[#0C1F3F]"
-                                  : "border-transparent text-gray-400 hover:text-[#0C1F3F]"
-                              }`}
-                            >
-                              {tab === "schedule" ? "Schedule" : "Practices"}
-                            </button>
-                          );
-                        })}
-                      </div>
                       <div className="bg-gray-50/40 px-5 py-4">
-                        {(activeTab[div.id] ?? "schedule") === "schedule" ? (
-                          <DivisionSchedulePanel
-                            divisionId={div.id}
-                            divisionName={div.name}
-                            leagueName={leagueName}
-                            leagueId={leagueId}
-                            triggerPrint={printTriggerId === div.id}
-                            printMode={printMode}
-                            onPrintDone={() => setPrintTriggerId(null)}
-                            onScheduleChange={() => router.refresh()}
-                          />
-                        ) : (
-                          <DivisionPracticesPanel divisionId={div.id} />
-                        )}
+                        <DivisionSchedulePanel
+                          divisionId={div.id}
+                          divisionName={div.name}
+                          leagueName={leagueName}
+                          leagueId={leagueId}
+                          triggerPrint={printTriggerId === div.id}
+                          printMode={printMode}
+                          onPrintDone={() => setPrintTriggerId(null)}
+                          onScheduleChange={() => router.refresh()}
+                        />
                       </div>
                     </div>
                   )}
