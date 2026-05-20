@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Clock,
   Copy,
+  Download,
   Filter,
   Loader2,
   Lock,
@@ -26,6 +27,7 @@ import {
   type SlotTimeSlot,
   type SlotVenue,
 } from "@/components/divisions/practice-slot-modal";
+import { PracticeExportModal } from "@/components/practices/practice-export-modal";
 import { autoAssignPractices } from "@/lib/practices/auto-assign";
 
 const DAY_OPTIONS: { key: string; label: string; short: string; full: string }[] = [
@@ -127,6 +129,7 @@ export function PracticesPageClient() {
   const [running, setRunning] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [modalState, setModalState] = useState<ModalState | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const [openPrefDivisions, setOpenPrefDivisions] = useState<Set<string>>(new Set());
   const [openTimeSlotDivisions, setOpenTimeSlotDivisions] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<Toast | null>(null);
@@ -598,6 +601,19 @@ export function PracticesPageClient() {
             )}
             {running ? "Assigning…" : "Auto-assign practices"}
           </button>
+          <button
+            onClick={() => setExportOpen(true)}
+            disabled={practiceSlots.length === 0}
+            title={
+              practiceSlots.length === 0
+                ? "Schedule at least one practice before exporting"
+                : "Download a coach-ready schedule"
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0C1F3F] transition-colors hover:border-[#22C55E]/40 hover:text-[#22C55E] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export practices
+          </button>
         </div>
         {feedback && (
           <div
@@ -795,6 +811,17 @@ export function PracticesPageClient() {
           venues={modalState.venues}
           onSaved={load}
           onClose={() => setModalState(null)}
+        />
+      )}
+
+      {exportOpen && (
+        <PracticeExportModal
+          divisions={divisions}
+          teams={allTeams}
+          practiceSlots={practiceSlots}
+          timeSlots={allTimeSlots}
+          venues={allVenues}
+          onClose={() => setExportOpen(false)}
         />
       )}
     </div>
