@@ -9,6 +9,7 @@ import {
   getOfficialTitle,
   getOfficialTitlePluralLower,
 } from "@/lib/utils/official-title";
+import { EditableLeagueHeader } from "@/components/dashboard/editable-league-header";
 import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
 import { ActivityLogPanel } from "@/components/dashboard/activity-log-panel";
@@ -330,24 +331,14 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       </Link>
 
       {/* Season header */}
-      <div className="flex items-start justify-between">
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-[#0C1F3F]">{league.name}</h1>
-            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${sportColor[league.sport] ?? "bg-gray-100 text-gray-600"}`}>
-              {league.sport}
-            </span>
-          </div>
-          <p className="text-sm text-gray-500">{league.season}</p>
-        </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-          league.status === "active"
-            ? "bg-[#22C55E]/10 text-[#22C55E]"
-            : "bg-gray-100 text-gray-500"
-        }`}>
-          {league.status}
-        </span>
-      </div>
+      <EditableLeagueHeader
+        leagueId={league.id}
+        initialName={league.name}
+        sport={league.sport}
+        season={league.season}
+        status={league.status}
+        sportClassName={sportColor[league.sport] ?? "bg-gray-100 text-gray-600"}
+      />
 
       {/* Schedule-conflict alert banner (double-booked fields only) */}
       {scheduleConflictCount > 0 && (

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Plus, CalendarDays, ChevronDown, Pencil,
+  Plus, CalendarDays, ChevronDown, Pencil, Trash2,
   Zap, CloudRain, ArrowLeftRight, FileDown, Users,
+  X, Loader2, AlertTriangle, CheckCircle2,
 } from "lucide-react";
 import { DivisionBallIcon } from "./division-ball-icon";
 import { createClient } from "@/lib/supabase/client";
@@ -191,6 +192,34 @@ export function DivisionSection({
   const [showExportPicker, setShowExportPicker] = useState(false);
   const [showLogRainout, setShowLogRainout] = useState(false);
 
+  // Delete-division state
+  const [deletingDivision, setDeletingDivision] = useState<Division | null>(null);
+  const [deleteInterleagueCount, setDeleteInterleagueCount] = useState(0);
+  const [loadingDeleteContext, setLoadingDeleteContext] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Toast
+  type Toast = { kind: "error" | "success"; message: string; id: number };
+  const [toast, setToast] = useState<Toast | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    },
+    [],
+  );
+  function notify(kind: Toast["kind"], message: string) {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    setToast({ kind, message, id: Date.now() });
+    toastTimerRef.current = window.setTimeout(
+      () => {
+        setToast(null);
+        toastTimerRef.current = null;
+      },
+      kind === "error" ? 8000 : 4000,
+    );
+  }
+
   const fetchDivisions = useCallback(async () => {
     const supabase = createClient();
     const [{ data }, { data: leagueData }] = await Promise.all([
@@ -258,6 +287,99 @@ export function DivisionSection({
     setEditingDiv(null);
     setEditInitialData(null);
     fetchDivisions();
+    onDivisionSaved?.();
+  }
+
+  async function handleDeleteClick(div: Division, e: React.MouseEvent) {
+    e.stopPropagation();
+    setDeletingDivision(div);
+    setDeleteInterleagueCount(0);
+    setLoadingDeleteContext(true);
+
+    const supabase = createClient();
+    // Count accepted interleague games for this division (status='scheduled'
+    // and interleague_org_id is set). We look at the home team's division.
+    const { data: teamRows } = await supabase
+      .from("teams")
+      .select("id")
+      .eq("division_id", div.id);
+    const teamIds = ((teamRows ?? []) as { id: string }[]).map((t) => t.id);
+    if (teamIds.length > 0) {
+      const { count } = await supabase
+        .from("games")
+        .select("id", { count: "exact", head: true })
+        .in("home_team_id", teamIds)
+        .eq("status", "scheduled")
+        .not("interleague_org_id", "is", null);
+      setDeleteInterleagueCount(count ?? 0);
+    }
+    setLoadingDeleteContext(false);
+  }
+
+  async function handleDeleteConfirm() {
+    if (!deletingDivision) return;
+    const div = deletingDivision;
+    setDeleteLoading(true);
+    const supabase = createClient();
+
+    // teams.division_id is ON DELETE SET NULL, and games reference teams
+    // directly. To remove all of the division's data we must explicitly:
+    //   1. delete games for those teams
+    //   2. delete the teams (cascades practice_slots,
+    //      team_availability_blocks, team_practice_slots)
+    //   3. delete the division (cascades practice_time_slots,
+    //      division_interleague_games, playoff rows, etc.)
+    const { data: teamRows, error: teamFetchErr } = await supabase
+      .from("teams")
+      .select("id")
+      .eq("division_id", div.id);
+
+    if (teamFetchErr) {
+      setDeleteLoading(false);
+      notify("error", `Couldn't load division teams: ${teamFetchErr.message}`);
+      return;
+    }
+    const teamIds = ((teamRows ?? []) as { id: string }[]).map((t) => t.id);
+
+    if (teamIds.length > 0) {
+      const { error: gameDelErr } = await supabase
+        .from("games")
+        .delete()
+        .or(
+          `home_team_id.in.(${teamIds.join(",")}),away_team_id.in.(${teamIds.join(",")})`,
+        );
+      if (gameDelErr) {
+        setDeleteLoading(false);
+        notify("error", `Couldn't delete division games: ${gameDelErr.message}`);
+        return;
+      }
+
+      const { error: teamDelErr } = await supabase
+        .from("teams")
+        .delete()
+        .in("id", teamIds);
+      if (teamDelErr) {
+        setDeleteLoading(false);
+        notify("error", `Couldn't delete division teams: ${teamDelErr.message}`);
+        return;
+      }
+    }
+
+    const { error: divDelErr } = await supabase
+      .from("divisions")
+      .delete()
+      .eq("id", div.id);
+
+    setDeleteLoading(false);
+    if (divDelErr) {
+      notify("error", `Couldn't delete division: ${divDelErr.message}`);
+      return;
+    }
+
+    setDivisions((prev) => prev.filter((d) => d.id !== div.id));
+    if (expandedId === div.id) setExpandedId(null);
+    setDeletingDivision(null);
+    notify("success", `Division "${div.name}" deleted`);
     onDivisionSaved?.();
   }
 
@@ -427,6 +549,15 @@ export function DivisionSection({
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
 
+                      {/* Delete trash */}
+                      <button
+                        onClick={(e) => handleDeleteClick(div, e)}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                        aria-label="Delete division"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+
                       {/* Expand chevron */}
                       <button
                         onClick={() => setExpandedId(isExpanded ? null : div.id)}
@@ -570,6 +701,202 @@ export function DivisionSection({
           }}
         />
       )}
+
+      {/* ── Delete division confirmation ─────────────────────────────────── */}
+      {deletingDivision && (
+        <DeleteDivisionDialog
+          division={deletingDivision}
+          interleagueGameCount={deleteInterleagueCount}
+          loadingContext={loadingDeleteContext}
+          deleting={deleteLoading}
+          onCancel={() => !deleteLoading && setDeletingDivision(null)}
+          onConfirm={handleDeleteConfirm}
+        />
+      )}
+
+      {/* ── Toast ────────────────────────────────────────────────────────── */}
+      {toast && (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-[60] flex justify-center px-4">
+          <div className="pointer-events-auto w-full max-w-md">
+            <DivisionToast
+              kind={toast.kind}
+              message={toast.message}
+              onDismiss={() => setToast(null)}
+            />
+          </div>
+        </div>
+      )}
     </>
+  );
+}
+
+// ── Delete division confirmation dialog ─────────────────────────────────────
+
+function DeleteDivisionDialog({
+  division,
+  interleagueGameCount,
+  loadingContext,
+  deleting,
+  onCancel,
+  onConfirm,
+}: {
+  division: Division;
+  interleagueGameCount: number;
+  loadingContext: boolean;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const [acknowledged, setAcknowledged] = useState(false);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={() => !deleting && onCancel()}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Trash2 className="h-4 w-4 text-red-500" />
+            <h2 className="font-semibold text-[#0C1F3F]">Delete division?</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={deleting}
+            aria-label="Close"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-4 px-6 py-5 text-sm text-gray-700">
+          <p>
+            <span className="font-semibold">{division.name}</span> will be permanently
+            deleted. This action cannot be undone.
+          </p>
+
+          <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-red-700">
+              What gets deleted
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-red-700">
+              <li>All teams in this division</li>
+              <li>All scheduled and rained-out games for those teams</li>
+              <li>Practice slots (recurring and one-off)</li>
+              <li>Practice time slot presets</li>
+              <li>Team practice preferences</li>
+              <li>Team availability blocks</li>
+            </ul>
+          </div>
+
+          {loadingContext ? (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Checking for accepted interleague games…
+            </div>
+          ) : interleagueGameCount > 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+                <div className="text-sm text-amber-800">
+                  <p className="font-semibold">
+                    {interleagueGameCount} accepted interleague game
+                    {interleagueGameCount !== 1 ? "s" : ""} will also be deleted.
+                  </p>
+                  <p className="mt-1 text-xs text-amber-700">
+                    The other org won&apos;t be notified. Reach out to them first if
+                    they&apos;re expecting these games.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <label className="flex items-start gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+              disabled={deleting}
+              className="mt-0.5 h-4 w-4 cursor-pointer rounded border-gray-300 text-red-500 focus:ring-red-500"
+            />
+            <span>I understand this can&apos;t be undone.</span>
+          </label>
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={deleting}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-700 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!acknowledged || deleting || loadingContext}
+            className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {deleting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Deleting…
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4" />
+                Delete division
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Toast banner ────────────────────────────────────────────────────────────
+
+function DivisionToast({
+  kind,
+  message,
+  onDismiss,
+}: {
+  kind: "error" | "success";
+  message: string;
+  onDismiss: () => void;
+}) {
+  const isError = kind === "error";
+  return (
+    <div
+      role="alert"
+      className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm shadow-lg ${
+        isError
+          ? "border-red-200 bg-red-50 text-red-700"
+          : "border-[#22C55E]/30 bg-[#22C55E]/5 text-[#16a34a]"
+      }`}
+    >
+      {isError ? (
+        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+      ) : (
+        <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
+      )}
+      <span className="flex-1">{message}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="-mr-1 -mt-1 rounded-md p-1 text-current/60 hover:bg-black/5"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
