@@ -32,6 +32,15 @@ function slotsPerField(start: string, end: string, duration: number, buffer: num
   return Math.max(1, Math.floor(w / interval) + 1);
 }
 
+function fmtMins12(mins: number): string {
+  const wrapped = ((mins % (24 * 60)) + 24 * 60) % (24 * 60);
+  const h24 = Math.floor(wrapped / 60);
+  const m = wrapped % 60;
+  const ampm = h24 < 12 ? "AM" : "PM";
+  const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
 function NumField({
   label, value, min, max, hint, onChange,
 }: {
@@ -96,6 +105,25 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
     return s;
   });
 
+  // Per-day "same time" toggle. Default checked iff start === end. The toggle
+  // is purely UI — the underlying day_windows still holds start + end, so the
+  // schema and downstream code stay unchanged.
+  const [sameTime, setSameTime] = useState<Partial<Record<PlayingDay, boolean>>>(() => {
+    const init: Partial<Record<PlayingDay, boolean>> = {};
+    for (const { key } of ORDERED_DAYS) {
+      const w = data.day_windows[key];
+      if (w) init[key] = w.start === w.end;
+    }
+    return init;
+  });
+
+  function isSameTime(day: PlayingDay): boolean {
+    const cached = sameTime[day];
+    if (cached !== undefined) return cached;
+    const w = data.day_windows[day] ?? DEFAULT_DAY_WINDOW;
+    return w.start === w.end;
+  }
+
   useEffect(() => {
     const supabase = createClient();
     supabase
@@ -132,12 +160,39 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
   }
 
   function updateGameWindow(day: PlayingDay, field: "start" | "end", value: string) {
+    const current = data.day_windows[day] ?? DEFAULT_DAY_WINDOW;
+    // When "same time" is on, both endpoints move together — the user only
+    // sees one picker but the underlying shape stays { start, end }.
+    if (field === "start" && isSameTime(day)) {
+      update({
+        day_windows: {
+          ...data.day_windows,
+          [day]: { start: value, end: value },
+        },
+      });
+      return;
+    }
     update({
       day_windows: {
         ...data.day_windows,
-        [day]: { ...(data.day_windows[day] ?? DEFAULT_DAY_WINDOW), [field]: value },
+        [day]: { ...current, [field]: value },
       },
     });
+  }
+
+  function toggleSameTime(day: PlayingDay) {
+    const next = !isSameTime(day);
+    setSameTime((prev) => ({ ...prev, [day]: next }));
+    if (next) {
+      // Snap end down to start so the single visible picker is authoritative.
+      const current = data.day_windows[day] ?? DEFAULT_DAY_WINDOW;
+      update({
+        day_windows: {
+          ...data.day_windows,
+          [day]: { start: current.start, end: current.start },
+        },
+      });
+    }
   }
 
   function handleScopeToggle(useLeague: boolean) {
@@ -240,6 +295,11 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
             const slots       = gameEnabled
               ? slotsPerField(gameWin.start, gameWin.end, data.game_duration, data.buffer_minutes)
               : 0;
+            const sameTimeOn  = isSameTime(key);
+            // Last game starts at the "Latest game start" (gameWin.end) and
+            // runs for game_duration. Buffer doesn't apply past the last
+            // game, so it's intentionally excluded from this end-time hint.
+            const lastEndStr  = fmtMins12(toMins(gameWin.end) + Number(data.game_duration || 0));
 
             return (
               <div key={key} className={!isLast ? "border-b border-gray-100" : ""}>
@@ -271,28 +331,53 @@ export function StepPlayingSchedule({ data, update, leagueId }: Props) {
 
                 {isExpanded && (
                   <div className="border-t border-gray-100 bg-gray-50/50 px-4 pb-3 pt-2.5">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-start gap-3">
                       <Toggle enabled={gameEnabled} onChange={() => toggleGameDay(key)} />
-                      <span className="w-20 flex-shrink-0 text-xs font-semibold text-gray-600">
+                      <span className="mt-1.5 w-20 flex-shrink-0 text-xs font-semibold text-gray-600">
                         Games
                       </span>
                       {gameEnabled ? (
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <div className="flex flex-1 flex-col gap-0.5">
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Start</p>
-                            <TimeInput value={gameWin.start} onChange={(v) => updateGameWindow(key, "start", v)} />
+                        <div className="flex min-w-0 flex-1 flex-col gap-2">
+                          <div className="flex items-end gap-2">
+                            <div className="flex flex-1 flex-col gap-0.5">
+                              <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                                Earliest game start
+                              </p>
+                              <TimeInput
+                                value={gameWin.start}
+                                onChange={(v) => updateGameWindow(key, "start", v)}
+                              />
+                            </div>
+                            {!sameTimeOn && (
+                              <>
+                                <span className="mb-2 flex-shrink-0 text-xs text-gray-300">–</span>
+                                <div className="flex flex-1 flex-col gap-0.5">
+                                  <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                                    Latest game start
+                                  </p>
+                                  <TimeInput
+                                    value={gameWin.end}
+                                    onChange={(v) => updateGameWindow(key, "end", v)}
+                                  />
+                                </div>
+                              </>
+                            )}
                           </div>
-                          <span className="flex-shrink-0 text-xs text-gray-300">–</span>
-                          <div className="flex flex-1 flex-col gap-0.5">
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">End</p>
-                            <TimeInput value={gameWin.end} onChange={(v) => updateGameWindow(key, "end", v)} />
-                          </div>
-                          <span className="w-14 flex-shrink-0 text-right text-[10px] text-gray-400">
-                            {slots} slot{slots !== 1 ? "s" : ""}/field
-                          </span>
+                          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-gray-600">
+                            <input
+                              type="checkbox"
+                              checked={sameTimeOn}
+                              onChange={() => toggleSameTime(key)}
+                              className="h-3.5 w-3.5 cursor-pointer rounded border-gray-300 text-[#22C55E] focus:ring-[#22C55E]"
+                            />
+                            Same time (one game per field)
+                          </label>
+                          <p className="text-[11px] text-gray-500">
+                            Last game ends ~{lastEndStr} · {slots} slot{slots !== 1 ? "s" : ""}/field
+                          </p>
                         </div>
                       ) : (
-                        <span className="flex-1 text-xs italic text-gray-300">Off</span>
+                        <span className="mt-1.5 flex-1 text-xs italic text-gray-300">Off</span>
                       )}
                     </div>
                   </div>
