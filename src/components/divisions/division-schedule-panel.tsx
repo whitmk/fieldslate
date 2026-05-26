@@ -23,6 +23,10 @@ import {
   type SlotAssignment,
   type UmpireOption,
 } from "@/components/umpires/umpire-slots";
+import {
+  getOfficialTitle,
+  getOfficialTitlePluralLower,
+} from "@/lib/utils/official-title";
 
 
 type PrintMode = "games";
@@ -32,6 +36,7 @@ interface Props {
   divisionName: string;
   leagueName: string;
   leagueId: string;
+  leagueSport?: string | null;
   triggerPrint?: boolean;
   printMode?: PrintMode;
   onPrintDone?: () => void;
@@ -78,7 +83,7 @@ function vsLabel(g: GameRow): string {
 }
 
 export function DivisionSchedulePanel({
-  divisionId, divisionName, leagueName, leagueId,
+  divisionId, divisionName, leagueName, leagueId, leagueSport,
   triggerPrint, printMode = "games", onPrintDone, onScheduleChange,
 }: Props) {
   const router = useRouter();
@@ -120,6 +125,8 @@ export function DivisionSchedulePanel({
   const [gameDurationMinutes, setGameDurationMinutes] = useState(90);
 
   const editInputRef = useRef<HTMLInputElement>(null);
+
+  const officialsPluralLower = getOfficialTitlePluralLower(leagueSport);
 
   const fetchGames = useCallback(async () => {
     setLoadingGames(true);
@@ -180,7 +187,8 @@ export function DivisionSchedulePanel({
         )
       : [];
     const roles = [...persistedRoles];
-    while (roles.length < upg) roles.push(`Umpire ${roles.length + 1}`);
+    const roleTitle = getOfficialTitle(leagueSport);
+    while (roles.length < upg) roles.push(`${roleTitle} ${roles.length + 1}`);
     setUmpireRoles(roles);
 
     const { data } = await supabase
@@ -253,7 +261,7 @@ export function DivisionSchedulePanel({
     );
 
     setLoadingGames(false);
-  }, [divisionId, leagueId]);
+  }, [divisionId, leagueId, leagueSport]);
 
   useEffect(() => { fetchGames(); }, [fetchGames]);
 
@@ -652,6 +660,7 @@ export function DivisionSchedulePanel({
           <AutoAssignUmpiresButton
             divisionId={divisionId}
             seasonId={leagueId}
+            sport={leagueSport}
             enabled
           />
         )}
@@ -925,7 +934,7 @@ export function DivisionSchedulePanel({
                       >
                         {umpireRoster.length === 0 ? (
                           <p className="text-[11px] text-gray-400">
-                            Add umpires on the Umpires tab to assign them here.
+                            Add {officialsPluralLower} on the Officials tab to assign them here.
                           </p>
                         ) : (
                           <UmpireSlots

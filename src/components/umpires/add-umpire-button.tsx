@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { getOfficialTitleLower } from "@/lib/utils/official-title";
 
-export type SeasonOption = { id: string; name: string };
+export type SeasonOption = { id: string; name: string; sport?: string | null };
 
 interface Props {
   seasons: SeasonOption[];
@@ -53,6 +54,13 @@ export function AddUmpireButton({ seasons }: Props) {
 
   const disabled = seasons.length === 0;
 
+  const selectedSeason = seasons.find((s) => s.id === seasonId);
+  const uniqueSports = Array.from(new Set(seasons.map((s) => s.sport ?? "")));
+  // Use the selected season's sport if one is chosen; otherwise the only sport
+  // across all seasons; otherwise fall back to neutral "official".
+  const contextSport = selectedSeason?.sport ?? (uniqueSports.length === 1 ? uniqueSports[0] : "");
+  const titleLower = getOfficialTitleLower(contextSport);
+
   return (
     <>
       <Button
@@ -62,7 +70,7 @@ export function AddUmpireButton({ seasons }: Props) {
         title={disabled ? "Create a season first" : undefined}
       >
         <Plus className="mr-2 h-4 w-4" />
-        Add umpire
+        Add {titleLower}
       </Button>
 
       {open && (
@@ -75,7 +83,7 @@ export function AddUmpireButton({ seasons }: Props) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-              <h2 className="font-semibold text-[#0C1F3F]">Add umpire</h2>
+              <h2 className="font-semibold text-[#0C1F3F]">Add {titleLower}</h2>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -166,7 +174,7 @@ export function AddUmpireButton({ seasons }: Props) {
                       Saving…
                     </>
                   ) : (
-                    "Add umpire"
+                    `Add ${titleLower}`
                   )}
                 </button>
               </div>

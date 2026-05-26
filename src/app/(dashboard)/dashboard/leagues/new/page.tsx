@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-const SPORTS = ["Baseball", "Soccer"] as const;
+const SPORTS = ["Baseball", "Softball", "Soccer"] as const;
 
 function getSeasonLabel(startDate: string): string {
   const month = new Date(startDate + "T00:00:00").getMonth() + 1;

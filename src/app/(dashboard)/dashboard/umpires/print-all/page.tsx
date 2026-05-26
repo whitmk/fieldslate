@@ -3,13 +3,14 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { AutoPrintOnLoad } from "@/components/umpires/auto-print-on-load";
 import { ManualPrintButton } from "@/components/umpires/manual-print-button";
+import { getOfficialTitle } from "@/lib/utils/official-title";
 
 type UmpireRow = {
   id: string;
   name: string;
   designation: string;
   season_id: string;
-  season: { name: string; season: string | null } | null;
+  season: { name: string; season: string | null; sport: string | null } | null;
 };
 
 type AssignmentRow = {
@@ -61,7 +62,7 @@ export default async function PrintAllUmpireSchedulesPage() {
     seasonIds.length > 0
       ? supabase
           .from("umpires")
-          .select("id, name, designation, season_id, season:leagues(name, season)")
+          .select("id, name, designation, season_id, season:leagues(name, season, sport)")
           .in("season_id", seasonIds)
           .order("name", { ascending: true })
       : Promise.resolve({ data: [] as unknown[] }),
@@ -107,13 +108,13 @@ export default async function PrintAllUmpireSchedulesPage() {
             className="inline-flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-[#0C1F3F]"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to umpires
+            Back to officials
           </Link>
           <h1 className="mt-3 text-2xl font-bold text-[#0C1F3F]">
             Print all schedules
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            One page per umpire. The print dialog should open automatically — if it
+            One page per official. The print dialog should open automatically — if it
             doesn&apos;t, click the button below.
           </p>
         </div>
@@ -122,14 +123,16 @@ export default async function PrintAllUmpireSchedulesPage() {
 
       {umpires.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-200 bg-white px-6 py-16 text-center text-sm text-gray-500 print:hidden">
-          No umpires on the roster yet.
+          No officials on the roster yet.
         </div>
       ) : (
         <div className="flex flex-col gap-12 print:gap-0">
           {umpires.map((u, idx) => {
             const rows = byUmpire.get(u.id) ?? [];
-            const designationLabel =
-              u.designation === "adult" ? "Adult umpire" : "Youth umpire";
+            const officialTitle = getOfficialTitle(u.season?.sport);
+            const designationLabel = `${
+              u.designation === "adult" ? "Adult" : "Youth"
+            } ${officialTitle.toLowerCase()}`;
             const seasonName = u.season?.name ?? "";
             const seasonLabel = u.season?.season ?? "";
             return (
@@ -141,7 +144,7 @@ export default async function PrintAllUmpireSchedulesPage() {
               >
                 <div className="border-b border-gray-200 pb-3">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 print:text-black">
-                    Umpire schedule
+                    {officialTitle} schedule
                   </p>
                   <h2 className="mt-1 text-xl font-bold text-[#0C1F3F] print:text-black">
                     {u.name}

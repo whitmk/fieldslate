@@ -187,7 +187,7 @@ export function ScheduleList({ games }: Props) {
             <th className="pb-3 font-medium text-gray-500">Matchup</th>
             <th className="pb-3 font-medium text-gray-500">Division</th>
             <th className="pb-3 font-medium text-gray-500">Venue</th>
-            <th className="pb-3 font-medium text-gray-500">Umpires</th>
+            <th className="pb-3 font-medium text-gray-500">Officials</th>
             <th className="pb-3 font-medium text-gray-500">Status</th>
             <th className="pb-3" />
           </tr>
@@ -295,7 +295,7 @@ function GameRowCells({
       )
     : [];
   while (umpireRoles.length < umpiresPerGame) {
-    umpireRoles.push(`Umpire ${umpireRoles.length + 1}`);
+    umpireRoles.push(`Official ${umpireRoles.length + 1}`);
   }
   const assignmentsByRole = new Map<string, string>();
   for (const a of game.game_umpires ?? []) {
@@ -316,7 +316,7 @@ function GameRowCells({
           <button
             onClick={onViewDetails}
             className="flex flex-wrap gap-1 text-left"
-            title="Manage umpire assignments"
+            title="Manage official assignments"
           >
             {umpireRoles.map((role) => {
               const name = assignmentsByRole.get(role);

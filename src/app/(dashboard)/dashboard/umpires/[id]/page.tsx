@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { UmpireScheduleActions } from "@/components/umpires/umpire-schedule-actions";
+import { getOfficialTitle } from "@/lib/utils/official-title";
 
 type ScheduleAssignment = {
   role: string;
@@ -50,7 +51,7 @@ export default async function UmpireSchedulePage({
 
   const { data: umpireRaw } = await supabase
     .from("umpires")
-    .select("id, name, designation, pay_rate, season_id, season:leagues(name, season, pay_tracking_enabled, pay_rate_mode)")
+    .select("id, name, designation, pay_rate, season_id, season:leagues(name, season, sport, pay_tracking_enabled, pay_rate_mode)")
     .eq("id", params.id)
     .single();
 
@@ -64,10 +65,14 @@ export default async function UmpireSchedulePage({
     season: {
       name: string;
       season: string | null;
+      sport: string | null;
       pay_tracking_enabled: boolean;
       pay_rate_mode: string;
     } | null;
   };
+
+  const officialTitle = getOfficialTitle(umpire.season?.sport);
+  const officialLower = officialTitle.toLowerCase();
 
   const payEnabled = umpire.season?.pay_tracking_enabled ?? false;
   const payMode = umpire.season?.pay_rate_mode === "per_role" ? "per_role" : "per_umpire";
@@ -118,8 +123,9 @@ export default async function UmpireSchedulePage({
 
   const unpaidCount = payEnabled ? rows.filter((r) => !r.paid).length : 0;
 
-  const designationLabel =
-    umpire.designation === "adult" ? "Adult umpire" : "Youth umpire";
+  const designationLabel = `${
+    umpire.designation === "adult" ? "Adult" : "Youth"
+  } ${officialLower}`;
   const seasonName = umpire.season?.name ?? "";
   const seasonLabel = umpire.season?.season ?? "";
 
@@ -130,13 +136,13 @@ export default async function UmpireSchedulePage({
         className="inline-flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-[#0C1F3F] print:hidden"
       >
         <ArrowLeft className="h-4 w-4" />
-        All umpires
+        All officials
       </Link>
 
       <div className="flex items-start justify-between gap-3 print:items-baseline">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 print:text-black">
-            Umpire schedule
+            {officialTitle} schedule
           </p>
           <h1 className="mt-1 text-2xl font-bold text-[#0C1F3F] print:text-black">
             {umpire.name}

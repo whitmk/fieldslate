@@ -12,21 +12,12 @@ import { StepCoaches } from "./steps/step-coaches";
 import { StepReview } from "./steps/step-review";
 import { DEFAULT_WIZARD_DATA, type WizardData } from "./wizard-types";
 import type { Division } from "@/types/database";
-
-const STEPS = [
-  { label: "Basics" },
-  { label: "Schedule" },
-  { label: "Fields" },
-  { label: "Umpires" },
-  { label: "Format" },
-  { label: "Interleague" },
-  { label: "Coaches" },
-  { label: "Review" },
-];
+import { getOfficialTitlePlural } from "@/lib/utils/official-title";
 
 interface Props {
   leagueId: string;
   leagueName: string;
+  leagueSport?: string;
   leagueStartDate?: string;
   leagueEndDate?: string;
   onClose: () => void;
@@ -35,7 +26,19 @@ interface Props {
   initialData?: WizardData;
 }
 
-export function DivisionWizard({ leagueId, leagueName, leagueStartDate, leagueEndDate, onClose, onComplete, editDivision, initialData }: Props) {
+export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartDate, leagueEndDate, onClose, onComplete, editDivision, initialData }: Props) {
+  const officialsPlural = getOfficialTitlePlural(leagueSport);
+
+  const STEPS = [
+    { label: "Basics" },
+    { label: "Schedule" },
+    { label: "Fields" },
+    { label: officialsPlural },
+    { label: "Format" },
+    { label: "Interleague" },
+    { label: "Coaches" },
+    { label: "Review" },
+  ];
   const isEditMode = !!editDivision;
   const draftKey = `fieldslate:division-draft:${leagueId}`;
 
@@ -98,7 +101,7 @@ export function DivisionWizard({ leagueId, leagueName, leagueStartDate, leagueEn
     <StepBasics key="basics" data={data} update={update} />,
     <StepPlayingSchedule key="schedule" data={data} update={update} leagueId={leagueId} />,
     <StepFields key="fields" data={data} update={update} leagueId={leagueId} />,
-    <StepUmpires key="umpires" data={data} update={update} />,
+    <StepUmpires key="umpires" data={data} update={update} sport={leagueSport} />,
     <StepFormat key="format" data={data} update={update} />,
     <StepInterleague key="interleague" data={data} update={update} />,
     <StepCoaches key="coaches" data={data} update={update} leagueId={leagueId} />,
@@ -107,6 +110,7 @@ export function DivisionWizard({ leagueId, leagueName, leagueStartDate, leagueEn
       data={data}
       originalData={isEditMode ? initialData : undefined}
       leagueId={leagueId}
+      sport={leagueSport}
       onEdit={setStep}
       onComplete={handleComplete}
       divisionId={editDivision?.id}

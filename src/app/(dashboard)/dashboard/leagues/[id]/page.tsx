@@ -4,8 +4,11 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, UserCheck } from "lucide-react";
-import { LeaguePaySettings } from "@/components/umpires/league-pay-settings";
 import type { League } from "@/types/database";
+import {
+  getOfficialTitle,
+  getOfficialTitlePluralLower,
+} from "@/lib/utils/official-title";
 import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
 import { ActivityLogPanel } from "@/components/dashboard/activity-log-panel";
@@ -53,7 +56,6 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     { data: allGamesRaw },
     { data: allDivVenuesRaw },
     { data: blackoutDatesRaw },
-    { data: roleRatesRaw },
     { data: allInterleagueGamesRaw },
   ] = await Promise.all([
     supabase.from("divisions").select("*").eq("league_id", league.id).order("created_at", { ascending: true }),
@@ -67,7 +69,6 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       .eq("league_id", league.id),
     supabase.from("division_venues").select("division_id, venue_id"),
     supabase.from("blackout_dates").select("date, label").eq("league_id", league.id),
-    supabase.from("umpire_role_rates").select("role, rate").eq("season_id", league.id),
     supabase.from("division_interleague_games").select("division_id, game_count"),
   ]);
 
@@ -304,29 +305,17 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     }
   }
 
-  // Collect all unique umpire roles across the season's divisions
-  const allRolesSet = new Set<string>();
-  for (const div of allDivisions) {
-    const roles = div.umpire_roles;
-    if (Array.isArray(roles)) {
-      for (const r of roles) {
-        if (typeof r === "string" && r) allRolesSet.add(r);
-      }
-    }
-  }
-  const availableRoles = Array.from(allRolesSet);
-  const initialRoleRates = ((roleRatesRaw ?? []) as { role: string; rate: number }[]).map((r) => ({
-    role: r.role,
-    rate: r.rate,
-  }));
-
   const divisionNames: Record<string, string> = {};
   for (const d of allDivisions) divisionNames[d.id] = d.name;
 
   const sportColor: Record<string, string> = {
     Baseball: "bg-blue-50 text-blue-700",
+    Softball: "bg-amber-50 text-amber-700",
     Soccer: "bg-emerald-50 text-emerald-700",
   };
+
+  const officialTitle = getOfficialTitle(league.sport);
+  const officialPluralLower = getOfficialTitlePluralLower(league.sport);
 
   return (
     <div className="flex flex-col gap-6">
@@ -375,16 +364,16 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         </div>
       )}
 
-      {/* Umpire shortfall alert */}
+      {/* Official shortfall alert */}
       {umpireShortfallCount > 0 && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5">
           <UserCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
           <div>
             <p className="text-sm font-semibold text-amber-800">
-              Umpire shortfall — {umpireShortfallCount} game{umpireShortfallCount !== 1 ? "s" : ""} still need umpires assigned
+              {officialTitle} shortfall — {umpireShortfallCount} game{umpireShortfallCount !== 1 ? "s" : ""} still need {officialPluralLower} assigned
             </p>
             <p className="mt-0.5 text-xs text-amber-700">
-              Use Auto-assign umpires on each division, or fill slots manually from the schedule.
+              Use Auto-assign {officialPluralLower} on each division, or fill slots manually from the schedule.
             </p>
           </div>
         </div>
@@ -428,18 +417,6 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       <BlackoutDatesPanel
         leagueId={league.id}
         initialAffectedGames={blackoutAffectedGames}
-      />
-
-      <LeaguePaySettings
-        leagueId={league.id}
-        initialEnabled={(league as unknown as { pay_tracking_enabled: boolean }).pay_tracking_enabled ?? false}
-        initialMode={
-          ((league as unknown as { pay_rate_mode?: string }).pay_rate_mode === "per_role"
-            ? "per_role"
-            : "per_umpire") as "per_umpire" | "per_role"
-        }
-        availableRoles={availableRoles}
-        initialRoleRates={initialRoleRates}
       />
 
       <ActivityLogPanel leagueId={league.id} />

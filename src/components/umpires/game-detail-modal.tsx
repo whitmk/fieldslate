@@ -12,6 +12,10 @@ import {
   type SlotAssignment,
   type UmpireOption,
 } from "./umpire-slots";
+import {
+  getOfficialTitle,
+  getOfficialTitlePlural,
+} from "@/lib/utils/official-title";
 
 export type GameDetailGame = {
   id: string;
@@ -66,6 +70,7 @@ type Loaded = {
   durationMinutes: number;
   assignments: SlotAssignment[];
   umpires: UmpireOption[];
+  sport: string | null;
 };
 
 const gameStatusVariants: Record<
@@ -139,24 +144,33 @@ export function GameDetailModal({ game, onClose }: Props) {
           role: r.role,
         }));
 
-      // Umpire roster for the season
-      const { data: umpiresRaw, error: umpiresErr } = await supabase
-        .from("umpires")
-        .select("id, name")
-        .eq("season_id", game.league_id)
-        .order("name");
+      // Umpire roster for the season + league sport
+      const [{ data: umpiresRaw, error: umpiresErr }, { data: leagueRaw }] = await Promise.all([
+        supabase
+          .from("umpires")
+          .select("id, name")
+          .eq("season_id", game.league_id)
+          .order("name"),
+        supabase
+          .from("leagues")
+          .select("sport")
+          .eq("id", game.league_id)
+          .single(),
+      ]);
       if (umpiresErr) {
         if (!cancelled) setError(umpiresErr.message);
       }
       const umpires = (umpiresRaw ?? []) as UmpireOption[];
+      const sport = (leagueRaw as { sport: string | null } | null)?.sport ?? null;
 
       const roles = Array.isArray(division?.umpire_roles)
         ? (division!.umpire_roles as unknown[]).filter(
             (r): r is string => typeof r === "string",
           )
         : [];
+      const roleTitle = getOfficialTitle(sport);
       while (roles.length < (division?.umpires_per_game ?? 0)) {
-        roles.push(`Umpire ${roles.length + 1}`);
+        roles.push(`${roleTitle} ${roles.length + 1}`);
       }
 
       const settings = (division?.settings ?? {}) as { game_duration?: number };
@@ -172,6 +186,7 @@ export function GameDetailModal({ game, onClose }: Props) {
           durationMinutes,
           assignments,
           umpires,
+          sport,
         });
         setLoading(false);
       }
@@ -258,7 +273,7 @@ export function GameDetailModal({ game, onClose }: Props) {
             <div className="mb-3 flex items-center gap-2">
               <UserCheck className="h-3.5 w-3.5 text-gray-400" />
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Umpires
+                {getOfficialTitlePlural(loaded?.sport)}
               </p>
               {loaded && loaded.umpiresPerGame > 0 && (
                 <span className="text-xs text-gray-400">
@@ -275,17 +290,17 @@ export function GameDetailModal({ game, onClose }: Props) {
               <p className="text-xs text-red-600">{error}</p>
             ) : !loaded || loaded.umpiresPerGame === 0 ? (
               <p className="text-xs text-gray-400">
-                This division doesn&apos;t require umpires.
+                This division doesn&apos;t require {getOfficialTitlePlural(loaded?.sport).toLowerCase()}.
               </p>
             ) : loaded.umpires.length === 0 ? (
               <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2.5">
                 <p className="text-xs text-amber-700">
-                  No umpires on this season&apos;s roster yet.{" "}
+                  No {getOfficialTitlePlural(loaded.sport).toLowerCase()} on this season&apos;s roster yet.{" "}
                   <Link
                     href="/dashboard/umpires"
                     className="font-semibold underline-offset-2 hover:underline"
                   >
-                    Add some on the Umpires tab
+                    Add some on the Officials tab
                   </Link>
                   .
                 </p>

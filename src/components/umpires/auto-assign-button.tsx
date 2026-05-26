@@ -4,15 +4,18 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { UserCheck, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { autoAssignUmpires } from "@/lib/umpires/auto-assign";
+import { getOfficialTitlePluralLower } from "@/lib/utils/official-title";
 
 interface Props {
   divisionId: string;
   seasonId: string;
-  /** Hide the button entirely when the division doesn't require umpires. */
+  /** Hide the button entirely when the division doesn't require officials. */
   enabled: boolean;
+  sport?: string | null;
 }
 
-export function AutoAssignUmpiresButton({ divisionId, seasonId, enabled }: Props) {
+export function AutoAssignUmpiresButton({ divisionId, seasonId, enabled, sport }: Props) {
+  const officialsLower = getOfficialTitlePluralLower(sport);
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<
@@ -48,7 +51,7 @@ export function AutoAssignUmpiresButton({ divisionId, seasonId, enabled }: Props
         ) : (
           <UserCheck className="h-4 w-4" />
         )}
-        {busy ? "Assigning umpires…" : "Auto-assign umpires"}
+        {busy ? `Assigning ${officialsLower}…` : `Auto-assign ${officialsLower}`}
       </button>
 
       {result?.kind === "ok" && (

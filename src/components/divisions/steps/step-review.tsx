@@ -11,6 +11,7 @@ import { logActivity } from "@/lib/activity-log";
 import Link from "next/link";
 import type { WizardData } from "../wizard-types";
 import { generateSchedule, type ScheduleConflict } from "@/lib/schedule/generate-schedule";
+import { getOfficialTitlePlural } from "@/lib/utils/official-title";
 
 type GenerateKind = "games";
 
@@ -24,6 +25,7 @@ interface Props {
   data: WizardData;
   originalData?: WizardData; // populated when editing; used for change analysis
   leagueId: string;
+  sport?: string | null;
   onEdit: (step: number) => void;
   onComplete: () => void;
   divisionId?: string;
@@ -99,8 +101,9 @@ type SaveOnlyResult = {
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export function StepReview({
-  data, originalData, leagueId, onEdit, onComplete, divisionId,
+  data, originalData, leagueId, sport, onEdit, onComplete, divisionId,
 }: Props) {
+  const officialsPlural = getOfficialTitlePlural(sport);
   const [savingOnly, setSavingOnly] = useState(false);
   const [savingRegen, setSavingRegen] = useState(false);
   const [regenKind, setRegenKind] = useState<GenerateKind | null>(null);
@@ -646,9 +649,9 @@ export function StepReview({
         )}
       </Section>
 
-      <Section title="Umpires" step={3} onEdit={onEdit}>
+      <Section title={officialsPlural} step={3} onEdit={onEdit}>
         <Row
-          label="Umpires per game"
+          label={`${officialsPlural} per game`}
           value={
             data.umpires_per_game === 0
               ? "Not required"

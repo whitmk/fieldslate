@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createClient } from "@/lib/supabase/server";
+import { getOfficialTitle } from "@/lib/utils/official-title";
 
 export const runtime = "nodejs";
 
@@ -55,9 +56,10 @@ function fmtTime(scheduled_at: string): string {
 function buildEmailHtml(params: {
   umpireName: string;
   designationLabel: string;
+  officialTitle: string;
   rows: AssignmentRow[];
 }): string {
-  const { umpireName, designationLabel, rows } = params;
+  const { umpireName, designationLabel, officialTitle, rows } = params;
   const tableRows = rows
     .map((r) => {
       const g = r.game;
@@ -79,7 +81,7 @@ function buildEmailHtml(params: {
   return `<!doctype html>
 <html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;max-width:720px;margin:0 auto;padding:24px;">
   <div style="border-bottom:2px solid #22C55E;padding-bottom:16px;margin-bottom:16px;">
-    <p style="margin:0;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:1px;">Umpire schedule</p>
+    <p style="margin:0;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:1px;">${escapeHtml(officialTitle)} schedule</p>
     <h1 style="margin:4px 0 0;font-size:24px;">${escapeHtml(umpireName)}</h1>
     <p style="margin:4px 0 0;color:#666;font-size:14px;">${escapeHtml(designationLabel)}${seasonName ? ` · ${escapeHtml(seasonName)}` : ""}</p>
   </div>
@@ -146,21 +148,25 @@ export async function POST(
   // Load umpire — RLS scopes to the owner's seasons.
   const { data: umpireRaw, error: umpireErr } = await supabase
     .from("umpires")
-    .select("id, name, designation")
+    .select("id, name, designation, season:leagues(sport)")
     .eq("id", params.id)
     .single();
 
   if (umpireErr || !umpireRaw) {
     return NextResponse.json(
-      { error: umpireErr?.message ?? "Umpire not found." },
+      { error: umpireErr?.message ?? "Official not found." },
       { status: 404 },
     );
   }
-  const umpire = umpireRaw as {
+  const umpire = umpireRaw as unknown as {
     id: string;
     name: string;
     designation: string;
+    season: { sport: string | null } | null;
   };
+
+  const officialTitle = getOfficialTitle(umpire.season?.sport);
+  const officialLower = officialTitle.toLowerCase();
 
   // Load this umpire's assignments + their games.
   const { data: assignsRaw, error: assignsErr } = await supabase
@@ -189,12 +195,14 @@ export async function POST(
       return aT - bT;
     });
 
-  const designationLabel =
-    umpire.designation === "adult" ? "Adult umpire" : "Youth umpire";
+  const designationLabel = `${
+    umpire.designation === "adult" ? "Adult" : "Youth"
+  } ${officialLower}`;
 
   const html = buildEmailHtml({
     umpireName: umpire.name,
     designationLabel,
+    officialTitle,
     rows,
   });
 
@@ -202,7 +210,7 @@ export async function POST(
   const sendRes = await resend.emails.send({
     from: fromAddress,
     to: email,
-    subject: `Umpire schedule — ${umpire.name}`,
+    subject: `${officialTitle} schedule — ${umpire.name}`,
     html,
   });
 

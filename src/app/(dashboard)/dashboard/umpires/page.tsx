@@ -5,6 +5,7 @@ import { UserCheck, Printer } from "lucide-react";
 import { AddUmpireButton } from "@/components/umpires/add-umpire-button";
 import { UmpireList, type UmpireRow, type SeasonPaySettings } from "@/components/umpires/umpire-list";
 import { PayReportButton } from "@/components/umpires/pay-report-button";
+import { LeaguePaySettings } from "@/components/umpires/league-pay-settings";
 
 export default async function UmpiresPage() {
   const supabase = createClient();
@@ -15,11 +16,11 @@ export default async function UmpiresPage() {
   const [{ data: rawUmpires }, { data: rawSeasons }] = await Promise.all([
     supabase
       .from("umpires")
-      .select("id, name, designation, season_id, pay_rate, season:leagues(name)")
+      .select("id, name, designation, season_id, pay_rate, season:leagues(name, sport)")
       .order("name", { ascending: true }),
     supabase
       .from("leagues")
-      .select("id, name, pay_tracking_enabled, pay_rate_mode")
+      .select("id, name, sport, pay_tracking_enabled, pay_rate_mode")
       .eq("owner_id", user!.id)
       .order("name", { ascending: true }),
   ]);
@@ -28,6 +29,7 @@ export default async function UmpiresPage() {
   const seasons = (rawSeasons ?? []) as {
     id: string;
     name: string;
+    sport: string;
     pay_tracking_enabled: boolean;
     pay_rate_mode: string;
   }[];
@@ -36,6 +38,7 @@ export default async function UmpiresPage() {
 
   const seasonPaySettings: SeasonPaySettings[] = seasons.map((s) => ({
     id: s.id,
+    sport: s.sport,
     pay_tracking_enabled: s.pay_tracking_enabled ?? false,
     pay_rate_mode: (s.pay_rate_mode === "per_role" ? "per_role" : "per_umpire") as
       | "per_umpire"
@@ -43,13 +46,45 @@ export default async function UmpiresPage() {
   }));
 
   const anyPayTracking = seasonPaySettings.some((s) => s.pay_tracking_enabled);
-  const simpleSeasons = seasons.map((s) => ({ id: s.id, name: s.name }));
+  const simpleSeasons = seasons.map((s) => ({ id: s.id, name: s.name, sport: s.sport }));
+
+  // Per-season umpire roles (for per-role rates) + saved rates
+  const seasonIds = seasons.map((s) => s.id);
+  const [{ data: rawDivisions }, { data: rawRoleRates }] = await Promise.all([
+    seasonIds.length > 0
+      ? supabase
+          .from("divisions")
+          .select("league_id, umpire_roles")
+          .in("league_id", seasonIds)
+      : Promise.resolve({ data: [] as unknown[] }),
+    seasonIds.length > 0
+      ? supabase
+          .from("umpire_role_rates")
+          .select("season_id, role, rate")
+          .in("season_id", seasonIds)
+      : Promise.resolve({ data: [] as unknown[] }),
+  ]);
+
+  const rolesBySeason = new Map<string, Set<string>>();
+  for (const d of (rawDivisions ?? []) as { league_id: string; umpire_roles: unknown }[]) {
+    if (!Array.isArray(d.umpire_roles)) continue;
+    if (!rolesBySeason.has(d.league_id)) rolesBySeason.set(d.league_id, new Set());
+    for (const r of d.umpire_roles) {
+      if (typeof r === "string" && r) rolesBySeason.get(d.league_id)!.add(r);
+    }
+  }
+
+  const ratesBySeason = new Map<string, { role: string; rate: number }[]>();
+  for (const r of (rawRoleRates ?? []) as { season_id: string; role: string; rate: number }[]) {
+    if (!ratesBySeason.has(r.season_id)) ratesBySeason.set(r.season_id, []);
+    ratesBySeason.get(r.season_id)!.push({ role: r.role, rate: r.rate });
+  }
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Umpires</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Officials</h1>
           <p className="mt-1 text-sm text-gray-500">
             Manage the officials available to your seasons.
           </p>
@@ -73,13 +108,13 @@ export default async function UmpiresPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Umpires</CardTitle>
+          <CardTitle>All officials</CardTitle>
         </CardHeader>
         <CardContent>
           {umpires.length === 0 ? (
             <div className="flex flex-col items-center py-12 text-center">
               <UserCheck className="mb-3 h-8 w-8 text-gray-300" />
-              <p className="font-medium text-gray-900">No umpires yet</p>
+              <p className="font-medium text-gray-900">No officials yet</p>
               <p className="mt-1 text-sm text-gray-500">
                 Add officials so divisions can require them for game scheduling.
               </p>
@@ -93,6 +128,36 @@ export default async function UmpiresPage() {
           )}
         </CardContent>
       </Card>
+
+      {seasons.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-[#0C1F3F]">Pay tracking</h2>
+            <p className="mt-0.5 text-sm text-gray-500">
+              Enable pay tracking per season and set rates here. Pay rates and totals
+              show on official schedules and the pay report.
+            </p>
+          </div>
+          <div className="flex flex-col gap-4">
+            {seasons.map((s) => (
+              <LeaguePaySettings
+                key={s.id}
+                leagueId={s.id}
+                seasonName={s.name}
+                sport={s.sport}
+                initialEnabled={s.pay_tracking_enabled ?? false}
+                initialMode={
+                  ((s.pay_rate_mode === "per_role" ? "per_role" : "per_umpire")) as
+                    | "per_umpire"
+                    | "per_role"
+                }
+                availableRoles={Array.from(rolesBySeason.get(s.id) ?? [])}
+                initialRoleRates={ratesBySeason.get(s.id) ?? []}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

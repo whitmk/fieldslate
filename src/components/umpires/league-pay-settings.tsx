@@ -4,6 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DollarSign, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  getOfficialTitle,
+  getOfficialTitleLower,
+  getOfficialTitlePluralLower,
+} from "@/lib/utils/official-title";
 
 interface RoleRate {
   role: string;
@@ -12,6 +17,10 @@ interface RoleRate {
 
 interface Props {
   leagueId: string;
+  /** Optional — when present, rendered as a subheading so multiple seasons can stack. */
+  seasonName?: string;
+  /** Sport for this season — drives "Umpire" vs "Referee" labels. */
+  sport?: string | null;
   initialEnabled: boolean;
   initialMode: "per_umpire" | "per_role";
   availableRoles: string[];
@@ -20,6 +29,8 @@ interface Props {
 
 export function LeaguePaySettings({
   leagueId,
+  seasonName,
+  sport,
   initialEnabled,
   initialMode,
   availableRoles,
@@ -34,6 +45,10 @@ export function LeaguePaySettings({
   const [savingRates, setSavingRates] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [changingMode, setChangingMode] = useState(false);
+
+  const titleSingular = getOfficialTitle(sport);
+  const titleSingularLower = getOfficialTitleLower(sport);
+  const titlePluralLower = getOfficialTitlePluralLower(sport);
 
   async function handleToggle() {
     const newEnabled = !enabled;
@@ -82,13 +97,22 @@ export function LeaguePaySettings({
     <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center gap-2">
         <DollarSign className="h-4 w-4 text-gray-400" />
-        <h3 className="font-semibold text-[#0C1F3F]">Umpire pay tracking</h3>
+        <div className="flex flex-col">
+          <h3 className="font-semibold text-[#0C1F3F]">
+            {titleSingular} pay tracking
+          </h3>
+          {seasonName && (
+            <p className="text-xs text-gray-400">{seasonName}</p>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-gray-700">Enable pay tracking</p>
-          <p className="text-xs text-gray-400">Show pay rates and totals throughout the umpire UI.</p>
+          <p className="text-xs text-gray-400">
+            Show pay rates and totals throughout the {titleSingularLower} UI.
+          </p>
         </div>
         <button
           onClick={handleToggle}
@@ -123,14 +147,14 @@ export function LeaguePaySettings({
                       : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
-                  {m === "per_umpire" ? "Per umpire" : "Per role"}
+                  {m === "per_umpire" ? `Per ${titleSingularLower}` : "Per role"}
                 </button>
               ))}
             </div>
             <p className="text-xs text-gray-400">
               {mode === "per_umpire"
-                ? "Each umpire has their own flat per-game rate. Set it on the Umpires page."
-                : "Rates are set by role (e.g. Plate, Field). All umpires filling that role earn the same amount."}
+                ? `Each ${titleSingularLower} has their own flat per-game rate. Set it on the row above.`
+                : `Rates are set by role (e.g. Plate, Field). All ${titlePluralLower} filling that role earn the same amount.`}
             </p>
           </div>
 
@@ -139,7 +163,7 @@ export function LeaguePaySettings({
               <span className="text-sm font-medium text-gray-700">Role rates</span>
               {availableRoles.length === 0 ? (
                 <p className="text-xs text-gray-400">
-                  No umpire roles are configured for this season&apos;s divisions yet.
+                  No {titleSingularLower} roles are configured for this season&apos;s divisions yet.
                 </p>
               ) : (
                 <>

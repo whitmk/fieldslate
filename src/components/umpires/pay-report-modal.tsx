@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X, Printer, Download, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { getOfficialTitlePlural } from "@/lib/utils/official-title";
 import type { SeasonPaySettings } from "./umpire-list";
 
 interface UmpireReport {
@@ -140,7 +141,7 @@ export function PayReportModal({ seasonPaySettings, onClose }: Props) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "umpire-pay-report.csv";
+    a.download = "officials-pay-report.csv";
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -148,6 +149,18 @@ export function PayReportModal({ seasonPaySettings, onClose }: Props) {
   const showSeason = new Set(rows.map((r) => r.season_id)).size > 1;
   const grandTotal = rows.reduce((s, r) => s + r.total_pay, 0);
   const grandUnpaid = rows.reduce((s, r) => s + r.unpaid_games, 0);
+
+  // Title reflects the sport(s) of the seasons with pay tracking enabled.
+  // Mixed sports → neutral "Officials".
+  const enabledSports = Array.from(
+    new Set(
+      seasonPaySettings
+        .filter((s) => s.pay_tracking_enabled)
+        .map((s) => s.sport ?? ""),
+    ),
+  );
+  const reportTitleSport = enabledSports.length === 1 ? enabledSports[0] : "";
+  const reportTitlePlural = getOfficialTitlePlural(reportTitleSport);
 
   return (
     <div
@@ -161,7 +174,7 @@ export function PayReportModal({ seasonPaySettings, onClose }: Props) {
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 print:hidden">
-          <h2 className="font-semibold text-[#0C1F3F]">Umpire pay report</h2>
+          <h2 className="font-semibold text-[#0C1F3F]">{reportTitlePlural} pay report</h2>
           <div className="flex items-center gap-2">
             <button
               onClick={exportCsv}
@@ -190,7 +203,7 @@ export function PayReportModal({ seasonPaySettings, onClose }: Props) {
 
         {/* Print-only header */}
         <div className="hidden px-0 pb-4 print:block">
-          <h2 className="text-xl font-bold text-black">Umpire pay report</h2>
+          <h2 className="text-xl font-bold text-black">{reportTitlePlural} pay report</h2>
           <p className="text-sm text-gray-500">
             Generated {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
           </p>
@@ -204,7 +217,7 @@ export function PayReportModal({ seasonPaySettings, onClose }: Props) {
             </div>
           ) : rows.length === 0 ? (
             <p className="py-12 text-center text-sm text-gray-500">
-              No umpires found in pay-tracked seasons.
+              No officials found in pay-tracked seasons.
             </p>
           ) : (
             <table className="w-full text-sm">

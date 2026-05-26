@@ -28,7 +28,7 @@ const navItems = [
   { href: "/dashboard/teams", label: "Teams", icon: Users },
   { href: "/dashboard/venues", label: "Venues", icon: MapPin },
   { href: "/dashboard/divisions", label: "Divisions", icon: Layers },
-  { href: "/dashboard/umpires", label: "Umpires", icon: UserCheck },
+  { href: "/dashboard/umpires", label: "Officials", icon: UserCheck },
   { href: "/dashboard/interleague", label: "Interleague", icon: Building2 },
   { href: "/dashboard/playoffs", label: "Playoffs", icon: Medal },
   { href: "/dashboard/snack-shack", label: "Snack Shack", icon: ShoppingBag },

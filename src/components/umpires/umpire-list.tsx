@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Pencil, Trash2, X, Loader2, CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
+import { getOfficialTitleLower } from "@/lib/utils/official-title";
 
 export type UmpireRow = {
   id: string;
@@ -13,11 +14,12 @@ export type UmpireRow = {
   designation: string;
   season_id: string;
   pay_rate: number | null;
-  season: { name: string } | null;
+  season: { name: string; sport?: string | null } | null;
 };
 
 export type SeasonPaySettings = {
   id: string;
+  sport?: string | null;
   pay_tracking_enabled: boolean;
   pay_rate_mode: "per_umpire" | "per_role";
 };
@@ -46,7 +48,9 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Pro
     const { error } = await supabase.from("umpires").delete().eq("id", umpire.id);
     setPending(null);
     if (error) {
-      alert(`Failed to delete umpire: ${error.message}`);
+      alert(
+        `Failed to delete ${getOfficialTitleLower(umpire.season?.sport)}: ${error.message}`,
+      );
       return;
     }
     setDeleting(null);
@@ -224,7 +228,9 @@ function EditUmpireModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h2 className="font-semibold text-[#0C1F3F]">Edit umpire</h2>
+          <h2 className="font-semibold text-[#0C1F3F]">
+            Edit {getOfficialTitleLower(umpire.season?.sport)}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -344,7 +350,9 @@ function DeleteUmpireDialog({
       >
         <div className="mb-1 flex items-center gap-2">
           <Trash2 className="h-4 w-4 text-red-500" />
-          <h3 className="text-base font-bold text-[#0C1F3F]">Delete umpire?</h3>
+          <h3 className="text-base font-bold text-[#0C1F3F]">
+            Delete {getOfficialTitleLower(umpire.season?.sport)}?
+          </h3>
         </div>
         <p className="mt-2 text-sm text-gray-600">
           <span className="font-semibold">{umpire.name}</span> will be permanently removed
@@ -368,7 +376,7 @@ function DeleteUmpireDialog({
             ) : (
               <Trash2 className="h-3.5 w-3.5" />
             )}
-            {loading ? "Deleting…" : "Delete umpire"}
+            {loading ? "Deleting…" : `Delete ${getOfficialTitleLower(umpire.season?.sport)}`}
           </button>
         </div>
       </div>

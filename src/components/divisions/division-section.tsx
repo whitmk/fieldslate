@@ -305,7 +305,7 @@ export function DivisionSection({
             />
             <p className="mt-4 font-medium text-[#0C1F3F]">No divisions yet</p>
             <p className="mt-1 max-w-xs text-sm text-gray-400">
-              {leagueSport === "Baseball"
+              {leagueSport === "Baseball" || leagueSport === "Softball"
                 ? "Add divisions to organize your teams — e.g. T-Ball, A, AA, AAA, Majors."
                 : leagueSport === "Soccer"
                 ? "Add divisions to organize your teams — e.g. U8, U10, U12, U14."
@@ -448,6 +448,7 @@ export function DivisionSection({
                           divisionName={div.name}
                           leagueName={leagueName}
                           leagueId={leagueId}
+                          leagueSport={leagueSport}
                           triggerPrint={printTriggerId === div.id}
                           printMode={printMode}
                           onPrintDone={() => setPrintTriggerId(null)}
@@ -512,6 +513,7 @@ export function DivisionSection({
         <DivisionWizard
           leagueId={leagueId}
           leagueName={leagueName}
+          leagueSport={leagueSport}
           leagueStartDate={leagueStartDate}
           leagueEndDate={leagueEndDate}
           onClose={() => setOpen(false)}
@@ -523,6 +525,7 @@ export function DivisionSection({
         <DivisionWizard
           leagueId={leagueId}
           leagueName={leagueName}
+          leagueSport={leagueSport}
           onClose={() => { setEditingDiv(null); setEditInitialData(null); }}
           onComplete={handleComplete}
           editDivision={editingDiv}
