@@ -318,6 +318,11 @@ export function ScheduleCalendar({ games, month, today }: Props) {
                       <MapPin className="h-3 w-3" />
                       {pill.data.venue.name}
                     </span>
+                  ) : pill.data.is_away && pill.data.proposed_venue_name ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <MapPin className="h-3 w-3" />
+                      {pill.data.proposed_venue_name}
+                    </span>
                   ) : pill.data.is_away && pill.data.interleague_org?.name ? (
                     <span className="inline-flex items-center gap-1.5 italic">
                       <MapPin className="h-3 w-3" />

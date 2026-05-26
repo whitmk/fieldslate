@@ -35,6 +35,7 @@ export type ScheduleGame = {
   interleague_org_id?: string | null;
   is_away?: boolean | null;
   external_team_name?: string | null;
+  proposed_venue_name?: string | null;
   home_team: {
     name: string;
     division_id: string | null;
@@ -95,6 +96,7 @@ function matchupLabel(g: ScheduleGame): string {
 
 function venueLabel(g: ScheduleGame): string {
   if (g.venue?.name) return g.venue.name;
+  if (g.is_away && g.proposed_venue_name) return g.proposed_venue_name;
   if (g.is_away && g.interleague_org?.name) return `TBD — ${g.interleague_org.name} venue`;
   return "—";
 }
@@ -244,7 +246,7 @@ export function ScheduleList({ games }: Props) {
             scheduled_at: requestRescheduleGame.scheduled_at,
             is_away: !!requestRescheduleGame.is_away,
             external_team_name: requestRescheduleGame.external_team_name ?? null,
-            proposed_venue_name: null,
+            proposed_venue_name: requestRescheduleGame.proposed_venue_name ?? null,
             home_team: requestRescheduleGame.home_team
               ? { name: requestRescheduleGame.home_team.name }
               : null,

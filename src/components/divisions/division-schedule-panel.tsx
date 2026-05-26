@@ -50,6 +50,7 @@ type GameRow = {
   interleague_org_id: string | null;
   is_away: boolean | null;
   external_team_name: string | null;
+  proposed_venue_name: string | null;
   home_team: { name: string } | null;
   away_team: { name: string } | null;
   interleague_org: { name: string } | null;
@@ -185,7 +186,7 @@ export function DivisionSchedulePanel({
     const { data } = await supabase
       .from("games")
       .select(
-        `id, scheduled_at, status, venue_id, home_team_id, away_team_id, interleague_org_id, is_away, external_team_name,
+        `id, scheduled_at, status, venue_id, home_team_id, away_team_id, interleague_org_id, is_away, external_team_name, proposed_venue_name,
          home_team:teams!home_team_id(name),
          away_team:teams!away_team_id(name),
          interleague_org:interleague_orgs!interleague_org_id(name),
@@ -877,6 +878,10 @@ export function DivisionSchedulePanel({
                         {game.venue?.name ? (
                           <span className={`text-xs ${isCancelled ? "text-gray-300" : "text-gray-400"}`}>
                             {game.venue.name}
+                          </span>
+                        ) : game.is_away && game.proposed_venue_name ? (
+                          <span className={`text-xs ${isCancelled ? "text-gray-300" : "text-gray-400"}`}>
+                            {game.proposed_venue_name}
                           </span>
                         ) : game.is_away && game.interleague_org?.name ? (
                           <span className="text-xs italic text-gray-400">
