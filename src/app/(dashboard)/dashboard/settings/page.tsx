@@ -2,17 +2,23 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OrgNameCard } from "@/components/settings/org-name-card";
 import type { Profile } from "@/types/database";
 
 export default async function SettingsPage() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { data: rawProfile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user!.id)
-    .single();
+  const [{ data: rawProfile }, { data: firstLeague }] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", user!.id).single(),
+    supabase
+      .from("leagues")
+      .select("name")
+      .eq("owner_id", user!.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
   const profile = rawProfile as Profile | null;
 
   return (
@@ -21,6 +27,12 @@ export default async function SettingsPage() {
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="mt-1 text-sm text-gray-500">Manage your account and preferences.</p>
       </div>
+
+      <OrgNameCard
+        userId={user!.id}
+        initialOrgName={profile?.org_name ?? null}
+        fallbackName={firstLeague?.name ?? null}
+      />
 
       <Card>
         <CardHeader>

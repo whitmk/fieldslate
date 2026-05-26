@@ -98,20 +98,27 @@ export default async function DashboardPage({
     { count: gameCount },
     { count: venueCount },
     { data: rawGames },
+    { data: profileRow },
     { data: firstLeague },
   ] = await Promise.all([
     teamsQ,
     gamesCountQ,
     supabase.from("venues").select("*", { count: "exact", head: true }).eq("owner_id", user!.id),
     upcomingQ,
+    supabase.from("profiles").select("org_name").eq("id", user!.id).single(),
     supabase
       .from("leagues")
       .select("name")
       .eq("owner_id", user!.id)
       .order("created_at", { ascending: true })
       .limit(1)
-      .single(),
+      .maybeSingle(),
   ]);
+
+  const orgName =
+    (profileRow as { org_name: string | null } | null)?.org_name?.trim() ||
+    firstLeague?.name ||
+    "";
 
   const upcomingGames = (rawGames ?? []) as unknown as UpcomingGame[];
   const isEmpty = ownedLeagues.length === 0;
@@ -142,7 +149,7 @@ export default async function DashboardPage({
         <div>
           <h1 className="text-2xl font-bold text-[#0C1F3F]">Overview</h1>
           <p className="mt-0.5 text-sm text-gray-500">
-            Welcome back{firstLeague?.name ? `, ${firstLeague.name}` : ""}
+            Welcome back{orgName ? `, ${orgName}` : ""}
           </p>
         </div>
         {!isEmpty && (
