@@ -131,6 +131,22 @@ function triggerCsvDownload(csv: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+// FieldSlate's "PDF" path is the browser print dialog ("Save as PDF…") rather
+// than a generated PDF file. No PDF library (jspdf, pdf-lib, react-pdf, etc.)
+// is installed — see package.json. Every other "PDF/print" surface in the app
+// takes the same window.print() approach:
+//   • src/components/playoffs/playoff-export-modal.tsx  (bracket export)
+//   • src/components/umpires/manual-print-button.tsx    (umpire schedule)
+//   • src/components/umpires/auto-print-on-load.tsx     (print-all view)
+//   • src/components/umpires/pay-report-modal.tsx       (umpire pay report)
+// The games schedule export (src/components/export/sportsconnect-exporter.tsx)
+// is CSV-only — there's no authoritative true-PDF baseline to align against.
+//
+// If a future dev wants real PDF file generation, do NOT switch just this one
+// export — that'd reintroduce the inconsistency this comment exists to prevent.
+// The correct path: install a library (react-pdf for layout-heavy needs,
+// pdf-lib for simpler/programmatic output), then refactor every print path
+// above as one coordinated change so users get the same output everywhere.
 function openPrintWindow(body: string, title: string) {
   const win = window.open("", "_blank");
   if (!win) return;
