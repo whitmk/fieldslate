@@ -356,17 +356,27 @@ function SendInviteModal({ org, season, onSent, onClose }: SendInviteModalProps)
         return;
       }
 
+      // Count actual pending_interleague rows per division — the recipient sees
+      // these specific game rows, so the modal preview must match what'll
+      // actually be sent (one row per game), not the per-team config value.
       const { data: gamesRaw } = await supabase
-        .from("division_interleague_games")
-        .select("division_id, game_count")
+        .from("games")
+        .select("home_team:teams!home_team_id(division_id)")
         .eq("interleague_org_id", org.id)
-        .in("division_id", divisionIds);
+        .eq("league_id", season.id)
+        .eq("status", "pending_interleague");
 
       const byId = new Map(divisions.map((d) => [d.id, d.name]));
-      const rows = ((gamesRaw ?? []) as { division_id: string; game_count: number }[])
-        .map((g) => ({
-          divisionName: byId.get(g.division_id) ?? "Division",
-          gameCount: g.game_count,
+      const counts = new Map<string, number>();
+      for (const g of (gamesRaw ?? []) as { home_team: { division_id: string | null } | null }[]) {
+        const divId = g.home_team?.division_id;
+        if (!divId) continue;
+        counts.set(divId, (counts.get(divId) ?? 0) + 1);
+      }
+      const rows = Array.from(counts.entries())
+        .map(([divisionId, gameCount]) => ({
+          divisionName: byId.get(divisionId) ?? "Division",
+          gameCount,
         }))
         .filter((g) => g.gameCount > 0)
         .sort((a, b) => a.divisionName.localeCompare(b.divisionName));
@@ -378,6 +388,7 @@ function SendInviteModal({ org, season, onSent, onClose }: SendInviteModalProps)
   }, [org.id, season.id]);
 
   const totalGames = preview.reduce((sum, p) => sum + p.gameCount, 0);
+  const hasPendingGames = !previewLoading && totalGames > 0;
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -470,8 +481,9 @@ function SendInviteModal({ org, season, onSent, onClose }: SendInviteModalProps)
                 Loading preview…
               </div>
             ) : preview.length === 0 ? (
-              <p className="mt-2 text-sm text-gray-500">
-                No divisions are configured to play interleague games against this org for the {seasonLabel(season)} season. The invite will still be sent, but no games will be proposed.
+              <p className="mt-2 text-sm text-amber-700">
+                0 pending games — generate (or regenerate) the season schedule
+                so interleague games are created before sending this invite.
               </p>
             ) : (
               <ul className="mt-2 divide-y divide-gray-100 text-sm">
@@ -508,8 +520,13 @@ function SendInviteModal({ org, season, onSent, onClose }: SendInviteModalProps)
             </button>
             <button
               type="submit"
-              disabled={sending || !recipientEmail.trim()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
+              disabled={sending || !recipientEmail.trim() || !hasPendingGames}
+              title={
+                !hasPendingGames && !previewLoading
+                  ? "Generate the season schedule first to create pending interleague games."
+                  : undefined
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {sending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

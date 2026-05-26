@@ -247,6 +247,8 @@ export async function POST(request: Request) {
 
   // Load division/game proposals for this org (used only in the invite email
   // preview now — actual game rows the recipient sees come from games table).
+  // Count actual pending_interleague rows per division to match what the
+  // recipient will see on the invite landing page.
   const { data: divsRaw, error: divsErr } = await supabase
     .from("divisions")
     .select("id, name")
@@ -255,23 +257,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: divsErr.message }, { status: 500 });
   }
   const divisions = (divsRaw ?? []) as { id: string; name: string }[];
-  const divisionIds = divisions.map((d) => d.id);
 
   let games: { divisionName: string; gameCount: number }[] = [];
-  if (divisionIds.length > 0) {
+  if (divisions.length > 0) {
     const { data: gamesRaw, error: gamesErr } = await supabase
-      .from("division_interleague_games")
-      .select("division_id, game_count")
+      .from("games")
+      .select("home_team:teams!home_team_id(division_id)")
       .eq("interleague_org_id", orgId)
-      .in("division_id", divisionIds);
+      .eq("league_id", seasonId)
+      .eq("status", "pending_interleague");
     if (gamesErr) {
       return NextResponse.json({ error: gamesErr.message }, { status: 500 });
     }
     const byId = new Map(divisions.map((d) => [d.id, d.name]));
-    games = ((gamesRaw ?? []) as { division_id: string; game_count: number }[])
-      .map((g) => ({
-        divisionName: byId.get(g.division_id) ?? "Division",
-        gameCount: g.game_count,
+    const counts = new Map<string, number>();
+    for (const g of (gamesRaw ?? []) as {
+      home_team: { division_id: string | null } | null;
+    }[]) {
+      const divId = g.home_team?.division_id;
+      if (!divId) continue;
+      counts.set(divId, (counts.get(divId) ?? 0) + 1);
+    }
+    games = Array.from(counts.entries())
+      .map(([divisionId, gameCount]) => ({
+        divisionName: byId.get(divisionId) ?? "Division",
+        gameCount,
       }))
       .filter((g) => g.gameCount > 0)
       .sort((a, b) => a.divisionName.localeCompare(b.divisionName));
