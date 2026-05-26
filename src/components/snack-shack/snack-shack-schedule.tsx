@@ -336,6 +336,134 @@ function AddOneOffModal({
   );
 }
 
+// ── Edit assignment modal ────────────────────────────────────────────────────
+// Mirrors the inline edit in the table row (team select + save) for callers
+// that don't have an inline row to edit (e.g. the calendar view). Same field,
+// same backing update.
+
+export function BlockEditModal({
+  block,
+  teams,
+  onClose,
+  onSaved,
+}: {
+  block: BlockRow;
+  teams: TeamOption[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const router = useRouter();
+  const [teamId, setTeamId] = useState(block.assigned_team_id ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    const supabase = createClient();
+    const { error: dbErr } = await supabase
+      .from("snack_shack_blocks")
+      .update({ assigned_team_id: teamId || null } as never)
+      .eq("id", block.id);
+    setSaving(false);
+    if (dbErr) {
+      setError(dbErr.message);
+      return;
+    }
+    onSaved();
+    router.refresh();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={() => !saving && onClose()}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <h2 className="font-semibold text-[#0C1F3F]">Edit assignment</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Close"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex flex-col gap-4 px-6 py-5">
+          <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5 text-sm text-gray-600">
+            <p className="font-medium text-gray-900">{fmtDate(block.date)}</p>
+            <p className="mt-0.5 tabular-nums">
+              {fmtTime(block.start_time)} – {fmtTime(block.end_time)}
+            </p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              {block.is_recurring ? "Recurring block" : "One-off block"}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-gray-700">
+              Assigned team
+            </label>
+            <select
+              value={teamId}
+              onChange={(e) => setTeamId(e.target.value)}
+              autoFocus
+              className="h-11 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+            >
+              <option value="">Unassigned</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {error && (
+            <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+              {error}
+            </p>
+          )}
+        </div>
+        <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-gray-300 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Check className="h-4 w-4" />
+                Save
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Exported trigger component ───────────────────────────────────────────────
 // Placed inline above the schedule on the page
 

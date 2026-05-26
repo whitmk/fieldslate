@@ -2,12 +2,15 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ShoppingBag, Settings2, Plus, Printer, Mail } from "lucide-react";
+import { ShoppingBag, Settings2, Plus, Printer, Mail, LayoutList, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SnackShackWizard } from "./snack-shack-wizard";
 import { SnackShackSchedule, AddOneOffBlockButton, type BlockRow, type TeamOption } from "./snack-shack-schedule";
+import { SnackShackCalendar } from "./snack-shack-calendar";
 import { SnackShackEmailModal } from "./snack-shack-email-modal";
 import type { SnackShackWizardData, DayCode, TimeBlock } from "./wizard-types";
+
+type ViewMode = "list" | "calendar";
 
 type Season = { id: string; name: string; season: string };
 
@@ -90,6 +93,7 @@ export function SnackShackPageClient({
   const [selectedSeasonId, setSelectedSeasonId] = useState(seasons[0]?.id ?? "");
   const [wizardOpen, setWizardOpen] = useState(false);
   const [emailTarget, setEmailTarget] = useState<"full" | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   const fullPrintRef = useRef<HTMLDivElement>(null);
 
@@ -311,7 +315,36 @@ ${pages}
           <Card>
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <CardTitle>Schedule</CardTitle>
+                <div className="flex flex-wrap items-center gap-3">
+                  <CardTitle>Schedule</CardTitle>
+                  <div className="inline-flex rounded-lg bg-gray-100 p-1">
+                    {(
+                      [
+                        { id: "list" as const, label: "List", icon: LayoutList },
+                        { id: "calendar" as const, label: "Calendar", icon: CalendarDays },
+                      ]
+                    ).map((o) => {
+                      const Icon = o.icon;
+                      const active = viewMode === o.id;
+                      return (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onClick={() => setViewMode(o.id)}
+                          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                            active
+                              ? "bg-white text-[#0C1F3F] shadow-sm"
+                              : "text-gray-500 hover:text-gray-700"
+                          }`}
+                          aria-pressed={active}
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                          {o.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {blocks.length > 0 && (
                     <>
@@ -348,11 +381,20 @@ ${pages}
               </div>
             </CardHeader>
             <CardContent>
-              <SnackShackSchedule
-                snackShackId={settings.id}
-                blocks={blocks}
-                teams={teams}
-              />
+              {viewMode === "list" ? (
+                <SnackShackSchedule
+                  snackShackId={settings.id}
+                  blocks={blocks}
+                  teams={teams}
+                />
+              ) : (
+                <SnackShackCalendar
+                  blocks={blocks}
+                  teams={teams}
+                  startDate={settings.start_date}
+                  endDate={settings.end_date}
+                />
+              )}
             </CardContent>
           </Card>
         </>
