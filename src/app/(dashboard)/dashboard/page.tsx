@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { Trophy, Users, CalendarDays, MapPin, Plus, ArrowRight } from "lucide-react";
 import { UpcomingGamesList, type UpcomingGame } from "@/components/dashboard/upcoming-games-list";
+import { CriticalAlertsCard, type CriticalAlertLeague } from "@/components/dashboard/critical-alerts-card";
 
 export default async function DashboardPage() {
   const supabase = createClient();
@@ -15,6 +16,7 @@ export default async function DashboardPage() {
     { count: venueCount },
     { data: rawGames },
     { data: firstLeague },
+    { data: ownedLeagues },
   ] = await Promise.all([
     supabase.from("leagues").select("*", { count: "exact", head: true }).eq("owner_id", user!.id),
     supabase.from("teams").select("*", { count: "exact", head: true }),
@@ -39,10 +41,19 @@ export default async function DashboardPage() {
       .order("created_at", { ascending: true })
       .limit(1)
       .single(),
+    supabase
+      .from("leagues")
+      .select("id, name, season")
+      .eq("owner_id", user!.id)
+      .eq("status", "active"),
   ]);
 
   const upcomingGames = (rawGames ?? []) as unknown as UpcomingGame[];
   const isEmpty = !leagueCount || leagueCount === 0;
+  const criticalAlertLeagues = await buildCriticalAlertLeagues(
+    supabase,
+    (ownedLeagues ?? []) as { id: string; name: string; season: string | null }[],
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -110,15 +121,95 @@ export default async function DashboardPage() {
           </div>
         </div>
       ) : (
-        <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-6 py-4">
-            <h2 className="font-semibold text-[#0C1F3F]">Upcoming Games</h2>
+        <>
+          <CriticalAlertsCard leagues={criticalAlertLeagues} />
+
+          <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
+            <div className="border-b border-gray-100 px-6 py-4">
+              <h2 className="font-semibold text-[#0C1F3F]">Upcoming Games</h2>
+            </div>
+            <div className="px-6 py-4">
+              <UpcomingGamesList initialGames={upcomingGames} />
+            </div>
           </div>
-          <div className="px-6 py-4">
-            <UpcomingGamesList initialGames={upcomingGames} />
-          </div>
-        </div>
+        </>
       )}
     </div>
   );
+}
+
+type LeagueLite = { id: string; name: string; season: string | null };
+
+async function buildCriticalAlertLeagues(
+  supabase: ReturnType<typeof createClient>,
+  leagues: LeagueLite[],
+): Promise<CriticalAlertLeague[]> {
+  if (leagues.length === 0) return [];
+  const leagueIds = leagues.map((l) => l.id);
+
+  const [{ data: rainoutsRaw }, { data: blackoutsRaw }, { data: activeGamesRaw }] =
+    await Promise.all([
+      supabase
+        .from("games")
+        .select("league_id")
+        .in("league_id", leagueIds)
+        .eq("status", "cancelled"),
+      supabase
+        .from("blackout_dates")
+        .select("league_id, date")
+        .in("league_id", leagueIds),
+      supabase
+        .from("games")
+        .select("id, league_id, scheduled_at, venue_id, status")
+        .in("league_id", leagueIds)
+        .neq("status", "cancelled"),
+    ]);
+
+  const rainoutCounts = new Map<string, number>();
+  for (const r of (rainoutsRaw ?? []) as { league_id: string }[]) {
+    rainoutCounts.set(r.league_id, (rainoutCounts.get(r.league_id) ?? 0) + 1);
+  }
+
+  // Blackout date set per league: "league_id|YYYY-MM-DD"
+  const blackoutKeys = new Set<string>();
+  for (const b of (blackoutsRaw ?? []) as { league_id: string; date: string }[]) {
+    blackoutKeys.add(`${b.league_id}|${b.date}`);
+  }
+
+  const blackoutCounts = new Map<string, number>();
+  const conflictCounts = new Map<string, number>();
+  // For conflicts, count games sharing (league, venue, scheduled_at) > 1.
+  // This catches exact double-bookings — full gap-based detection lives on
+  // the season detail page, where the user can act on each conflict.
+  const venueSlotGroups = new Map<string, string[]>();
+  for (const g of (activeGamesRaw ?? []) as {
+    id: string;
+    league_id: string;
+    scheduled_at: string;
+    venue_id: string | null;
+    status: string;
+  }[]) {
+    if (blackoutKeys.has(`${g.league_id}|${g.scheduled_at.substring(0, 10)}`)) {
+      blackoutCounts.set(g.league_id, (blackoutCounts.get(g.league_id) ?? 0) + 1);
+    }
+    if (g.venue_id) {
+      const key = `${g.league_id}|${g.venue_id}|${g.scheduled_at}`;
+      if (!venueSlotGroups.has(key)) venueSlotGroups.set(key, []);
+      venueSlotGroups.get(key)!.push(g.league_id);
+    }
+  }
+  for (const ids of venueSlotGroups.values()) {
+    if (ids.length < 2) continue;
+    const leagueId = ids[0];
+    conflictCounts.set(leagueId, (conflictCounts.get(leagueId) ?? 0) + ids.length);
+  }
+
+  return leagues.map((l) => ({
+    id: l.id,
+    name: l.name,
+    season: l.season,
+    rainoutCount: rainoutCounts.get(l.id) ?? 0,
+    conflictCount: conflictCounts.get(l.id) ?? 0,
+    blackoutAffectedCount: blackoutCounts.get(l.id) ?? 0,
+  }));
 }
