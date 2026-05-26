@@ -20,13 +20,38 @@ export type GameDetailGame = {
   league_id: string;
   home_team_id: string;
   away_team_id: string | null;
+  interleague_org_id?: string | null;
+  is_away?: boolean | null;
+  external_team_name?: string | null;
+  proposed_venue_name?: string | null;
   home_team: {
     name: string;
     division_id: string | null;
   } | null;
   away_team: { name: string } | null;
+  interleague_org?: { name: string } | null;
   venue: { name: string } | null;
 };
+
+function matchupLabel(g: GameDetailGame): string {
+  const home = g.home_team?.name ?? "TBD";
+  if (g.interleague_org_id) {
+    const orgName = g.interleague_org?.name ?? "Other org";
+    if (g.is_away) {
+      return `${home} AT ${orgName}${g.external_team_name ? ` (${g.external_team_name})` : ""}`;
+    }
+    const opp = g.external_team_name?.trim() || `TBD — ${orgName}`;
+    return `${home} vs ${opp}`;
+  }
+  return `${home} vs ${g.away_team?.name ?? "TBD"}`;
+}
+
+function venueLabel(g: GameDetailGame): string | null {
+  if (g.venue?.name) return g.venue.name;
+  if (g.is_away && g.proposed_venue_name) return g.proposed_venue_name;
+  if (g.is_away && g.interleague_org?.name) return `TBD — ${g.interleague_org.name} venue`;
+  return null;
+}
 
 interface Props {
   game: GameDetailGame;
@@ -45,17 +70,21 @@ type Loaded = {
 
 const gameStatusVariants: Record<
   string,
-  "default" | "success" | "warning" | "danger" | "info"
+  "default" | "success" | "warning" | "danger" | "info" | "orange"
 > = {
   scheduled: "success",
   in_progress: "info",
   completed: "default",
   cancelled: "warning",
   postponed: "default",
+  pending_interleague: "warning",
+  reschedule_pending: "orange",
 };
 
 function gameStatusLabel(status: string) {
   if (status === "cancelled") return "Rained out";
+  if (status === "pending_interleague") return "Pending";
+  if (status === "reschedule_pending") return "Reschedule pending";
   return status.replace("_", " ");
 }
 
@@ -180,7 +209,7 @@ export function GameDetailModal({ game, onClose }: Props) {
               Game
             </p>
             <h2 className="mt-0.5 truncate text-base font-semibold text-[#0C1F3F]">
-              {game.home_team?.name ?? "TBD"} vs {game.away_team?.name ?? "TBD"}
+              {matchupLabel(game)}
             </h2>
           </div>
           <button
@@ -200,12 +229,19 @@ export function GameDetailModal({ game, onClose }: Props) {
                 {fmtGameDate(game.scheduled_at)} · {fmtGameTime(game.scheduled_at)}
               </span>
             </div>
-            {game.venue?.name && (
-              <div className="flex items-center gap-2">
-                <MapPin className="h-3.5 w-3.5 text-gray-300" />
-                <span>{game.venue.name}</span>
-              </div>
-            )}
+            {(() => {
+              const venue = venueLabel(game);
+              if (!venue) return null;
+              const isPlaceholder = !game.venue?.name && !game.proposed_venue_name;
+              return (
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-3.5 w-3.5 text-gray-300" />
+                  <span className={isPlaceholder ? "italic text-gray-400" : ""}>
+                    {venue}
+                  </span>
+                </div>
+              );
+            })()}
             <div className="flex items-center gap-2">
               <Badge variant={gameStatusVariants[game.status] ?? "default"}>
                 {gameStatusLabel(game.status)}
