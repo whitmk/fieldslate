@@ -4,25 +4,80 @@ import { StatsCard } from "@/components/dashboard/stats-card";
 import { Trophy, Users, CalendarDays, MapPin, Plus, ArrowRight } from "lucide-react";
 import { UpcomingGamesList, type UpcomingGame } from "@/components/dashboard/upcoming-games-list";
 import { CriticalAlertsCard, type CriticalAlertLeague } from "@/components/dashboard/critical-alerts-card";
+import { SeasonSelector, type SeasonOption } from "@/components/dashboard/season-selector";
 
-export default async function DashboardPage() {
+type OwnedLeague = {
+  id: string;
+  name: string;
+  season: string | null;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  created_at: string;
+};
+
+function fmtRangeDate(d: string | null): string | null {
+  if (!d) return null;
+  return new Date(d + "T12:00:00").toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function resolveSelectedSeasonId(
+  param: string | undefined,
+  leagues: OwnedLeague[],
+): string {
+  if (param === "all") return "all";
+  if (param && leagues.some((l) => l.id === param)) return param;
+  // Default: most recently created active season; fall back to most recent
+  // overall; fall back to "all" if the org has no seasons.
+  const mostRecentActive = leagues.find((l) => l.status === "active");
+  if (mostRecentActive) return mostRecentActive.id;
+  if (leagues.length > 0) return leagues[0].id;
+  return "all";
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: { season?: string };
+}) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const [
-    { count: leagueCount },
-    { count: teamCount },
-    { count: gameCount },
-    { count: venueCount },
-    { data: rawGames },
-    { data: firstLeague },
-    { data: ownedLeagues },
-  ] = await Promise.all([
-    supabase.from("leagues").select("*", { count: "exact", head: true }).eq("owner_id", user!.id),
-    supabase.from("teams").select("*", { count: "exact", head: true }),
-    supabase.from("games").select("*", { count: "exact", head: true }).eq("status", "scheduled"),
-    supabase.from("venues").select("*", { count: "exact", head: true }).eq("owner_id", user!.id),
-    supabase
+  // All seasons the org owns, most-recent first — drives the dropdown and the
+  // default-season resolution.
+  const { data: leaguesRaw } = await supabase
+    .from("leagues")
+    .select("id, name, season, status, start_date, end_date, created_at")
+    .eq("owner_id", user!.id)
+    .order("created_at", { ascending: false });
+
+  const ownedLeagues = (leaguesRaw ?? []) as OwnedLeague[];
+  const selected = resolveSelectedSeasonId(searchParams.season, ownedLeagues);
+  const selectedSeason =
+    selected === "all" ? null : ownedLeagues.find((l) => l.id === selected) ?? null;
+  const isAll = selected === "all";
+
+  // Filter helper — when a specific season is picked we constrain each count
+  // and listing query to that league_id; when "all" we revert to the original
+  // RLS-scoped aggregate.
+  const teamsQ = isAll
+    ? supabase.from("teams").select("*", { count: "exact", head: true })
+    : supabase.from("teams").select("*", { count: "exact", head: true }).eq("league_id", selected);
+
+  const gamesCountQ = isAll
+    ? supabase.from("games").select("*", { count: "exact", head: true }).eq("status", "scheduled")
+    : supabase
+        .from("games")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "scheduled")
+        .eq("league_id", selected);
+
+  const upcomingQ = (() => {
+    let q = supabase
       .from("games")
       .select(`
         id, scheduled_at, status, league_id, home_team_id, away_team_id,
@@ -33,7 +88,22 @@ export default async function DashboardPage() {
       .eq("status", "scheduled")
       .gte("scheduled_at", new Date().toISOString())
       .order("scheduled_at", { ascending: true })
-      .limit(5),
+      .limit(5);
+    if (!isAll) q = q.eq("league_id", selected);
+    return q;
+  })();
+
+  const [
+    { count: teamCount },
+    { count: gameCount },
+    { count: venueCount },
+    { data: rawGames },
+    { data: firstLeague },
+  ] = await Promise.all([
+    teamsQ,
+    gamesCountQ,
+    supabase.from("venues").select("*", { count: "exact", head: true }).eq("owner_id", user!.id),
+    upcomingQ,
     supabase
       .from("leagues")
       .select("name")
@@ -41,19 +111,28 @@ export default async function DashboardPage() {
       .order("created_at", { ascending: true })
       .limit(1)
       .single(),
-    supabase
-      .from("leagues")
-      .select("id, name, season")
-      .eq("owner_id", user!.id)
-      .eq("status", "active"),
   ]);
 
   const upcomingGames = (rawGames ?? []) as unknown as UpcomingGame[];
-  const isEmpty = !leagueCount || leagueCount === 0;
-  const criticalAlertLeagues = await buildCriticalAlertLeagues(
-    supabase,
-    (ownedLeagues ?? []) as { id: string; name: string; season: string | null }[],
-  );
+  const isEmpty = ownedLeagues.length === 0;
+
+  // Critical alerts: filter to the selected season when specific; otherwise
+  // span all of the org's seasons exactly like before.
+  const alertLeagues = isAll
+    ? ownedLeagues.map((l) => ({ id: l.id, name: l.name, season: l.season }))
+    : selectedSeason
+    ? [{ id: selectedSeason.id, name: selectedSeason.name, season: selectedSeason.season }]
+    : [];
+  const criticalAlertLeagues = await buildCriticalAlertLeagues(supabase, alertLeagues);
+
+  // Dropdown options + the value the <select> should render. Active seasons
+  // float to the top within the most-recent-first ordering.
+  const seasonOptions: SeasonOption[] = ownedLeagues.map((l) => ({
+    id: l.id,
+    name: l.name,
+    season: l.season,
+    status: l.status,
+  }));
 
   return (
     <div className="flex flex-col gap-6">
@@ -77,9 +156,24 @@ export default async function DashboardPage() {
         )}
       </div>
 
+      {/* Season selector */}
+      {!isEmpty && (
+        <SeasonSelector seasons={seasonOptions} selectedValue={selected} />
+      )}
+
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatsCard title="Active Seasons" value={leagueCount ?? 0} icon={Trophy} />
+        {isAll ? (
+          <StatsCard
+            title="Active Seasons"
+            value={ownedLeagues.filter((l) => l.status === "active").length}
+            icon={Trophy}
+          />
+        ) : selectedSeason ? (
+          <SeasonStatsCard season={selectedSeason} />
+        ) : (
+          <StatsCard title="Active Seasons" value={0} icon={Trophy} />
+        )}
         <StatsCard title="Teams" value={teamCount ?? 0} icon={Users} />
         <StatsCard title="Scheduled Games" value={gameCount ?? 0} icon={CalendarDays} />
         <StatsCard title="Venues" value={venueCount ?? 0} icon={MapPin} />
@@ -134,6 +228,35 @@ export default async function DashboardPage() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function SeasonStatsCard({ season }: { season: OwnedLeague }) {
+  const start = fmtRangeDate(season.start_date);
+  const end = fmtRangeDate(season.end_date);
+  const range = start && end ? `${start} – ${end}` : start || end || "Dates not set";
+  const isActive = season.status === "active";
+  return (
+    <div className="flex items-start justify-between rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-gray-500">Season</p>
+        <p className="mt-2 truncate text-base font-bold text-[#0C1F3F]" title={season.name}>
+          {season.name}
+        </p>
+        <p className="mt-1 text-xs text-gray-500">
+          {season.season ? `${season.season} · ` : ""}
+          {range}
+        </p>
+        <span
+          className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${
+            isActive ? "bg-[#22C55E]/10 text-[#22C55E]" : "bg-gray-100 text-gray-500"
+          }`}
+        >
+          {season.status}
+        </span>
+      </div>
+      <Trophy className="h-5 w-5 flex-shrink-0 text-gray-300" />
     </div>
   );
 }
