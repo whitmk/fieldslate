@@ -4,6 +4,7 @@ import { Users } from "lucide-react";
 import { AddTeamButton } from "@/components/teams/add-team-button";
 import { TeamSnackShackButton } from "@/components/teams/team-snack-shack-button";
 import type { Team } from "@/types/database";
+import { activeLeaguesOnly } from "@/lib/seasons/queries";
 
 type TeamWithLeague = Team & {
   league: { name: string } | null;
@@ -22,11 +23,14 @@ export default async function TeamsPage() {
         .from("teams")
         .select("*, league:leagues(name), division:divisions(name)")
         .order("name", { ascending: true }),
-      supabase
-        .from("leagues")
-        .select("id, name")
-        .eq("owner_id", user!.id)
-        .order("name", { ascending: true }),
+      // Active (non-archived) seasons only — admins picking a team's season
+      // shouldn't see closed ones in the dropdown.
+      activeLeaguesOnly(
+        supabase
+          .from("leagues")
+          .select("id, name")
+          .eq("owner_id", user!.id),
+      ).order("name", { ascending: true }),
       supabase
         .from("divisions")
         .select("id, name, league_id")

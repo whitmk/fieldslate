@@ -13,11 +13,14 @@ export default async function SnackShackPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Load all seasons owned by the user
+  // Load active (non-archived) seasons only — snack shack assignments are
+  // operational; archived seasons are accessible via /dashboard/leagues if
+  // historical lookup is needed.
   const { data: seasonsRaw } = await supabase
     .from("leagues")
     .select("id, name, season")
     .eq("owner_id", user!.id)
+    .is("archived_at", null)
     .order("created_at", { ascending: false });
 
   const seasons = (seasonsRaw ?? []) as {

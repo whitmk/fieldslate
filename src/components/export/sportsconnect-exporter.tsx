@@ -10,6 +10,9 @@ export type LeagueOption = {
   id: string;
   name: string;
   sport: string;
+  /** True when the season has been archived. Tagged in the picker so the
+   * admin knows what they're exporting. */
+  isArchived?: boolean;
   divisions: Division[];
 };
 
@@ -208,6 +211,7 @@ export function SportsConnectExporter({ leagues }: { leagues: LeagueOption[] }) 
                 {leagues.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}
+                    {l.isArchived ? " [Archived]" : ""}
                   </option>
                 ))}
               </select>

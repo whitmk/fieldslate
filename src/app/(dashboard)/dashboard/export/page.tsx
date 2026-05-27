@@ -6,13 +6,20 @@ export default async function ExportPage() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // Export intentionally spans active + archived — exporting past-season
+  // rosters / schedules is a primary use case. Active seasons sort first,
+  // archived rows get an "[Archived]" tag in the picker.
   const { data: rawLeagues } = await supabase
     .from("leagues")
-    .select("id, name, sport")
+    .select("id, name, sport, archived_at")
     .eq("owner_id", user!.id)
+    .order("archived_at", { ascending: false, nullsFirst: true })
     .order("name", { ascending: true });
 
-  const leagues = (rawLeagues ?? []) as Pick<League, "id" | "name" | "sport">[];
+  type LeagueRow = Pick<League, "id" | "name" | "sport"> & {
+    archived_at: string | null;
+  };
+  const leagues = (rawLeagues ?? []) as LeagueRow[];
   const leagueIds = leagues.map((l) => l.id);
 
   const { data: rawDivisions } = leagueIds.length
@@ -27,7 +34,10 @@ export default async function ExportPage() {
   const divisions = (rawDivisions ?? []) as DivRow[];
 
   const leagueOptions: LeagueOption[] = leagues.map((league) => ({
-    ...league,
+    id: league.id,
+    name: league.name,
+    sport: league.sport,
+    isArchived: !!league.archived_at,
     divisions: divisions
       .filter((d) => d.league_id === league.id)
       .map(({ id, name }) => ({ id, name })),

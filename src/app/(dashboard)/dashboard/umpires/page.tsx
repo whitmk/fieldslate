@@ -18,10 +18,14 @@ export default async function UmpiresPage() {
       .from("umpires")
       .select("id, name, designation, season_id, pay_rate, season:leagues(name, sport)")
       .order("name", { ascending: true }),
+    // Active (non-archived) seasons only — umpire/official assignment is an
+    // operational surface; pay-tracking for archived seasons stays accessible
+    // via /dashboard/leagues > season detail.
     supabase
       .from("leagues")
       .select("id, name, sport, pay_tracking_enabled, pay_rate_mode")
       .eq("owner_id", user!.id)
+      .is("archived_at", null)
       .order("name", { ascending: true }),
   ]);
 

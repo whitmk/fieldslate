@@ -801,10 +801,14 @@ export default function InterleaguePage() {
 
     const [orgsRes, seasonsRes, invitesRes, counterRes, reschedRes] = await Promise.all([
       supabase.from("interleague_orgs").select("*").order("name"),
+      // Active (non-archived) seasons only — interleague invites/replies are
+      // operational. Historical interleague games on archived seasons stay
+      // visible through the season detail page.
       supabase
         .from("leagues")
         .select("id, name, season")
         .eq("owner_id", user.id)
+        .is("archived_at", null)
         .order("created_at", { ascending: false }),
       supabase
         .from("interleague_invites")

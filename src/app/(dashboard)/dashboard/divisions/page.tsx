@@ -5,6 +5,7 @@ import { Layers } from "lucide-react";
 import { DivisionBallIcon } from "@/components/divisions/division-ball-icon";
 import { AddDivisionButton } from "@/components/divisions/add-division-button";
 import type { Division, League } from "@/types/database";
+import { activeLeaguesOnly } from "@/lib/seasons/queries";
 
 type LeagueRow = Pick<League, "id" | "name" | "sport"> & {
   start_date: string | null;
@@ -23,11 +24,15 @@ export default async function DivisionsPage() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { data: rawLeagues } = await supabase
-    .from("leagues")
-    .select("id, name, sport, start_date, end_date")
-    .eq("owner_id", user!.id)
-    .order("name", { ascending: true });
+  // Active (non-archived) seasons only — Divisions is an operational surface;
+  // archived seasons still keep their divisions but they shouldn't crowd this
+  // grouped-by-season view.
+  const { data: rawLeagues } = await activeLeaguesOnly(
+    supabase
+      .from("leagues")
+      .select("id, name, sport, start_date, end_date")
+      .eq("owner_id", user!.id),
+  ).order("name", { ascending: true });
 
   const leagues = (rawLeagues ?? []) as LeagueRow[];
   const leagueIds = leagues.map((l) => l.id);

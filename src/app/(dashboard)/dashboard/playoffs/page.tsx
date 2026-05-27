@@ -91,10 +91,13 @@ export default function PlayoffsPage() {
       return;
     }
 
+    // Active (non-archived) seasons only — admins shouldn't be creating
+    // playoff brackets against a closed season.
     const { data: leagueData } = await supabase
       .from("leagues")
       .select("id, name, sport")
       .eq("owner_id", user.id)
+      .is("archived_at", null)
       .order("name");
 
     const leagueList = (leagueData ?? []) as League[];

@@ -6,6 +6,7 @@ import { UpcomingGamesList, type UpcomingGame } from "@/components/dashboard/upc
 import { CriticalAlertsCard, type CriticalAlertLeague } from "@/components/dashboard/critical-alerts-card";
 import { SeasonSelector, type SeasonOption } from "@/components/dashboard/season-selector";
 import { OverviewReports } from "@/components/reports/overview-reports";
+import { autoArchivePastSeasons } from "@/lib/seasons/auto-archive";
 
 type OwnedLeague = {
   id: string;
@@ -57,6 +58,13 @@ export default async function DashboardPage({
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  // Auto-archive any past-end-date seasons *before* the SELECT below so the
+  // picker dropdown doesn't surface stale "active" seasons. Mirrors the same
+  // call on /dashboard/leagues — write-on-read, single cheap UPDATE.
+  if (user) {
+    await autoArchivePastSeasons(supabase, user.id);
+  }
 
   // All seasons the org owns, most-recent first — drives the dropdown and the
   // default-season resolution.
