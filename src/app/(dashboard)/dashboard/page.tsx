@@ -14,6 +14,7 @@ type OwnedLeague = {
   status: string;
   start_date: string | null;
   end_date: string | null;
+  archived_at: string | null;
   created_at: string;
 };
 
@@ -37,18 +38,22 @@ function resolveSelectedSeasonId(
 ): string {
   if (param === "all") return "all";
   if (param && leagues.some((l) => l.id === param)) return param;
-  // Default: most recently created active season; fall back to most recent
-  // overall; fall back to "all" if the org has no seasons.
-  const mostRecentActive = leagues.find((l) => l.status === "active");
+  // Default: most recently created NON-ARCHIVED active season; never auto-
+  // select an archived season (the admin has to opt in via Show archived +
+  // explicit pick). Fall back to any non-archived season, then to "all".
+  const mostRecentActive = leagues.find(
+    (l) => l.status === "active" && !l.archived_at,
+  );
   if (mostRecentActive) return mostRecentActive.id;
-  if (leagues.length > 0) return leagues[0].id;
+  const firstNonArchived = leagues.find((l) => !l.archived_at);
+  if (firstNonArchived) return firstNonArchived.id;
   return "all";
 }
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: { season?: string };
+  searchParams: { season?: string; showArchived?: string };
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -57,11 +62,14 @@ export default async function DashboardPage({
   // default-season resolution.
   const { data: leaguesRaw } = await supabase
     .from("leagues")
-    .select("id, name, season, status, start_date, end_date, created_at")
+    .select(
+      "id, name, season, status, start_date, end_date, archived_at, created_at",
+    )
     .eq("owner_id", user!.id)
     .order("created_at", { ascending: false });
 
   const ownedLeagues = (leaguesRaw ?? []) as OwnedLeague[];
+  const showArchived = searchParams.showArchived === "1";
   const selected = resolveSelectedSeasonId(searchParams.season, ownedLeagues);
   const selectedSeason =
     selected === "all" ? null : ownedLeagues.find((l) => l.id === selected) ?? null;
@@ -138,13 +146,14 @@ export default async function DashboardPage({
     : [];
   const criticalAlertLeagues = await buildCriticalAlertLeagues(supabase, alertLeagues);
 
-  // Dropdown options + the value the <select> should render. Active seasons
-  // float to the top within the most-recent-first ordering.
+  // Dropdown options + the value the <select> should render. The picker
+  // hides archived rows by default; archived_at is the source of truth.
   const seasonOptions: SeasonOption[] = ownedLeagues.map((l) => ({
     id: l.id,
     name: l.name,
     season: l.season,
     status: l.status,
+    archivedAt: l.archived_at,
   }));
 
   return (
@@ -171,7 +180,11 @@ export default async function DashboardPage({
 
       {/* Season selector */}
       {!isEmpty && (
-        <SeasonSelector seasons={seasonOptions} selectedValue={selected} />
+        <SeasonSelector
+          seasons={seasonOptions}
+          selectedValue={selected}
+          showArchived={showArchived}
+        />
       )}
 
       {/* Stat cards */}

@@ -13,6 +13,7 @@ import { EditableLeagueHeader } from "@/components/dashboard/editable-league-hea
 import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
 import { ActivityLogPanel } from "@/components/dashboard/activity-log-panel";
+import { ArchivedSeasonBanner } from "@/components/seasons/archived-season-banner";
 import { detectConflicts } from "@/lib/schedule/detect-conflicts";
 import { RainedOutStatCard, type RainedOutGame } from "@/components/dashboard/rained-out-stat-card";
 import { ConflictStatCard, type ConflictGame } from "@/components/dashboard/conflict-stat-card";
@@ -337,8 +338,19 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         sport={league.sport}
         season={league.season}
         status={league.status}
+        archivedAt={league.archived_at}
+        endDate={league.end_date}
         sportClassName={sportColor[league.sport] ?? "bg-gray-100 text-gray-600"}
       />
+
+      {/* Archived-season banner (only when archived_at is set) */}
+      {league.archived_at && (
+        <ArchivedSeasonBanner
+          seasonId={league.id}
+          seasonName={league.name}
+          endDate={league.end_date}
+        />
+      )}
 
       {/* Schedule-conflict alert banner (double-booked fields only) */}
       {scheduleConflictCount > 0 && (

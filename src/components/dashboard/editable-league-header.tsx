@@ -1,8 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Pencil, X, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
+import {
+  Pencil,
+  X,
+  Loader2,
+  AlertTriangle,
+  CheckCircle2,
+  MoreVertical,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  ArchiveSeasonModal,
+  UnarchiveSeasonModal,
+} from "@/components/seasons/archive-modals";
 
 const MAX_NAME_LENGTH = 80;
 
@@ -13,7 +24,12 @@ interface Props {
   initialName: string;
   sport: string;
   season: string | null;
+  /** Legacy status enum — kept for the right-side pill display only. */
   status: string;
+  /** Source of truth for archived/active. */
+  archivedAt: string | null;
+  /** End date (YYYY-MM-DD or null) — fed to the unarchive modal. */
+  endDate: string | null;
   sportClassName: string;
 }
 
@@ -23,12 +39,18 @@ export function EditableLeagueHeader({
   sport,
   season,
   status,
+  archivedAt,
+  endDate,
   sportClassName,
 }: Props) {
   const [name, setName] = useState(initialName);
   const [editing, setEditing] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [unarchiveOpen, setUnarchiveOpen] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+
+  const isArchived = !!archivedAt;
 
   useEffect(
     () => () => {
@@ -53,13 +75,18 @@ export function EditableLeagueHeader({
     <>
       <div className="flex items-start justify-between">
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold text-[#0C1F3F]">{name}</h1>
             <span
               className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${sportClassName}`}
             >
               {sport}
             </span>
+            {isArchived && (
+              <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-500">
+                Archived
+              </span>
+            )}
             <button
               type="button"
               onClick={() => setEditing(true)}
@@ -72,15 +99,22 @@ export function EditableLeagueHeader({
           </div>
           <p className="text-sm text-gray-500">{season}</p>
         </div>
-        <span
-          className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-            status === "active"
-              ? "bg-[#22C55E]/10 text-[#22C55E]"
-              : "bg-gray-100 text-gray-500"
-          }`}
-        >
-          {status}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${
+              status === "active"
+                ? "bg-[#22C55E]/10 text-[#22C55E]"
+                : "bg-gray-100 text-gray-500"
+            }`}
+          >
+            {status}
+          </span>
+          <HeaderActionsMenu
+            isArchived={isArchived}
+            onArchive={() => setArchiveOpen(true)}
+            onUnarchive={() => setUnarchiveOpen(true)}
+          />
+        </div>
       </div>
 
       {toast && (
@@ -104,7 +138,88 @@ export function EditableLeagueHeader({
           onError={(message) => notify("error", message)}
         />
       )}
+
+      {archiveOpen && (
+        <ArchiveSeasonModal
+          seasonId={leagueId}
+          seasonName={name}
+          onClose={() => setArchiveOpen(false)}
+        />
+      )}
+      {unarchiveOpen && (
+        <UnarchiveSeasonModal
+          seasonId={leagueId}
+          seasonName={name}
+          endDate={endDate}
+          onClose={() => setUnarchiveOpen(false)}
+        />
+      )}
     </>
+  );
+}
+
+// ── Header ••• menu ───────────────────────────────────────────────────────────
+
+function HeaderActionsMenu({
+  isArchived,
+  onArchive,
+  onUnarchive,
+}: {
+  isArchived: boolean;
+  onArchive: () => void;
+  onUnarchive: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Season actions"
+        className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-[#0C1F3F]"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-10 z-10 min-w-[10rem] rounded-lg border border-gray-100 bg-white py-1 shadow-lg"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              if (isArchived) onUnarchive();
+              else onArchive();
+            }}
+            className="block w-full px-3 py-1.5 text-left text-sm text-[#0C1F3F] hover:bg-gray-50"
+          >
+            {isArchived ? "Unarchive season" : "Archive season"}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
