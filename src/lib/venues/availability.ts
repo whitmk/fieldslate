@@ -144,3 +144,86 @@ export function hasAnyDayConfigured(av: VenueAvailability): boolean {
   }
   return false;
 }
+
+// "9:00 AM" formatting for HH:MM wall-clocks. Shared so the interleague
+// gate error payloads stay byte-identical across endpoints.
+export function fmtTime12(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+// ── Shared venue-hours gate (used by every interleague reschedule API) ──────
+//
+// One predicate, one error-payload shape. Callers do the venue lookup
+// themselves (the I/O patterns differ — sender-side resolves a free-text
+// `venue_name` against owned venues; receiver-side often re-validates an
+// already-assigned `venue_id`) and hand the venue row + new wall-time +
+// duration to this function.
+//
+// Returns { ok: true } when it's safe to write. On failure, returns the
+// `{ status, body }` to put straight into `NextResponse.json(body, { status })`.
+// Callers should bail out of the request on `ok: false` BEFORE writing
+// anything to the DB — that's what makes `/resolve` partial-update safe.
+//
+// `scheduledAtIso` accepts any ISO with a TZ offset; we substring [11..16]
+// for the wall time (matches every other read of `scheduled_at` in the app —
+// the user-intended local time, ignoring TZ).
+
+export interface VenueGateRow {
+  name: string;
+  availability: unknown;
+  availability_configured: boolean;
+}
+
+export type VenueGateResult =
+  | { ok: true }
+  | {
+      ok: false;
+      status: 400;
+      body: { error: string; venue?: string; day?: string; proposed_time?: string; venue_hours?: string };
+    };
+
+export function gateVenueProposal(
+  venue: VenueGateRow,
+  scheduledAtIso: string,
+  durationMin: number,
+): VenueGateResult {
+  if (!venue.availability_configured) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: "Cannot reschedule to an unconfigured venue. Set venue hours first.",
+        venue: venue.name,
+      },
+    };
+  }
+
+  // Duration === 0 means the home team's division didn't configure
+  // game_duration — skip the window check (we can't determine an end time).
+  // The availability_configured check above still protects against the
+  // worst of the two failure modes.
+  if (durationMin <= 0) return { ok: true };
+
+  const av = parseAvailability(venue.availability);
+  const day = dayKeyFromIsoDate(scheduledAtIso);
+  const wallTime = scheduledAtIso.substring(11, 16);
+  if (isVenueAvailable(av, day, wallTime, durationMin)) return { ok: true };
+
+  const win = av[day];
+  return {
+    ok: false,
+    status: 400,
+    body: {
+      error: "Venue is not open at the proposed time.",
+      venue: venue.name,
+      day: DAY_LABELS[day],
+      proposed_time: fmtTime12(wallTime),
+      venue_hours: win
+        ? `${fmtTime12(win.start)} – ${fmtTime12(win.end)}`
+        : "Closed",
+    },
+  };
+}

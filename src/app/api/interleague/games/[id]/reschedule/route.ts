@@ -1,22 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
-import {
-  DAY_LABELS,
-  dayKeyFromIsoDate,
-  isVenueAvailable,
-  parseAvailability,
-} from "@/lib/venues/availability";
+import { gateVenueProposal } from "@/lib/venues/availability";
 
 export const runtime = "nodejs";
-
-// Format a HH:MM wall-clock as "9:00 AM" for error payloads + email rows.
-function fmtTime12(hhmm: string): string {
-  const [h, m] = hhmm.split(":").map(Number);
-  const period = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 || 12;
-  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
-}
 
 function isoLooksValid(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\+\d{2}:\d{2})?$/.test(s);
@@ -146,69 +133,26 @@ export async function POST(
   }
 
   // ── Venue-hours gate ─────────────────────────────────────────────────────
-  // The endpoint accepts `venue_name` as free text — this is intentional
-  // because the proposed venue might be the OTHER org's venue (which we
-  // don't track). We only enforce hours when the proposed venue resolves
-  // to one we own AND the game is a home game (is_away === false).
-  //
-  // For away games (the other org hosts), we skip — we don't know their
-  // availability. For free-text labels that don't match any of our venue
-  // names, we also skip — preserves the existing "informational label"
-  // behavior. Anything stricter would be a regression for legitimate
-  // proposals against partner-org venues.
+  // The endpoint accepts `venue_name` as free text — the proposed venue
+  // might be the OTHER org's venue (which we don't track). We only enforce
+  // hours when the proposed venue resolves to one we own AND the game is a
+  // home game. Away games + unmatched free-text labels skip the gate.
   if (venueName && !game.is_away) {
     const { data: matchedVenue } = await supabase
       .from("venues")
-      .select("id, name, availability, availability_configured")
+      .select("name, availability, availability_configured")
       .eq("owner_id", user.id)
       .ilike("name", venueName)
       .maybeSingle();
 
     if (matchedVenue) {
-      type VenueRow = {
-        id: string;
-        name: string;
-        availability: unknown;
-        availability_configured: boolean;
-      };
-      const v = matchedVenue as VenueRow;
-      if (!v.availability_configured) {
-        return NextResponse.json(
-          {
-            error:
-              "Cannot reschedule to an unconfigured venue. Set venue hours first.",
-            venue: v.name,
-          },
-          { status: 400 },
-        );
-      }
-
-      // Home team's division.game_duration drives the venue-window check.
-      // Match the convention used by the schedule generator and rainout
-      // modal (substring extraction for the wall-time — no TZ shift).
       const settings = (game.home_team?.division?.settings ?? {}) as {
         game_duration?: number;
       };
       const durationMin = Number(settings.game_duration ?? 0);
-      const day = dayKeyFromIsoDate(normalized);
-      const wallTime = normalized.substring(11, 16);
-      const availability = parseAvailability(v.availability);
-
-      if (durationMin > 0 && !isVenueAvailable(availability, day, wallTime, durationMin)) {
-        const win = availability[day];
-        const venueHoursLabel = win
-          ? `${fmtTime12(win.start)} – ${fmtTime12(win.end)}`
-          : "Closed";
-        return NextResponse.json(
-          {
-            error: "Venue is not open at the proposed time.",
-            venue: v.name,
-            day: DAY_LABELS[day],
-            proposed_time: fmtTime12(wallTime),
-            venue_hours: venueHoursLabel,
-          },
-          { status: 400 },
-        );
+      const gate = gateVenueProposal(matchedVenue, normalized, durationMin);
+      if (!gate.ok) {
+        return NextResponse.json(gate.body, { status: gate.status });
       }
     }
   }

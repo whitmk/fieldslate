@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
+import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
 
 export const runtime = "nodejs";
 
@@ -69,6 +70,23 @@ export async function POST(
   const normalized = normalizeWallClockIso(rawWhen);
 
   const supabase = createClient();
+
+  // Venue-hours gate for the external org's new proposal. The downstream
+  // RPC writes a new request row + flips game.status to reschedule_pending
+  // but doesn't change venue_id, so we only need the propose-side checks
+  // (matched name against our owned venues + away-game short-circuit).
+  // RPC short-circuits on token mismatch via its own validation; if that
+  // happens, our context lookup returns null and the gate becomes a no-op.
+  const proposeGate = await gateRescheduleVenue(supabase, {
+    gameId,
+    scheduledAtIso: normalized,
+    proposedVenueName: venueName || null,
+    skipExistingVenueCheck: true,
+  });
+  if (!proposeGate.ok) {
+    return NextResponse.json(proposeGate.body, { status: proposeGate.status });
+  }
+
   const { data, error } = await supabase.rpc(
     // @ts-expect-error — RPC isn't in generated types
     "create_reschedule_request_by_schedule_token",

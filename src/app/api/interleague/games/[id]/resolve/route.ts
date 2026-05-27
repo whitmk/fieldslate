@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
+import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
 
 export const runtime = "nodejs";
 
@@ -276,6 +277,22 @@ export async function POST(
         );
       }
       updatePayload.proposed_venue_name = finalVenue;
+    }
+  }
+
+  // Venue-hours gate. Runs BEFORE the update so a failed gate never leaves
+  // a partial write. `keep_original` doesn't move scheduled_at, so skip;
+  // both other actions write a new scheduled_at. The body's `venue_name`
+  // here is only consumed for away games' display label and never moves
+  // `venue_id`, so the gate's existing-venue check (on the already-assigned
+  // venue) is the meaningful guard for home games.
+  if (updatePayload.scheduled_at) {
+    const gate = await gateRescheduleVenue(supabase, {
+      gameId: game.id,
+      scheduledAtIso: updatePayload.scheduled_at,
+    });
+    if (!gate.ok) {
+      return NextResponse.json(gate.body, { status: gate.status });
     }
   }
 

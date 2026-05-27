@@ -1,8 +1,34 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
+import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
 
 export const runtime = "nodejs";
+
+// Resolve the game_id behind a reschedule token via the security-definer
+// lookup RPC. Used to feed the venue gate; the existing accept/decline/
+// counter RPCs each re-validate the token internally, so this read is
+// purely informational.
+async function gameIdForToken(
+  supabase: ReturnType<typeof createClient>,
+  token: string,
+): Promise<{ gameId: string; proposedScheduledAt: string } | null> {
+  const { data, error } = await supabase.rpc(
+    // @ts-expect-error — RPC isn't in generated types
+    "get_reschedule_request_by_token",
+    { p_token: token },
+  );
+  if (error || !data) return null;
+  const d = data as {
+    request?: { proposed_scheduled_at?: string };
+    game?: { id?: string };
+  };
+  if (!d.game?.id || !d.request?.proposed_scheduled_at) return null;
+  return {
+    gameId: d.game.id,
+    proposedScheduledAt: d.request.proposed_scheduled_at,
+  };
+}
 
 type Action = "accept" | "decline" | "counter";
 
@@ -119,6 +145,22 @@ export async function POST(
   const dashboardUrl = `${baseOrigin}/dashboard/interleague`;
 
   if (body.action === "accept") {
+    // Venue-hours gate: the accept RPC writes game.scheduled_at to the
+    // proposed time but doesn't move venue_id, so we must validate the
+    // existing venue stays open at the new time. We look up the game_id +
+    // proposed time first via a read-only RPC, then gate, then call the
+    // real accept RPC if the gate passes.
+    const ctx = await gameIdForToken(supabase, params.token);
+    if (ctx) {
+      const gate = await gateRescheduleVenue(supabase, {
+        gameId: ctx.gameId,
+        scheduledAtIso: ctx.proposedScheduledAt,
+      });
+      if (!gate.ok) {
+        return NextResponse.json(gate.body, { status: gate.status });
+      }
+    }
+
     const { data, error } = await supabase.rpc(
       // @ts-expect-error — RPC isn't in generated types
       "accept_reschedule_request_by_token",
@@ -225,6 +267,24 @@ export async function POST(
     );
   }
   const normalized = normalizeWallClockIso(rawWhen);
+
+  // Venue-hours gate for the counter-proposal. The counter RPC stores a new
+  // request row but doesn't change the game record's scheduled_at, so we
+  // skip the existing-venue check and only validate the proposed name (if
+  // it resolves to one of OUR venues).
+  const counterCtx = await gameIdForToken(supabase, params.token);
+  if (counterCtx) {
+    const gate = await gateRescheduleVenue(supabase, {
+      gameId: counterCtx.gameId,
+      scheduledAtIso: normalized,
+      proposedVenueName: rawVenue || null,
+      skipExistingVenueCheck: true,
+    });
+    if (!gate.ok) {
+      return NextResponse.json(gate.body, { status: gate.status });
+    }
+  }
+
   const { data, error } = await supabase.rpc(
     // @ts-expect-error — RPC isn't in generated types
     "counter_reschedule_request_by_token",

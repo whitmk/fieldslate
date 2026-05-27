@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
+import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
 
 export const runtime = "nodejs";
 
@@ -154,6 +155,16 @@ export async function POST(
     const oldIso = req.game.scheduled_at;
     const newIso = req.proposed_scheduled_at;
 
+    // Venue-hours gate: accepting moves game.scheduled_at to newIso but
+    // doesn't change venue_id. Validate the existing venue at the new time.
+    const acceptGate = await gateRescheduleVenue(supabase, {
+      gameId: req.game.id,
+      scheduledAtIso: newIso,
+    });
+    if (!acceptGate.ok) {
+      return NextResponse.json(acceptGate.body, { status: acceptGate.status });
+    }
+
     const { error: updGameErr } = await supabase
       .from("games")
       .update({
@@ -260,6 +271,20 @@ export async function POST(
     );
   }
   const normalized = normalizeWallClockIso(rawWhen);
+
+  // Venue-hours gate for the admin's counter-proposal. Stores a new
+  // admin→external request row but doesn't change the game record's
+  // scheduled_at, so we skip the existing-venue check and only validate
+  // the proposed name (if it resolves to one of OUR venues).
+  const counterGate = await gateRescheduleVenue(supabase, {
+    gameId: req.game.id,
+    scheduledAtIso: normalized,
+    proposedVenueName: rawVenue || null,
+    skipExistingVenueCheck: true,
+  });
+  if (!counterGate.ok) {
+    return NextResponse.json(counterGate.body, { status: counterGate.status });
+  }
 
   const { error: declErr } = await supabase
     .from("interleague_reschedule_requests")
