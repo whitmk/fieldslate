@@ -264,15 +264,32 @@ export function PracticeSlotModal({
                 value={fieldId}
                 onChange={(e) => setFieldId(e.target.value)}
                 required
-                className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+                disabled={venues.length === 0}
+                className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20 disabled:bg-gray-50 disabled:text-gray-500"
               >
-                <option value="">Pick one…</option>
+                <option value="">
+                  {venues.length === 0
+                    ? "No venues with availability set"
+                    : "Pick one…"}
+                </option>
                 {venues.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.name}
                   </option>
                 ))}
               </select>
+              {venues.length === 0 && (
+                <p className="text-xs text-amber-600">
+                  Configure venue hours first in{" "}
+                  <a
+                    href="/dashboard/venues"
+                    className="underline underline-offset-2"
+                  >
+                    Venues
+                  </a>
+                  .
+                </p>
+              )}
             </div>
           </div>
 

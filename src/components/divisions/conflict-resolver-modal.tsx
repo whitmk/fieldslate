@@ -170,7 +170,13 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     if (!venueIds.length) { setLoading(false); return; }
 
     const [venueRes, gamesRes] = await Promise.all([
-      supabase.from("venues").select("id, name").in("id", venueIds),
+      // Filter to availability-configured venues only — the engine can't place
+      // games at unconfigured venues, so don't offer them as a move target.
+      supabase
+        .from("venues")
+        .select("id, name")
+        .in("id", venueIds)
+        .eq("availability_configured", true),
       supabase
         .from("games")
         .select(`

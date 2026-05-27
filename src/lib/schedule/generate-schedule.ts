@@ -1,6 +1,12 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import {
+  isVenueAvailable,
+  parseAvailability,
+  type DayKey,
+  type VenueAvailability,
+} from "@/lib/venues/availability";
 
 // ─── Public result types ───────────────────────────────────────────────────────
 
@@ -260,13 +266,16 @@ function buildInterleagueMatchups(
 /**
  * Returns all (venue × datetime) pairs in chronological order.
  * Slots are spaced by game_duration + buffer_minutes, capped at
- * max_games_per_field_per_day per venue per day.
+ * max_games_per_field_per_day per venue per day. Filters each candidate
+ * slot through the per-venue availability map so we never propose a time
+ * the venue isn't open.
  */
 function buildSlots(
   startDate: string,
   endDate: string,
   s: DivisionSettings,
   venueIds: string[],
+  venueAvailability: Map<string, VenueAvailability>,
   blackoutDates: Set<string> = new Set(),
 ): Slot[] {
   if (!venueIds.length) return [];
@@ -303,7 +312,7 @@ function buildSlots(
 
   for (const date of validDates) {
     const wk = weekKey(date);
-    const dayKey = JS_TO_DAY[new Date(date + "T00:00:00").getDay()];
+    const dayKey = JS_TO_DAY[new Date(date + "T00:00:00").getDay()] as DayKey;
 
     // Per-day window — fall back to legacy earliest_start/latest_start for old divisions
     const dayWin = s.day_windows?.[dayKey];
@@ -320,8 +329,15 @@ function buildSlots(
     let slotsThisDay = 0;
 
     while (timeMin <= latest && slotsThisDay < maxPerField) {
-      const isoString = `${date}T${minutesToTimeStr(timeMin)}:00`;
+      const wallTime = minutesToTimeStr(timeMin);
+      const isoString = `${date}T${wallTime}:00`;
       for (const venueId of venueIds) {
+        // Venue-availability gate: drop slots the venue isn't open for. The
+        // division-window check above still applies — the engine respects the
+        // tighter of the two.
+        const av = venueAvailability.get(venueId);
+        if (!av) continue;
+        if (!isVenueAvailable(av, dayKey, wallTime, gameDuration)) continue;
         slots.push({ isoString, venueId, date, weekKey: wk });
       }
       timeMin += interval;
@@ -468,19 +484,37 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
   }
 
   // ── 3. Load venues ───────────────────────────────────────────────────────────
+  // Filter to availability-configured venues only; unconfigured venues are
+  // invisible to the engine until the admin sets hours.
 
   const { data: dvRows, error: dvErr } = await supabase
     .from("division_venues")
-    .select("venue_id")
+    .select(
+      "venue_id, venue:venues!inner(id, availability, availability_configured)",
+    )
     .eq("division_id", divisionId)
-    .eq("allow_games", true);
+    .eq("allow_games", true)
+    .eq("venue.availability_configured", true);
 
   if (dvErr) return { success: false, error: dvErr.message };
 
-  const venueIds = (dvRows ?? []).map((r: { venue_id: string }) => r.venue_id);
+  type DvVenueRow = {
+    venue_id: string;
+    venue: { id: string; availability: unknown; availability_configured: boolean } | null;
+  };
+  const dvVenueRows = (dvRows ?? []) as unknown as DvVenueRow[];
+  const venueIds = dvVenueRows.map((r) => r.venue_id);
+  const venueAvailability = new Map<string, VenueAvailability>();
+  for (const r of dvVenueRows) {
+    venueAvailability.set(r.venue_id, parseAvailability(r.venue?.availability));
+  }
 
   if (!venueIds.length) {
-    return { success: false, error: "No venues assigned to this division for games." };
+    return {
+      success: false,
+      error:
+        "No venues with availability set are assigned to this division for games. Configure venue hours first.",
+    };
   }
 
   // ── 4. Load league blackout dates ────────────────────────────────────────────
@@ -616,13 +650,20 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
 
   // ── 7. Build slot pool ───────────────────────────────────────────────────────
 
-  const slots = buildSlots(div.start_date, div.end_date, settings, venueIds, blackoutDates);
+  const slots = buildSlots(
+    div.start_date,
+    div.end_date,
+    settings,
+    venueIds,
+    venueAvailability,
+    blackoutDates,
+  );
 
   if (!slots.length) {
     return {
       success: false,
       error:
-        "No valid game slots found. Check that playing days fall within the season date range.",
+        "No valid game slots found. Check that the division's playing days and times overlap with each venue's configured hours.",
     };
   }
 
@@ -922,16 +963,35 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
   if (teams.length < 2) return { success: false, error: `Found ${teams.length} team(s) — at least 2 are required.` };
 
   // ── 3. Load venues ───────────────────────────────────────────────────────────
+  // Same configured-only filter as generateSchedule.
 
   const { data: dvRows, error: dvErr } = await supabase
     .from("division_venues")
-    .select("venue_id")
+    .select(
+      "venue_id, venue:venues!inner(id, availability, availability_configured)",
+    )
     .eq("division_id", divisionId)
-    .eq("allow_games", true);
+    .eq("allow_games", true)
+    .eq("venue.availability_configured", true);
 
   if (dvErr) return { success: false, error: dvErr.message };
-  const venueIds = (dvRows ?? []).map((r: { venue_id: string }) => r.venue_id);
-  if (!venueIds.length) return { success: false, error: "No venues assigned to this division for games." };
+  type DvVenueRowFinish = {
+    venue_id: string;
+    venue: { id: string; availability: unknown; availability_configured: boolean } | null;
+  };
+  const dvVenueRowsFinish = (dvRows ?? []) as unknown as DvVenueRowFinish[];
+  const venueIds = dvVenueRowsFinish.map((r) => r.venue_id);
+  const venueAvailability = new Map<string, VenueAvailability>();
+  for (const r of dvVenueRowsFinish) {
+    venueAvailability.set(r.venue_id, parseAvailability(r.venue?.availability));
+  }
+  if (!venueIds.length) {
+    return {
+      success: false,
+      error:
+        "No venues with availability set are assigned to this division for games. Configure venue hours first.",
+    };
+  }
 
   // ── 4. Load league blackout dates ────────────────────────────────────────────
 
@@ -1128,8 +1188,21 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
 
   // ── 8. Build slot pool ───────────────────────────────────────────────────────
 
-  const slots = buildSlots(div.start_date, div.end_date, settings, venueIds, blackoutDates);
-  if (!slots.length) return { success: false, error: "No valid game slots found. Check that playing days fall within the season date range." };
+  const slots = buildSlots(
+    div.start_date,
+    div.end_date,
+    settings,
+    venueIds,
+    venueAvailability,
+    blackoutDates,
+  );
+  if (!slots.length) {
+    return {
+      success: false,
+      error:
+        "No valid game slots found. Check that the division's playing days and times overlap with each venue's configured hours.",
+    };
+  }
 
   // ── 9. Pre-load ALL venue bookings (existing + cross-division) — no delete ───
 

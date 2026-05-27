@@ -1,10 +1,20 @@
 import { createClient } from "@/lib/supabase/server";
 import {
+  AlertTriangle,
   BarChart3,
   CalendarDays,
   CheckCircle2,
+  Clock,
   MapPin,
 } from "lucide-react";
+import Link from "next/link";
+import {
+  dayKeyFromIsoDate,
+  isVenueAvailable,
+  parseAvailability,
+  weeklyAvailableHours,
+  type VenueAvailability,
+} from "@/lib/venues/availability";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 // `leagueId` is the resolved season id from `?season=...` on /dashboard.
@@ -31,17 +41,12 @@ type GameRow = {
   venue_id: string | null;
   home_team_id: string;
 };
-type DivVenueRow = {
-  division_id: string;
-  venue_id: string;
-  allow_games: boolean;
-  allow_practices: boolean;
-};
 type TimeSlotRow = {
   id: string;
   division_id: string;
   duration_minutes: number;
   days_of_week: string[];
+  start_time: string;
 };
 type PracticeRow = {
   id: string;
@@ -52,19 +57,15 @@ type PracticeRow = {
   practice_days: string[];
   date: string | null;
 };
-type VenueRow = { id: string; name: string };
+type VenueRow = {
+  id: string;
+  name: string;
+  availability: unknown;
+  availability_configured: boolean;
+};
 
-// Division settings shape we actually read. `day_windows` is a per-day object
-// `{ Mo: { start, end }, … }`; older rows may instead have flat
-// `earliest_start` / `latest_start` strings — we accept either.
-type DaySpec = { start?: string; end?: string };
 type DivisionSettings = {
   game_duration?: number;
-  buffer_minutes?: number;
-  playing_days?: string[];
-  day_windows?: Record<string, DaySpec | undefined>;
-  earliest_start?: string;
-  latest_start?: string;
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -84,7 +85,6 @@ export async function OverviewReports({ leagueId }: Props) {
     divisionsRes,
     teamsRes,
     gamesRes,
-    divisionVenuesRes,
     timeSlotsRes,
     practiceSlotsRes,
     venuesRes,
@@ -107,17 +107,10 @@ export async function OverviewReports({ leagueId }: Props) {
       .from("games")
       .select("id, status, scheduled_at, venue_id, home_team_id")
       .eq("league_id", leagueId),
-    // !inner ensures the join filters down to this league's division_venues only.
-    supabase
-      .from("division_venues")
-      .select(
-        "division_id, venue_id, allow_games, allow_practices, division:divisions!inner(league_id)",
-      )
-      .eq("division.league_id", leagueId),
     supabase
       .from("practice_time_slots")
       .select(
-        "id, division_id, duration_minutes, days_of_week, division:divisions!inner(league_id)",
+        "id, division_id, duration_minutes, days_of_week, start_time, division:divisions!inner(league_id)",
       )
       .eq("division.league_id", leagueId),
     supabase
@@ -126,16 +119,17 @@ export async function OverviewReports({ leagueId }: Props) {
         "id, team_id, time_slot_id, field_id, type, practice_days, date, team:teams!inner(league_id)",
       )
       .eq("team.league_id", leagueId),
-    // RLS already scopes venues to the org owner; pull the small lookup set
-    // so we can resolve field_ids to display names.
-    supabase.from("venues").select("id, name"),
+    // RLS scopes venues to the org owner; pull the full set so we can compute
+    // capacity from each venue's own availability map.
+    supabase
+      .from("venues")
+      .select("id, name, availability, availability_configured"),
   ]);
 
   const league = (leagueRes.data ?? null) as LeagueRow | null;
   const divisions = (divisionsRes.data ?? []) as DivisionRow[];
   const teams = (teamsRes.data ?? []) as TeamRow[];
   const games = (gamesRes.data ?? []) as GameRow[];
-  const divisionVenues = (divisionVenuesRes.data ?? []) as unknown as DivVenueRow[];
   const timeSlots = (timeSlotsRes.data ?? []) as unknown as TimeSlotRow[];
   const practices = (practiceSlotsRes.data ?? []) as unknown as PracticeRow[];
   const venues = (venuesRes.data ?? []) as VenueRow[];
@@ -152,8 +146,16 @@ export async function OverviewReports({ leagueId }: Props) {
   const divisionById = new Map<string, DivisionRow>();
   for (const d of divisions) divisionById.set(d.id, d);
 
-  const venueNameById = new Map<string, string>();
-  for (const v of venues) venueNameById.set(v.id, v.name);
+  const venueById = new Map<string, VenueRow>();
+  for (const v of venues) venueById.set(v.id, v);
+
+  const venueAvailabilityById = new Map<string, VenueAvailability>();
+  for (const v of venues) {
+    venueAvailabilityById.set(v.id, parseAvailability(v.availability));
+  }
+
+  const timeSlotById = new Map<string, TimeSlotRow>();
+  for (const ts of timeSlots) timeSlotById.set(ts.id, ts);
 
   // ── Schedule completion (whole season) ────────────────────────────────────
   // Played = a non-cancelled game whose scheduled time has already passed.
@@ -162,7 +164,6 @@ export async function OverviewReports({ leagueId }: Props) {
   const now = Date.now();
   let totalGames = 0;
   let playedGames = 0;
-  // Also build per-division aggregates while we walk the games list.
   const perDivision = new Map<
     string,
     { divisionId: string; played: number; total: number }
@@ -188,9 +189,6 @@ export async function OverviewReports({ leagueId }: Props) {
   const completionPct =
     totalGames === 0 ? 0 : Math.round((playedGames / totalGames) * 100);
 
-  // Build per-division rows; include every division (even with 0 games) so the
-  // table reflects the season's full shape. Sort alphabetically by name — the
-  // divisions table has no sort_order column today.
   const divisionRows = divisions
     .map((d) => {
       const agg = perDivision.get(d.id);
@@ -202,46 +200,21 @@ export async function OverviewReports({ leagueId }: Props) {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   // ── Field utilization ─────────────────────────────────────────────────────
-  // The display counts (Games, Practices, Total) use ROW counts — matches the
-  // convention used by the existing "Total practices scheduled" stat card.
-  // Utilization % uses real HOURS, with occurrence multiplication for
-  // recurring practices (a single practice_slot row may represent many
-  // weekly occurrences). Both views are correct; they answer different
-  // questions.
+  // Capacity now comes from each venue's own weekly availability, NOT from
+  // summing across divisions. This fixes the prior over-count when multiple
+  // divisions shared a venue's playing window.
+  //
+  //   available_hours = weeklyAvailableHours(venue.availability) × weeksInSeason
+  //
+  // Used hours per venue:
+  //   - games:     home team's division.game_duration / 60 per non-cancelled game
+  //   - practices: time_slot.duration / 60, expanded for recurring slots by
+  //                |practice_days| × weeksInSeason; one-offs count as 1.
 
-  // Group time slots per division (for the capacity rollup).
-  const timeSlotsByDivision = new Map<string, TimeSlotRow[]>();
-  for (const ts of timeSlots) {
-    const arr = timeSlotsByDivision.get(ts.division_id) ?? [];
-    arr.push(ts);
-    timeSlotsByDivision.set(ts.division_id, arr);
-  }
-
-  // Look up a single time-slot row (for the practice duration lookup below).
-  const timeSlotById = new Map<string, TimeSlotRow>();
-  for (const ts of timeSlots) timeSlotById.set(ts.id, ts);
-
-  // Per-division *playing window* hours/week from settings JSON.
-  const divisionGameHoursPerWeek = new Map<string, number>();
-  // Per-division total *practice slot* hours/week from configured time slots.
-  const divisionPracticeHoursPerWeek = new Map<string, number>();
-  for (const d of divisions) {
-    divisionGameHoursPerWeek.set(d.id, gameHoursPerWeek(d.settings));
-    const slots = timeSlotsByDivision.get(d.id) ?? [];
-    divisionPracticeHoursPerWeek.set(d.id, practiceCapacityHoursPerWeek(slots));
-  }
-
-  // Per-venue rollup. Capacity sums across every (division, venue) pair where
-  // the bridge row says this venue is allowed for that purpose. NOTE: if two
-  // divisions share overlapping playing-day windows at the same venue, this
-  // simple sum overcounts available hours — see "judgment calls" in the
-  // commit message / report.
   type VenueAgg = {
     venueId: string;
     games: number;
     practices: number;
-    availableGameH: number;
-    availablePracticeH: number;
     usedGameH: number;
     usedPracticeH: number;
   };
@@ -253,8 +226,6 @@ export async function OverviewReports({ leagueId }: Props) {
         venueId: id,
         games: 0,
         practices: 0,
-        availableGameH: 0,
-        availablePracticeH: 0,
         usedGameH: 0,
         usedPracticeH: 0,
       };
@@ -263,21 +234,8 @@ export async function OverviewReports({ leagueId }: Props) {
     return v;
   }
 
-  // Capacity (available hours) contributed by configured division↔venue pairs.
-  for (const dv of divisionVenues) {
-    if (dv.allow_games) {
-      const perWeek = divisionGameHoursPerWeek.get(dv.division_id) ?? 0;
-      ensureVenue(dv.venue_id).availableGameH += perWeek * weeksInSeason;
-    }
-    if (dv.allow_practices) {
-      const perWeek = divisionPracticeHoursPerWeek.get(dv.division_id) ?? 0;
-      ensureVenue(dv.venue_id).availablePracticeH += perWeek * weeksInSeason;
-    }
-  }
+  let outOfHoursCount = 0;
 
-  // Used: games at this venue. Display count = row count; hours use the home
-  // team's division's configured game_duration (the games table itself has no
-  // duration column).
   for (const g of games) {
     if (g.status === "cancelled") continue;
     if (!g.venue_id) continue;
@@ -288,47 +246,118 @@ export async function OverviewReports({ leagueId }: Props) {
     const settings = (div?.settings ?? {}) as DivisionSettings;
     const durationMin = Number(settings.game_duration ?? 0);
     v.usedGameH += durationMin / 60;
+
+    // Out-of-hours guard for the warning row above the table.
+    const av = venueAvailabilityById.get(g.venue_id);
+    if (av && Object.keys(av).length > 0) {
+      const day = dayKeyFromIsoDate(g.scheduled_at);
+      const wallTime = g.scheduled_at.substring(11, 16);
+      if (durationMin > 0 && !isVenueAvailable(av, day, wallTime, durationMin)) {
+        outOfHoursCount += 1;
+      }
+    }
   }
 
-  // Used: practices at this venue. Display count = practice_slot row count.
-  // Hours expand recurring slots to occurrences (practice_days × weeks); a
-  // one-off slot counts as exactly 1 occurrence.
   for (const p of practices) {
     if (!p.field_id) continue;
     const v = ensureVenue(p.field_id);
     v.practices += 1;
     const ts = p.time_slot_id ? timeSlotById.get(p.time_slot_id) : undefined;
-    const durationH = (ts?.duration_minutes ?? 90) / 60;
+    const durationMin = ts?.duration_minutes ?? 90;
+    const durationH = durationMin / 60;
     if (p.type === "one_off") {
       v.usedPracticeH += durationH;
     } else {
       const days = p.practice_days?.length ?? 0;
       v.usedPracticeH += durationH * days * weeksInSeason;
     }
+
+    // Out-of-hours guard for practices. A recurring slot is out-of-hours if
+    // ANY of its days falls outside the venue's window at that wall time —
+    // one slot can yield up to N day-level mismatches but we collapse to one
+    // count per practice_slot row to keep the headline number readable.
+    const av = venueAvailabilityById.get(p.field_id);
+    if (av && Object.keys(av).length > 0 && ts) {
+      const wallTime = ts.start_time.substring(0, 5);
+      const days =
+        p.type === "one_off"
+          ? p.date
+            ? [dayKeyFromIsoDate(p.date)]
+            : []
+          : (p.practice_days ?? []).map((d) => d as ReturnType<typeof dayKeyFromIsoDate>);
+      const anyBad = days.some(
+        (d) => !isVenueAvailable(av, d, wallTime, durationMin),
+      );
+      if (anyBad) outOfHoursCount += 1;
+    }
   }
 
-  // Final rows. Excluded: venues whose total available capacity is 0 (no
-  // configured purpose for this season) — we can't compute a meaningful %.
-  const utilizationRows = Array.from(venueAgg.values())
-    .map((v) => {
-      const totalUsed = v.usedGameH + v.usedPracticeH;
-      const totalAvail = v.availableGameH + v.availablePracticeH;
-      const pct = totalAvail <= 0 ? null : Math.round((totalUsed / totalAvail) * 100);
-      return {
+  // Build the final per-venue rows. Cases:
+  //  - venue.availability_configured = false AND has events → show with "—" %
+  //    and a "configure hours" link in the % column (still appears in the
+  //    table so the admin sees the activity).
+  //  - configured but zero available hours (defensive — UI shouldn't allow
+  //    this) → exclude.
+  //  - configured with hours → render utilization %, capped at 100% on
+  //    display with an "over capacity" badge when used > available.
+  type UtilizationRow = {
+    venueId: string;
+    name: string;
+    games: number;
+    practices: number;
+    total: number;
+    pct: number | null;            // null = unconfigured
+    rawPct: number | null;          // pre-cap for tooltip
+    overCapacity: boolean;
+    unconfigured: boolean;
+  };
+
+  const utilizationRows: UtilizationRow[] = [];
+  for (const v of venueAgg.values()) {
+    const venue = venueById.get(v.venueId);
+    if (!venue) continue;
+    const av = venueAvailabilityById.get(v.venueId) ?? {};
+    const availableH =
+      weeklyAvailableHours(av) * weeksInSeason;
+    const totalUsed = v.usedGameH + v.usedPracticeH;
+
+    if (!venue.availability_configured) {
+      utilizationRows.push({
         venueId: v.venueId,
-        name: venueNameById.get(v.venueId) ?? "Unknown venue",
+        name: venue.name,
         games: v.games,
         practices: v.practices,
         total: v.games + v.practices,
-        pct,
-      };
-    })
-    .filter((r) => r.pct !== null)
-    .sort((a, b) =>
-      b.total - a.total !== 0
-        ? b.total - a.total
-        : a.name.localeCompare(b.name),
-    );
+        pct: null,
+        rawPct: null,
+        overCapacity: false,
+        unconfigured: true,
+      });
+      continue;
+    }
+
+    if (availableH <= 0) continue;
+
+    const rawPct = Math.round((totalUsed / availableH) * 100);
+    const overCapacity = totalUsed > availableH;
+    utilizationRows.push({
+      venueId: v.venueId,
+      name: venue.name,
+      games: v.games,
+      practices: v.practices,
+      total: v.games + v.practices,
+      pct: Math.min(100, rawPct),
+      rawPct,
+      overCapacity,
+      unconfigured: false,
+    });
+  }
+
+  utilizationRows.sort((a, b) =>
+    b.total - a.total !== 0
+      ? b.total - a.total
+      : a.name.localeCompare(b.name),
+  );
 
   return (
     <section
@@ -370,6 +399,7 @@ export async function OverviewReports({ leagueId }: Props) {
       <FieldUtilizationCard
         rows={utilizationRows}
         weeksInSeason={weeksInSeason}
+        outOfHoursCount={outOfHoursCount}
       />
     </section>
   );
@@ -499,14 +529,19 @@ interface UtilizationRow {
   practices: number;
   total: number;
   pct: number | null;
+  rawPct: number | null;
+  overCapacity: boolean;
+  unconfigured: boolean;
 }
 
 function FieldUtilizationCard({
   rows,
   weeksInSeason,
+  outOfHoursCount,
 }: {
   rows: UtilizationRow[];
   weeksInSeason: number;
+  outOfHoursCount: number;
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
@@ -517,6 +552,28 @@ function FieldUtilizationCard({
           {weeksInSeason} {weeksInSeason === 1 ? "week" : "weeks"} in season
         </p>
       </div>
+
+      {/* Out-of-hours warning row — events scheduled outside their venue's
+          configured availability. List view is a follow-up (logged to console
+          for now). */}
+      {outOfHoursCount > 0 && (
+        <div className="flex items-start gap-2.5 border-b border-amber-100 bg-amber-50/70 px-6 py-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+          <p className="text-sm text-amber-800">
+            {outOfHoursCount}{" "}
+            {outOfHoursCount === 1 ? "event is" : "events are"} scheduled
+            outside configured venue hours.{" "}
+            <a
+              href="#"
+              className="text-amber-900 underline underline-offset-2"
+              title="A list view is a follow-up; check the schedule for details."
+            >
+              View list
+            </a>
+          </p>
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
           <MapPin className="h-5 w-5 text-gray-300" />
@@ -544,7 +601,17 @@ function FieldUtilizationCard({
                 {rows.map((row) => (
                   <tr key={row.venueId} className="hover:bg-gray-50/40">
                     <td className="px-6 py-3.5 font-medium text-[#0b1c39]">
-                      {row.name}
+                      <span className="inline-flex items-center gap-2">
+                        {row.name}
+                        {row.overCapacity && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-600"
+                            title={`Used hours exceed capacity (${row.rawPct}%).`}
+                          >
+                            Over capacity
+                          </span>
+                        )}
+                      </span>
                     </td>
                     <td className="px-6 py-3.5 text-right tabular-nums text-gray-700">
                       {row.games}
@@ -556,10 +623,14 @@ function FieldUtilizationCard({
                       {row.total}
                     </td>
                     <td className="px-6 py-3.5">
-                      <ProgressBarWithLabel
-                        pct={row.pct ?? 0}
-                        kind="utilization"
-                      />
+                      {row.unconfigured ? (
+                        <ConfigureHoursCell />
+                      ) : (
+                        <ProgressBarWithLabel
+                          pct={row.pct ?? 0}
+                          kind="utilization"
+                        />
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -569,6 +640,21 @@ function FieldUtilizationCard({
           <UtilizationLegend />
         </>
       )}
+    </div>
+  );
+}
+
+function ConfigureHoursCell() {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-sm text-gray-400">—</span>
+      <Link
+        href="/dashboard/venues"
+        className="inline-flex items-center gap-1 text-xs text-[#22C55E] underline-offset-2 hover:underline"
+      >
+        <Clock className="h-3 w-3" />
+        Configure hours
+      </Link>
     </div>
   );
 }
@@ -642,45 +728,7 @@ function utilizationColor(pct: number): string {
   return "#E24B4A";
 }
 
-// ── Capacity helpers ──────────────────────────────────────────────────────────
-
-// Sum the per-day playing-window hours across a division's configured
-// playing_days. Accepts the old single-window shape (earliest_start /
-// latest_start) and the newer per-day day_windows shape.
-function gameHoursPerWeek(rawSettings: unknown): number {
-  const settings = (rawSettings ?? {}) as DivisionSettings;
-  const playingDays = settings.playing_days ?? [];
-  if (playingDays.length === 0) return 0;
-
-  // Build a (day → window) accessor that falls back to legacy single-window
-  // fields when day_windows isn't populated.
-  const windows = settings.day_windows ?? {};
-  const fallbackStart = settings.earliest_start;
-  const fallbackEnd = settings.latest_start;
-
-  let hours = 0;
-  for (const day of playingDays) {
-    const w = windows[day];
-    const startStr = w?.start ?? fallbackStart;
-    const endStr = w?.end ?? fallbackEnd;
-    if (!startStr || !endStr) continue;
-    const startMin = parseHHMM(startStr);
-    const endMin = parseHHMM(endStr);
-    if (endMin <= startMin) continue;
-    hours += (endMin - startMin) / 60;
-  }
-  return hours;
-}
-
-function practiceCapacityHoursPerWeek(slots: TimeSlotRow[]): number {
-  let hours = 0;
-  for (const s of slots) {
-    const duration = (s.duration_minutes ?? 0) / 60;
-    const days = s.days_of_week?.length ?? 0;
-    hours += duration * days;
-  }
-  return hours;
-}
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function computeWeeksInSeason(
   startStr: string | null,
@@ -696,9 +744,4 @@ function computeWeeksInSeason(
   if (ms <= 0) return 1;
   const days = ms / (1000 * 60 * 60 * 24) + 1; // inclusive
   return Math.max(1, Math.ceil(days / 7));
-}
-
-function parseHHMM(s: string): number {
-  const [h, m] = s.split(":").map(Number);
-  return (h || 0) * 60 + (m || 0);
 }

@@ -1,6 +1,12 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import {
+  isVenueAvailable,
+  parseAvailability,
+  type DayKey,
+  type VenueAvailability,
+} from "@/lib/venues/availability";
 
 export type AutoAssignResult =
   | {
@@ -14,9 +20,14 @@ type TimeSlot = {
   id: string;
   label: string;
   start_time: string;
+  duration_minutes: number;
   days_of_week: string[];
 };
-type Venue = { id: string; name: string };
+type Venue = {
+  id: string;
+  name: string;
+  availability: VenueAvailability;
+};
 type Team = {
   id: string;
   name: string;
@@ -96,7 +107,8 @@ function chooseDays(
   priorityDays: string[],
   slotDays: Set<string>,
   startTime: string,
-  fieldId: string,
+  durationMin: number,
+  field: Venue,
   taken: Set<string>,
   blocks: AvailabilityBlock[],
 ): string[] | null {
@@ -108,7 +120,9 @@ function chooseDays(
       if (chosen.includes(day)) continue;
       if (!slotDays.has(day)) continue;
       if (isBlocked(blocks, day, startTime)) continue;
-      const key = `${day}|${startTime}|${fieldId}`;
+      // Venue must be open on this day at this time for the full duration.
+      if (!isVenueAvailable(field.availability, day as DayKey, startTime, durationMin)) continue;
+      const key = `${day}|${startTime}|${field.id}`;
       if (taken.has(key)) continue;
       if (requireSpacing && !spacedFromAll(chosen, day)) continue;
       chosen.push(day);
@@ -139,7 +153,7 @@ export async function autoAssignPractices(
   // 1. Time slots for this division
   const { data: slotRows, error: slotErr } = await supabase
     .from("practice_time_slots")
-    .select("id, label, start_time, days_of_week")
+    .select("id, label, start_time, duration_minutes, days_of_week")
     .eq("division_id", divisionId)
     .order("sort_order", { ascending: true })
     .order("start_time", { ascending: true });
@@ -153,23 +167,39 @@ export async function autoAssignPractices(
     };
   }
 
-  // 2. Practice-eligible venues for this division
+  // 2. Practice-eligible venues for this division — only those whose hours
+  // have been configured. Unconfigured venues are invisible to the engine.
   const { data: dvRows, error: dvErr } = await supabase
     .from("division_venues")
-    .select("venue_id, allow_practices, venue:venues(id, name)")
+    .select(
+      "venue_id, allow_practices, venue:venues!inner(id, name, availability, availability_configured)",
+    )
     .eq("division_id", divisionId)
-    .eq("allow_practices", true);
+    .eq("allow_practices", true)
+    .eq("venue.availability_configured", true);
   if (dvErr) return { success: false, error: dvErr.message };
-  type DvRow = { venue: Venue | null };
-  const venues = ((dvRows ?? []) as DvRow[])
+  type DvRow = {
+    venue: {
+      id: string;
+      name: string;
+      availability: unknown;
+      availability_configured: boolean;
+    } | null;
+  };
+  const venues: Venue[] = ((dvRows ?? []) as DvRow[])
     .map((r) => r.venue)
-    .filter((v): v is Venue => !!v)
+    .filter((v): v is NonNullable<DvRow["venue"]> => !!v)
+    .map((v) => ({
+      id: v.id,
+      name: v.name,
+      availability: parseAvailability(v.availability),
+    }))
     .sort((a, b) => a.name.localeCompare(b.name));
   if (venues.length === 0) {
     return {
       success: false,
       error:
-        "Assign at least one practice-eligible venue to this division before auto-assigning.",
+        "No practice-eligible venues with availability set. Configure venue hours first.",
     };
   }
 
@@ -233,8 +263,9 @@ export async function autoAssignPractices(
   const taken = new Set<string>();
   for (const r of existing) {
     if (!r.field_id || !r.start_time?.start_time) continue;
+    const wt = r.start_time.start_time.substring(0, 5);
     for (const day of r.practice_days) {
-      taken.add(`${day}|${r.start_time.start_time}|${r.field_id}`);
+      taken.add(`${day}|${wt}|${r.field_id}`);
     }
   }
 
@@ -344,18 +375,22 @@ export async function autoAssignPractices(
     let placed = false;
     outer: for (const slot of orderedTimes) {
       const slotDays = new Set(slot.days_of_week);
+      const durationMin = Number(slot.duration_minutes ?? 90);
+      // Normalize wall time to HH:MM (DB may store HH:MM:SS).
+      const slotStart = slot.start_time.substring(0, 5);
       for (const field of orderedFields) {
         const chosen = chooseDays(
           team.practices_per_week,
           dayPriority,
           slotDays,
-          slot.start_time,
-          field.id,
+          slotStart,
+          durationMin,
+          field,
           taken,
           teamBlocks,
         );
         if (chosen) {
-          chosen.forEach((d) => taken.add(`${d}|${slot.start_time}|${field.id}`));
+          chosen.forEach((d) => taken.add(`${d}|${slotStart}|${field.id}`));
           placements.push({
             team_id: team.id,
             time_slot_id: slot.id,

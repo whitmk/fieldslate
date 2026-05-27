@@ -160,8 +160,11 @@ export function PracticesPageClient() {
       supabase.from("divisions").select("id, name, league_id").order("name"),
       supabase
         .from("division_venues")
-        .select("division_id, venue_id, allow_practices, venue:venues(id, name)")
-        .eq("allow_practices", true),
+        .select(
+          "division_id, venue_id, allow_practices, venue:venues!inner(id, name, availability_configured)",
+        )
+        .eq("allow_practices", true)
+        .eq("venue.availability_configured", true),
       supabase
         .from("practice_time_slots")
         .select(

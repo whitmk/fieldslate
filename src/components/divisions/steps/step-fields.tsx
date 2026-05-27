@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MapPin, AlertTriangle, Plus } from "lucide-react";
+import Link from "next/link";
+import { MapPin, AlertTriangle, Plus, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { WizardData, VenueAssignment } from "../wizard-types";
 import type { Venue } from "@/types/database";
@@ -16,9 +17,6 @@ export function StepFields({ data, update, leagueId }: Props) {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
   const [conflictMap, setConflictMap] = useState<Record<string, string>>({});
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newVenueName, setNewVenueName] = useState("");
-  const [addingVenue, setAddingVenue] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -30,6 +28,7 @@ export function StepFields({ data, update, leagueId }: Props) {
         .from("venues")
         .select("*")
         .eq("owner_id", user.id)
+        .eq("availability_configured", true)
         .order("name");
 
       const allVenues = (venueData as Venue[]) ?? [];
@@ -75,35 +74,6 @@ export function StepFields({ data, update, leagueId }: Props) {
     }
   }
 
-  async function addVenue() {
-    if (!newVenueName.trim()) return;
-    setAddingVenue(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data: newV } = await supabase
-      .from("venues")
-      .insert([{ name: newVenueName.trim(), owner_id: user.id }])
-      .select("*")
-      .single();
-
-    if (newV) {
-      const venue = newV as Venue;
-      setVenues((prev) => [...prev, venue].sort((a, b) => a.name.localeCompare(b.name)));
-      update({
-        venue_assignments: [
-          ...data.venue_assignments,
-          { venue_id: venue.id, allow_games: true, allow_practices: false },
-        ],
-      });
-    }
-
-    setNewVenueName("");
-    setShowAddForm(false);
-    setAddingVenue(false);
-  }
-
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -121,12 +91,20 @@ export function StepFields({ data, update, leagueId }: Props) {
           </svg>
         </div>
       ) : venues.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-10 text-center">
-          <MapPin className="h-6 w-6 text-gray-300" />
-          <p className="mt-3 text-sm font-medium text-gray-600">No venues yet</p>
-          <p className="mt-1 text-xs text-gray-400">
-            Add a venue below to assign fields to this division.
+        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-gray-200 px-4 py-10 text-center">
+          <Clock className="h-6 w-6 text-gray-300" />
+          <p className="text-sm font-medium text-gray-600">
+            No venues with availability set
           </p>
+          <p className="text-xs text-gray-400">
+            Configure venue hours first.
+          </p>
+          <Link
+            href="/dashboard/venues"
+            className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#16a34a]"
+          >
+            Go to Venues
+          </Link>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -180,42 +158,14 @@ export function StepFields({ data, update, leagueId }: Props) {
         </div>
       )}
 
-      {showAddForm ? (
-        <div className="flex flex-wrap gap-2">
-          <input
-            type="text"
-            placeholder="Venue name"
-            value={newVenueName}
-            onChange={(e) => setNewVenueName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addVenue()}
-            autoFocus
-            className="h-10 min-w-0 flex-1 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-          />
-          <button
-            type="button"
-            onClick={addVenue}
-            disabled={addingVenue || !newVenueName.trim()}
-            className="rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
-          >
-            {addingVenue ? "Adding…" : "Add"}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setShowAddForm(false); setNewVenueName(""); }}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 hover:text-gray-700"
-          >
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setShowAddForm(true)}
+      {venues.length > 0 && (
+        <Link
+          href="/dashboard/venues"
           className="inline-flex items-center gap-2 self-start rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
         >
           <Plus className="h-4 w-4" />
           Add a new venue
-        </button>
+        </Link>
       )}
     </div>
   );

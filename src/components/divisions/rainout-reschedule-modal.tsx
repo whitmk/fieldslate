@@ -6,6 +6,12 @@ import { X, CloudRain, CalendarDays, Loader2, CheckCircle2, AlertTriangle, Chevr
 import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
+import {
+  isVenueAvailable,
+  parseAvailability,
+  type DayKey,
+  type VenueAvailability,
+} from "@/lib/venues/availability";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -68,6 +74,7 @@ function buildAvailableSlots(params: {
   maxPerTeamDay: number;
   venueIds: string[];
   venueNames: Record<string, string>;
+  venueAvailability: Record<string, VenueAvailability>;
   blackoutDates: Set<string>;
   // existing game bookings (excluding the cancelled game)
   venueBookings: Map<string, number[]>;    // "venueId:YYYY-MM-DD" → booked start mins
@@ -79,7 +86,7 @@ function buildAvailableSlots(params: {
   const {
     startDate, endDate, playingDays, dayWindows,
     earliestStart, latestStart, gameDuration, bufferMinutes,
-    maxPerTeamDay, venueIds, venueNames, blackoutDates,
+    maxPerTeamDay, venueIds, venueNames, venueAvailability, blackoutDates,
     venueBookings, homeTeamTimes, awayTeamTimes,
     homeTeamDayCounts, awayTeamDayCounts,
   } = params;
@@ -87,6 +94,7 @@ function buildAvailableSlots(params: {
   const allowedDays = new Set(playingDays.map((d) => DAY_TO_JS[d]));
   const interval = Math.max(1, Number(gameDuration) + Number(bufferMinutes));
   const minGap = interval;
+  const duration = Number(gameDuration);
 
   // Start from today (no point scheduling in the past)
   const today = localDateStr(new Date());
@@ -100,7 +108,7 @@ function buildAvailableSlots(params: {
     const date = localDateStr(cur);
 
     if (allowedDays.has(cur.getDay()) && !blackoutDates.has(date)) {
-      const dayKey = JS_TO_DAY[cur.getDay()];
+      const dayKey = JS_TO_DAY[cur.getDay()] as DayKey;
       const win = dayWindows[dayKey];
       const earliest = toMins(win?.start ?? earliestStart ?? "09:00");
       const latest   = toMins(win?.end   ?? latestStart  ?? "17:00");
@@ -111,13 +119,19 @@ function buildAvailableSlots(params: {
       if (homeDayCount < maxPerTeamDay && awayDayCount < maxPerTeamDay) {
         for (let timeMin = earliest; timeMin <= latest; timeMin += interval) {
           const isoString = `${date}T${minsToHHMM(timeMin)}:00`;
+          const wallTime = minsToHHMM(timeMin);
 
           // Both teams must be free at this exact datetime
           if (homeTeamTimes.has(isoString)) continue;
           if (awayTeamTimes.has(isoString)) continue;
 
-          // Each venue: must not conflict with existing bookings
+          // Each venue: must be open (per venue.availability), within hours,
+          // and free of existing bookings at this wall time.
           for (const venueId of venueIds) {
+            const av = venueAvailability[venueId];
+            if (!av) continue;
+            if (!isVenueAvailable(av, dayKey, wallTime, duration)) continue;
+
             const vKey = `${venueId}:${date}`;
             const booked = venueBookings.get(vKey) ?? [];
             const conflict = booked.some((t) => Math.abs(t - timeMin) < minGap);
@@ -193,20 +207,32 @@ export function RainoutRescheduleModal({
     const bufferMinutes = Number(s.buffer_minutes ?? 15);
     const maxPerTeamDay = Math.max(1, Number(s.max_games_per_team_per_day ?? 1));
 
-    // 2. Division venues
+    // 2. Division venues — only configured ones; engine validates hours below.
     const { data: dvRows } = await supabase
       .from("division_venues")
-      .select("venue_id, venue:venues(name)")
-      .eq("division_id", divisionId);
+      .select(
+        "venue_id, venue:venues!inner(name, availability, availability_configured)",
+      )
+      .eq("division_id", divisionId)
+      .eq("venue.availability_configured", true);
 
-    type DVRow = { venue_id: string; venue: { name: string } | null };
+    type DVRow = {
+      venue_id: string;
+      venue: { name: string; availability: unknown; availability_configured: boolean } | null;
+    };
     const venueRows = (dvRows ?? []) as unknown as DVRow[];
     const venueIds = venueRows.map((r) => r.venue_id);
     const venueNames: Record<string, string> = {};
-    for (const r of venueRows) venueNames[r.venue_id] = r.venue?.name ?? r.venue_id;
+    const venueAvailability: Record<string, unknown> = {};
+    for (const r of venueRows) {
+      venueNames[r.venue_id] = r.venue?.name ?? r.venue_id;
+      venueAvailability[r.venue_id] = r.venue?.availability ?? {};
+    }
 
     if (!venueIds.length) {
-      setLoadError("No venues assigned to this division.");
+      setLoadError(
+        "No venues with availability set. Configure venue hours first.",
+      );
       setLoading(false);
       return;
     }
@@ -266,6 +292,11 @@ export function RainoutRescheduleModal({
       }
     }
 
+    const venueAvailabilityParsed: Record<string, VenueAvailability> = {};
+    for (const vid of venueIds) {
+      venueAvailabilityParsed[vid] = parseAvailability(venueAvailability[vid]);
+    }
+
     const available = buildAvailableSlots({
       startDate: div.start_date,
       endDate: div.end_date,
@@ -278,6 +309,7 @@ export function RainoutRescheduleModal({
       maxPerTeamDay,
       venueIds,
       venueNames,
+      venueAvailability: venueAvailabilityParsed,
       blackoutDates,
       venueBookings,
       homeTeamTimes,
