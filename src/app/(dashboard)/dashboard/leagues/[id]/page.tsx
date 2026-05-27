@@ -13,6 +13,7 @@ import { EditableLeagueHeader } from "@/components/dashboard/editable-league-hea
 import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
 import { ActivityLogPanel } from "@/components/dashboard/activity-log-panel";
+import { ReportsSection } from "@/components/reports/reports-section";
 import { detectConflicts } from "@/lib/schedule/detect-conflicts";
 import { RainedOutStatCard, type RainedOutGame } from "@/components/dashboard/rained-out-stat-card";
 import { ConflictStatCard, type ConflictGame } from "@/components/dashboard/conflict-stat-card";
@@ -411,6 +412,17 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       />
 
       <ActivityLogPanel leagueId={league.id} />
+
+      {/* Reports — read-only analytics for this season. Sits between the
+          activity audit log and the per-division management UI so the
+          aggregate snapshot comes before the drill-down. */}
+      <ReportsSection
+        leagueId={league.id}
+        gameCount={gameCount}
+        conflictCount={conflictGames.length}
+        rainedOutCount={rainedOutCount}
+        divisionCount={divisionCount}
+      />
 
       <LeagueContent
         leagueId={league.id}
