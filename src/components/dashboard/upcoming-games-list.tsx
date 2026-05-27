@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
 import { logActivity } from "@/lib/activity-log";
-import { fmtGameDate } from "@/lib/utils/game-time";
+import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 
 export type UpcomingGame = {
   id: string;
@@ -85,13 +85,7 @@ export function UpcomingGamesList({ initialGames }: Props) {
                 {game.home_team?.name ?? "TBD"} vs {game.away_team?.name ?? "TBD"}
               </p>
               <p className="mt-0.5 text-xs text-gray-400">
-                {new Date(game.scheduled_at).toLocaleDateString("en-US", {
-                  weekday: "short",
-                  month: "short",
-                  day: "numeric",
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}
+                {fmtGameDate(game.scheduled_at)}, {fmtGameTime(game.scheduled_at)}
               </p>
             </div>
 

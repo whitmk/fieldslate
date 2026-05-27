@@ -16,13 +16,18 @@ type OwnedLeague = {
   created_at: string;
 };
 
+const MONTHS_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+// Format a "YYYY-MM-DD" string from string parts directly so SSR (UTC) and the
+// browser (user-local) produce identical text — toLocaleDateString varies by
+// host timezone AND ICU version ("Sep" vs. "Sept"), which trips hydration.
 function fmtRangeDate(d: string | null): string | null {
   if (!d) return null;
-  return new Date(d + "T12:00:00").toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  const [year, month, day] = d.substring(0, 10).split("-").map(Number);
+  return `${MONTHS_SHORT[month - 1]} ${day}, ${year}`;
 }
 
 function resolveSelectedSeasonId(
