@@ -781,6 +781,17 @@ export default function InterleaguePage() {
     [seasons, selectedSeasonId],
   );
 
+  // Sent invites are scoped to the season picker. The dropdown only carries
+  // real season ids today, so we always filter; if an "All seasons" option is
+  // ever added back, treat a falsy selection as "show everything".
+  const visibleInvites = useMemo(
+    () =>
+      selectedSeasonId
+        ? invites.filter((inv) => inv.season_id === selectedSeasonId)
+        : invites,
+    [invites, selectedSeasonId],
+  );
+
   const loadAll = useCallback(async () => {
     const supabase = createClient();
     const {
@@ -1380,10 +1391,14 @@ export default function InterleaguePage() {
               </p>
             </div>
 
-            {invites.length === 0 ? (
+            {visibleInvites.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-10 text-center">
                 <Inbox className="mb-3 h-7 w-7 text-gray-300" />
-                <p className="text-sm font-medium text-[#0C1F3F]">No invites sent yet</p>
+                <p className="text-sm font-medium text-[#0C1F3F]">
+                  {selectedSeason
+                    ? `No invites sent for ${seasonLabel(selectedSeason)} yet`
+                    : "No invites sent yet"}
+                </p>
                 <p className="mt-1 text-xs text-gray-400">
                   Click <span className="font-medium">Send invite</span> on any org row above.
                 </p>
@@ -1401,7 +1416,7 @@ export default function InterleaguePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {invites.map((inv) => (
+                    {visibleInvites.map((inv) => (
                       <tr key={inv.id} className="hover:bg-gray-50/60">
                         <td className="px-5 py-3.5">
                           <p className="font-medium text-[#0C1F3F]">
