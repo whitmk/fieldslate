@@ -1,31 +1,32 @@
 import { createClient } from "@/lib/supabase/server";
 import {
   BarChart3,
-  CalendarDays,
   CalendarRange,
-  AlertTriangle,
-  CloudRain,
+  CheckCircle2,
+  Clock,
   MapPin,
+  Users,
 } from "lucide-react";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
-// Counts the parent page already derived (conflicts + rainouts come from the
-// same data the existing Conflict and Rained-out stat cards consume — we
-// reuse those numbers so the Reports row never disagrees with the row at the
-// top of the page).
+// Counts the parent page already derived — pass them in so we don't requery
+// for the same numbers the top stat row already paid for.
 interface Props {
   leagueId: string;
-  /** Total non-cancelled games for this season (matches the existing "Games" stat). */
+  /** Non-cancelled games for this season. */
   gameCount: number;
-  /** Combined schedule + blackout conflict count (matches the existing Conflicts card). */
-  conflictCount: number;
-  /** Cancelled games for this season — these are the rainouts. */
-  rainedOutCount: number;
   /** Number of divisions in this season. */
   divisionCount: number;
+  /** Number of teams across this season's divisions. */
+  teamCount: number;
 }
 
-type GameRow = { id: string; venue_id: string | null; status: string };
+type GameRow = {
+  id: string;
+  venue_id: string | null;
+  status: string;
+  scheduled_at: string;
+};
 type PracticeRow = {
   id: string;
   field_id: string | null;
@@ -36,16 +37,15 @@ type VenueRow = { id: string; name: string };
 export async function ReportsSection({
   leagueId,
   gameCount,
-  conflictCount,
-  rainedOutCount,
   divisionCount,
+  teamCount,
 }: Props) {
   const supabase = createClient();
 
-  // Fan-out the three Reports-specific reads in parallel with the rest of the
-  // page; the parent has already issued its own block via Promise.all, so
-  // these run sequentially after that — acceptable cost for keeping the
-  // Reports data co-located with its renderer.
+  // Fan-out the Reports-specific reads in parallel; the parent has already
+  // issued its own block via Promise.all, so these run sequentially after
+  // that — acceptable cost for keeping the Reports data co-located with its
+  // renderer.
   const [
     { data: gamesRaw },
     { data: practicesRaw },
@@ -54,7 +54,7 @@ export async function ReportsSection({
   ] = await Promise.all([
     supabase
       .from("games")
-      .select("id, venue_id, status")
+      .select("id, venue_id, status, scheduled_at")
       .eq("league_id", leagueId),
     supabase
       .from("practice_slots")
@@ -79,10 +79,35 @@ export async function ReportsSection({
     leagueRaw?.end_date ?? null,
   );
 
+  // ── Stat #1: schedule completion ──────────────────────────────────────────
+  // "Played" = a non-cancelled game whose scheduled time has already passed.
+  // Cancelled games never got played, so we exclude them from both numerator
+  // and denominator (gameCount already excludes them at the parent).
+  const now = Date.now();
+  let playedCount = 0;
+  for (const g of games) {
+    if (g.status === "cancelled") continue;
+    if (Date.parse(g.scheduled_at) < now) playedCount += 1;
+  }
+  const completion = formatCompletion(playedCount, gameCount);
+
+  // ── Stat #3: avg games per team ───────────────────────────────────────────
+  // Each game involves 2 teams, so total team-game appearances = gameCount × 2.
+  // Dividing by team count gives the average number of games per team this
+  // season. Cancelled games are already excluded from gameCount.
+  const avgGames = formatAvgGames(gameCount, teamCount);
+
+  // ── Stat #4: weeks remaining ──────────────────────────────────────────────
+  const weeksRemaining = computeWeeksRemaining(
+    leagueRaw?.start_date ?? null,
+    leagueRaw?.end_date ?? null,
+  );
+
+  // ── Field utilization rollup ──────────────────────────────────────────────
   // Per-venue rollup. Cancelled games don't actually occupy the field, so they
   // don't count toward utilization. Practice slots count once per assignment
   // (each row is a team-at-a-time-slot binding, not a per-occurrence row) —
-  // this matches how `practice_count` is computed for the top-line card.
+  // this matches how `practiceCount` is computed for the top-line card.
   const rollup = new Map<
     string,
     { venueId: string; games: number; practices: number }
@@ -138,14 +163,15 @@ export async function ReportsSection({
         </div>
       </div>
 
-      {/* Top-line stats — display-only here; interactive Conflicts and
-          Rained-out cards live in the stats row at the top of the page. */}
+      {/* Top-line stats — display-only, no click handlers, no modals. None of
+          these duplicate the Divisions / Teams / Games / Conflicts /
+          Rained Out cards in the top stat row of the page. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <ReportStatCard
-          title="Total games scheduled"
-          value={gameCount}
-          icon={CalendarDays}
-          subtitle={`across ${divisionCount} ${divisionCount === 1 ? "division" : "divisions"}`}
+          title="Schedule completion"
+          value={completion.value}
+          icon={CheckCircle2}
+          subtitle={completion.subtitle}
         />
         <ReportStatCard
           title="Total practices scheduled"
@@ -154,26 +180,16 @@ export async function ReportsSection({
           subtitle={`across ${divisionCount} ${divisionCount === 1 ? "division" : "divisions"}`}
         />
         <ReportStatCard
-          title="Open conflicts"
-          value={conflictCount}
-          icon={AlertTriangle}
-          subtitle={
-            conflictCount > 0
-              ? "see Conflicts card above to resolve"
-              : "no open conflicts"
-          }
-          accent={conflictCount > 0 ? "warning" : "neutral"}
+          title="Avg games per team"
+          value={avgGames.value}
+          icon={Users}
+          subtitle={avgGames.subtitle}
         />
         <ReportStatCard
-          title="Games rained out"
-          value={rainedOutCount}
-          icon={CloudRain}
-          subtitle={
-            rainedOutCount === 0
-              ? "no rainouts this season"
-              : `${rainedOutCount} this season`
-          }
-          accent={rainedOutCount > 0 ? "info" : "neutral"}
+          title="Weeks remaining"
+          value={weeksRemaining.value}
+          icon={Clock}
+          subtitle={weeksRemaining.subtitle}
         />
       </div>
 
@@ -247,6 +263,11 @@ export async function ReportsSection({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const MONTHS_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
 // Clamp to at least 1 so a 0-week season (or unset dates) doesn't trip a
 // divide-by-zero in the per-week column. Reads YYYY-MM-DD strings as plain
 // date components — same approach as the rest of the app, no timezone math.
@@ -264,10 +285,97 @@ function computeWeeksInSeason(
   return Math.max(1, Math.ceil(days / 7));
 }
 
+// "Weeks remaining" has three regimes: before season, mid-season, after
+// season. Today is the server clock (UTC on Vercel) treated as a calendar
+// day — close enough for a stat-card subtitle that updates per request.
+function computeWeeksRemaining(
+  startStr: string | null,
+  endStr: string | null,
+): { value: string; subtitle: string } {
+  if (!startStr || !endStr) {
+    return { value: "—", subtitle: "season dates not set" };
+  }
+  const start = startStr.substring(0, 10);
+  const end = endStr.substring(0, 10);
+  const today = todayYmd();
+
+  // Past end → over.
+  if (today > end) return { value: "0", subtitle: "season complete" };
+
+  // Hasn't started yet → show the full season span.
+  if (today < start) {
+    return {
+      value: String(computeWeeksInSeason(start, end)),
+      subtitle: `season starts ${fmtMonthDay(start)}`,
+    };
+  }
+
+  // Mid-season. Ceil so a Mon→Sun count of 8 days still reads as "2 weeks".
+  const todayD = parseDate(today);
+  const endD = parseDate(end);
+  if (!todayD || !endD) {
+    return { value: "—", subtitle: "season dates not set" };
+  }
+  const days =
+    (endD.getTime() - todayD.getTime()) / (1000 * 60 * 60 * 24) + 1;
+  const weeks = Math.max(0, Math.ceil(days / 7));
+  return { value: String(weeks), subtitle: `season ends ${fmtMonthDay(end)}` };
+}
+
+function formatCompletion(
+  played: number,
+  total: number,
+): { value: string; subtitle: string } {
+  if (total === 0) {
+    return { value: "0%", subtitle: "no games scheduled yet" };
+  }
+  const pct = Math.round((played / total) * 100);
+  return {
+    value: `${pct}%`,
+    subtitle: `${played} of ${total} ${total === 1 ? "game" : "games"}`,
+  };
+}
+
+function formatAvgGames(
+  gameCount: number,
+  teamCount: number,
+): { value: string; subtitle: string } {
+  if (teamCount === 0) {
+    return { value: "—", subtitle: "no teams yet" };
+  }
+  const avg = (gameCount * 2) / teamCount;
+  return {
+    value: (Math.round(avg * 10) / 10).toFixed(1),
+    subtitle: `across ${teamCount} ${teamCount === 1 ? "team" : "teams"}`,
+  };
+}
+
 function parseDate(s: string): Date | null {
   const [y, m, d] = s.substring(0, 10).split("-").map(Number);
   if (!y || !m || !d) return null;
   return new Date(y, m - 1, d, 12);
+}
+
+function todayYmd(): string {
+  // Use server-local components; on Vercel that's UTC. Matches the rest of
+  // the app's "wall-clock UTC" treatment of date columns.
+  const d = new Date();
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function fmtMonthDay(s: string): string {
+  // "2025-09-13" → "Sep 13". Year omitted — stat-card subtitle has no room
+  // and the season header above already shows full dates.
+  const [, monthStr, dayStr] = s.substring(0, 10).split("-");
+  const monthIdx = parseInt(monthStr, 10) - 1;
+  const day = parseInt(dayStr, 10);
+  if (Number.isNaN(monthIdx) || Number.isNaN(day) || !MONTHS_SHORT[monthIdx]) {
+    return s.substring(0, 10);
+  }
+  return `${MONTHS_SHORT[monthIdx]} ${day}`;
 }
 
 function fmtPerWeek(n: number): string {
@@ -278,14 +386,12 @@ function fmtPerWeek(n: number): string {
 
 // ── Sub-component ─────────────────────────────────────────────────────────────
 
-type ReportAccent = "neutral" | "warning" | "info";
-
 interface ReportStatCardProps {
   title: string;
-  value: number;
+  /** Accept pre-formatted strings ("75%", "2.4", "—") or raw numbers. */
+  value: string | number;
   subtitle: string;
   icon: React.ComponentType<{ className?: string }>;
-  accent?: ReportAccent;
 }
 
 function ReportStatCard({
@@ -293,16 +399,7 @@ function ReportStatCard({
   value,
   subtitle,
   icon: Icon,
-  accent = "neutral",
 }: ReportStatCardProps) {
-  // Visual treatment matches the existing StatsCard but with optional accents
-  // when a stat is itself a warning signal (open conflicts, rainouts > 0).
-  const iconWrap =
-    accent === "warning"
-      ? "bg-red-50 text-red-500"
-      : accent === "info"
-      ? "bg-blue-50 text-blue-500"
-      : "bg-[#0C1F3F]/[0.06] text-[#0C1F3F]/50";
   return (
     <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
       <div className="flex items-start justify-between">
@@ -313,9 +410,7 @@ function ReportStatCard({
           </p>
           <p className="mt-1 text-xs text-gray-400">{subtitle}</p>
         </div>
-        <div
-          className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${iconWrap}`}
-        >
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#0C1F3F]/[0.06] text-[#0C1F3F]/50">
           <Icon className="h-5 w-5" />
         </div>
       </div>

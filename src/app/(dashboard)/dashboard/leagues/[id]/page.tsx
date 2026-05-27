@@ -419,9 +419,8 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       <ReportsSection
         leagueId={league.id}
         gameCount={gameCount}
-        conflictCount={conflictGames.length}
-        rainedOutCount={rainedOutCount}
         divisionCount={divisionCount}
+        teamCount={teamCount}
       />
 
       <LeagueContent
