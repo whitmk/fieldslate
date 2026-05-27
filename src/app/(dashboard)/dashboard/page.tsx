@@ -5,6 +5,7 @@ import { Trophy, Users, CalendarDays, MapPin, Plus, ArrowRight } from "lucide-re
 import { UpcomingGamesList, type UpcomingGame } from "@/components/dashboard/upcoming-games-list";
 import { CriticalAlertsCard, type CriticalAlertLeague } from "@/components/dashboard/critical-alerts-card";
 import { SeasonSelector, type SeasonOption } from "@/components/dashboard/season-selector";
+import { OverviewReports } from "@/components/reports/overview-reports";
 
 type OwnedLeague = {
   id: string;
@@ -238,6 +239,11 @@ export default async function DashboardPage({
               <UpcomingGamesList initialGames={upcomingGames} />
             </div>
           </div>
+
+          {/* Reports — reads the same `?season=` URL param the rest of the
+              page reacts to. `selected === "all"` is passed through as null
+              to render the "pick a season" explainer. */}
+          <OverviewReports leagueId={isAll ? null : selected} />
         </>
       )}
     </div>
