@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
+import { FieldSlateLockup } from "@/components/brand";
 import {
   LayoutDashboard,
   Trophy,
@@ -40,15 +41,11 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-full w-64 flex-shrink-0 flex-col bg-[#0C1F3F] print:hidden">
-      {/* Logo */}
-      <div className="flex h-16 items-center gap-2.5 px-6">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#22C55E]">
-          <span className="text-sm font-bold text-white">FS</span>
-        </div>
-        <span className="text-lg font-bold">
-          <span className="text-white">Field</span>
-          <span className="text-[#22C55E]">Slate</span>
-        </span>
+      {/* Logo — links home; dark surface → dark variant lockup */}
+      <div className="flex h-16 items-center px-6">
+        <Link href="/dashboard" aria-label="FieldSlate home" className="inline-flex">
+          <FieldSlateLockup height={28} variant="dark" />
+        </Link>
       </div>
 
       {/* Primary nav */}

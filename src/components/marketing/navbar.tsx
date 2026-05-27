@@ -1,17 +1,13 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { FieldSlateLockup } from "@/components/brand";
 
 export function MarketingNavbar() {
   return (
     <header className="sticky top-0 z-50 bg-[#0C1F3F]">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#22C55E]">
-            <span className="text-sm font-bold text-white">FS</span>
-          </div>
-          <span className="text-lg font-bold">
-            <span className="text-white">Field</span><span className="text-[#22C55E]">Slate</span>
-          </span>
+        <Link href="/" aria-label="FieldSlate home" className="inline-flex">
+          <FieldSlateLockup height={32} variant="dark" />
         </Link>
 
         <nav className="hidden items-center gap-8 md:flex">

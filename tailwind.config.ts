@@ -25,6 +25,12 @@ const config: Config = {
         brand: {
           green: "#22C55E",
         },
+        // FieldSlate brand palette tokens. Mirrored in :root in globals.css so
+        // SVGs and inline styles (e.g. FieldSlateLockup) can reach them.
+        "fs-navy":     "#0b1c39",
+        "fs-paper":    "#f4f5f0",
+        "fs-green":    "#22c55e",   // accent on dark surfaces (= green-500)
+        "fs-green-dk": "#16a34a",   // accent on light surfaces (= green-600)
       },
     },
   },

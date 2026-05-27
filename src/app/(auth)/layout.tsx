@@ -1,16 +1,12 @@
+import { FieldSlateLockup } from "@/components/brand";
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-[#0C1F3F]">
-      {/* Left panel — brand side, hidden on mobile */}
+      {/* Left panel — brand side, hidden on mobile. Surface = navy → dark lockup. */}
       <div className="hidden w-[480px] flex-shrink-0 flex-col justify-between p-12 lg:flex">
-        <a href="/" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#22C55E]">
-            <span className="text-sm font-bold text-white">FS</span>
-          </div>
-          <span className="text-lg font-bold">
-            <span className="text-white">Field</span>
-            <span className="text-[#22C55E]">Slate</span>
-          </span>
+        <a href="/" aria-label="FieldSlate home" className="inline-flex">
+          <FieldSlateLockup height={32} variant="dark" />
         </a>
 
         <div>
@@ -41,18 +37,16 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </p>
       </div>
 
-      {/* Right panel — form */}
+      {/* Right panel — form. Inherits navy fill from parent → dark lockup. */}
       <div className="flex flex-1 items-center justify-center px-4 py-12">
         <div className="w-full max-w-md">
           {/* Mobile-only logo */}
-          <a href="/" className="mb-8 flex items-center justify-center gap-2.5 lg:hidden">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#22C55E]">
-              <span className="text-sm font-bold text-white">FS</span>
-            </div>
-            <span className="text-lg font-bold">
-              <span className="text-white">Field</span>
-              <span className="text-[#22C55E]">Slate</span>
-            </span>
+          <a
+            href="/"
+            aria-label="FieldSlate home"
+            className="mb-8 flex justify-center lg:hidden"
+          >
+            <FieldSlateLockup height={32} variant="dark" />
           </a>
           {children}
         </div>

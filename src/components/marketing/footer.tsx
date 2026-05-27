@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FieldSlateLockup } from "@/components/brand";
 
 export function Footer() {
   return (
@@ -6,16 +7,11 @@ export function Footer() {
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <div className="flex flex-col items-center gap-8 sm:flex-row sm:items-start sm:justify-between">
 
-          {/* Brand */}
+          {/* Brand — navy surface → dark lockup */}
           <div className="flex flex-col items-center gap-3 sm:items-start">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#22C55E]">
-                <span className="text-xs font-bold text-white">FS</span>
-              </div>
-              <span className="font-bold text-lg">
-                <span className="text-white">Field</span><span className="text-[#22C55E]">Slate</span>
-              </span>
-            </div>
+            <Link href="/" aria-label="FieldSlate home" className="inline-flex">
+              <FieldSlateLockup height={28} variant="dark" />
+            </Link>
             <p className="text-sm font-medium text-white/40">
               No player data. No coach data. Ever.
             </p>

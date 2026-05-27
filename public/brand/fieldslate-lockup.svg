@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 72" width="320" height="72" role="img" aria-label="FieldSlate">
+  
+  <g transform="translate(0 4)">
+    <rect width="64" height="64" rx="14" fill="#0b1c39"></rect>
+    <g fill="#ffffff" opacity="0.10">
+      <rect x="10" y="10" width="11" height="11" rx="2"></rect><rect x="22" y="10" width="11" height="11" rx="2"></rect><rect x="34" y="10" width="11" height="11" rx="2"></rect><rect x="46" y="10" width="11" height="11" rx="2"></rect>
+      <rect x="10" y="22" width="11" height="11" rx="2"></rect><rect x="22" y="22" width="11" height="11" rx="2"></rect><rect x="34" y="22" width="11" height="11" rx="2"></rect><rect x="46" y="22" width="11" height="11" rx="2"></rect>
+      <rect x="10" y="34" width="11" height="11" rx="2"></rect><rect x="22" y="34" width="11" height="11" rx="2"></rect><rect x="34" y="34" width="11" height="11" rx="2"></rect><rect x="46" y="34" width="11" height="11" rx="2"></rect>
+      <rect x="10" y="46" width="11" height="11" rx="2"></rect><rect x="22" y="46" width="11" height="11" rx="2"></rect><rect x="34" y="46" width="11" height="11" rx="2"></rect><rect x="46" y="46" width="11" height="11" rx="2"></rect>
+    </g>
+    <rect x="10" y="10" width="11" height="11" rx="2" fill="#22c55e"></rect>
+    <rect x="22" y="10" width="11" height="11" rx="2" fill="#ffffff"></rect>
+    <rect x="34" y="10" width="11" height="11" rx="2" fill="#ffffff"></rect>
+    <rect x="46" y="10" width="11" height="11" rx="2" fill="#ffffff"></rect>
+    <rect x="10" y="22" width="11" height="11" rx="2" fill="#ffffff"></rect>
+    <rect x="10" y="34" width="11" height="11" rx="2" fill="#ffffff"></rect>
+    <rect x="22" y="34" width="11" height="11" rx="2" fill="#22c55e"></rect>
+    <rect x="34" y="34" width="11" height="11" rx="2" fill="#ffffff"></rect>
+    <rect x="10" y="46" width="11" height="11" rx="2" fill="#ffffff"></rect>
+  </g>
+  
+  <text x="80" y="50" font-family="Manrope, &#39;Segoe UI&#39;, system-ui, -apple-system, sans-serif" font-weight="800" font-size="38" letter-spacing="-0.95">
+    <tspan fill="#0b1c39">Field</tspan><tspan fill="#16a34a">Slate</tspan>
+  </text>
+</svg>
