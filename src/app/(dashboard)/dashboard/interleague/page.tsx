@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Building2,
   Plus,
@@ -15,6 +16,8 @@ import {
   ExternalLink,
   CalendarClock,
   Check,
+  CheckCircle2,
+  RotateCw,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { InterleagueOrg, InterleagueInvite } from "@/types/database";
@@ -715,9 +718,13 @@ function fmtSentDate(iso: string): string {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function InterleaguePage() {
+  const searchParams = useSearchParams();
+  const seasonFromUrl = searchParams.get("season");
   const [orgs, setOrgs] = useState<InterleagueOrg[]>([]);
   const [seasons, setSeasons] = useState<Season[]>([]);
-  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(
+    seasonFromUrl,
+  );
   const [invites, setInvites] = useState<SentInviteRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -738,6 +745,36 @@ export default function InterleaguePage() {
   const [reschedError, setReschedError] = useState<string | null>(null);
   const [reschedCounterTarget, setReschedCounterTarget] =
     useState<PendingRescheduleRequest | null>(null);
+
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{
+    kind: "success" | "error";
+    message: string;
+    id: number;
+  } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const notify = useCallback((kind: "success" | "error", message: string) => {
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToast({ kind, message, id: Date.now() });
+    toastTimerRef.current = window.setTimeout(
+      () => {
+        setToast(null);
+        toastTimerRef.current = null;
+      },
+      kind === "error" ? 8000 : 4000,
+    );
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   const selectedSeason = useMemo(
     () => seasons.find((s) => s.id === selectedSeasonId) ?? null,
@@ -801,7 +838,13 @@ export default function InterleaguePage() {
     setOrgs((orgsRes.data as InterleagueOrg[]) ?? []);
     const seasonRows = (seasonsRes.data as Season[]) ?? [];
     setSeasons(seasonRows);
-    setSelectedSeasonId((prev) => prev ?? seasonRows[0]?.id ?? null);
+    // Honor a `?season=<id>` deep link (e.g. from the Season detail Quick
+    // Actions card) when the id matches a season the user owns; otherwise
+    // keep any prior selection or fall back to the most recent season.
+    setSelectedSeasonId((prev) => {
+      if (prev && seasonRows.some((s) => s.id === prev)) return prev;
+      return seasonRows[0]?.id ?? null;
+    });
     setInvites((invitesRes.data as SentInviteRow[]) ?? []);
     // Filter to games where the recipient actually counter-proposed something
     const counter = ((counterRes.data as unknown as CounterProposedGame[]) ?? [])
@@ -919,6 +962,32 @@ export default function InterleaguePage() {
       );
       setResolvingId(null);
       return false;
+    }
+  }
+
+  async function handleResendInvite(invite: SentInviteRow) {
+    setResendingId(invite.id);
+    try {
+      const res = await fetch(
+        `/api/interleague/invites/${encodeURIComponent(invite.id)}/resend`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        notify("error", data.error ?? "Failed to resend invite.");
+        return;
+      }
+      notify(
+        "success",
+        `Invite resent to ${invite.recipient_email}.`,
+      );
+    } catch (err) {
+      notify(
+        "error",
+        err instanceof Error ? err.message : "Network error. Please try again.",
+      );
+    } finally {
+      setResendingId(null);
     }
   }
 
@@ -1349,7 +1418,22 @@ export default function InterleaguePage() {
                           {fmtSentDate(inv.created_at)}
                         </td>
                         <td className="px-5 py-3.5">
-                          <div className="flex justify-end">
+                          <div className="flex justify-end gap-1.5">
+                            {inv.status === "pending" && (
+                              <button
+                                onClick={() => handleResendInvite(inv)}
+                                disabled={resendingId === inv.id}
+                                title="Resend the original invite email"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-[#0C1F3F] disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {resendingId === inv.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <RotateCw className="h-3.5 w-3.5" />
+                                )}
+                                {resendingId === inv.id ? "Resending…" : "Resend"}
+                              </button>
+                            )}
                             <button
                               disabled
                               title="Details coming in next chunk"
@@ -1444,6 +1528,34 @@ export default function InterleaguePage() {
           }}
           onClose={() => setReschedCounterTarget(null)}
         />
+      )}
+
+      {toast && (
+        <div className="pointer-events-none fixed bottom-6 right-6 z-50 flex w-full max-w-sm">
+          <div
+            role="alert"
+            className={`pointer-events-auto flex w-full items-start gap-2 rounded-xl border px-4 py-3 text-sm shadow-lg ${
+              toast.kind === "error"
+                ? "border-red-200 bg-red-50 text-red-700"
+                : "border-[#22C55E]/30 bg-[#22C55E]/5 text-[#16a34a]"
+            }`}
+          >
+            {toast.kind === "error" ? (
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            ) : (
+              <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            )}
+            <span className="flex-1">{toast.message}</span>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              aria-label="Dismiss"
+              className="-mr-1 -mt-1 rounded-md p-1 text-current/60 hover:bg-black/5"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
       )}
 
       {declineTarget && (

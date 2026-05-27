@@ -158,11 +158,11 @@ const QUICK_ACTIONS = [
   },
   {
     icon: ArrowLeftRight,
-    label: "Request cross-season",
-    description: "Coming soon",
-    available: false,
+    label: "Schedule interleague",
+    description: "Invite other orgs",
+    available: true,
     iconBg: "bg-purple-50",
-    iconColor: "text-purple-400",
+    iconColor: "text-purple-500",
   },
   {
     icon: FileDown,
@@ -604,11 +604,17 @@ export function DivisionSection({
           {QUICK_ACTIONS.map(({ icon: Icon, label, description, available, iconBg, iconColor }) => {
             const isExport = label === "Export PDF / CSV";
             const isRainout = label === "Log a rainout";
+            const isInterleague = label === "Schedule interleague";
             const isActive = isExport || isRainout ? divisions.length > 0 : available;
             const onClick = isExport
               ? handleExportClick
               : isRainout
               ? () => setShowLogRainout(true)
+              : isInterleague
+              ? () =>
+                  router.push(
+                    `/dashboard/interleague?season=${encodeURIComponent(leagueId)}`,
+                  )
               : undefined;
             const subtitle = isExport && divisions.length === 0
               ? "Add a division first"
