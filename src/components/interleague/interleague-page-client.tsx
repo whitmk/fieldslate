@@ -792,21 +792,46 @@ export function InterleaguePageClient({ currentOrgId }: InterleaguePageClientPro
   const loadAll = useCallback(async () => {
     const supabase = createClient();
 
-    const [orgsRes, seasonsRes, invitesRes, counterRes, reschedRes] = await Promise.all([
-      supabase.from("interleague_orgs").select("*").order("name"),
-      // Active (non-archived) seasons only — interleague invites/replies are
-      // operational. Historical interleague games on archived seasons stay
-      // visible through the season detail page.
+    // Fetch active seasons first so we can scope the invites query by
+    // season_id. Without this scope a multi-org admin would see invites
+    // sent from EVERY org they belong to (RLS permits both). interleague
+    // invites have no first-class "sending org" column — sender_user_id
+    // is a user-id reference, season_id is the cleanest org anchor since
+    // every season belongs to exactly one org via leagues.owner_id.
+    //
+    // Active (non-archived) seasons only — interleague invites/replies are
+    // operational. Historical interleague games on archived seasons stay
+    // visible through the season detail page.
+    const { data: seasonRowsRaw } = await supabase
+      .from("leagues")
+      .select("id, name, season")
+      .eq("owner_id", currentOrgId)
+      .is("archived_at", null)
+      .order("created_at", { ascending: false });
+    const seasonRows = (seasonRowsRaw as Season[]) ?? [];
+    const orgLeagueIds = seasonRows.map((s) => s.id);
+
+    const [orgsRes, invitesRes, counterRes, reschedRes] = await Promise.all([
+      // interleague_orgs has owner_id directly; this is just the standard
+      // owner-scoped filter every other "directory" surface uses.
       supabase
-        .from("leagues")
-        .select("id, name, season")
+        .from("interleague_orgs")
+        .select("*")
         .eq("owner_id", currentOrgId)
-        .is("archived_at", null)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("interleague_invites")
-        .select("*, org:interleague_orgs(name)")
-        .order("created_at", { ascending: false }),
+        .order("name"),
+      // Sent invites only (recipients are external; there is no in-app
+      // "received invites" surface). Scope via season_id rather than
+      // sender_user_id — season_id has a hard FK to leagues, so we anchor
+      // to the org that owns the season being invited TO. This still
+      // includes invites sent by admins (not just the owner) because
+      // their invite's season still belongs to currentOrgId's leagues.
+      orgLeagueIds.length
+        ? supabase
+            .from("interleague_invites")
+            .select("*, org:interleague_orgs(name)")
+            .in("season_id", orgLeagueIds)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] as unknown[] }),
       // Counter-proposed games: pending_interleague with a recipient response
       // (external_team_name) and either a proposed time or proposed venue.
       supabase
@@ -844,7 +869,6 @@ export function InterleaguePageClient({ currentOrgId }: InterleaguePageClientPro
     ]);
 
     setOrgs((orgsRes.data as InterleagueOrg[]) ?? []);
-    const seasonRows = (seasonsRes.data as Season[]) ?? [];
     setSeasons(seasonRows);
     // Honor a `?season=<id>` deep link (e.g. from the Season detail Quick
     // Actions card) when the id matches a season the user owns; otherwise
