@@ -108,7 +108,18 @@ function normalizeTime(t: string): string {
   return t.length >= 5 ? t.substring(0, 5) : t;
 }
 
-export function PracticesPageClient() {
+interface Props {
+  /** League ids owned by the currently-selected org. Used to scope the
+   *  divisions + teams SELECTs. RLS would otherwise let a multi-org admin
+   *  pull rows from every org they belong to. */
+  orgLeagueIds: string[];
+  /** Division ids in those leagues. Used to scope queries on tables that
+   *  are division-scoped and have no league_id (division_venues,
+   *  practice_time_slots). */
+  orgDivisionIds: string[];
+}
+
+export function PracticesPageClient({ orgLeagueIds, orgDivisionIds }: Props) {
   const [loading, setLoading] = useState(true);
 
   // Raw data
@@ -156,27 +167,58 @@ export function PracticesPageClient() {
 
   const load = useCallback(async () => {
     const supabase = createClient();
+
+    // Empty-org guard: if the user belongs to an org with no leagues yet,
+    // skip the round-trip and seed empty state. .in("league_id", []) would
+    // be a valid query but the four parallel calls + downstream block are
+    // wasted work in that case.
+    if (orgLeagueIds.length === 0) {
+      setDivisions([]);
+      setAllTeams([]);
+      setAllTimeSlots([]);
+      setDivisionVenues([]);
+      setAllVenues([]);
+      setPracticeSlots([]);
+      setAvailabilityBlocks([]);
+      return;
+    }
+
+    // Every fetch below narrows to the currently-selected org. RLS alone
+    // would let a multi-org admin see divisions/venues/teams/time-slots
+    // from every org they belong to. Time slots + division_venues key by
+    // division_id (no league_id column); divisions + teams key by league_id.
     const [divQ, dvQ, tsQ, teamQ] = await Promise.all([
-      supabase.from("divisions").select("id, name, league_id").order("name"),
       supabase
-        .from("division_venues")
-        .select(
-          "division_id, venue_id, allow_practices, venue:venues!inner(id, name, availability_configured)",
-        )
-        .eq("allow_practices", true)
-        .eq("venue.availability_configured", true),
-      supabase
-        .from("practice_time_slots")
-        .select(
-          "id, division_id, label, start_time, duration_minutes, sort_order, days_of_week",
-        )
-        .order("sort_order")
-        .order("start_time"),
+        .from("divisions")
+        .select("id, name, league_id")
+        .in("league_id", orgLeagueIds)
+        .order("name"),
+      orgDivisionIds.length
+        ? supabase
+            .from("division_venues")
+            .select(
+              "division_id, venue_id, allow_practices, venue:venues!inner(id, name, availability_configured)",
+            )
+            .in("division_id", orgDivisionIds)
+            .eq("allow_practices", true)
+            .eq("venue.availability_configured", true)
+        : Promise.resolve({ data: [] as unknown[], error: null }),
+      orgDivisionIds.length
+        ? supabase
+            .from("practice_time_slots")
+            .select(
+              "id, division_id, label, start_time, duration_minutes, sort_order, days_of_week",
+            )
+            .in("division_id", orgDivisionIds)
+            .order("sort_order")
+            .order("start_time")
+        : Promise.resolve({ data: [] as unknown[], error: null }),
       supabase
         .from("teams")
         .select(
           "id, name, division_id, practices_per_week, preferred_days, preferred_time_id, preferred_field_id",
         )
+        .in("league_id", orgLeagueIds)
         .order("name"),
     ]);
 
@@ -213,8 +255,9 @@ export function PracticesPageClient() {
       [...venueMap.values()].sort((a, b) => a.name.localeCompare(b.name)),
     );
 
-    // Load all recurring practice_slots and availability blocks for teams in
-    // our divisions.
+    // practice_slots + team_availability_blocks key off team_id, where the
+    // team_id set was just narrowed to this org's teams above. No extra
+    // .in("league_id", ...) needed here; the upstream scope carries through.
     const ourTeamIds = teamsLoaded.map((t) => t.id);
     if (ourTeamIds.length === 0) {
       setPracticeSlots([]);
@@ -247,7 +290,7 @@ export function PracticesPageClient() {
     setAvailabilityBlocks(
       (abQ.data as AvailabilityBlock[] | null) ?? [],
     );
-  }, [notify]);
+  }, [notify, orgLeagueIds, orgDivisionIds]);
 
   useEffect(() => {
     setLoading(true);
