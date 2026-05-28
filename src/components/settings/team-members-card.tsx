@@ -6,8 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { TeamMembersClient, type TeamMember, type PendingInvite } from "./team-members-client";
-import type { OrgPlan } from "@/lib/orgs/plan";
-import { isOrgPlan } from "@/lib/orgs/plan";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
 
 export async function TeamMembersCard({ userId }: { userId: string }) {
   const supabase = createClient();
@@ -16,7 +15,7 @@ export async function TeamMembersCard({ userId }: { userId: string }) {
   const [
     { data: members },
     { data: invitations },
-    { data: ownerProfile },
+    plan,
   ] = await Promise.all([
     supabase
       .from("organization_members")
@@ -28,12 +27,7 @@ export async function TeamMembersCard({ userId }: { userId: string }) {
       .eq("org_id", orgId)
       .eq("status", "pending")
       .order("created_at", { ascending: true }),
-    // The owner's profile carries the plan field (since org_id = owner.id).
-    supabase
-      .from("profiles")
-      .select("plan")
-      .eq("id", orgId)
-      .single(),
+    getOrgPlan(supabase, orgId),
   ]);
 
   const userIds = (members ?? []).map((m) => m.user_id);
@@ -70,9 +64,6 @@ export async function TeamMembersCard({ userId }: { userId: string }) {
 
   const callerIsOwner =
     memberRows.find((m) => m.user_id === userId)?.role === "owner";
-
-  const rawPlan = (ownerProfile as { plan: string } | null)?.plan ?? "free";
-  const plan: OrgPlan = isOrgPlan(rawPlan) ? rawPlan : "free";
 
   return (
     <Card>

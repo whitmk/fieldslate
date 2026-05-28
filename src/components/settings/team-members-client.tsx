@@ -11,7 +11,8 @@ import {
   Mail,
   RotateCw,
 } from "lucide-react";
-import { planCap, planLabel, type OrgPlan } from "@/lib/orgs/plan";
+import { PLAN_LIMITS, type Plan } from "@/lib/plan/limits";
+import { planLabel } from "@/lib/plan/labels";
 
 export type TeamMember = {
   user_id: string;
@@ -36,7 +37,7 @@ interface Props {
    *  resolved server-side and passed as callerIsOwner. */
   callerUserId: string;
   callerIsOwner: boolean;
-  plan: OrgPlan;
+  plan: Plan;
 }
 
 function initials(name: string | null, email: string): string {
@@ -70,7 +71,7 @@ export function TeamMembersClient({
   // Reserved; see Props.callerUserId.
   void callerUserId;
   const router = useRouter();
-  const cap = planCap(plan);
+  const cap = PLAN_LIMITS[plan].admins;
   const seatsUsed = members.length + pendingInvites.length;
   const atCap = seatsUsed >= cap;
 
