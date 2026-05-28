@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { SportsConnectExporter, type LeagueOption } from "@/components/export/sportsconnect-exporter";
 import type { League, Division } from "@/types/database";
+import { getCurrentOrgId } from "@/lib/orgs/context";
 
 export default async function ExportPage() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
   // Export intentionally spans active + archived — exporting past-season
   // rosters / schedules is a primary use case. Active seasons sort first,
@@ -12,7 +14,7 @@ export default async function ExportPage() {
   const { data: rawLeagues } = await supabase
     .from("leagues")
     .select("id, name, sport, archived_at")
-    .eq("owner_id", user!.id)
+    .eq("owner_id", currentOrgId)
     .order("archived_at", { ascending: false, nullsFirst: true })
     .order("name", { ascending: true });
 

@@ -5,17 +5,21 @@ import { Input } from "@/components/ui/input";
 import { OrgNameCard } from "@/components/settings/org-name-card";
 import { TeamMembersCard } from "@/components/settings/team-members-card";
 import type { Profile } from "@/types/database";
+import { getCurrentOrgId } from "@/lib/orgs/context";
 
 export default async function SettingsPage() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
   const [{ data: rawProfile }, { data: firstLeague }] = await Promise.all([
+    // Reading the caller's OWN profile row stays scoped to user.id — that's
+    // their personal profile (name, email), not org-scoped data.
     supabase.from("profiles").select("*").eq("id", user!.id).single(),
     supabase
       .from("leagues")
       .select("name")
-      .eq("owner_id", user!.id)
+      .eq("owner_id", currentOrgId)
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle(),

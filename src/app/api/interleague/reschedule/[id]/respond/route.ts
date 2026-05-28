@@ -112,7 +112,10 @@ export async function POST(
     return NextResponse.json({ error: "Request not found." }, { status: 404 });
   }
   const req = reqRaw as unknown as FetchRow;
-  if (!req.game || !req.game.league || req.game.league.owner_id !== user.id) {
+  // RLS (is_org_member on the underlying tables) gates the SELECT above —
+  // a user without access wouldn't see the request row to begin with. We
+  // still guard against missing joins for typing/defensive reasons.
+  if (!req.game || !req.game.league) {
     return NextResponse.json({ error: "Not authorized." }, { status: 403 });
   }
   if (req.status !== "pending") {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, UserCheck } from "lucide-react";
 import type { League } from "@/types/database";
+import { getCurrentOrgId } from "@/lib/orgs/context";
 import {
   getOfficialTitle,
   getOfficialTitlePluralLower,
@@ -30,12 +31,13 @@ export type DivisionStat = {
 export default async function LeaguePage({ params }: { params: { id: string } }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
   const { data: rawLeague } = await supabase
     .from("leagues")
     .select("*")
     .eq("id", params.id)
-    .eq("owner_id", user!.id)
+    .eq("owner_id", currentOrgId)
     .single();
 
   if (!rawLeague) notFound();
@@ -429,6 +431,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         leagueName={league.name}
         leagueSport={league.sport}
         divisionStats={divisionStats}
+        currentOrgId={currentOrgId}
       />
 
     </div>

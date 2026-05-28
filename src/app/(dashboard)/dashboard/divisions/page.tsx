@@ -6,6 +6,7 @@ import { DivisionBallIcon } from "@/components/divisions/division-ball-icon";
 import { AddDivisionButton } from "@/components/divisions/add-division-button";
 import type { Division, League } from "@/types/database";
 import { activeLeaguesOnly } from "@/lib/seasons/queries";
+import { getCurrentOrgId } from "@/lib/orgs/context";
 
 type LeagueRow = Pick<League, "id" | "name" | "sport"> & {
   start_date: string | null;
@@ -23,6 +24,7 @@ const STATUS_STYLES: Record<Division["status"], string> = {
 export default async function DivisionsPage() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
   // Active (non-archived) seasons only — Divisions is an operational surface;
   // archived seasons still keep their divisions but they shouldn't crowd this
@@ -31,7 +33,7 @@ export default async function DivisionsPage() {
     supabase
       .from("leagues")
       .select("id, name, sport, start_date, end_date")
-      .eq("owner_id", user!.id),
+      .eq("owner_id", currentOrgId),
   ).order("name", { ascending: true });
 
   const leagues = (rawLeagues ?? []) as LeagueRow[];
@@ -73,6 +75,7 @@ export default async function DivisionsPage() {
             start_date: l.start_date,
             end_date: l.end_date,
           }))}
+          currentOrgId={currentOrgId}
         />
       </div>
 

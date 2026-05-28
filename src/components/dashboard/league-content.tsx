@@ -8,15 +8,17 @@ interface Props {
   leagueName: string;
   leagueSport: string;
   divisionStats: DivisionStat[];
+  currentOrgId: string;
 }
 
-export function LeagueContent({ leagueId, leagueName, leagueSport, divisionStats }: Props) {
+export function LeagueContent({ leagueId, leagueName, leagueSport, divisionStats, currentOrgId }: Props) {
   return (
     <DivisionSection
       leagueId={leagueId}
       leagueName={leagueName}
       leagueSport={leagueSport}
       divisionStats={divisionStats}
+      currentOrgId={currentOrgId}
     />
   );
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { gateVenueProposal } from "@/lib/venues/availability";
+import { getCurrentOrgId } from "@/lib/orgs/context";
 
 export const runtime = "nodejs";
 
@@ -72,6 +73,7 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
+  const currentOrgId = await getCurrentOrgId(supabase, user.id);
 
   // Load + authorize the game. We also pull the home team's division
   // settings (game_duration) so we can validate the proposed time against
@@ -110,7 +112,10 @@ export async function POST(
     return NextResponse.json({ error: "Game not found." }, { status: 404 });
   }
   const game = gameRaw as unknown as FetchRow;
-  if (!game.league || game.league.owner_id !== user.id) {
+  // RLS (is_org_member on leagues) is the gatekeeper: the SELECT above
+  // returns null for users without access to game.league. We still guard
+  // against a missing league join for typing/defensive reasons.
+  if (!game.league) {
     return NextResponse.json({ error: "Not authorized." }, { status: 403 });
   }
   if (!game.interleague_org_id) {
@@ -141,7 +146,7 @@ export async function POST(
     const { data: matchedVenue } = await supabase
       .from("venues")
       .select("name, availability, availability_configured")
-      .eq("owner_id", user.id)
+      .eq("owner_id", currentOrgId)
       .ilike("name", venueName)
       .maybeSingle();
 

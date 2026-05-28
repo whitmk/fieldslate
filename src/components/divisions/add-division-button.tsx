@@ -15,9 +15,10 @@ export type LeagueOption = {
 
 interface Props {
   leagues: LeagueOption[];
+  currentOrgId: string;
 }
 
-export function AddDivisionButton({ leagues }: Props) {
+export function AddDivisionButton({ leagues, currentOrgId }: Props) {
   const router = useRouter();
   const [picking, setPicking] = useState(false);
   const [activeLeague, setActiveLeague] = useState<LeagueOption | null>(null);
@@ -101,6 +102,7 @@ export function AddDivisionButton({ leagues }: Props) {
           leagueName={activeLeague.name}
           leagueStartDate={activeLeague.start_date ?? undefined}
           leagueEndDate={activeLeague.end_date ?? undefined}
+          currentOrgId={currentOrgId}
           onClose={handleClose}
           onComplete={handleComplete}
         />

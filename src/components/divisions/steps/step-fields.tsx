@@ -11,9 +11,10 @@ interface Props {
   data: WizardData;
   update: (patch: Partial<WizardData>) => void;
   leagueId: string;
+  currentOrgId: string;
 }
 
-export function StepFields({ data, update, leagueId }: Props) {
+export function StepFields({ data, update, leagueId, currentOrgId }: Props) {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
   const [conflictMap, setConflictMap] = useState<Record<string, string>>({});
@@ -21,13 +22,11 @@ export function StepFields({ data, update, leagueId }: Props) {
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
 
       const { data: venueData } = await supabase
         .from("venues")
         .select("*")
-        .eq("owner_id", user.id)
+        .eq("owner_id", currentOrgId)
         .eq("availability_configured", true)
         .order("name");
 
@@ -59,7 +58,7 @@ export function StepFields({ data, update, leagueId }: Props) {
       setLoading(false);
     }
     load();
-  }, [leagueId]);
+  }, [leagueId, currentOrgId]);
 
   function isSelected(venueId: string): boolean {
     return data.venue_assignments.some((a) => a.venue_id === venueId);

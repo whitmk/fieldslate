@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { buildInviteEmail } from "@/lib/interleague/invite-email";
+import { getCurrentOrgId } from "@/lib/orgs/context";
 
 export const runtime = "nodejs";
 
@@ -65,6 +66,7 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
+  const currentOrgId = await getCurrentOrgId(supabase, user.id);
 
   // Load org (RLS confirms ownership)
   const { data: orgRaw, error: orgErr } = await supabase
@@ -168,14 +170,19 @@ export async function POST(request: Request) {
       .sort((a, b) => a.divisionName.localeCompare(b.divisionName));
   }
 
-  // Generate token and insert invite record
+  // Generate token and insert invite record.
+  // sender_user_id is set to the ORG (currentOrgId), not the individual user
+  // who clicked send. Migration 0049's interleague_invites RLS gates on
+  // is_org_member(sender_user_id), so anyone in the inviting org can see and
+  // manage these — necessary now that admins (not just the owner) can send
+  // invites. (Migration 0048 made org_id = the owner's user id.)
   const token = generateToken();
   const { data: inviteRaw, error: insertErr } = await supabase
     .from("interleague_invites")
     .insert([
       {
         token,
-        sender_user_id: user.id,
+        sender_user_id: currentOrgId,
         interleague_org_id: orgId,
         season_id: seasonId,
         recipient_email: recipientEmail,

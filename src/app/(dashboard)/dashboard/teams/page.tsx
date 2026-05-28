@@ -4,7 +4,7 @@ import { Users } from "lucide-react";
 import { AddTeamButton } from "@/components/teams/add-team-button";
 import { TeamSnackShackButton } from "@/components/teams/team-snack-shack-button";
 import type { Team } from "@/types/database";
-import { activeLeaguesOnly } from "@/lib/seasons/queries";
+import { getCurrentOrgId } from "@/lib/orgs/context";
 
 type TeamWithLeague = Team & {
   league: { name: string } | null;
@@ -16,29 +16,39 @@ export default async function TeamsPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
-  const [{ data: rawTeams }, { data: rawLeagues }, { data: rawDivisions }] =
-    await Promise.all([
-      supabase
-        .from("teams")
-        .select("*, league:leagues(name), division:divisions(name)")
-        .order("name", { ascending: true }),
-      // Active (non-archived) seasons only — admins picking a team's season
-      // shouldn't see closed ones in the dropdown.
-      activeLeaguesOnly(
+  // Two-step fetch: pull THIS org's league ids first, then scope every child
+  // query to those ids. RLS would only stop access to *other people's* orgs;
+  // for a user who belongs to multiple orgs it would still merge data from
+  // both, which is why we scope explicitly.
+  const { data: allOrgLeagues } = await supabase
+    .from("leagues")
+    .select("id, name, archived_at")
+    .eq("owner_id", currentOrgId);
+  const orgLeagueIds = (allOrgLeagues ?? []).map((l) => l.id);
+
+  const [{ data: rawTeams }, { data: rawDivisions }] = orgLeagueIds.length
+    ? await Promise.all([
         supabase
-          .from("leagues")
-          .select("id, name")
-          .eq("owner_id", user!.id),
-      ).order("name", { ascending: true }),
-      supabase
-        .from("divisions")
-        .select("id, name, league_id")
-        .order("name", { ascending: true }),
-    ]);
+          .from("teams")
+          .select("*, league:leagues(name), division:divisions(name)")
+          .in("league_id", orgLeagueIds)
+          .order("name", { ascending: true }),
+        supabase
+          .from("divisions")
+          .select("id, name, league_id")
+          .in("league_id", orgLeagueIds)
+          .order("name", { ascending: true }),
+      ])
+    : [{ data: [] }, { data: [] }];
 
   const teams = (rawTeams as TeamWithLeague[] | null) ?? [];
-  const leagues = (rawLeagues ?? []) as { id: string; name: string }[];
+  // The add-team dropdown only shows active (non-archived) seasons.
+  const leagues = (allOrgLeagues ?? [])
+    .filter((l) => !l.archived_at)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((l) => ({ id: l.id, name: l.name }));
   const divisions =
     (rawDivisions as { id: string; name: string; league_id: string }[] | null) ??
     [];

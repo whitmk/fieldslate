@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { ShoppingBag } from "lucide-react";
 import { SnackShackPageClient } from "@/components/snack-shack/snack-shack-page-client";
+import { getCurrentOrgId } from "@/lib/orgs/context";
 
 type TeamRow = { id: string; name: string; league_id: string };
 
@@ -12,6 +13,7 @@ export default async function SnackShackPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
   // Load active (non-archived) seasons only — snack shack assignments are
   // operational; archived seasons are accessible via /dashboard/leagues if
@@ -19,7 +21,7 @@ export default async function SnackShackPage() {
   const { data: seasonsRaw } = await supabase
     .from("leagues")
     .select("id, name, season")
-    .eq("owner_id", user!.id)
+    .eq("owner_id", currentOrgId)
     .is("archived_at", null)
     .order("created_at", { ascending: false });
 

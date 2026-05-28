@@ -7,6 +7,7 @@ import { CriticalAlertsCard, type CriticalAlertLeague } from "@/components/dashb
 import { SeasonSelector, type SeasonOption } from "@/components/dashboard/season-selector";
 import { OverviewReports } from "@/components/reports/overview-reports";
 import { autoArchivePastSeasons } from "@/lib/seasons/auto-archive";
+import { getCurrentOrgId } from "@/lib/orgs/context";
 
 type OwnedLeague = {
   id: string;
@@ -58,13 +59,12 @@ export default async function DashboardPage({
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
   // Auto-archive any past-end-date seasons *before* the SELECT below so the
   // picker dropdown doesn't surface stale "active" seasons. Mirrors the same
   // call on /dashboard/leagues — write-on-read, single cheap UPDATE.
-  if (user) {
-    await autoArchivePastSeasons(supabase, user.id);
-  }
+  await autoArchivePastSeasons(supabase, currentOrgId);
 
   // All seasons the org owns, most-recent first — drives the dropdown and the
   // default-season resolution.
@@ -73,7 +73,7 @@ export default async function DashboardPage({
     .select(
       "id, name, season, status, start_date, end_date, archived_at, created_at",
     )
-    .eq("owner_id", user!.id)
+    .eq("owner_id", currentOrgId)
     .order("created_at", { ascending: false });
 
   const ownedLeagues = (leaguesRaw ?? []) as OwnedLeague[];
@@ -125,13 +125,15 @@ export default async function DashboardPage({
   ] = await Promise.all([
     teamsQ,
     gamesCountQ,
-    supabase.from("venues").select("*", { count: "exact", head: true }).eq("owner_id", user!.id),
+    supabase.from("venues").select("*", { count: "exact", head: true }).eq("owner_id", currentOrgId),
     upcomingQ,
-    supabase.from("profiles").select("org_name").eq("id", user!.id).single(),
+    // Org name lives on the OWNER's profile (since org_id = owner's user id),
+    // so when an admin views someone else's org they still see that org's name.
+    supabase.from("profiles").select("org_name").eq("id", currentOrgId).single(),
     supabase
       .from("leagues")
       .select("name")
-      .eq("owner_id", user!.id)
+      .eq("owner_id", currentOrgId)
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle(),

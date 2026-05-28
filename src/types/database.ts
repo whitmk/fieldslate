@@ -38,6 +38,39 @@ export type Database = {
         }
         Relationships: []
       }
+      organization_invitations: {
+        Row: {
+          id: string
+          org_id: string
+          email: string
+          token: string
+          invited_by: string
+          status: string
+          created_at: string
+          expires_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          email: string
+          token: string
+          invited_by: string
+          status?: string
+          created_at?: string
+          expires_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          email?: string
+          token?: string
+          invited_by?: string
+          status?: string
+          created_at?: string
+          expires_at?: string
+        }
+        Relationships: []
+      }
       interleague_reschedule_requests: {
         Row: {
           id: string
@@ -859,6 +892,7 @@ export type Database = {
           full_name: string | null
           id: string
           org_name: string | null
+          plan: string
           role: string
           updated_at: string
         }
@@ -869,6 +903,7 @@ export type Database = {
           full_name?: string | null
           id: string
           org_name?: string | null
+          plan?: string
           role?: string
           updated_at?: string
         }
@@ -879,6 +914,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           org_name?: string | null
+          plan?: string
           role?: string
           updated_at?: string
         }
@@ -1405,3 +1441,4 @@ export type InterleagueInvite = Database["public"]["Tables"]["interleague_invite
 export type InterleagueInviteResponse = Database["public"]["Tables"]["interleague_invite_responses"]["Row"];
 export type InterleagueRescheduleRequest = Database["public"]["Tables"]["interleague_reschedule_requests"]["Row"];
 export type OrganizationMember = Database["public"]["Tables"]["organization_members"]["Row"];
+export type OrganizationInvitation = Database["public"]["Tables"]["organization_invitations"]["Row"];

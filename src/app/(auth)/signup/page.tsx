@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 
-export default function SignupPage() {
-  const [email, setEmail] = useState("");
+function SignupForm() {
+  const searchParams = useSearchParams();
+  const prefilledEmail = searchParams.get("email") ?? "";
+
+  const [email, setEmail] = useState(prefilledEmail);
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [leagueName, setLeagueName] = useState("");
@@ -170,5 +174,15 @@ export default function SignupPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  // Suspense boundary required because useSearchParams() is now used inside
+  // SignupForm (Next.js 14 disallows it inside a directly-exported client page).
+  return (
+    <Suspense fallback={null}>
+      <SignupForm />
+    </Suspense>
   );
 }

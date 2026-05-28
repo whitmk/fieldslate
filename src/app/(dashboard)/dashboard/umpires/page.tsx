@@ -6,12 +6,14 @@ import { AddUmpireButton } from "@/components/umpires/add-umpire-button";
 import { UmpireList, type UmpireRow, type SeasonPaySettings } from "@/components/umpires/umpire-list";
 import { PayReportButton } from "@/components/umpires/pay-report-button";
 import { LeaguePaySettings } from "@/components/umpires/league-pay-settings";
+import { getCurrentOrgId } from "@/lib/orgs/context";
 
 export default async function UmpiresPage() {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
   const [{ data: rawUmpires }, { data: rawSeasons }] = await Promise.all([
     supabase
@@ -24,7 +26,7 @@ export default async function UmpiresPage() {
     supabase
       .from("leagues")
       .select("id, name, sport, pay_tracking_enabled, pay_rate_mode")
-      .eq("owner_id", user!.id)
+      .eq("owner_id", currentOrgId)
       .is("archived_at", null)
       .order("name", { ascending: true }),
   ]);

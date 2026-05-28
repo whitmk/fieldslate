@@ -102,6 +102,7 @@ interface Props {
   leagueName: string;
   leagueSport: string;
   divisionStats: DivisionStat[];
+  currentOrgId: string;
   onDivisionSaved?: () => void;
 }
 
@@ -175,7 +176,7 @@ const QUICK_ACTIONS = [
 ];
 
 export function DivisionSection({
-  leagueId, leagueName, leagueSport, divisionStats, onDivisionSaved,
+  leagueId, leagueName, leagueSport, divisionStats, currentOrgId, onDivisionSaved,
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -653,6 +654,7 @@ export function DivisionSection({
           leagueSport={leagueSport}
           leagueStartDate={leagueStartDate}
           leagueEndDate={leagueEndDate}
+          currentOrgId={currentOrgId}
           onClose={() => setOpen(false)}
           onComplete={handleComplete}
         />
@@ -663,6 +665,7 @@ export function DivisionSection({
           leagueId={leagueId}
           leagueName={leagueName}
           leagueSport={leagueSport}
+          currentOrgId={currentOrgId}
           onClose={() => { setEditingDiv(null); setEditInitialData(null); }}
           onComplete={handleComplete}
           editDivision={editingDiv}

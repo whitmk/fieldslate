@@ -11,7 +11,7 @@
 // `.select("...")` clause. Usage:
 //
 //   const { data } = await activeLeaguesOnly(
-//     supabase.from("leagues").select("id, name").eq("owner_id", user.id)
+//     supabase.from("leagues").select("id, name").eq("owner_id", currentOrgId)
 //   ).order("name");
 //
 // Single source of truth for the predicate column name — when the schema

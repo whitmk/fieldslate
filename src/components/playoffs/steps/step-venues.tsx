@@ -17,6 +17,7 @@ interface Props {
   data: PlayoffWizardData;
   update: (patch: Partial<PlayoffWizardData>) => void;
   leagueId: string;
+  currentOrgId: string;
 }
 
 function CheckboxCell({
@@ -64,24 +65,20 @@ function CheckboxCell({
   );
 }
 
-export function StepVenues({ data, update }: Props) {
+export function StepVenues({ data, update, currentOrgId }: Props) {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
 
       // Only show venues with hours configured — engine can't schedule against
       // unconfigured ones anyway.
       const { data: venueData } = await supabase
         .from("venues")
         .select("id, name, city, state")
-        .eq("owner_id", user.id)
+        .eq("owner_id", currentOrgId)
         .eq("availability_configured", true)
         .order("name");
 
@@ -89,7 +86,7 @@ export function StepVenues({ data, update }: Props) {
       setLoading(false);
     }
     load();
-  }, []);
+  }, [currentOrgId]);
 
   function getAssignment(venueId: string): VenueAssignment | undefined {
     return data.venue_assignments.find((a) => a.venue_id === venueId);

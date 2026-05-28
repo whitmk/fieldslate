@@ -26,6 +26,7 @@ interface Props {
   leagueName: string;
   initialData: PlayoffWizardData;
   isEditMode: boolean;
+  currentOrgId: string;
   onClose: () => void;
   onComplete: () => void;
 }
@@ -35,6 +36,7 @@ export function PlayoffWizard({
   leagueName,
   initialData,
   isEditMode,
+  currentOrgId,
   onClose,
   onComplete,
 }: Props) {
@@ -53,7 +55,7 @@ export function PlayoffWizard({
     <StepFormat key="format" data={data} update={update} />,
     <StepSeeding key="seeding" data={data} update={update} />,
     <StepDates key="dates" data={data} update={update} />,
-    <StepVenues key="venues" data={data} update={update} leagueId={leagueId} />,
+    <StepVenues key="venues" data={data} update={update} leagueId={leagueId} currentOrgId={currentOrgId} />,
     <StepCrossDivision key="cross" data={data} update={update} leagueId={leagueId} />,
     <StepReview key="review" data={data} leagueId={leagueId} onEdit={setStep} onComplete={onComplete} />,
   ];

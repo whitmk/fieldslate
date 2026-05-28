@@ -122,7 +122,10 @@ export async function POST(
     return NextResponse.json({ error: "Game not found." }, { status: 404 });
   }
   const game = gameRaw as unknown as FetchRow;
-  if (!game.league || game.league.owner_id !== user.id) {
+  // RLS (is_org_member on leagues) gates the SELECT above — for users
+  // without access the load returns null and we already returned 404. We
+  // still guard against a missing league join for typing/defensive reasons.
+  if (!game.league) {
     return NextResponse.json({ error: "Not authorized." }, { status: 403 });
   }
   if (game.status !== "pending_interleague") {

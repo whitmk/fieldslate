@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AutoPrintOnLoad } from "@/components/umpires/auto-print-on-load";
 import { ManualPrintButton } from "@/components/umpires/manual-print-button";
 import { getOfficialTitle } from "@/lib/utils/official-title";
+import { getCurrentOrgId } from "@/lib/orgs/context";
 
 type UmpireRow = {
   id: string;
@@ -49,13 +50,14 @@ export default async function PrintAllUmpireSchedulesPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
-  // Limit to the current user's seasons (RLS would catch it anyway, but this
+  // Limit to the current org's seasons (RLS would catch it anyway, but this
   // also constrains the order and avoids touching unrelated rows).
   const { data: seasonRows } = await supabase
     .from("leagues")
     .select("id")
-    .eq("owner_id", user!.id);
+    .eq("owner_id", currentOrgId);
   const seasonIds = ((seasonRows ?? []) as { id: string }[]).map((r) => r.id);
 
   const [{ data: umpiresRaw }, { data: assignsRaw }] = await Promise.all([

@@ -20,13 +20,14 @@ interface Props {
   leagueSport?: string;
   leagueStartDate?: string;
   leagueEndDate?: string;
+  currentOrgId: string;
   onClose: () => void;
   onComplete: () => void;
   editDivision?: Division;
   initialData?: WizardData;
 }
 
-export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartDate, leagueEndDate, onClose, onComplete, editDivision, initialData }: Props) {
+export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartDate, leagueEndDate, currentOrgId, onClose, onComplete, editDivision, initialData }: Props) {
   const officialsPlural = getOfficialTitlePlural(leagueSport);
 
   const STEPS = [
@@ -100,7 +101,7 @@ export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartD
   const stepContent = [
     <StepBasics key="basics" data={data} update={update} />,
     <StepPlayingSchedule key="schedule" data={data} update={update} leagueId={leagueId} />,
-    <StepFields key="fields" data={data} update={update} leagueId={leagueId} />,
+    <StepFields key="fields" data={data} update={update} leagueId={leagueId} currentOrgId={currentOrgId} />,
     <StepUmpires key="umpires" data={data} update={update} sport={leagueSport} />,
     <StepFormat key="format" data={data} update={update} />,
     <StepInterleague key="interleague" data={data} update={update} />,
