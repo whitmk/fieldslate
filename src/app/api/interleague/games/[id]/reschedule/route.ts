@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { gateVenueProposal } from "@/lib/venues/availability";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { validateVenueName } from "@/lib/interleague/validate-venue-name";
 
 export const runtime = "nodejs";
 
@@ -54,8 +55,11 @@ export async function POST(
   }
 
   const rawWhen = typeof body.scheduled_at === "string" ? body.scheduled_at.trim() : "";
-  const venueName =
-    typeof body.venue_name === "string" ? body.venue_name.trim() : "";
+  const venueCheck = validateVenueName(body.venue_name);
+  if (!venueCheck.ok) {
+    return NextResponse.json({ error: venueCheck.error }, { status: 400 });
+  }
+  const venueName = venueCheck.value ?? "";
   const note = typeof body.note === "string" ? body.note.trim() : "";
 
   if (!rawWhen || !isoLooksValid(rawWhen)) {

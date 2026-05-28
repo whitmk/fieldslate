@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
+import { validateVenueName } from "@/lib/interleague/validate-venue-name";
 
 export const runtime = "nodejs";
 
@@ -73,8 +74,12 @@ function fmtIso(iso: string): string {
   return `${dateStr}, ${timeStr}`;
 }
 
-function sanitizeResponses(raw: unknown): GameResponse[] {
-  if (!Array.isArray(raw)) return [];
+type SanitizedResponses =
+  | { ok: true; responses: GameResponse[] }
+  | { ok: false; error: string };
+
+function sanitizeResponses(raw: unknown): SanitizedResponses {
+  if (!Array.isArray(raw)) return { ok: true, responses: [] };
   const out: GameResponse[] = [];
   for (const r of raw) {
     if (!r || typeof r !== "object") continue;
@@ -90,18 +95,22 @@ function sanitizeResponses(raw: unknown): GameResponse[] {
     const team_name = typeof o.team_name === "string" ? o.team_name.trim() : "";
     // Decline doesn't require a team name; accept/counter do.
     if (action !== "decline" && !team_name) continue;
-    const venue_name =
-      typeof o.venue_name === "string" && o.venue_name.trim()
-        ? o.venue_name.trim()
-        : null;
+    const venueCheck = validateVenueName(o.venue_name);
+    if (!venueCheck.ok) return { ok: false, error: venueCheck.error };
     const proposed_scheduled_at =
       typeof o.proposed_scheduled_at === "string" &&
       o.proposed_scheduled_at.trim()
         ? o.proposed_scheduled_at.trim()
         : null;
-    out.push({ game_id, team_name, action, venue_name, proposed_scheduled_at });
+    out.push({
+      game_id,
+      team_name,
+      action,
+      venue_name: venueCheck.value,
+      proposed_scheduled_at,
+    });
   }
-  return out;
+  return { ok: true, responses: out };
 }
 
 function buildAcceptanceEmail(params: {
@@ -406,7 +415,11 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const responses = sanitizeResponses(body.responses);
+  const sanitized = sanitizeResponses(body.responses);
+  if (!sanitized.ok) {
+    return NextResponse.json({ error: sanitized.error }, { status: 400 });
+  }
+  const responses = sanitized.responses;
   if (responses.length === 0) {
     return NextResponse.json(
       { error: "Please respond to at least one game with a team name." },

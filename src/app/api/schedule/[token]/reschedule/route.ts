@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
+import { validateVenueName } from "@/lib/interleague/validate-venue-name";
 
 export const runtime = "nodejs";
 
@@ -55,8 +56,11 @@ export async function POST(
 
   const gameId = typeof body.game_id === "string" ? body.game_id.trim() : "";
   const rawWhen = typeof body.scheduled_at === "string" ? body.scheduled_at.trim() : "";
-  const venueName =
-    typeof body.venue_name === "string" ? body.venue_name.trim() : "";
+  const venueCheck = validateVenueName(body.venue_name);
+  if (!venueCheck.ok) {
+    return NextResponse.json({ error: venueCheck.error }, { status: 400 });
+  }
+  const venueName = venueCheck.value ?? "";
   const note = typeof body.note === "string" ? body.note.trim() : "";
   if (!gameId) {
     return NextResponse.json({ error: "Missing game_id." }, { status: 400 });
