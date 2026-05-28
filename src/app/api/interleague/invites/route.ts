@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { buildInviteEmail } from "@/lib/interleague/invite-email";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { validateNote } from "@/lib/validation/text-length";
 
 export const runtime = "nodejs";
 
@@ -35,10 +36,14 @@ export async function POST(request: Request) {
     typeof body.recipient_email === "string"
       ? body.recipient_email.trim()
       : "";
-  const personalNote =
-    typeof body.personal_note === "string" && body.personal_note.trim()
-      ? body.personal_note.trim()
-      : null;
+  const personalNoteCheck = validateNote(body.personal_note);
+  if (!personalNoteCheck.ok) {
+    return NextResponse.json(
+      { error: personalNoteCheck.error },
+      { status: 400 },
+    );
+  }
+  const personalNote = personalNoteCheck.value;
 
   if (!orgId) {
     return NextResponse.json(

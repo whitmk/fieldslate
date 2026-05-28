@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
-import { validateVenueName } from "@/lib/interleague/validate-venue-name";
+import {
+  validateVenueName,
+  validateNote,
+} from "@/lib/validation/text-length";
 
 export const runtime = "nodejs";
 
@@ -61,7 +64,11 @@ export async function POST(
     return NextResponse.json({ error: venueCheck.error }, { status: 400 });
   }
   const venueName = venueCheck.value ?? "";
-  const note = typeof body.note === "string" ? body.note.trim() : "";
+  const noteCheck = validateNote(body.note);
+  if (!noteCheck.ok) {
+    return NextResponse.json({ error: noteCheck.error }, { status: 400 });
+  }
+  const note = noteCheck.value ?? "";
   if (!gameId) {
     return NextResponse.json({ error: "Missing game_id." }, { status: 400 });
   }

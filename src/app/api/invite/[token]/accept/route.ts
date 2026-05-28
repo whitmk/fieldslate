@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
-import { validateVenueName } from "@/lib/interleague/validate-venue-name";
+import {
+  validateVenueName,
+  validateTeamName,
+} from "@/lib/validation/text-length";
 
 export const runtime = "nodejs";
 
@@ -92,7 +95,9 @@ function sanitizeResponses(raw: unknown): SanitizedResponses {
         : o.action === "counter"
           ? "counter"
           : "accept";
-    const team_name = typeof o.team_name === "string" ? o.team_name.trim() : "";
+    const teamCheck = validateTeamName(o.team_name);
+    if (!teamCheck.ok) return { ok: false, error: teamCheck.error };
+    const team_name = teamCheck.value ?? "";
     // Decline doesn't require a team name; accept/counter do.
     if (action !== "decline" && !team_name) continue;
     const venueCheck = validateVenueName(o.venue_name);
