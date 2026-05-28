@@ -82,16 +82,27 @@ export default async function DashboardPage({
   const selectedSeason =
     selected === "all" ? null : ownedLeagues.find((l) => l.id === selected) ?? null;
   const isAll = selected === "all";
+  // League ids for THIS org — used to narrow the isAll branches so a
+  // multi-org admin doesn't see counts/games merged across their orgs. RLS
+  // alone would permit rows from every org they belong to.
+  const orgLeagueIds = ownedLeagues.map((l) => l.id);
 
-  // Filter helper — when a specific season is picked we constrain each count
-  // and listing query to that league_id; when "all" we revert to the original
-  // RLS-scoped aggregate.
+  // Filter helper — when a specific season is picked we constrain to that
+  // league_id; the "all" branch constrains to ANY league owned by the
+  // current org so cross-org rows can't sneak in via RLS.
   const teamsQ = isAll
-    ? supabase.from("teams").select("*", { count: "exact", head: true })
+    ? supabase
+        .from("teams")
+        .select("*", { count: "exact", head: true })
+        .in("league_id", orgLeagueIds)
     : supabase.from("teams").select("*", { count: "exact", head: true }).eq("league_id", selected);
 
   const gamesCountQ = isAll
-    ? supabase.from("games").select("*", { count: "exact", head: true }).eq("status", "scheduled")
+    ? supabase
+        .from("games")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "scheduled")
+        .in("league_id", orgLeagueIds)
     : supabase
         .from("games")
         .select("*", { count: "exact", head: true })
@@ -111,7 +122,11 @@ export default async function DashboardPage({
       .gte("scheduled_at", new Date().toISOString())
       .order("scheduled_at", { ascending: true })
       .limit(5);
-    if (!isAll) q = q.eq("league_id", selected);
+    if (isAll) {
+      q = q.in("league_id", orgLeagueIds);
+    } else {
+      q = q.eq("league_id", selected);
+    }
     return q;
   })();
 

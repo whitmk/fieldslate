@@ -54,15 +54,27 @@ export default async function LeaguePage({ params }: { params: { id: string } })
   type DivVenueRow = { division_id: string; venue_id: string };
   type BlackoutRow = { date: string; label: string | null };
 
+  // Fetch divisions first so we can scope the two queries that key off
+  // division_id directly. Previously those two queries had no narrowing at
+  // all — for a multi-org admin RLS would return rows from BOTH orgs'
+  // divisions. The downstream maps key by division_id from THIS league's
+  // divisions, so the bug was inert today; this hardens it against any
+  // future code that iterates the raw lists.
+  const { data: allDivisionsRaw } = await supabase
+    .from("divisions")
+    .select("*")
+    .eq("league_id", league.id)
+    .order("created_at", { ascending: true });
+  const allDivisions = (allDivisionsRaw ?? []) as import("@/types/database").Division[];
+  const divisionIds = allDivisions.map((d) => d.id);
+
   const [
-    { data: allDivisionsRaw },
     { data: allTeamsRaw },
     { data: allGamesRaw },
     { data: allDivVenuesRaw },
     { data: blackoutDatesRaw },
     { data: allInterleagueGamesRaw },
   ] = await Promise.all([
-    supabase.from("divisions").select("*").eq("league_id", league.id).order("created_at", { ascending: true }),
     supabase.from("teams").select("id, division_id").eq("league_id", league.id),
     supabase
       .from("games")
@@ -71,12 +83,21 @@ export default async function LeaguePage({ params }: { params: { id: string } })
                home_team:teams!home_team_id(name, division_id),
                away_team:teams!away_team_id(name)`)
       .eq("league_id", league.id),
-    supabase.from("division_venues").select("division_id, venue_id"),
+    divisionIds.length
+      ? supabase
+          .from("division_venues")
+          .select("division_id, venue_id")
+          .in("division_id", divisionIds)
+      : Promise.resolve({ data: [] as unknown[] }),
     supabase.from("blackout_dates").select("date, label").eq("league_id", league.id),
-    supabase.from("division_interleague_games").select("division_id, game_count"),
+    divisionIds.length
+      ? supabase
+          .from("division_interleague_games")
+          .select("division_id, game_count")
+          .in("division_id", divisionIds)
+      : Promise.resolve({ data: [] as unknown[] }),
   ]);
 
-  const allDivisions = (allDivisionsRaw ?? []) as import("@/types/database").Division[];
   const allTeams = (allTeamsRaw ?? []) as TeamRow[];
   const allGames = (allGamesRaw ?? []) as unknown as GameRow[];
   const allDivVenues = (allDivVenuesRaw ?? []) as unknown as DivVenueRow[];

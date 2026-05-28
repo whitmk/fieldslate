@@ -14,6 +14,7 @@ import {
   type ScheduleGame,
 } from "@/components/schedule/schedule-list";
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
+import { getCurrentOrgId } from "@/lib/orgs/context";
 
 function parseMode(raw: string | undefined): ViewMode {
   return raw === "calendar" ? "calendar" : "list";
@@ -73,6 +74,10 @@ export default async function SchedulePage({
   };
 }) {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const currentOrgId = await getCurrentOrgId(supabase, user!.id);
   const selectedDivisionId = searchParams.division ?? "";
   const selectedTeamId = searchParams.team ?? "";
   const mode = parseMode(searchParams.mode);
@@ -80,16 +85,31 @@ export default async function SchedulePage({
   // Default ON; the URL only carries `past=1` when the user has switched it OFF.
   const hidePast = searchParams.past !== "1";
 
-  const { data: divisionData } = await supabase
-    .from("divisions")
-    .select("id, name")
-    .order("name");
+  // League ids for THIS org. RLS would already let a multi-org admin see
+  // rows from every org they belong to; this narrows the dropdowns and the
+  // games list to just the selected org.
+  const { data: orgLeagueData } = await supabase
+    .from("leagues")
+    .select("id")
+    .eq("owner_id", currentOrgId);
+  const orgLeagueIds = ((orgLeagueData ?? []) as { id: string }[]).map((l) => l.id);
+
+  const { data: divisionData } = orgLeagueIds.length
+    ? await supabase
+        .from("divisions")
+        .select("id, name")
+        .in("league_id", orgLeagueIds)
+        .order("name")
+    : { data: [] as { id: string; name: string }[] };
   const divisions = (divisionData ?? []) as { id: string; name: string }[];
 
-  const { data: teamData } = await supabase
-    .from("teams")
-    .select("id, name, division_id")
-    .order("name");
+  const { data: teamData } = orgLeagueIds.length
+    ? await supabase
+        .from("teams")
+        .select("id, name, division_id")
+        .in("league_id", orgLeagueIds)
+        .order("name")
+    : { data: [] as { id: string; name: string; division_id: string | null }[] };
   const teams = (teamData ?? []) as {
     id: string;
     name: string;
@@ -131,6 +151,12 @@ export default async function SchedulePage({
       venue:venues(name),
       game_umpires:game_umpires(id, role, umpire:umpires(id, name))
     `)
+    // Org scope is non-optional — without it a multi-org admin viewing the
+    // page with no team/division filter would see games merged from every
+    // org they belong to.
+    .in("league_id", orgLeagueIds.length ? orgLeagueIds : [
+      "00000000-0000-0000-0000-000000000000",
+    ])
     .order("scheduled_at", { ascending: true })
     .limit(mode === "calendar" ? 1000 : 200);
 

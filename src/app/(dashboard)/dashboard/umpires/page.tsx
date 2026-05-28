@@ -15,23 +15,16 @@ export default async function UmpiresPage() {
   } = await supabase.auth.getUser();
   const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
-  const [{ data: rawUmpires }, { data: rawSeasons }] = await Promise.all([
-    supabase
-      .from("umpires")
-      .select("id, name, designation, season_id, pay_rate, season:leagues(name, sport)")
-      .order("name", { ascending: true }),
-    // Active (non-archived) seasons only — umpire/official assignment is an
-    // operational surface; pay-tracking for archived seasons stays accessible
-    // via /dashboard/leagues > season detail.
-    supabase
-      .from("leagues")
-      .select("id, name, sport, pay_tracking_enabled, pay_rate_mode")
-      .eq("owner_id", currentOrgId)
-      .is("archived_at", null)
-      .order("name", { ascending: true }),
-  ]);
+  // Sequenced: seasons first so we can scope every downstream query by their
+  // ids. Before this change `rawUmpires` had no filter and RLS alone would
+  // surface a multi-org admin's umpires from BOTH orgs.
+  const { data: rawSeasons } = await supabase
+    .from("leagues")
+    .select("id, name, sport, pay_tracking_enabled, pay_rate_mode")
+    .eq("owner_id", currentOrgId)
+    .is("archived_at", null)
+    .order("name", { ascending: true });
 
-  const umpires = (rawUmpires as unknown as UmpireRow[] | null) ?? [];
   const seasons = (rawSeasons ?? []) as {
     id: string;
     name: string;
@@ -39,6 +32,41 @@ export default async function UmpiresPage() {
     pay_tracking_enabled: boolean;
     pay_rate_mode: string;
   }[];
+
+  // Active (non-archived) seasons only — umpire/official assignment is an
+  // operational surface; pay-tracking for archived seasons stays accessible
+  // via /dashboard/leagues > season detail. Note: this means an umpire that
+  // belongs to ONLY an archived season won't appear here either (same intent
+  // as the seasons scope below).
+  const seasonIds = seasons.map((s) => s.id);
+
+  const [
+    { data: rawUmpires },
+    { data: rawDivisions },
+    { data: rawRoleRates },
+  ] = await Promise.all([
+    seasonIds.length > 0
+      ? supabase
+          .from("umpires")
+          .select("id, name, designation, season_id, pay_rate, season:leagues(name, sport)")
+          .in("season_id", seasonIds)
+          .order("name", { ascending: true })
+      : Promise.resolve({ data: [] as unknown[] }),
+    seasonIds.length > 0
+      ? supabase
+          .from("divisions")
+          .select("league_id, umpire_roles")
+          .in("league_id", seasonIds)
+      : Promise.resolve({ data: [] as unknown[] }),
+    seasonIds.length > 0
+      ? supabase
+          .from("umpire_role_rates")
+          .select("season_id, role, rate")
+          .in("season_id", seasonIds)
+      : Promise.resolve({ data: [] as unknown[] }),
+  ]);
+
+  const umpires = (rawUmpires as unknown as UmpireRow[] | null) ?? [];
 
   const showSeasonColumn = seasons.length > 1;
 
@@ -53,23 +81,6 @@ export default async function UmpiresPage() {
 
   const anyPayTracking = seasonPaySettings.some((s) => s.pay_tracking_enabled);
   const simpleSeasons = seasons.map((s) => ({ id: s.id, name: s.name, sport: s.sport }));
-
-  // Per-season umpire roles (for per-role rates) + saved rates
-  const seasonIds = seasons.map((s) => s.id);
-  const [{ data: rawDivisions }, { data: rawRoleRates }] = await Promise.all([
-    seasonIds.length > 0
-      ? supabase
-          .from("divisions")
-          .select("league_id, umpire_roles")
-          .in("league_id", seasonIds)
-      : Promise.resolve({ data: [] as unknown[] }),
-    seasonIds.length > 0
-      ? supabase
-          .from("umpire_role_rates")
-          .select("season_id, role, rate")
-          .in("season_id", seasonIds)
-      : Promise.resolve({ data: [] as unknown[] }),
-  ]);
 
   const rolesBySeason = new Map<string, Set<string>>();
   for (const d of (rawDivisions ?? []) as { league_id: string; umpire_roles: unknown }[]) {

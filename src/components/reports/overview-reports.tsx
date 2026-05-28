@@ -74,23 +74,30 @@ export async function OverviewReports({ leagueId }: Props) {
 
   const supabase = createClient();
 
+  // Fetch the league first so we know its owner_id — needed to scope the
+  // venues lookup to the same org. Without that scope a multi-org admin's
+  // venue list could include venues from another org (RLS allows them);
+  // the per-venue utilization math could then mis-attribute when names
+  // collide across orgs.
+  const { data: leagueRow } = await supabase
+    .from("leagues")
+    .select("start_date, end_date, owner_id")
+    .eq("id", leagueId)
+    .single();
+  const leagueOwnerId =
+    (leagueRow as { owner_id: string } | null)?.owner_id ?? null;
+
   // Practices intentionally aren't joined for the capacity math anymore — a
   // practice_slot row is a weekly *definition*, not a per-occurrence scheduled
   // event, so counting it against hours-used is the wrong model. We still
   // fetch practice_slots so the table can show the per-venue practice count.
   const [
-    leagueRes,
     divisionsRes,
     teamsRes,
     gamesRes,
     practiceSlotsRes,
     venuesRes,
   ] = await Promise.all([
-    supabase
-      .from("leagues")
-      .select("start_date, end_date")
-      .eq("id", leagueId)
-      .single(),
     supabase
       .from("divisions")
       .select("id, name, settings")
@@ -108,12 +115,15 @@ export async function OverviewReports({ leagueId }: Props) {
       .from("practice_slots")
       .select("id, team_id, field_id, team:teams!inner(league_id)")
       .eq("team.league_id", leagueId),
-    supabase
-      .from("venues")
-      .select("id, name, availability, availability_configured"),
+    leagueOwnerId
+      ? supabase
+          .from("venues")
+          .select("id, name, availability, availability_configured")
+          .eq("owner_id", leagueOwnerId)
+      : Promise.resolve({ data: [] as unknown[] }),
   ]);
 
-  const league = (leagueRes.data ?? null) as LeagueRow | null;
+  const league = (leagueRow ?? null) as LeagueRow | null;
   const divisions = (divisionsRes.data ?? []) as DivisionRow[];
   const teams = (teamsRes.data ?? []) as TeamRow[];
   const games = (gamesRes.data ?? []) as GameRow[];

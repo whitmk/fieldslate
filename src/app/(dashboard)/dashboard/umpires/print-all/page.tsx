@@ -68,17 +68,23 @@ export default async function PrintAllUmpireSchedulesPage() {
           .in("season_id", seasonIds)
           .order("name", { ascending: true })
       : Promise.resolve({ data: [] as unknown[] }),
+    // game_umpires has no owner_id of its own; scope via the game's league
+    // owner. !inner forces the join so .eq("game.league.owner_id", ...)
+    // actually filters. Without this a multi-org admin's assignments would
+    // include game_umpires from the OTHER org's games (RLS permits both).
     supabase
       .from("game_umpires")
       .select(
         `umpire_id, role,
-         game:games(
+         game:games!inner(
            id, scheduled_at,
+           league:leagues!inner(owner_id),
            home_team:teams!home_team_id(name, division:divisions(name)),
            away_team:teams!away_team_id(name),
            venue:venues(name)
          )`,
-      ),
+      )
+      .eq("game.league.owner_id", currentOrgId),
   ]);
 
   const umpires = (umpiresRaw as unknown as UmpireRow[] | null) ?? [];
