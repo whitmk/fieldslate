@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OrgNameCard } from "@/components/settings/org-name-card";
+import { TeamMembersCard } from "@/components/settings/team-members-card";
 import type { Profile } from "@/types/database";
 
 export default async function SettingsPage() {
@@ -33,6 +34,8 @@ export default async function SettingsPage() {
         initialOrgName={profile?.org_name ?? null}
         fallbackName={firstLeague?.name ?? null}
       />
+
+      <TeamMembersCard userId={user!.id} />
 
       <Card>
         <CardHeader>

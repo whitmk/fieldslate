@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      organization_members: {
+        Row: {
+          id: string
+          org_id: string
+          user_id: string
+          role: string
+          added_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          user_id: string
+          role: string
+          added_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          user_id?: string
+          role?: string
+          added_at?: string
+        }
+        Relationships: []
+      }
       interleague_reschedule_requests: {
         Row: {
           id: string
@@ -1380,3 +1404,4 @@ export type DivisionInterleagueGame = Database["public"]["Tables"]["division_int
 export type InterleagueInvite = Database["public"]["Tables"]["interleague_invites"]["Row"];
 export type InterleagueInviteResponse = Database["public"]["Tables"]["interleague_invite_responses"]["Row"];
 export type InterleagueRescheduleRequest = Database["public"]["Tables"]["interleague_reschedule_requests"]["Row"];
+export type OrganizationMember = Database["public"]["Tables"]["organization_members"]["Row"];
