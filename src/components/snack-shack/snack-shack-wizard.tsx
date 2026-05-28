@@ -27,6 +27,7 @@ interface Props {
   existingData?: SnackShackWizardData;
   existingId?: string;
   leagueId: string;
+  currentOrgId: string;
   onClose: () => void;
   onComplete: () => void;
 }
@@ -37,6 +38,7 @@ export function SnackShackWizard({
   existingData,
   existingId,
   leagueId,
+  currentOrgId,
   onClose,
   onComplete,
 }: Props) {
@@ -61,7 +63,7 @@ export function SnackShackWizard({
     <StepDates key="dates" data={data} update={update} />,
     <StepDays key="days" data={data} update={update} />,
     <StepTimeBlocks key="blocks" data={data} update={update} />,
-    <StepVenues key="venues" data={data} update={update} leagueId={leagueId} />,
+    <StepVenues key="venues" data={data} update={update} leagueId={leagueId} currentOrgId={currentOrgId} />,
     <StepPreference key="pref" data={data} update={update} />,
     <StepReview
       key="review"

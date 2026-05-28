@@ -9,6 +9,7 @@ import type { InterleagueOrg } from "@/types/database";
 interface Props {
   data: WizardData;
   update: (patch: Partial<WizardData>) => void;
+  currentOrgId: string;
 }
 
 function Toggle({
@@ -49,7 +50,7 @@ function Toggle({
   );
 }
 
-export function StepInterleague({ data, update }: Props) {
+export function StepInterleague({ data, update, currentOrgId }: Props) {
   const [orgs, setOrgs] = useState<InterleagueOrg[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -58,12 +59,13 @@ export function StepInterleague({ data, update }: Props) {
     supabase
       .from("interleague_orgs")
       .select("*")
+      .eq("owner_id", currentOrgId)
       .order("name")
       .then(({ data: rows }) => {
         setOrgs((rows as InterleagueOrg[]) ?? []);
         setLoading(false);
       });
-  }, []);
+  }, [currentOrgId]);
 
   function getEntry(orgId: string): InterleagueGameEntry | undefined {
     return data.interleague_games.find((g) => g.interleague_org_id === orgId);

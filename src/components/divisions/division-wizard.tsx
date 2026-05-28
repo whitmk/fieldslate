@@ -104,7 +104,7 @@ export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartD
     <StepFields key="fields" data={data} update={update} leagueId={leagueId} currentOrgId={currentOrgId} />,
     <StepUmpires key="umpires" data={data} update={update} sport={leagueSport} />,
     <StepFormat key="format" data={data} update={update} />,
-    <StepInterleague key="interleague" data={data} update={update} />,
+    <StepInterleague key="interleague" data={data} update={update} currentOrgId={currentOrgId} />,
     <StepCoaches key="coaches" data={data} update={update} leagueId={leagueId} />,
     <StepReview
       key="review"

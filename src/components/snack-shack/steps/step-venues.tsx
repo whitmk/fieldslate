@@ -15,9 +15,10 @@ interface Props {
   data: SnackShackWizardData;
   update: (patch: Partial<SnackShackWizardData>) => void;
   leagueId: string;
+  currentOrgId: string;
 }
 
-export function StepVenues({ data, update, leagueId }: Props) {
+export function StepVenues({ data, update, leagueId, currentOrgId }: Props) {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,13 +49,14 @@ export function StepVenues({ data, update, leagueId }: Props) {
         const { data: vRaw } = await supabase
           .from("venues")
           .select("id, name, city")
+          .eq("owner_id", currentOrgId)
           .order("name", { ascending: true });
         setVenues((vRaw as Venue[] | null) ?? []);
       }
       setLoading(false);
     }
     load();
-  }, [leagueId]);
+  }, [leagueId, currentOrgId]);
 
   function toggle(venueId: string) {
     const isOn = data.home_venue_ids.includes(venueId);

@@ -120,6 +120,7 @@ export default async function SnackShackPage() {
         allSettings={allSettings}
         allTeams={allTeams}
         allBlocks={allBlocks}
+        currentOrgId={currentOrgId}
       />
     </div>
   );

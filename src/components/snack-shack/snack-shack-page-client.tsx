@@ -44,6 +44,7 @@ interface Props {
   allSettings: Settings[];
   allTeams: TeamRow[];
   allBlocks: BlockRaw[];
+  currentOrgId: string;
 }
 
 function settingsToWizardData(s: Settings): SnackShackWizardData {
@@ -88,6 +89,7 @@ export function SnackShackPageClient({
   allSettings,
   allTeams,
   allBlocks,
+  currentOrgId,
 }: Props) {
   const router = useRouter();
   const [selectedSeasonId, setSelectedSeasonId] = useState(seasons[0]?.id ?? "");
@@ -406,6 +408,7 @@ ${pages}
           seasonId={selectedSeasonId}
           seasonName={seasonLabel}
           leagueId={selectedSeasonId}
+          currentOrgId={currentOrgId}
           existingData={settings ? settingsToWizardData(settings) : undefined}
           existingId={settings?.id}
           onClose={() => setWizardOpen(false)}
