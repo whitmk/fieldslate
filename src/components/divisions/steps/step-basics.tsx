@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { WizardData } from "../wizard-types";
 
 interface Props {
@@ -33,6 +34,20 @@ export function StepBasics({
           2,
           Math.min(64, teamLimit - teamCount + existingTeamCountInDivision),
         );
+
+  // Clamp the initial value once on mount. DEFAULT_WIZARD_DATA.team_count
+  // is 8 — on Free the cap is 6, so without this the input would show "8"
+  // and the user would only discover the clamp by interacting. The ref
+  // guard ensures we only adjust the default; later user-typed values are
+  // already clamped via the onChange handler below.
+  const initialClampDone = useRef(false);
+  useEffect(() => {
+    if (initialClampDone.current) return;
+    initialClampDone.current = true;
+    if (data.team_count > effectiveMax) {
+      update({ team_count: effectiveMax });
+    }
+  }, [data.team_count, effectiveMax, update]);
 
   return (
     <div className="flex flex-col gap-6">
