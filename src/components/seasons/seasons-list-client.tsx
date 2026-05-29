@@ -15,6 +15,9 @@ import {
   UnarchiveSeasonModal,
 } from "@/components/seasons/archive-modals";
 import { deriveSeasonStatus } from "@/lib/seasons/derived-status";
+import { UpgradeModal } from "@/components/plan/upgrade-cta";
+import type { Plan } from "@/lib/plan/limits";
+import { planLabel } from "@/lib/plan/labels";
 
 type Tab = "active" | "archived";
 
@@ -22,9 +25,18 @@ interface Props {
   /** Already partitioned by the server; this component just renders. */
   leagues: League[];
   initialTab: Tab;
+  activeSeasonCount: number;
+  activeSeasonLimit: number;
+  plan: Plan;
 }
 
-export function SeasonsListClient({ leagues, initialTab }: Props) {
+export function SeasonsListClient({
+  leagues,
+  initialTab,
+  activeSeasonCount,
+  activeSeasonLimit,
+  plan,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -33,6 +45,10 @@ export function SeasonsListClient({ leagues, initialTab }: Props) {
     | { kind: "archive" | "unarchive"; league: League }
     | null
   >(null);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+
+  const atCap =
+    activeSeasonLimit !== -1 && activeSeasonCount >= activeSeasonLimit;
 
   function setTabAndUrl(next: Tab) {
     setTab(next);
@@ -54,13 +70,34 @@ export function SeasonsListClient({ leagues, initialTab }: Props) {
           <h1 className="text-2xl font-bold text-[#0C1F3F]">Seasons</h1>
           <p className="mt-0.5 text-sm text-gray-500">Manage your seasons across sports.</p>
         </div>
-        <Link
-          href="/dashboard/leagues/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
-        >
-          <Plus className="h-4 w-4" />
-          New season
-        </Link>
+        <div className="flex items-center gap-3">
+          {activeSeasonLimit !== -1 ? (
+            <p className="text-xs text-gray-500">
+              {activeSeasonCount} of {activeSeasonLimit}{" "}
+              {activeSeasonLimit === 1 ? "active season" : "active seasons"} ·{" "}
+              <span className="font-medium text-gray-700">{planLabel(plan)} plan</span>
+            </p>
+          ) : null}
+          {atCap ? (
+            <button
+              type="button"
+              onClick={() => setUpgradeOpen(true)}
+              className="inline-flex cursor-default items-center gap-2 rounded-lg bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-500"
+              title={`You've reached your ${planLabel(plan)} plan active-season limit of ${activeSeasonLimit}.`}
+            >
+              <Plus className="h-4 w-4" />
+              New season
+            </button>
+          ) : (
+            <Link
+              href="/dashboard/leagues/new"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
+            >
+              <Plus className="h-4 w-4" />
+              New season
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -109,6 +146,15 @@ export function SeasonsListClient({ leagues, initialTab }: Props) {
           onClose={() => setModal(null)}
         />
       )}
+
+      {upgradeOpen ? (
+        <UpgradeModal
+          cap="activeSeasons"
+          limit={activeSeasonLimit}
+          currentPlan={plan}
+          onClose={() => setUpgradeOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

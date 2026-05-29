@@ -3,6 +3,8 @@ import type { League } from "@/types/database";
 import { SeasonsListClient } from "@/components/seasons/seasons-list-client";
 import { autoArchivePastSeasons } from "@/lib/seasons/auto-archive";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { PLAN_LIMITS } from "@/lib/plan/limits";
 
 // Always render fresh — the auto-archive UPDATE needs to run on every visit,
 // and the season list reflects mutations from the archive/unarchive modals.
@@ -34,5 +36,17 @@ export default async function LeaguesPage({ searchParams }: PageProps) {
 
   const initialTab = searchParams.tab === "archived" ? "archived" : "active";
 
-  return <SeasonsListClient leagues={leagues} initialTab={initialTab} />;
+  const plan = await getOrgPlan(currentOrgId);
+  const activeSeasonCount = leagues.filter((l) => !l.archived_at).length;
+  const activeSeasonLimit = PLAN_LIMITS[plan].activeSeasons;
+
+  return (
+    <SeasonsListClient
+      leagues={leagues}
+      initialTab={initialTab}
+      activeSeasonCount={activeSeasonCount}
+      activeSeasonLimit={activeSeasonLimit}
+      plan={plan}
+    />
+  );
 }

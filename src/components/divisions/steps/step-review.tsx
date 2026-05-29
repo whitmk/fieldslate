@@ -12,6 +12,8 @@ import Link from "next/link";
 import type { WizardData } from "../wizard-types";
 import { generateSchedule, type ScheduleConflict } from "@/lib/schedule/generate-schedule";
 import { getOfficialTitlePlural } from "@/lib/utils/official-title";
+import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
+import type { Plan } from "@/lib/plan/limits";
 
 type GenerateKind = "games";
 
@@ -29,6 +31,13 @@ interface Props {
   onEdit: (step: number) => void;
   onComplete: () => void;
   divisionId?: string;
+  /** Org-wide team count + cap as of wizard mount. Used for the upfront
+   *  cap check inside saveDivisionData so a Free user with the team cap
+   *  in range doesn't get a partially-saved division. The per-team RPC
+   *  remains the authoritative server-side enforcement; this is UX. */
+  teamCount: number;
+  teamLimit: number;
+  plan: Plan;
 }
 
 function Section({
@@ -102,6 +111,7 @@ type SaveOnlyResult = {
 
 export function StepReview({
   data, originalData, leagueId, sport, onEdit, onComplete, divisionId,
+  teamCount, teamLimit, plan,
 }: Props) {
   const officialsPlural = getOfficialTitlePlural(sport);
   const [savingOnly, setSavingOnly] = useState(false);
@@ -111,6 +121,10 @@ export function StepReview({
   const [error, setError] = useState("");
   const [regenResult, setRegenResult] = useState<RegenResult | null>(null);
   const [saveOnlyResult, setSaveOnlyResult] = useState<SaveOnlyResult | null>(null);
+  const [capHit, setCapHit] = useState<
+    | { cap: CapName; limit: number; plan: Plan }
+    | null
+  >(null);
   const router = useRouter();
 
   const isEditMode = !!divisionId;
@@ -144,8 +158,43 @@ export function StepReview({
 
   // ── Shared: persist division + venues + team names ─────────────────────────
 
-  async function saveDivisionData(): Promise<{ divId: string } | { error: string }> {
+  type SaveResult =
+    | { divId: string }
+    | { error: string }
+    | { capHit: { cap: CapName; limit: number; plan: Plan } };
+
+  async function saveDivisionData(): Promise<SaveResult> {
     const supabase = createClient();
+
+    // ── Upfront team-cap check ────────────────────────────────────────────
+    // The per-team RPC enforces server-side, but if the cap fires mid-batch
+    // we'd leave a partial state behind (division + venues + some teams
+    // already committed). Compute the org-wide impact of this save BEFORE
+    // any writes so a Free user on the edge gets the upgrade modal cleanly.
+    const nonBlankTeams = data.teams.filter((t) => t.name.trim() !== "");
+    if (teamLimit !== -1 && nonBlankTeams.length > 0) {
+      let newTeamCount: number;
+      if (isEditMode) {
+        // Edit mode: net-new = wizard list minus the names already in the
+        // division (matches the de-dupe logic the team-insert loop uses).
+        const { data: existing } = await supabase
+          .from("teams").select("name").eq("division_id", divisionId);
+        const existingNames = new Set(
+          (existing ?? []).map((t: { name: string }) => t.name.toLowerCase().trim())
+        );
+        newTeamCount = nonBlankTeams.filter(
+          (t) => !existingNames.has(t.name.toLowerCase().trim())
+        ).length;
+      } else {
+        newTeamCount = nonBlankTeams.length;
+      }
+      if (teamCount + newTeamCount > teamLimit) {
+        return {
+          capHit: { cap: "teamsPerOrg", limit: teamLimit, plan },
+        };
+      }
+    }
+
     let divId: string;
 
     if (isEditMode) {
@@ -179,27 +228,35 @@ export function StepReview({
 
       divId = divisionId;
     } else {
-      const { data: divData, error: divError } = await supabase
-        .from("divisions")
-        .insert([{
-          league_id: leagueId,
-          name: data.name.trim(),
-          team_count: data.team_count,
-          start_date: data.start_date || null,
-          end_date: data.end_date || null,
-          settings: settingsPayload,
-          status: "active",
-          umpires_per_game: data.umpires_per_game,
-          umpire_roles: data.umpire_roles,
-          plays_interleague: data.plays_interleague,
-          intra_division_games_per_team: data.games_per_team,
-        } as never])
-        .select("id")
-        .single();
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
+        "create_division" as never,
+        {
+          p_league_id: leagueId,
+          p_name: data.name.trim(),
+          p_team_count: data.team_count,
+          p_start_date: data.start_date || null,
+          p_end_date: data.end_date || null,
+          p_settings: settingsPayload,
+          p_umpires_per_game: data.umpires_per_game,
+          p_umpire_roles: data.umpire_roles,
+          p_plays_interleague: data.plays_interleague,
+          p_intra_division_games_per_team: data.games_per_team,
+        } as never,
+      );
 
-      if (divError || !divData) return { error: divError?.message ?? "Failed to save division." };
+      if (rpcError) return { error: rpcError.message };
 
-      divId = (divData as unknown as { id: string }).id;
+      const payload = rpcData as
+        | { row: { id: string } }
+        | { error: "cap_reached"; cap: CapName; limit: number; plan: Plan };
+
+      if ("error" in payload && payload.error === "cap_reached") {
+        return {
+          capHit: { cap: payload.cap, limit: payload.limit, plan: payload.plan },
+        };
+      }
+
+      divId = (payload as { row: { id: string } }).row.id;
 
       if (data.venue_assignments.length > 0) {
         await supabase
@@ -212,27 +269,48 @@ export function StepReview({
       }
     }
 
-    // Upsert team names from wizard
-    const nonBlankTeams = data.teams.filter((t) => t.name.trim() !== "");
+    // Upsert team names from wizard — per-team RPC so the org-wide team cap
+    // is enforced server-side. The upfront check above means we should never
+    // reach the cap_reached branch here under normal flow; it remains as
+    // belt-and-suspenders for concurrent writes by another admin between
+    // the check and the loop. `nonBlankTeams` was hoisted out for the
+    // upfront check.
     if (nonBlankTeams.length > 0) {
+      let teamsToCreate: { name: string }[];
       if (isEditMode) {
         const { data: existing } = await supabase
           .from("teams").select("name").eq("division_id", divId);
         const existingNames = new Set(
           (existing ?? []).map((t: { name: string }) => t.name.toLowerCase().trim())
         );
-        const newTeams = nonBlankTeams.filter(
+        teamsToCreate = nonBlankTeams.filter(
           (t) => !existingNames.has(t.name.toLowerCase().trim())
         );
-        if (newTeams.length > 0) {
-          await supabase.from("teams").insert(
-            newTeams.map((t) => ({ league_id: leagueId, division_id: divId, name: t.name.trim() })) as never[]
-          );
-        }
       } else {
-        await supabase.from("teams").insert(
-          nonBlankTeams.map((t) => ({ league_id: leagueId, division_id: divId, name: t.name.trim() })) as never[]
+        teamsToCreate = nonBlankTeams;
+      }
+      for (const t of teamsToCreate) {
+        const { data: teamRpc, error: teamErr } = await supabase.rpc(
+          "create_team" as never,
+          {
+            p_league_id: leagueId,
+            p_division_id: divId,
+            p_name: t.name.trim(),
+          } as never,
         );
+        if (teamErr) return { error: teamErr.message };
+        const teamPayload = teamRpc as
+          | { row: { id: string } }
+          | { error: "cap_reached"; cap: CapName; limit: number; plan: Plan };
+        if ("error" in teamPayload && teamPayload.error === "cap_reached") {
+          return {
+            capHit: {
+              cap: teamPayload.cap,
+              limit: teamPayload.limit,
+              plan: teamPayload.plan,
+            },
+          };
+        }
       }
     }
 
@@ -276,6 +354,11 @@ export function StepReview({
     setError("");
 
     const saved = await saveDivisionData();
+    if ("capHit" in saved) {
+      setCapHit(saved.capHit);
+      setSavingOnly(false);
+      return;
+    }
     if ("error" in saved) { setError(saved.error); setSavingOnly(false); return; }
     const { divId } = saved;
 
@@ -416,6 +499,12 @@ export function StepReview({
     setConfirmingKind(null);
 
     const saved = await saveDivisionData();
+    if ("capHit" in saved) {
+      setCapHit(saved.capHit);
+      setSavingRegen(false);
+      setRegenKind(null);
+      return;
+    }
     if ("error" in saved) {
       setError(saved.error);
       setSavingRegen(false);
@@ -798,6 +887,15 @@ export function StepReview({
           Complete division name and dates in Step 1 to continue.
         </p>
       )}
+
+      {capHit ? (
+        <UpgradeModal
+          cap={capHit.cap}
+          limit={capHit.limit}
+          currentPlan={capHit.plan}
+          onClose={() => setCapHit(null)}
+        />
+      ) : null}
     </div>
   );
 }

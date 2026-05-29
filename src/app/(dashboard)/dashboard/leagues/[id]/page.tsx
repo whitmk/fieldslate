@@ -6,6 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, UserCheck } from "lucide-react";
 import type { League } from "@/types/database";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { PLAN_LIMITS } from "@/lib/plan/limits";
+import { getTeamCountForOrg } from "@/lib/plan/counts";
 import {
   getOfficialTitle,
   getOfficialTitlePluralLower,
@@ -342,6 +345,17 @@ export default async function LeaguePage({ params }: { params: { id: string } })
   const officialTitle = getOfficialTitle(league.sport);
   const officialPluralLower = getOfficialTitlePluralLower(league.sport);
 
+  // Plan + org-wide team count, threaded into the division wizard via
+  // LeagueContent → DivisionSection → DivisionWizard so the wizard's review
+  // step can fail-closed before any inserts if a Free user's team list
+  // would push the org over its cap. Named `orgTeamCount` to avoid colliding
+  // with `teamCount` above, which is scoped to THIS league only.
+  const [plan, orgTeamCount] = await Promise.all([
+    getOrgPlan(currentOrgId),
+    getTeamCountForOrg(supabase, currentOrgId),
+  ]);
+  const teamLimit = PLAN_LIMITS[plan].teamsPerOrg;
+
   return (
     <div className="flex flex-col gap-6">
 
@@ -453,6 +467,9 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         leagueSport={league.sport}
         divisionStats={divisionStats}
         currentOrgId={currentOrgId}
+        teamCount={orgTeamCount}
+        teamLimit={teamLimit}
+        plan={plan}
       />
 
     </div>

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
+import type { Plan } from "@/lib/plan/limits";
 
 const SPORTS = ["Baseball", "Softball", "Soccer"] as const;
 
@@ -31,6 +33,10 @@ export function NewLeagueForm({ currentOrgId }: Props) {
   const [seasonEdited, setSeasonEdited] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [capHit, setCapHit] = useState<
+    | { cap: CapName; limit: number; plan: Plan }
+    | null
+  >(null);
 
   // Auto-populate season label from start date unless admin has typed a custom value
   useEffect(() => {
@@ -54,27 +60,35 @@ export function NewLeagueForm({ currentOrgId }: Props) {
 
     const seasonValue = season.trim() || (startDate ? getSeasonLabel(startDate) : "Season 1");
 
-    const { data: insertData, error: insertError } = await supabase
-      .from("leagues")
-      .insert([{
-        name: name.trim(),
-        sport,
-        season: seasonValue,
-        status: "active" as const,
-        owner_id: currentOrgId,
-        start_date: startDate || null,
-        end_date: endDate || null,
-      }])
-      .select("id")
-      .single();
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "create_league" as never,
+      {
+        p_org_id: currentOrgId,
+        p_name: name.trim(),
+        p_sport: sport,
+        p_season: seasonValue,
+        p_start_date: startDate || null,
+        p_end_date: endDate || null,
+      } as never,
+    );
 
-    if (insertError) {
-      setError(insertError.message);
+    if (rpcError) {
+      setError(rpcError.message);
       setLoading(false);
       return;
     }
 
-    const league = insertData as unknown as { id: string };
+    const payload = rpcData as
+      | { row: { id: string } }
+      | { error: "cap_reached"; cap: CapName; limit: number; plan: Plan };
+
+    if ("error" in payload && payload.error === "cap_reached") {
+      setCapHit({ cap: payload.cap, limit: payload.limit, plan: payload.plan });
+      setLoading(false);
+      return;
+    }
+
+    const league = (payload as { row: { id: string } }).row;
     router.push(`/dashboard/leagues/${league.id}`);
   }
 
@@ -218,6 +232,15 @@ export function NewLeagueForm({ currentOrgId }: Props) {
           </div>
         </form>
       </div>
+
+      {capHit ? (
+        <UpgradeModal
+          cap={capHit.cap}
+          limit={capHit.limit}
+          currentPlan={capHit.plan}
+          onClose={() => setCapHit(null)}
+        />
+      ) : null}
     </div>
   );
 }

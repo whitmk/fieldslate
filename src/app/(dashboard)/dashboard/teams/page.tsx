@@ -5,6 +5,10 @@ import { AddTeamButton } from "@/components/teams/add-team-button";
 import { TeamSnackShackButton } from "@/components/teams/team-snack-shack-button";
 import type { Team } from "@/types/database";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { PLAN_LIMITS, isUnlimited } from "@/lib/plan/limits";
+import { planLabel } from "@/lib/plan/labels";
+import { getTeamCountForOrg } from "@/lib/plan/counts";
 
 type TeamWithLeague = Team & {
   league: { name: string } | null;
@@ -53,6 +57,12 @@ export default async function TeamsPage() {
     (rawDivisions as { id: string; name: string; league_id: string }[] | null) ??
     [];
 
+  const [plan, teamCount] = await Promise.all([
+    getOrgPlan(currentOrgId),
+    getTeamCountForOrg(supabase, currentOrgId),
+  ]);
+  const teamLimit = PLAN_LIMITS[plan].teamsPerOrg;
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
@@ -60,7 +70,23 @@ export default async function TeamsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Teams</h1>
           <p className="mt-1 text-sm text-gray-500">All teams across your seasons.</p>
         </div>
-        <AddTeamButton leagues={leagues} divisions={divisions} />
+        <div className="flex items-center gap-3">
+          {!isUnlimited(teamLimit) ? (
+            <p className="text-xs text-gray-500">
+              {/* Free's team cap is org-wide (6); the only finite value is
+                  never 1, so the noun is always plural here. */}
+              {teamCount} of {teamLimit} teams ·{" "}
+              <span className="font-medium text-gray-700">{planLabel(plan)} plan</span>
+            </p>
+          ) : null}
+          <AddTeamButton
+            leagues={leagues}
+            divisions={divisions}
+            teamCount={teamCount}
+            teamLimit={teamLimit}
+            plan={plan}
+          />
+        </div>
       </div>
 
       <Card>

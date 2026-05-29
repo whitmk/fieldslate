@@ -103,6 +103,12 @@ interface Props {
   leagueSport: string;
   divisionStats: DivisionStat[];
   currentOrgId: string;
+  /** Org-wide team count + cap, used by the wizard's upfront cap check so
+   *  Free users don't end up with a partially-saved division if their
+   *  team list would push the org over its limit. */
+  teamCount: number;
+  teamLimit: number;
+  plan: import("@/lib/plan/limits").Plan;
   onDivisionSaved?: () => void;
 }
 
@@ -176,7 +182,8 @@ const QUICK_ACTIONS = [
 ];
 
 export function DivisionSection({
-  leagueId, leagueName, leagueSport, divisionStats, currentOrgId, onDivisionSaved,
+  leagueId, leagueName, leagueSport, divisionStats, currentOrgId,
+  teamCount, teamLimit, plan, onDivisionSaved,
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -655,6 +662,9 @@ export function DivisionSection({
           leagueStartDate={leagueStartDate}
           leagueEndDate={leagueEndDate}
           currentOrgId={currentOrgId}
+          teamCount={teamCount}
+          teamLimit={teamLimit}
+          plan={plan}
           onClose={() => setOpen(false)}
           onComplete={handleComplete}
         />
@@ -666,6 +676,9 @@ export function DivisionSection({
           leagueName={leagueName}
           leagueSport={leagueSport}
           currentOrgId={currentOrgId}
+          teamCount={teamCount}
+          teamLimit={teamLimit}
+          plan={plan}
           onClose={() => { setEditingDiv(null); setEditInitialData(null); }}
           onComplete={handleComplete}
           editDivision={editingDiv}

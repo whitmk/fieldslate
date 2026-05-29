@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
+import type { Plan } from "@/lib/plan/limits";
 
 export type LeagueOption = {
   id: string;
@@ -20,9 +22,20 @@ export type DivisionOption = {
 interface Props {
   leagues: LeagueOption[];
   divisions: DivisionOption[];
+  /** Server-resolved counter inputs. When `atCap` is true, the button acts
+   *  as the upgrade-modal trigger instead of opening the add-team modal. */
+  teamCount: number;
+  teamLimit: number;
+  plan: Plan;
 }
 
-export function AddTeamButton({ leagues, divisions }: Props) {
+export function AddTeamButton({
+  leagues,
+  divisions,
+  teamCount,
+  teamLimit,
+  plan,
+}: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -30,6 +43,12 @@ export function AddTeamButton({ leagues, divisions }: Props) {
   const [divisionId, setDivisionId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [capHit, setCapHit] = useState<
+    | { cap: CapName; limit: number; plan: Plan }
+    | null
+  >(null);
+
+  const atCap = teamLimit !== -1 && teamCount >= teamLimit;
 
   const leagueDivisions = useMemo(
     () => divisions.filter((d) => d.league_id === leagueId),
@@ -38,6 +57,10 @@ export function AddTeamButton({ leagues, divisions }: Props) {
 
   function openModal() {
     if (leagues.length === 0) return;
+    if (atCap) {
+      setCapHit({ cap: "teamsPerOrg", limit: teamLimit, plan });
+      return;
+    }
     const initialLeague = leagues.length === 1 ? leagues[0].id : "";
     const initialDivision =
       leagues.length === 1
@@ -63,15 +86,29 @@ export function AddTeamButton({ leagues, divisions }: Props) {
     setError("");
 
     const supabase = createClient();
-    const { error: insertError } = await supabase
-      .from("teams")
-      .insert([
-        { league_id: leagueId, division_id: divisionId, name: name.trim() },
-      ] as never);
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "create_team" as never,
+      {
+        p_league_id: leagueId,
+        p_division_id: divisionId,
+        p_name: name.trim(),
+      } as never,
+    );
 
-    if (insertError) {
-      setError(insertError.message);
+    if (rpcError) {
+      setError(rpcError.message);
       setSaving(false);
+      return;
+    }
+
+    const payload = rpcData as
+      | { row: { id: string } }
+      | { error: "cap_reached"; cap: CapName; limit: number; plan: Plan };
+
+    if ("error" in payload && payload.error === "cap_reached") {
+      setOpen(false);
+      setSaving(false);
+      setCapHit({ cap: payload.cap, limit: payload.limit, plan: payload.plan });
       return;
     }
 
@@ -89,7 +126,14 @@ export function AddTeamButton({ leagues, divisions }: Props) {
         size="sm"
         onClick={openModal}
         disabled={disabled}
-        title={disabled ? "Create a season first" : undefined}
+        className={atCap ? "opacity-50" : undefined}
+        title={
+          disabled
+            ? "Create a season first"
+            : atCap
+              ? `You've reached your ${plan} plan team limit of ${teamLimit}.`
+              : undefined
+        }
       >
         <Plus className="mr-2 h-4 w-4" />
         Add team
@@ -207,6 +251,15 @@ export function AddTeamButton({ leagues, divisions }: Props) {
           </div>
         </div>
       )}
+
+      {capHit ? (
+        <UpgradeModal
+          cap={capHit.cap}
+          limit={capHit.limit}
+          currentPlan={capHit.plan}
+          onClose={() => setCapHit(null)}
+        />
+      ) : null}
     </>
   );
 }

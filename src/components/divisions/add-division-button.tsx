@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DivisionWizard } from "./division-wizard";
+import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
+import type { Plan } from "@/lib/plan/limits";
 
 export type LeagueOption = {
   id: string;
@@ -16,15 +18,42 @@ export type LeagueOption = {
 interface Props {
   leagues: LeagueOption[];
   currentOrgId: string;
+  /** Server-resolved counter inputs. At cap, the button opens the upgrade
+   *  modal instead of the wizard. Team counts are forwarded into the
+   *  wizard so the review step can fail-closed BEFORE writing anything
+   *  if the wizard's team list would push the org over its cap. */
+  divisionCount: number;
+  divisionLimit: number;
+  teamCount: number;
+  teamLimit: number;
+  plan: Plan;
 }
 
-export function AddDivisionButton({ leagues, currentOrgId }: Props) {
+export function AddDivisionButton({
+  leagues,
+  currentOrgId,
+  divisionCount,
+  divisionLimit,
+  teamCount,
+  teamLimit,
+  plan,
+}: Props) {
   const router = useRouter();
   const [picking, setPicking] = useState(false);
   const [activeLeague, setActiveLeague] = useState<LeagueOption | null>(null);
+  const [capHit, setCapHit] = useState<
+    | { cap: CapName; limit: number; plan: Plan }
+    | null
+  >(null);
+
+  const atCap = divisionLimit !== -1 && divisionCount >= divisionLimit;
 
   function handleClick() {
     if (leagues.length === 0) return;
+    if (atCap) {
+      setCapHit({ cap: "divisions", limit: divisionLimit, plan });
+      return;
+    }
     if (leagues.length === 1) {
       setActiveLeague(leagues[0]);
       return;
@@ -54,7 +83,14 @@ export function AddDivisionButton({ leagues, currentOrgId }: Props) {
         size="sm"
         onClick={handleClick}
         disabled={disabled}
-        title={disabled ? "Create a season first" : undefined}
+        className={atCap ? "opacity-50" : undefined}
+        title={
+          disabled
+            ? "Create a season first"
+            : atCap
+              ? `You've reached your ${plan} plan division limit of ${divisionLimit}.`
+              : undefined
+        }
       >
         <Plus className="mr-2 h-4 w-4" />
         Add division
@@ -103,10 +139,22 @@ export function AddDivisionButton({ leagues, currentOrgId }: Props) {
           leagueStartDate={activeLeague.start_date ?? undefined}
           leagueEndDate={activeLeague.end_date ?? undefined}
           currentOrgId={currentOrgId}
+          teamCount={teamCount}
+          teamLimit={teamLimit}
+          plan={plan}
           onClose={handleClose}
           onComplete={handleComplete}
         />
       )}
+
+      {capHit ? (
+        <UpgradeModal
+          cap={capHit.cap}
+          limit={capHit.limit}
+          currentPlan={capHit.plan}
+          onClose={() => setCapHit(null)}
+        />
+      ) : null}
     </>
   );
 }

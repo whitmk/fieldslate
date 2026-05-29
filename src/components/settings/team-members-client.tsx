@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { PLAN_LIMITS, type Plan } from "@/lib/plan/limits";
 import { planLabel } from "@/lib/plan/labels";
+import { UpgradeModal } from "@/components/plan/upgrade-cta";
 
 export type TeamMember = {
   user_id: string;
@@ -76,6 +77,7 @@ export function TeamMembersClient({
   const atCap = seatsUsed >= cap;
 
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<TeamMember | null>(null);
 
   return (
@@ -89,9 +91,15 @@ export function TeamMembersClient({
         {callerIsOwner ? (
           <button
             type="button"
-            onClick={() => setInviteModalOpen(true)}
-            disabled={atCap}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:cursor-default disabled:bg-gray-200 disabled:text-gray-500"
+            onClick={() =>
+              atCap ? setUpgradeModalOpen(true) : setInviteModalOpen(true)
+            }
+            aria-disabled={atCap || undefined}
+            className={
+              atCap
+                ? "inline-flex cursor-default items-center gap-1.5 rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-500"
+                : "inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#16a34a]"
+            }
             title={
               atCap
                 ? `You've reached your ${planLabel(plan)} plan's admin limit of ${cap}.`
@@ -103,13 +111,6 @@ export function TeamMembersClient({
           </button>
         ) : null}
       </div>
-
-      {atCap && callerIsOwner ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-          You&rsquo;ve reached the {planLabel(plan)} limit of {cap} admin
-          {cap === 1 ? "" : "s"}. Upgrade your plan to add more.
-        </div>
-      ) : null}
 
       {/* Active members */}
       <ul className="flex flex-col divide-y divide-gray-100">
@@ -195,6 +196,15 @@ export function TeamMembersClient({
             setConfirmRemove(null);
             router.refresh();
           }}
+        />
+      ) : null}
+
+      {upgradeModalOpen ? (
+        <UpgradeModal
+          cap="admins"
+          limit={cap}
+          currentPlan={plan}
+          onClose={() => setUpgradeModalOpen(false)}
         />
       ) : null}
     </div>

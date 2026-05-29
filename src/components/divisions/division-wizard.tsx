@@ -13,6 +13,7 @@ import { StepReview } from "./steps/step-review";
 import { DEFAULT_WIZARD_DATA, type WizardData } from "./wizard-types";
 import type { Division } from "@/types/database";
 import { getOfficialTitlePlural } from "@/lib/utils/official-title";
+import type { Plan } from "@/lib/plan/limits";
 
 interface Props {
   leagueId: string;
@@ -21,13 +22,19 @@ interface Props {
   leagueStartDate?: string;
   leagueEndDate?: string;
   currentOrgId: string;
+  /** Org-wide team count + cap, forwarded to the review step so it can
+   *  fail-closed BEFORE any inserts run if the wizard's team list would
+   *  push the org over its cap. */
+  teamCount: number;
+  teamLimit: number;
+  plan: Plan;
   onClose: () => void;
   onComplete: () => void;
   editDivision?: Division;
   initialData?: WizardData;
 }
 
-export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartDate, leagueEndDate, currentOrgId, onClose, onComplete, editDivision, initialData }: Props) {
+export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartDate, leagueEndDate, currentOrgId, teamCount, teamLimit, plan, onClose, onComplete, editDivision, initialData }: Props) {
   const officialsPlural = getOfficialTitlePlural(leagueSport);
 
   const STEPS = [
@@ -115,6 +122,9 @@ export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartD
       onEdit={setStep}
       onComplete={handleComplete}
       divisionId={editDivision?.id}
+      teamCount={teamCount}
+      teamLimit={teamLimit}
+      plan={plan}
     />,
   ];
 

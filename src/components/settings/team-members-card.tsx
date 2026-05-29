@@ -27,7 +27,7 @@ export async function TeamMembersCard({ userId }: { userId: string }) {
       .eq("org_id", orgId)
       .eq("status", "pending")
       .order("created_at", { ascending: true }),
-    getOrgPlan(supabase, orgId),
+    getOrgPlan(orgId),
   ]);
 
   const userIds = (members ?? []).map((m) => m.user_id);

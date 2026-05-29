@@ -7,6 +7,10 @@ import { AddDivisionButton } from "@/components/divisions/add-division-button";
 import type { Division, League } from "@/types/database";
 import { activeLeaguesOnly } from "@/lib/seasons/queries";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { PLAN_LIMITS, isUnlimited } from "@/lib/plan/limits";
+import { planLabel } from "@/lib/plan/labels";
+import { getDivisionCount, getTeamCountForOrg } from "@/lib/plan/counts";
 
 type LeagueRow = Pick<League, "id" | "name" | "sport"> & {
   start_date: string | null;
@@ -61,6 +65,14 @@ export default async function DivisionsPage() {
 
   const hasAny = divisions.length > 0;
 
+  const [plan, divisionCount, teamCount] = await Promise.all([
+    getOrgPlan(currentOrgId),
+    getDivisionCount(supabase, currentOrgId),
+    getTeamCountForOrg(supabase, currentOrgId),
+  ]);
+  const divisionLimit = PLAN_LIMITS[plan].divisions;
+  const teamLimit = PLAN_LIMITS[plan].teamsPerOrg;
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
@@ -68,15 +80,29 @@ export default async function DivisionsPage() {
           <h1 className="text-2xl font-bold text-[#0C1F3F]">Divisions</h1>
           <p className="mt-1 text-sm text-gray-500">All divisions across your seasons.</p>
         </div>
-        <AddDivisionButton
-          leagues={leagues.map((l) => ({
-            id: l.id,
-            name: l.name,
-            start_date: l.start_date,
-            end_date: l.end_date,
-          }))}
-          currentOrgId={currentOrgId}
-        />
+        <div className="flex items-center gap-3">
+          {!isUnlimited(divisionLimit) ? (
+            <p className="text-xs text-gray-500">
+              {divisionCount} of {divisionLimit}{" "}
+              {divisionLimit === 1 ? "division" : "divisions"} ·{" "}
+              <span className="font-medium text-gray-700">{planLabel(plan)} plan</span>
+            </p>
+          ) : null}
+          <AddDivisionButton
+            leagues={leagues.map((l) => ({
+              id: l.id,
+              name: l.name,
+              start_date: l.start_date,
+              end_date: l.end_date,
+            }))}
+            currentOrgId={currentOrgId}
+            divisionCount={divisionCount}
+            divisionLimit={divisionLimit}
+            teamCount={teamCount}
+            teamLimit={teamLimit}
+            plan={plan}
+          />
+        </div>
       </div>
 
       {!hasAny ? (

@@ -5,13 +5,26 @@ import { Plus, Users, X, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Division, Team } from "@/types/database";
 import { teamAvatarColor } from "@/lib/utils/team-avatar";
+import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
+import type { Plan } from "@/lib/plan/limits";
 
 interface Props {
   leagueId: string;
   refreshKey?: number;
+  /** Server-resolved counter inputs. The cap is org-wide (across all
+   *  leagues/divisions) and the parent page passes the same numbers in. */
+  teamCount: number;
+  teamLimit: number;
+  plan: Plan;
 }
 
-export function TeamSection({ leagueId, refreshKey }: Props) {
+export function TeamSection({
+  leagueId,
+  refreshKey,
+  teamCount,
+  teamLimit,
+  plan,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -21,6 +34,12 @@ export function TeamSection({ leagueId, refreshKey }: Props) {
   const [divisionId, setDivisionId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [capHit, setCapHit] = useState<
+    | { cap: CapName; limit: number; plan: Plan }
+    | null
+  >(null);
+
+  const atCap = teamLimit !== -1 && teamCount >= teamLimit;
 
   const fetchData = useCallback(async () => {
     const supabase = createClient();
@@ -38,6 +57,10 @@ export function TeamSection({ leagueId, refreshKey }: Props) {
   }, [fetchData, refreshKey]);
 
   function openModal() {
+    if (atCap) {
+      setCapHit({ cap: "teamsPerOrg", limit: teamLimit, plan });
+      return;
+    }
     setName("");
     setDivisionId(divisions[0]?.id ?? "");
     setError("");
@@ -51,13 +74,29 @@ export function TeamSection({ leagueId, refreshKey }: Props) {
     setError("");
 
     const supabase = createClient();
-    const { error: err } = await supabase
-      .from("teams")
-      .insert([{ league_id: leagueId, division_id: divisionId, name: name.trim() }]);
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "create_team" as never,
+      {
+        p_league_id: leagueId,
+        p_division_id: divisionId,
+        p_name: name.trim(),
+      } as never,
+    );
 
-    if (err) {
-      setError(err.message);
+    if (rpcError) {
+      setError(rpcError.message);
       setSaving(false);
+      return;
+    }
+
+    const payload = rpcData as
+      | { row: { id: string } }
+      | { error: "cap_reached"; cap: CapName; limit: number; plan: Plan };
+
+    if ("error" in payload && payload.error === "cap_reached") {
+      setOpen(false);
+      setSaving(false);
+      setCapHit({ cap: payload.cap, limit: payload.limit, plan: payload.plan });
       return;
     }
 
@@ -80,7 +119,16 @@ export function TeamSection({ leagueId, refreshKey }: Props) {
           <h2 className="font-semibold text-[#0C1F3F]">Teams</h2>
           <button
             onClick={openModal}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F]"
+            className={
+              atCap
+                ? "inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-400 opacity-70"
+                : "inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F]"
+            }
+            title={
+              atCap
+                ? `You've reached your ${plan} plan team limit of ${teamLimit}.`
+                : undefined
+            }
           >
             <Plus className="h-3.5 w-3.5" />
             Add team
@@ -245,6 +293,15 @@ export function TeamSection({ leagueId, refreshKey }: Props) {
           </div>
         </div>
       )}
+
+      {capHit ? (
+        <UpgradeModal
+          cap={capHit.cap}
+          limit={capHit.limit}
+          currentPlan={capHit.plan}
+          onClose={() => setCapHit(null)}
+        />
+      ) : null}
     </>
   );
 }
