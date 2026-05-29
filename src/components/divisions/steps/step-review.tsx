@@ -10,7 +10,12 @@ import { useRouter } from "next/navigation";
 import { logActivity } from "@/lib/activity-log";
 import Link from "next/link";
 import type { WizardData } from "../wizard-types";
-import { generateSchedule, type ScheduleConflict } from "@/lib/schedule/generate-schedule";
+import {
+  generateSchedule,
+  planScheduleForNewDivision,
+  type NewDivisionPlannedGame,
+  type ScheduleConflict,
+} from "@/lib/schedule/generate-schedule";
 import { getOfficialTitlePlural } from "@/lib/utils/official-title";
 import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
 import type { Plan } from "@/lib/plan/limits";
@@ -27,6 +32,9 @@ interface Props {
   data: WizardData;
   originalData?: WizardData; // populated when editing; used for change analysis
   leagueId: string;
+  /** Resolved by the wizard's parent — used by the new-division atomic flow
+   *  to scope the venue-availability lookup. */
+  currentOrgId: string;
   sport?: string | null;
   onEdit: (step: number) => void;
   onComplete: () => void;
@@ -110,7 +118,7 @@ type SaveOnlyResult = {
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export function StepReview({
-  data, originalData, leagueId, sport, onEdit, onComplete, divisionId,
+  data, originalData, leagueId, currentOrgId, sport, onEdit, onComplete, divisionId,
   teamCount, teamLimit, plan,
 }: Props) {
   const officialsPlural = getOfficialTitlePlural(sport);
@@ -125,19 +133,15 @@ export function StepReview({
     | { cap: CapName; limit: number; plan: Plan }
     | null
   >(null);
-  // After the first successful create within this wizard session, capture
-  // the new divId so any subsequent save (e.g. user clicks back to fix a
-  // schedule-gen error and re-saves) routes through the edit-mode branch
-  // instead of creating a duplicate division. Lives for the lifetime of
-  // the StepReview mount, which is the lifetime of the wizard session.
-  const [createdDivId, setCreatedDivId] = useState<string | null>(null);
   const router = useRouter();
 
-  // Prop divisionId is set when the wizard was opened via the Edit menu.
-  // createdDivId is set after we create one ourselves. Either flips the
-  // wizard into edit-mode semantics for the rest of the session.
-  const effectiveDivisionId = divisionId ?? createdDivId;
-  const isEditMode = !!effectiveDivisionId;
+  // Edit mode = wizard was opened via the Edit menu (divisionId prop set).
+  // New mode = wizard creates a brand-new division. New mode now writes the
+  // division, teams, venues, interleague configs, and games in ONE atomic
+  // create_division_atomic RPC, so there is no intermediate partially-saved
+  // state to track. (Previously we kept a `createdDivId` to switch into
+  // edit-mode-on-retry, but the atomic path makes that unnecessary.)
+  const isEditMode = !!divisionId;
   const conflictCount = data.teams.filter((t) => t.has_coach_conflict).length;
   const hasConflicts = conflictCount > 0;
   const canSubmit = !!data.name.trim() && !!data.start_date && !!data.end_date;
@@ -166,150 +170,89 @@ export function StepReview({
     teams: data.teams,
   };
 
-  // ── Shared: persist division + venues + team names ─────────────────────────
+  // ── Persistence ────────────────────────────────────────────────────────────
+  //
+  // Two paths share one return shape. Callers branch on isEditMode.
+  //
+  // Edit mode (saveEditDivisionData): UPDATE division + wipe/replace venues
+  // + per-team RPC for net-new names + wipe/replace interleague configs +
+  // optional league schedule update. Multi-step but idempotent on retry.
+  //
+  // New mode (createNewDivisionAtomic): a single create_division_atomic RPC
+  // that wraps the division row, teams, venues, interleague configs, AND
+  // (optionally) the planned game schedule in ONE transaction. If any step
+  // fails — including schedule planning being infeasible — nothing persists.
 
   type SaveResult =
     | { divId: string }
     | { error: string }
     | { capHit: { cap: CapName; limit: number; plan: Plan } };
 
-  async function saveDivisionData(): Promise<SaveResult> {
+  const nonBlankTeams = data.teams.filter((t) => t.name.trim() !== "");
+
+  async function saveEditDivisionData(): Promise<SaveResult> {
     const supabase = createClient();
+    // Narrow the optional prop locally — this function is only called when
+    // isEditMode is true, which guarantees divisionId is set.
+    const divId = divisionId as string;
 
-    // ── Upfront team-cap check ────────────────────────────────────────────
-    // The per-team RPC enforces server-side, but if the cap fires mid-batch
-    // we'd leave a partial state behind (division + venues + some teams
-    // already committed). Compute the org-wide impact of this save BEFORE
-    // any writes so a Free user on the edge gets the upgrade modal cleanly.
-    const nonBlankTeams = data.teams.filter((t) => t.name.trim() !== "");
+    // Upfront team-cap check — net-new teams only (existing names dedupe).
     if (teamLimit !== -1 && nonBlankTeams.length > 0) {
-      let newTeamCount: number;
-      if (isEditMode) {
-        // Edit mode: net-new = wizard list minus the names already in the
-        // division (matches the de-dupe logic the team-insert loop uses).
-        const { data: existing } = await supabase
-          .from("teams").select("name").eq("division_id", effectiveDivisionId);
-        const existingNames = new Set(
-          (existing ?? []).map((t: { name: string }) => t.name.toLowerCase().trim())
-        );
-        newTeamCount = nonBlankTeams.filter(
-          (t) => !existingNames.has(t.name.toLowerCase().trim())
-        ).length;
-      } else {
-        newTeamCount = nonBlankTeams.length;
-      }
-      if (teamCount + newTeamCount > teamLimit) {
-        return {
-          capHit: { cap: "teamsPerOrg", limit: teamLimit, plan },
-        };
-      }
-    }
-
-    let divId: string;
-
-    if (isEditMode) {
-      const { error: updateError } = await supabase
-        .from("divisions")
-        .update({
-          name: data.name.trim(),
-          team_count: data.team_count,
-          start_date: data.start_date || null,
-          end_date: data.end_date || null,
-          settings: settingsPayload,
-          umpires_per_game: data.umpires_per_game,
-          umpire_roles: data.umpire_roles,
-          plays_interleague: data.plays_interleague,
-          intra_division_games_per_team: data.games_per_team,
-        } as never)
-        .eq("id", effectiveDivisionId);
-
-      if (updateError) return { error: updateError.message };
-
-      await supabase.from("division_venues").delete().eq("division_id", effectiveDivisionId);
-      if (data.venue_assignments.length > 0) {
-        await supabase
-          .from("division_venues")
-          .insert(data.venue_assignments.map((a) => ({
-            division_id: effectiveDivisionId,
-            venue_id: a.venue_id,
-            allow_games: a.allow_games,
-          })) as never[]);
-      }
-
-      divId = effectiveDivisionId as string;
-    } else {
-      const { data: rpcData, error: rpcError } = await supabase.rpc(
-        "create_division" as never,
-        {
-          p_league_id: leagueId,
-          p_name: data.name.trim(),
-          p_team_count: data.team_count,
-          p_start_date: data.start_date || null,
-          p_end_date: data.end_date || null,
-          p_settings: settingsPayload,
-          p_umpires_per_game: data.umpires_per_game,
-          p_umpire_roles: data.umpire_roles,
-          p_plays_interleague: data.plays_interleague,
-          p_intra_division_games_per_team: data.games_per_team,
-        } as never,
+      const { data: existing } = await supabase
+        .from("teams").select("name").eq("division_id", divId);
+      const existingNames = new Set(
+        (existing ?? []).map((t: { name: string }) => t.name.toLowerCase().trim())
       );
-
-      if (rpcError) return { error: rpcError.message };
-
-      const payload = rpcData as
-        | { row: { id: string } }
-        | { error: "cap_reached"; cap: CapName; limit: number; plan: Plan };
-
-      if ("error" in payload && payload.error === "cap_reached") {
-        return {
-          capHit: { cap: payload.cap, limit: payload.limit, plan: payload.plan },
-        };
-      }
-
-      divId = (payload as { row: { id: string } }).row.id;
-      // Flip subsequent saves into edit-mode against this divId so a
-      // back-button retry doesn't create a duplicate division.
-      setCreatedDivId(divId);
-
-      if (data.venue_assignments.length > 0) {
-        await supabase
-          .from("division_venues")
-          .insert(data.venue_assignments.map((a) => ({
-            division_id: divId,
-            venue_id: a.venue_id,
-            allow_games: a.allow_games,
-          })) as never[]);
+      const newTeamCount = nonBlankTeams.filter(
+        (t) => !existingNames.has(t.name.toLowerCase().trim())
+      ).length;
+      if (teamCount + newTeamCount > teamLimit) {
+        return { capHit: { cap: "teamsPerOrg", limit: teamLimit, plan } };
       }
     }
 
-    // Upsert team names from wizard — per-team RPC so the org-wide team cap
-    // is enforced server-side. The upfront check above means we should never
-    // reach the cap_reached branch here under normal flow; it remains as
-    // belt-and-suspenders for concurrent writes by another admin between
-    // the check and the loop. `nonBlankTeams` was hoisted out for the
-    // upfront check.
+    const { error: updateError } = await supabase
+      .from("divisions")
+      .update({
+        name: data.name.trim(),
+        team_count: data.team_count,
+        start_date: data.start_date || null,
+        end_date: data.end_date || null,
+        settings: settingsPayload,
+        umpires_per_game: data.umpires_per_game,
+        umpire_roles: data.umpire_roles,
+        plays_interleague: data.plays_interleague,
+        intra_division_games_per_team: data.games_per_team,
+      } as never)
+      .eq("id", divId);
+
+    if (updateError) return { error: updateError.message };
+
+    await supabase.from("division_venues").delete().eq("division_id", divId);
+    if (data.venue_assignments.length > 0) {
+      await supabase
+        .from("division_venues")
+        .insert(data.venue_assignments.map((a) => ({
+          division_id: divId,
+          venue_id: a.venue_id,
+          allow_games: a.allow_games,
+        })) as never[]);
+    }
+
+    // Insert net-new teams via the per-team RPC (server-side cap check).
     if (nonBlankTeams.length > 0) {
-      let teamsToCreate: { name: string }[];
-      if (isEditMode) {
-        const { data: existing } = await supabase
-          .from("teams").select("name").eq("division_id", divId);
-        const existingNames = new Set(
-          (existing ?? []).map((t: { name: string }) => t.name.toLowerCase().trim())
-        );
-        teamsToCreate = nonBlankTeams.filter(
-          (t) => !existingNames.has(t.name.toLowerCase().trim())
-        );
-      } else {
-        teamsToCreate = nonBlankTeams;
-      }
+      const { data: existing } = await supabase
+        .from("teams").select("name").eq("division_id", divId);
+      const existingNames = new Set(
+        (existing ?? []).map((t: { name: string }) => t.name.toLowerCase().trim())
+      );
+      const teamsToCreate = nonBlankTeams.filter(
+        (t) => !existingNames.has(t.name.toLowerCase().trim())
+      );
       for (const t of teamsToCreate) {
         const { data: teamRpc, error: teamErr } = await supabase.rpc(
           "create_team" as never,
-          {
-            p_league_id: leagueId,
-            p_division_id: divId,
-            p_name: t.name.trim(),
-          } as never,
+          { p_league_id: leagueId, p_division_id: divId, p_name: t.name.trim() } as never,
         );
         if (teamErr) return { error: teamErr.message };
         const teamPayload = teamRpc as
@@ -327,7 +270,6 @@ export function StepReview({
       }
     }
 
-    // When scoped to league, persist the schedule windows as league-wide defaults
     if (data.use_league_schedule) {
       await supabase
         .from("leagues")
@@ -340,7 +282,7 @@ export function StepReview({
         .eq("id", leagueId);
     }
 
-    // Sync interleague game counts — always wipe+replace so removals are handled
+    // Sync interleague game counts — wipe+replace so removals are handled.
     await supabase.from("division_interleague_games").delete().eq("division_id", divId);
     const nonZeroGames = data.interleague_games.filter((g) => g.game_count > 0);
     if (nonZeroGames.length > 0) {
@@ -360,13 +302,93 @@ export function StepReview({
     return { divId };
   }
 
+  async function createNewDivisionAtomic(
+    plannedGames: NewDivisionPlannedGame[],
+  ): Promise<SaveResult> {
+    const supabase = createClient();
+
+    // Upfront team-cap check — atomic RPC will reject too, but failing fast
+    // before the planner runs is a slightly nicer UX.
+    if (teamLimit !== -1 && nonBlankTeams.length > 0) {
+      if (teamCount + nonBlankTeams.length > teamLimit) {
+        return { capHit: { cap: "teamsPerOrg", limit: teamLimit, plan } };
+      }
+    }
+
+    const nonZeroInterleague = data.interleague_games.filter((g) => g.game_count > 0);
+
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "create_division_atomic" as never,
+      {
+        p_league_id: leagueId,
+        p_division: {
+          name: data.name.trim(),
+          team_count: data.team_count,
+          start_date: data.start_date || "",
+          end_date: data.end_date || "",
+          settings: settingsPayload,
+          umpires_per_game: data.umpires_per_game,
+          umpire_roles: data.umpire_roles,
+          plays_interleague: data.plays_interleague,
+          intra_division_games_per_team: data.games_per_team,
+        },
+        p_team_names: nonBlankTeams.map((t) => t.name.trim()),
+        p_venue_assignments: data.venue_assignments.map((a) => ({
+          venue_id: a.venue_id,
+          allow_games: a.allow_games,
+        })),
+        p_interleague_games: nonZeroInterleague.map((g) => ({
+          interleague_org_id: g.interleague_org_id,
+          game_count: g.game_count,
+          home_games_per_team: Math.max(
+            0,
+            Math.min(g.game_count, g.home_games_per_team ?? g.game_count),
+          ),
+        })),
+        p_games: plannedGames.map((g) => ({
+          home_team_name: g.home_team_name,
+          away_team_name: g.away_team_name,
+          interleague_org_id: g.interleague_org_id,
+          venue_id: g.venue_id,
+          scheduled_at: g.scheduled_at,
+          status: g.status,
+          is_away: g.is_away,
+        })),
+        p_use_league_schedule_settings: data.use_league_schedule
+          ? {
+              playing_days: data.playing_days,
+              day_windows: data.day_windows,
+            }
+          : null,
+      } as never,
+    );
+
+    if (rpcError) return { error: rpcError.message };
+
+    const payload = rpcData as
+      | { row: { id: string } }
+      | { error: "cap_reached"; cap: CapName; limit: number; plan: Plan };
+
+    if ("error" in payload && payload.error === "cap_reached") {
+      return {
+        capHit: { cap: payload.cap, limit: payload.limit, plan: payload.plan },
+      };
+    }
+
+    return { divId: (payload as { row: { id: string } }).row.id };
+  }
+
   // ── "Save changes" — no schedule touch ────────────────────────────────────
 
   async function handleSaveOnly() {
     setSavingOnly(true);
     setError("");
 
-    const saved = await saveDivisionData();
+    // Edit: UPDATE-flavored save (no games touched). New: atomic create with
+    // an empty game schedule (user can generate later from the division view).
+    const saved = isEditMode
+      ? await saveEditDivisionData()
+      : await createNewDivisionAtomic([]);
     if ("capHit" in saved) {
       setCapHit(saved.capHit);
       setSavingOnly(false);
@@ -511,7 +533,86 @@ export function StepReview({
     setError("");
     setConfirmingKind(null);
 
-    const saved = await saveDivisionData();
+    if (isEditMode) {
+      // Edit-mode flow stays as before: persist the wizard changes, then
+      // wipe+rebuild the schedule against the now-updated division row.
+      const saved = await saveEditDivisionData();
+      if ("capHit" in saved) {
+        setCapHit(saved.capHit);
+        setSavingRegen(false);
+        setRegenKind(null);
+        return;
+      }
+      if ("error" in saved) {
+        setError(saved.error);
+        setSavingRegen(false);
+        setRegenKind(null);
+        return;
+      }
+      const { divId } = saved;
+      const result: RegenResult = { kind, conflicts: [], savedDivisionId: divId };
+
+      const gameRes = await generateSchedule(divId);
+      if (!gameRes.success) {
+        setError(`Division saved, but game schedule generation failed: ${gameRes.error}`);
+        setSavingRegen(false);
+        setRegenKind(null);
+        return;
+      }
+      result.gamesCreated = gameRes.gamesCreated;
+      result.unscheduledCount = gameRes.unscheduledCount;
+      result.conflicts = gameRes.conflicts;
+      await logActivity(
+        leagueId,
+        divId,
+        "schedule_generated",
+        `${data.name} schedule generated — ${gameRes.gamesCreated} game${gameRes.gamesCreated === 1 ? "" : "s"} scheduled`,
+      );
+
+      router.refresh();
+      setSavingRegen(false);
+      setRegenKind(null);
+      setRegenResult(result);
+      return;
+    }
+
+    // New-division atomic flow: plan client-side, then ONE RPC writes the
+    // division, teams, venues, interleague configs, AND games in a single
+    // transaction. If planning is infeasible OR the RPC fails for any
+    // reason, nothing is written — no orphan divisions, no duplicate
+    // divisions on retry.
+    const planResult = await planScheduleForNewDivision({
+      leagueId,
+      currentOrgId,
+      startDate: data.start_date,
+      endDate: data.end_date,
+      settings: settingsPayload as never,
+      intraDivisionGamesPerTeam: data.games_per_team,
+      teamNames: nonBlankTeams.map((t) => t.name.trim()),
+      venueAssignments: data.venue_assignments.map((a) => ({
+        venue_id: a.venue_id,
+        allow_games: a.allow_games,
+      })),
+      interleagueGames: data.interleague_games
+        .filter((g) => g.game_count > 0)
+        .map((g) => ({
+          interleague_org_id: g.interleague_org_id,
+          game_count: g.game_count,
+          home_games_per_team: Math.max(
+            0,
+            Math.min(g.game_count, g.home_games_per_team ?? g.game_count),
+          ),
+        })),
+    });
+
+    if (!planResult.success) {
+      setError(`Could not generate game schedule: ${planResult.error}`);
+      setSavingRegen(false);
+      setRegenKind(null);
+      return;
+    }
+
+    const saved = await createNewDivisionAtomic(planResult.games);
     if ("capHit" in saved) {
       setCapHit(saved.capHit);
       setSavingRegen(false);
@@ -526,23 +627,19 @@ export function StepReview({
     }
     const { divId } = saved;
 
-    const result: RegenResult = { kind, conflicts: [], savedDivisionId: divId };
+    const result: RegenResult = {
+      kind,
+      conflicts: [],
+      savedDivisionId: divId,
+      gamesCreated: planResult.games.length,
+      unscheduledCount: planResult.unscheduledCount,
+    };
 
-    const gameRes = await generateSchedule(divId);
-    if (!gameRes.success) {
-      setError(`Division saved, but game schedule generation failed: ${gameRes.error}`);
-      setSavingRegen(false);
-      setRegenKind(null);
-      return;
-    }
-    result.gamesCreated = gameRes.gamesCreated;
-    result.unscheduledCount = gameRes.unscheduledCount;
-    result.conflicts = gameRes.conflicts;
     await logActivity(
       leagueId,
       divId,
       "schedule_generated",
-      `${data.name} schedule generated — ${gameRes.gamesCreated} game${gameRes.gamesCreated === 1 ? "" : "s"} scheduled`,
+      `${data.name} schedule generated — ${result.gamesCreated} game${result.gamesCreated === 1 ? "" : "s"} scheduled`,
     );
 
     router.refresh();

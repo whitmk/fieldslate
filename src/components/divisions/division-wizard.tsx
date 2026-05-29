@@ -129,6 +129,7 @@ export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartD
       data={data}
       originalData={isEditMode ? initialData : undefined}
       leagueId={leagueId}
+      currentOrgId={currentOrgId}
       sport={leagueSport}
       onEdit={setStep}
       onComplete={handleComplete}

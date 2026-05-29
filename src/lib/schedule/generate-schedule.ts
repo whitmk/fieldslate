@@ -430,6 +430,147 @@ export function detectScheduleConflicts(
   return conflicts;
 }
 
+// ─── Pure planning core (shared by regenerate + atomic-new-division flows) ──
+
+/**
+ * Greedy assignment of matchups to slots. Mutates the pre-seeded maps in
+ * place. Team identifiers are opaque strings — UUIDs in the regenerate
+ * flow (where teams exist in DB) and team-name strings in the new-division
+ * atomic flow (where the RPC resolves names → ids inside the transaction).
+ *
+ * Pre-seeded maps allow the caller to inject "existing state" — e.g.,
+ * cross-division games at the same venues, preserved accepted interleague
+ * games, prior away-game placements counted against an org's daily cap.
+ */
+export interface PlanScheduleInput {
+  leagueId: string;
+  matchups: Matchup[];
+  slots: Slot[];
+
+  // Mutable state — planSchedule writes into these as it assigns games.
+  venueBookings: Map<string, number[]>;
+  teamTimes: Map<string, Set<string>>;
+  teamDay: Map<string, number>;
+  teamWeek: Map<string, number>;
+  awayByOrgDate: Map<string, number>;
+
+  // Read-only constraints.
+  blocked: Map<string, Set<string>>;
+  orgFieldCount: Map<string, number>;
+  minVenueGap: number;
+  maxPerTeamDay: number;
+  maxGamesPerWeek: number;
+}
+
+export interface PlannedGame {
+  league_id: string;
+  home_team_identifier: string;
+  away_team_identifier: string | null;
+  interleague_org_id: string | null;
+  venue_id: string | null;
+  scheduled_at: string;
+  status: "scheduled" | "pending_interleague";
+  is_away: boolean;
+}
+
+export interface PlanScheduleResult {
+  games: PlannedGame[];
+  unscheduledCount: number;
+}
+
+export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
+  const {
+    leagueId, matchups, slots,
+    venueBookings, teamTimes, teamDay, teamWeek, awayByOrgDate,
+    blocked, orgFieldCount, minVenueGap, maxPerTeamDay, maxGamesPerWeek,
+  } = input;
+
+  const scheduled: PlannedGame[] = [];
+  const unscheduled: Matchup[] = [];
+
+  // Deduped (date, time) view for away matchups: they don't claim a venue,
+  // so iterating venues for the same time is wasted work.
+  const dateTimeOnlySlots: Slot[] = [];
+  {
+    const seenIso = new Set<string>();
+    for (const s of slots) {
+      if (!seenIso.has(s.isoString)) {
+        seenIso.add(s.isoString);
+        dateTimeOnlySlots.push(s);
+      }
+    }
+  }
+
+  for (const { homeId, awayId, interleagueOrgId, isAway } of matchups) {
+    const status: "scheduled" | "pending_interleague" =
+      interleagueOrgId ? "pending_interleague" : "scheduled";
+    let assigned = false;
+
+    const pool = isAway ? dateTimeOnlySlots : slots;
+
+    for (const slot of pool) {
+      const vKey = `${slot.venueId}:${slot.date}`;
+      const slotMins = timeToMinutes(slot.isoString.substring(11, 16));
+      if (!isAway) {
+        const bookedMins = venueBookings.get(vKey) ?? [];
+        if (bookedMins.some((t) => Math.abs(t - slotMins) < minVenueGap)) continue;
+      } else if (interleagueOrgId) {
+        const cap = orgFieldCount.get(interleagueOrgId) ?? 1;
+        const used = awayByOrgDate.get(`${interleagueOrgId}|${slot.date}`) ?? 0;
+        if (used >= cap) continue;
+      }
+
+      if (teamTimes.get(homeId)!.has(slot.isoString)) continue;
+      if (awayId && teamTimes.get(awayId)!.has(slot.isoString)) continue;
+
+      const hdk = `${homeId}|${slot.date}`;
+      const adk = awayId ? `${awayId}|${slot.date}` : null;
+      if ((teamDay.get(hdk) ?? 0) >= maxPerTeamDay) continue;
+      if (adk && (teamDay.get(adk) ?? 0) >= maxPerTeamDay) continue;
+
+      const hwk = `${homeId}|${slot.weekKey}`;
+      const awk = awayId ? `${awayId}|${slot.weekKey}` : null;
+      if ((teamWeek.get(hwk) ?? 0) >= maxGamesPerWeek) continue;
+      if (awk && (teamWeek.get(awk) ?? 0) >= maxGamesPerWeek) continue;
+
+      if (blocked.get(homeId)?.has(slot.isoString)) continue;
+      if (awayId && blocked.get(awayId)?.has(slot.isoString)) continue;
+
+      if (!isAway) {
+        if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
+        venueBookings.get(vKey)!.push(slotMins);
+      } else if (interleagueOrgId) {
+        const key = `${interleagueOrgId}|${slot.date}`;
+        awayByOrgDate.set(key, (awayByOrgDate.get(key) ?? 0) + 1);
+      }
+      teamTimes.get(homeId)!.add(slot.isoString);
+      if (awayId) teamTimes.get(awayId)!.add(slot.isoString);
+      teamDay.set(hdk, (teamDay.get(hdk) ?? 0) + 1);
+      if (adk) teamDay.set(adk, (teamDay.get(adk) ?? 0) + 1);
+      teamWeek.set(hwk, (teamWeek.get(hwk) ?? 0) + 1);
+      if (awk) teamWeek.set(awk, (teamWeek.get(awk) ?? 0) + 1);
+
+      scheduled.push({
+        league_id: leagueId,
+        home_team_identifier: homeId,
+        away_team_identifier: awayId,
+        interleague_org_id: interleagueOrgId,
+        venue_id: isAway ? null : slot.venueId,
+        scheduled_at: slot.isoString,
+        status,
+        is_away: isAway,
+      });
+
+      assigned = true;
+      break;
+    }
+
+    if (!assigned) unscheduled.push({ homeId, awayId, interleagueOrgId, isAway });
+  }
+
+  return { games: scheduled, unscheduledCount: unscheduled.length };
+}
+
 // ─── Main export ───────────────────────────────────────────────────────────────
 
 export async function generateSchedule(divisionId: string): Promise<ScheduleResult> {
@@ -757,110 +898,26 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
     teamWeek.set(hwk, (teamWeek.get(hwk) ?? 0) + 1);
   }
 
-  type GameInsert = {
-    league_id: string;
-    home_team_id: string;
-    away_team_id: string | null;
-    interleague_org_id: string | null;
-    venue_id: string | null;
-    scheduled_at: string;
-    status: "scheduled" | "pending_interleague";
-    is_away: boolean;
-  };
+  // Shared planner — team identifiers here are real UUIDs since teams exist
+  // in the DB. The same planner is used by planScheduleForNewDivision with
+  // name strings as identifiers for the atomic-create path.
+  const plan = planSchedule({
+    leagueId: div.league_id,
+    matchups,
+    slots,
+    venueBookings,
+    teamTimes,
+    teamDay,
+    teamWeek,
+    awayByOrgDate,
+    blocked,
+    orgFieldCount,
+    minVenueGap,
+    maxPerTeamDay,
+    maxGamesPerWeek: Number(settings.max_games_per_week),
+  });
 
-  const scheduled: GameInsert[] = [];
-  const unscheduled: Matchup[] = [];
-
-  // Deduped (date, time) view for away matchups: they don't claim a venue,
-  // so iterating venues for the same time is wasted work.
-  const dateTimeOnlySlots: Slot[] = [];
-  {
-    const seenIso = new Set<string>();
-    for (const s of slots) {
-      if (!seenIso.has(s.isoString)) {
-        seenIso.add(s.isoString);
-        dateTimeOnlySlots.push(s);
-      }
-    }
-  }
-
-  for (const { homeId, awayId, interleagueOrgId, isAway } of matchups) {
-    const status: "scheduled" | "pending_interleague" =
-      interleagueOrgId ? "pending_interleague" : "scheduled";
-    let assigned = false;
-
-    // Away interleague games skip venue checks — they're at the other org's venue.
-    const pool = isAway ? dateTimeOnlySlots : slots;
-
-    for (const slot of pool) {
-      // ── Venue overlap check (home/intra only) ────────────────────────────────
-      const vKey = `${slot.venueId}:${slot.date}`;
-      const slotMins = timeToMinutes(slot.isoString.substring(11, 16));
-      if (!isAway) {
-        const bookedMins = venueBookings.get(vKey) ?? [];
-        if (bookedMins.some((t) => Math.abs(t - slotMins) < minVenueGap)) continue;
-      } else if (interleagueOrgId) {
-        // Away cap: the host org has a limited number of fields, so we can't
-        // schedule more than `field_count` away games against them per day.
-        const cap = orgFieldCount.get(interleagueOrgId) ?? 1;
-        const used = awayByOrgDate.get(`${interleagueOrgId}|${slot.date}`) ?? 0;
-        if (used >= cap) continue;
-      }
-
-      // Either team already has a game at this datetime (away may be null for interleague)
-      if (teamTimes.get(homeId)!.has(slot.isoString)) continue;
-      if (awayId && teamTimes.get(awayId)!.has(slot.isoString)) continue;
-
-      // max_games_per_team_per_day cap
-      const hdk = `${homeId}|${slot.date}`;
-      const adk = awayId ? `${awayId}|${slot.date}` : null;
-      if ((teamDay.get(hdk) ?? 0) >= maxPerTeamDay) continue;
-      if (adk && (teamDay.get(adk) ?? 0) >= maxPerTeamDay) continue;
-
-      // max_games_per_week cap
-      const hwk = `${homeId}|${slot.weekKey}`;
-      const awk = awayId ? `${awayId}|${slot.weekKey}` : null;
-      if ((teamWeek.get(hwk) ?? 0) >= Number(settings.max_games_per_week)) continue;
-      if (awk && (teamWeek.get(awk) ?? 0) >= Number(settings.max_games_per_week)) continue;
-
-      // Coach-conflict: blocked datetimes from cross-division partner
-      if (blocked.get(homeId)!.has(slot.isoString)) continue;
-      if (awayId && blocked.get(awayId)!.has(slot.isoString)) continue;
-
-      // ✓ All constraints satisfied — claim this slot
-      if (!isAway) {
-        if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
-        venueBookings.get(vKey)!.push(slotMins);
-      } else if (interleagueOrgId) {
-        const key = `${interleagueOrgId}|${slot.date}`;
-        awayByOrgDate.set(key, (awayByOrgDate.get(key) ?? 0) + 1);
-      }
-      teamTimes.get(homeId)!.add(slot.isoString);
-      if (awayId) teamTimes.get(awayId)!.add(slot.isoString);
-      teamDay.set(hdk, (teamDay.get(hdk) ?? 0) + 1);
-      if (adk) teamDay.set(adk, (teamDay.get(adk) ?? 0) + 1);
-      teamWeek.set(hwk, (teamWeek.get(hwk) ?? 0) + 1);
-      if (awk) teamWeek.set(awk, (teamWeek.get(awk) ?? 0) + 1);
-
-      scheduled.push({
-        league_id: div.league_id,
-        home_team_id: homeId,
-        away_team_id: awayId,
-        interleague_org_id: interleagueOrgId,
-        venue_id: isAway ? null : slot.venueId,
-        scheduled_at: slot.isoString,
-        status,
-        is_away: isAway,
-      });
-
-      assigned = true;
-      break;
-    }
-
-    if (!assigned) unscheduled.push({ homeId, awayId, interleagueOrgId, isAway });
-  }
-
-  if (!scheduled.length) {
+  if (!plan.games.length) {
     return {
       success: false,
       error:
@@ -870,6 +927,18 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
   }
 
   // ── 9. Bulk-insert the new schedule ──────────────────────────────────────────
+  // Map planner identifiers (team UUIDs in this flow) → DB column names.
+
+  const scheduled = plan.games.map((g) => ({
+    league_id: g.league_id,
+    home_team_id: g.home_team_identifier,
+    away_team_id: g.away_team_identifier,
+    interleague_org_id: g.interleague_org_id,
+    venue_id: g.venue_id,
+    scheduled_at: g.scheduled_at,
+    status: g.status,
+    is_away: g.is_away,
+  }));
 
   const BATCH = 500;
   for (let i = 0; i < scheduled.length; i += BATCH) {
@@ -920,8 +989,342 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
   return {
     success: true,
     gamesCreated: scheduled.length,
-    unscheduledCount: unscheduled.length,
+    unscheduledCount: plan.unscheduledCount,
     conflicts,
+  };
+}
+
+// ─── Atomic-create planner (wizard's new-division flow) ─────────────────────
+//
+// Runs the same greedy planner as generateSchedule(), but BEFORE the new
+// division / teams exist in the DB. Uses lowercased team NAMES as planner
+// identifiers; the resulting plan's home/away refs are name strings that
+// create_division_atomic resolves to UUIDs inside one transaction.
+
+export interface NewDivisionPlanInput {
+  leagueId: string;
+  currentOrgId: string;
+  startDate: string;
+  endDate: string;
+  settings: DivisionSettings;
+  intraDivisionGamesPerTeam: number;
+  teamNames: string[];
+  venueAssignments: Array<{ venue_id: string; allow_games: boolean }>;
+  interleagueGames: Array<{
+    interleague_org_id: string;
+    game_count: number;
+    home_games_per_team: number;
+  }>;
+}
+
+export interface NewDivisionPlannedGame {
+  home_team_name: string;
+  away_team_name: string | null;
+  interleague_org_id: string | null;
+  venue_id: string | null;
+  scheduled_at: string;
+  status: "scheduled" | "pending_interleague";
+  is_away: boolean;
+}
+
+export type NewDivisionPlanResult =
+  | { success: true; games: NewDivisionPlannedGame[]; unscheduledCount: number }
+  | { success: false; error: string };
+
+export async function planScheduleForNewDivision(
+  input: NewDivisionPlanInput,
+): Promise<NewDivisionPlanResult> {
+  const supabase = createClient();
+
+  // Normalize identifiers (lowercased, trimmed names) and detect collisions
+  // up front — the atomic RPC will reject duplicates too, but a clean error
+  // before any DB work is friendlier.
+  const identifiers: string[] = [];
+  const idToOriginal = new Map<string, string>();
+  for (const raw of input.teamNames) {
+    const norm = raw.toLowerCase().trim();
+    if (!norm) continue;
+    if (idToOriginal.has(norm)) {
+      return {
+        success: false,
+        error: `Duplicate team name: "${raw}". Team names must be unique within a division.`,
+      };
+    }
+    idToOriginal.set(norm, raw.trim());
+    identifiers.push(norm);
+  }
+
+  if (identifiers.length < 2) {
+    return {
+      success: false,
+      error: `At least 2 teams are required (got ${identifiers.length}).`,
+    };
+  }
+
+  if (input.intraDivisionGamesPerTeam <= 0) {
+    return {
+      success: false,
+      error: "Games per team must be at least 1. Check the Format step.",
+    };
+  }
+
+  if (!input.settings.playing_days?.length) {
+    return { success: false, error: "No playing days configured for this division." };
+  }
+
+  // Filter to availability-configured selected venues for game placement.
+  const gameVenueIds = input.venueAssignments
+    .filter((v) => v.allow_games)
+    .map((v) => v.venue_id);
+
+  if (gameVenueIds.length === 0) {
+    return {
+      success: false,
+      error:
+        "No venues selected for games. Pick at least one venue on the Fields step.",
+    };
+  }
+
+  // ── Venue availability ────────────────────────────────────────────────────
+  type VenueRow = {
+    id: string;
+    availability: unknown;
+    availability_configured: boolean;
+  };
+  const { data: vRows, error: vErr } = await supabase
+    .from("venues")
+    .select("id, availability, availability_configured")
+    .in("id", gameVenueIds)
+    .eq("owner_id", input.currentOrgId)
+    .eq("availability_configured", true);
+  if (vErr) return { success: false, error: vErr.message };
+  const venueRows = (vRows ?? []) as VenueRow[];
+  const venueAvailability = new Map<string, VenueAvailability>();
+  for (const r of venueRows) {
+    venueAvailability.set(r.id, parseAvailability(r.availability));
+  }
+  const usableVenueIds = venueRows.map((r) => r.id);
+  if (usableVenueIds.length === 0) {
+    return {
+      success: false,
+      error:
+        "No venues with availability set are assigned to this division for games. Configure venue hours first.",
+    };
+  }
+
+  // ── Blackout dates ────────────────────────────────────────────────────────
+  const { data: blackoutRaw } = await supabase
+    .from("blackout_dates")
+    .select("date")
+    .eq("league_id", input.leagueId);
+  const blackoutDates = new Set(
+    ((blackoutRaw ?? []) as { date: string }[]).map((b) => b.date),
+  );
+
+  // ── Coach-conflict cross-division blocked times ───────────────────────────
+  const blocked = new Map<string, Set<string>>();
+  identifiers.forEach((id) => blocked.set(id, new Set()));
+
+  if (Array.isArray(input.settings.teams)) {
+    for (const entry of input.settings.teams) {
+      if (!entry.has_coach_conflict || !entry.conflict_team?.trim()) continue;
+      const thisId = (entry.name ?? "").toLowerCase().trim();
+      if (!thisId || !blocked.has(thisId)) continue;
+
+      const linkedNameLower = entry.conflict_team.toLowerCase().trim();
+      if (blocked.has(linkedNameLower)) {
+        // Same-division pairing — both will be in this new division. The
+        // planner pairs distinct teams per round, so no extra constraint
+        // is needed here (matches generateSchedule's behavior).
+        continue;
+      }
+
+      // Cross-division: look up the linked team in OTHER divisions of this
+      // league. Those teams exist already.
+      const { data: linkedRaw } = await supabase
+        .from("teams")
+        .select("id")
+        .eq("league_id", input.leagueId)
+        .ilike("name", entry.conflict_team.trim())
+        .maybeSingle();
+      const linked = linkedRaw as { id: string } | null;
+      if (!linked) continue;
+
+      const { data: linkedGames } = await supabase
+        .from("games")
+        .select("scheduled_at")
+        .or(`home_team_id.eq.${linked.id},away_team_id.eq.${linked.id}`);
+      const set = blocked.get(thisId)!;
+      for (const g of (linkedGames ?? []) as { scheduled_at: string }[]) {
+        set.add(g.scheduled_at.substring(0, 19));
+      }
+    }
+  }
+
+  // ── Interleague config: field_count caps per org ─────────────────────────
+  const orgFieldCount = new Map<string, number>();
+  const orgIds = input.interleagueGames
+    .filter((c) => c.game_count > 0)
+    .map((c) => c.interleague_org_id);
+  if (orgIds.length > 0) {
+    const { data: orgRowsRaw } = await supabase
+      .from("interleague_orgs")
+      .select("id, field_count")
+      .in("id", orgIds);
+    for (const o of (orgRowsRaw ?? []) as Array<{
+      id: string;
+      field_count: number | null;
+    }>) {
+      orgFieldCount.set(o.id, Math.max(1, Number(o.field_count ?? 1)));
+    }
+  }
+
+  // Pre-seed per-org per-date away count from existing away games against
+  // these orgs anywhere in the league (other divisions count too).
+  const awayByOrgDate = new Map<string, number>();
+  if (orgIds.length > 0) {
+    const { data: awayRaw } = await supabase
+      .from("games")
+      .select("interleague_org_id, scheduled_at")
+      .eq("league_id", input.leagueId)
+      .eq("is_away", true)
+      .in("interleague_org_id", orgIds);
+    for (const g of (awayRaw ?? []) as Array<{
+      interleague_org_id: string | null;
+      scheduled_at: string;
+    }>) {
+      if (!g.interleague_org_id) continue;
+      const date = g.scheduled_at.substring(0, 10);
+      const key = `${g.interleague_org_id}|${date}`;
+      awayByOrgDate.set(key, (awayByOrgDate.get(key) ?? 0) + 1);
+    }
+  }
+
+  // ── Pre-seed venue bookings from existing games at our venues ────────────
+  const venueBookings = new Map<string, number[]>();
+  {
+    const { data: existing } = await supabase
+      .from("games")
+      .select("venue_id, scheduled_at")
+      .in("venue_id", usableVenueIds);
+    for (const g of (existing ?? []) as {
+      venue_id: string;
+      scheduled_at: string;
+    }[]) {
+      const date = g.scheduled_at.substring(0, 10);
+      const vKey = `${g.venue_id}:${date}`;
+      const mins = timeToMinutes(g.scheduled_at.substring(11, 16));
+      if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
+      venueBookings.get(vKey)!.push(mins);
+    }
+  }
+
+  // Our teams don't exist yet — these maps start empty for the new division.
+  const teamTimes = new Map<string, Set<string>>();
+  identifiers.forEach((id) => teamTimes.set(id, new Set()));
+  const teamDay = new Map<string, number>();
+  const teamWeek = new Map<string, number>();
+
+  // ── Build matchups + slots ────────────────────────────────────────────────
+  const intraMatchups = shuffle(
+    buildMatchups(
+      identifiers,
+      input.intraDivisionGamesPerTeam,
+      input.settings.auto_rotate,
+    ),
+  );
+
+  const interleagueConfig = input.interleagueGames.filter(
+    (c) => c.game_count > 0,
+  );
+
+  // No accepted-by-team-org seed: our teams don't have prior games.
+  const interleagueMatchups = shuffle(
+    buildInterleagueMatchups(identifiers, interleagueConfig, undefined),
+  );
+
+  const homeInterleague = interleagueMatchups.filter((m) => !m.isAway);
+  const awayInterleague = interleagueMatchups.filter((m) => m.isAway);
+  const matchups = [...intraMatchups, ...homeInterleague, ...awayInterleague];
+
+  if (!matchups.length) {
+    return {
+      success: false,
+      error:
+        "Could not generate matchups. Check team count and games-per-team settings.",
+    };
+  }
+
+  const slots = buildSlots(
+    input.startDate,
+    input.endDate,
+    input.settings,
+    usableVenueIds,
+    venueAvailability,
+    blackoutDates,
+  );
+  if (!slots.length) {
+    return {
+      success: false,
+      error:
+        "No valid game slots found. Check that the division's playing days and times overlap with each venue's configured hours.",
+    };
+  }
+
+  // ── Run the shared planner ────────────────────────────────────────────────
+  const minVenueGap =
+    Number(input.settings.game_duration ?? 0) +
+    Number(input.settings.buffer_minutes ?? 0);
+  const maxPerTeamDay = Math.max(
+    1,
+    Number(input.settings.max_games_per_team_per_day ?? 1),
+  );
+
+  const plan = planSchedule({
+    leagueId: input.leagueId,
+    matchups,
+    slots,
+    venueBookings,
+    teamTimes,
+    teamDay,
+    teamWeek,
+    awayByOrgDate,
+    blocked,
+    orgFieldCount,
+    minVenueGap,
+    maxPerTeamDay,
+    maxGamesPerWeek: Number(input.settings.max_games_per_week),
+  });
+
+  if (!plan.games.length) {
+    return {
+      success: false,
+      error:
+        "Could not fit any games into the available slots. " +
+        "Try extending the season dates, adding venues, or reducing games per team.",
+    };
+  }
+
+  // Map planner identifiers (normalized names) back to the original-cased
+  // team names. The RPC normalizes on its side too, so either form works,
+  // but keeping the original casing makes errors easier to read.
+  const games: NewDivisionPlannedGame[] = plan.games.map((g) => ({
+    home_team_name:
+      idToOriginal.get(g.home_team_identifier) ?? g.home_team_identifier,
+    away_team_name: g.away_team_identifier
+      ? idToOriginal.get(g.away_team_identifier) ?? g.away_team_identifier
+      : null,
+    interleague_org_id: g.interleague_org_id,
+    venue_id: g.venue_id,
+    scheduled_at: g.scheduled_at,
+    status: g.status,
+    is_away: g.is_away,
+  }));
+
+  return {
+    success: true,
+    games,
+    unscheduledCount: plan.unscheduledCount,
   };
 }
 
