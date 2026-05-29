@@ -87,6 +87,38 @@ export function StepBasics({
         <p className="text-xs text-gray-400">Min 2, max {effectiveMax}</p>
       </div>
 
+      {/* Team names — populated automatically as "Team 1, Team 2…" when the
+          count changes (DivisionWizard's useEffect). Editing here writes to
+          the same data.teams[] the Coaches step reads, so updates flow both
+          ways. Surfacing the names here means users find them immediately
+          after choosing the count, instead of having to hunt them down inside
+          the Coaches step. */}
+      {data.teams.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-gray-700">Team names</label>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {data.teams.map((team, i) => (
+              <input
+                key={i}
+                type="text"
+                value={team.name}
+                placeholder={`Team ${i + 1}`}
+                onChange={(e) => {
+                  const teams = data.teams.map((t, idx) =>
+                    idx === i ? { ...t, name: e.target.value } : t,
+                  );
+                  update({ teams });
+                }}
+                className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              />
+            ))}
+          </div>
+          <p className="text-xs text-gray-400">
+            Defaults to &ldquo;Team 1, Team 2…&rdquo; — type over to use real names. You can also adjust in the Coaches step.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-gray-700">Start date</label>
