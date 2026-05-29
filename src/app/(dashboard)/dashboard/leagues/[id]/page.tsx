@@ -8,7 +8,7 @@ import type { League } from "@/types/database";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { PLAN_LIMITS } from "@/lib/plan/limits";
-import { getTeamCountForOrg } from "@/lib/plan/counts";
+import { getDivisionCount, getTeamCountForOrg } from "@/lib/plan/counts";
 import {
   getOfficialTitle,
   getOfficialTitlePluralLower,
@@ -345,15 +345,18 @@ export default async function LeaguePage({ params }: { params: { id: string } })
   const officialTitle = getOfficialTitle(league.sport);
   const officialPluralLower = getOfficialTitlePluralLower(league.sport);
 
-  // Plan + org-wide team count, threaded into the division wizard via
-  // LeagueContent → DivisionSection → DivisionWizard so the wizard's review
-  // step can fail-closed before any inserts if a Free user's team list
-  // would push the org over its cap. Named `orgTeamCount` to avoid colliding
-  // with `teamCount` above, which is scoped to THIS league only.
-  const [plan, orgTeamCount] = await Promise.all([
+  // Plan + org-wide division/team counts, threaded into DivisionSection via
+  // LeagueContent. divisionCount/Limit gates the "Add division" buttons on
+  // this page (mirroring AddDivisionButton on /dashboard/divisions);
+  // teamCount/Limit goes through into the wizard's upfront cap check.
+  // Named `orgTeamCount` to avoid colliding with `teamCount` above, which is
+  // scoped to THIS league only.
+  const [plan, orgDivisionCount, orgTeamCount] = await Promise.all([
     getOrgPlan(currentOrgId),
+    getDivisionCount(supabase, currentOrgId),
     getTeamCountForOrg(supabase, currentOrgId),
   ]);
+  const divisionLimit = PLAN_LIMITS[plan].divisions;
   const teamLimit = PLAN_LIMITS[plan].teamsPerOrg;
 
   return (
@@ -467,6 +470,8 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         leagueSport={league.sport}
         divisionStats={divisionStats}
         currentOrgId={currentOrgId}
+        divisionCount={orgDivisionCount}
+        divisionLimit={divisionLimit}
         teamCount={orgTeamCount}
         teamLimit={teamLimit}
         plan={plan}

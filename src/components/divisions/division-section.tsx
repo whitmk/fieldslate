@@ -21,6 +21,8 @@ import {
   type ScheduleFormat, type TeamEntry, type DayWindowMap,
   type VenueAssignment, type InterleagueGameEntry,
 } from "./wizard-types";
+import { UpgradeModal } from "@/components/plan/upgrade-cta";
+import { planLabel } from "@/lib/plan/labels";
 
 function divisionToWizardData(
   div: Division,
@@ -103,6 +105,11 @@ interface Props {
   leagueSport: string;
   divisionStats: DivisionStat[];
   currentOrgId: string;
+  /** Org-wide division count + cap, used to gate the "Add division" buttons
+   *  on this page. Mirrors the gate on /dashboard/divisions' AddDivisionButton:
+   *  at cap the buttons mute and open the upgrade modal instead of the wizard. */
+  divisionCount: number;
+  divisionLimit: number;
   /** Org-wide team count + cap, used by the wizard's upfront cap check so
    *  Free users don't end up with a partially-saved division if their
    *  team list would push the org over its limit. */
@@ -183,11 +190,23 @@ const QUICK_ACTIONS = [
 
 export function DivisionSection({
   leagueId, leagueName, leagueSport, divisionStats, currentOrgId,
-  teamCount, teamLimit, plan, onDivisionSaved,
+  divisionCount, divisionLimit, teamCount, teamLimit, plan, onDivisionSaved,
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [divisions, setDivisions] = useState<Division[]>([]);
+
+  const atDivisionCap = divisionLimit !== -1 && divisionCount >= divisionLimit;
+  // Common handler: if at cap, show the upgrade modal instead of opening
+  // the wizard. Mirrors the AddDivisionButton gate on /dashboard/divisions.
+  function handleAddClick() {
+    if (atDivisionCap) {
+      setUpgradeOpen(true);
+      return;
+    }
+    setOpen(true);
+  }
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingDiv, setEditingDiv] = useState<Division | null>(null);
@@ -417,8 +436,17 @@ export function DivisionSection({
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <h2 className="font-semibold text-[#0C1F3F]">Divisions</h2>
           <button
-            onClick={() => setOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#16a34a]"
+            onClick={handleAddClick}
+            className={
+              atDivisionCap
+                ? "inline-flex cursor-default items-center gap-1.5 rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-500"
+                : "inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#16a34a]"
+            }
+            title={
+              atDivisionCap
+                ? `You've reached your ${planLabel(plan)} plan division limit of ${divisionLimit}.`
+                : undefined
+            }
           >
             <Plus className="h-3.5 w-3.5" />
             Add division
@@ -450,8 +478,17 @@ export function DivisionSection({
                 : "Add divisions to organize your teams by age group or skill level."}
             </p>
             <button
-              onClick={() => setOpen(true)}
-              className="mt-5 inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
+              onClick={handleAddClick}
+              className={
+                atDivisionCap
+                  ? "mt-5 inline-flex cursor-default items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-400 opacity-70"
+                  : "mt-5 inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
+              }
+              title={
+                atDivisionCap
+                  ? `You've reached your ${planLabel(plan)} plan division limit of ${divisionLimit}.`
+                  : undefined
+              }
             >
               <Plus className="h-4 w-4" />
               Add your first division
@@ -757,6 +794,15 @@ export function DivisionSection({
           </div>
         </div>
       )}
+
+      {upgradeOpen ? (
+        <UpgradeModal
+          cap="divisions"
+          limit={divisionLimit}
+          currentPlan={plan}
+          onClose={() => setUpgradeOpen(false)}
+        />
+      ) : null}
     </>
   );
 }

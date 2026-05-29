@@ -176,22 +176,6 @@ export function StepReview({
   async function saveDivisionData(): Promise<SaveResult> {
     const supabase = createClient();
 
-    // DEBUG (Bug 2 instrumentation — remove once verified). Captures the
-    // edit-mode state at the moment of save so we can see whether the
-    // wizard is correctly entering edit-mode on a second-save retry.
-    // eslint-disable-next-line no-console
-    console.log(
-      "[debug saveDivisionData enter]",
-      JSON.stringify({
-        divisionIdProp: divisionId ?? null,
-        createdDivId,
-        effectiveDivisionId: effectiveDivisionId ?? null,
-        isEditMode,
-        teamsInWizard: data.teams.length,
-        nonBlankTeamCount: data.teams.filter((t) => t.name.trim() !== "").length,
-      }),
-    );
-
     // ── Upfront team-cap check ────────────────────────────────────────────
     // The per-team RPC enforces server-side, but if the cap fires mid-batch
     // we'd leave a partial state behind (division + venues + some teams
@@ -224,9 +208,6 @@ export function StepReview({
     let divId: string;
 
     if (isEditMode) {
-      // DEBUG (Bug 2 instrumentation — remove once verified).
-      // eslint-disable-next-line no-console
-      console.log("[debug saveDivisionData → UPDATE branch]", { effectiveDivisionId });
       const { error: updateError } = await supabase
         .from("divisions")
         .update({
@@ -286,9 +267,6 @@ export function StepReview({
       }
 
       divId = (payload as { row: { id: string } }).row.id;
-      // DEBUG (Bug 2 instrumentation — remove once verified).
-      // eslint-disable-next-line no-console
-      console.log("[debug create_division returned]", JSON.stringify({ divId }));
       // Flip subsequent saves into edit-mode against this divId so a
       // back-button retry doesn't create a duplicate division.
       setCreatedDivId(divId);

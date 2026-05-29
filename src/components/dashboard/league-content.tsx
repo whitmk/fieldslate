@@ -10,6 +10,8 @@ interface Props {
   leagueSport: string;
   divisionStats: DivisionStat[];
   currentOrgId: string;
+  divisionCount: number;
+  divisionLimit: number;
   teamCount: number;
   teamLimit: number;
   plan: Plan;
@@ -21,6 +23,8 @@ export function LeagueContent({
   leagueSport,
   divisionStats,
   currentOrgId,
+  divisionCount,
+  divisionLimit,
   teamCount,
   teamLimit,
   plan,
@@ -32,6 +36,8 @@ export function LeagueContent({
       leagueSport={leagueSport}
       divisionStats={divisionStats}
       currentOrgId={currentOrgId}
+      divisionCount={divisionCount}
+      divisionLimit={divisionLimit}
       teamCount={teamCount}
       teamLimit={teamLimit}
       plan={plan}
