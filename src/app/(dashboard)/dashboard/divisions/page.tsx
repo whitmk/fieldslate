@@ -73,6 +73,25 @@ export default async function DivisionsPage() {
   const divisionLimit = PLAN_LIMITS[plan].divisions;
   const teamLimit = PLAN_LIMITS[plan].teamsPerOrg;
 
+  // DEBUG (Bug 1 instrumentation — remove once verified).
+  // Server logs only; not visible in browser console. The same values are
+  // re-logged client-side by AddDivisionButton so the browser console
+  // captures the prop hand-off too.
+  // eslint-disable-next-line no-console
+  console.log(
+    "[debug divisions/page]",
+    JSON.stringify({
+      currentOrgId,
+      userId: user!.id,
+      plan,
+      divisionCount,
+      divisionLimit,
+      teamCount,
+      teamLimit,
+      activeLeagueCount: leagues.length,
+    }),
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">

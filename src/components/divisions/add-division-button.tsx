@@ -48,7 +48,27 @@ export function AddDivisionButton({
 
   const atCap = divisionLimit !== -1 && divisionCount >= divisionLimit;
 
+  // DEBUG (Bug 1 instrumentation — remove once verified). Logs the
+  // server-passed props as the client component renders.
+  // eslint-disable-next-line no-console
+  console.log(
+    "[debug AddDivisionButton render]",
+    JSON.stringify({
+      divisionCount,
+      divisionLimit,
+      teamCount,
+      teamLimit,
+      plan,
+      atCap,
+      leaguesCount: leagues.length,
+      currentOrgId,
+    }),
+  );
+
   function handleClick() {
+    // DEBUG (Bug 1 instrumentation — remove once verified).
+    // eslint-disable-next-line no-console
+    console.log("[debug AddDivisionButton handleClick]", { atCap, leaguesLen: leagues.length });
     if (leagues.length === 0) return;
     if (atCap) {
       setCapHit({ cap: "divisions", limit: divisionLimit, plan });
