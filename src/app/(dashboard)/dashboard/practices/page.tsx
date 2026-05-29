@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
 import { PracticesPageClient } from "@/components/practices/practices-page-client";
 
 // Server wrapper: resolve org context once and thread it as props so the
@@ -12,6 +14,14 @@ export default async function PracticesPage() {
     data: { user },
   } = await supabase.auth.getUser();
   const currentOrgId = await getCurrentOrgId(supabase, user!.id);
+
+  // Practices is a Pro+ module. Guard the route server-side so deep-links
+  // (nav is also hidden for Free) short-circuit before any data fetch and
+  // before the client that issues practice writes ever loads.
+  const plan = await getOrgPlan(currentOrgId);
+  if (plan === "free") {
+    return <FeatureLockedCard feature="Practices" />;
+  }
 
   // orgLeagueIds → drives the divisions/teams scope (both have league_id).
   const { data: orgLeagueRows } = await supabase

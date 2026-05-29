@@ -8,6 +8,8 @@ import { SeasonSelector, type SeasonOption } from "@/components/dashboard/season
 import { OverviewReports } from "@/components/reports/overview-reports";
 import { autoArchivePastSeasons } from "@/lib/seasons/auto-archive";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { isProPlus } from "@/lib/plan/limits";
 
 type OwnedLeague = {
   id: string;
@@ -60,6 +62,9 @@ export default async function DashboardPage({
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const currentOrgId = await getCurrentOrgId(supabase, user!.id);
+  // Plan drives the Pro+ auto-reschedule action in the upcoming-games menu
+  // (basic "Log Rainout" stays Free). React-cached, shared with the layout.
+  const plan = await getOrgPlan(currentOrgId);
 
   // Auto-archive any past-end-date seasons *before* the SELECT below so the
   // picker dropdown doesn't surface stale "active" seasons. Mirrors the same
@@ -274,7 +279,7 @@ export default async function DashboardPage({
               <h2 className="font-semibold text-[#0C1F3F]">Upcoming Games</h2>
             </div>
             <div className="px-6 py-4">
-              <UpcomingGamesList initialGames={upcomingGames} />
+              <UpcomingGamesList initialGames={upcomingGames} canReschedule={isProPlus(plan)} />
             </div>
           </div>
 

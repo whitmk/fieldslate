@@ -21,11 +21,14 @@ import {
   ShoppingBag,
 } from "lucide-react";
 
+// `proOnly` items are hidden from Free users' nav (Chunk 3). Hiding is
+// cosmetic only — the routes are still guarded server-side, so a Free user
+// who deep-links lands on the upgrade page.
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/leagues", label: "Seasons", icon: Trophy },
   { href: "/dashboard/schedule", label: "Schedule", icon: CalendarDays },
-  { href: "/dashboard/practices", label: "Practices", icon: CalendarRange },
+  { href: "/dashboard/practices", label: "Practices", icon: CalendarRange, proOnly: true },
   { href: "/dashboard/teams", label: "Teams", icon: Users },
   { href: "/dashboard/venues", label: "Venues", icon: MapPin },
   { href: "/dashboard/divisions", label: "Divisions", icon: Layers },
@@ -33,11 +36,12 @@ const navItems = [
   { href: "/dashboard/interleague", label: "Interleague", icon: Building2 },
   { href: "/dashboard/playoffs", label: "Playoffs", icon: Medal },
   { href: "/dashboard/snack-shack", label: "Snack Shack", icon: ShoppingBag },
-  { href: "/dashboard/export", label: "Export", icon: FileDown },
+  { href: "/dashboard/export", label: "Export", icon: FileDown, proOnly: true },
 ];
 
-export function Sidebar() {
+export function Sidebar({ isFree = false }: { isFree?: boolean }) {
   const pathname = usePathname();
+  const visibleNavItems = navItems.filter((item) => !(isFree && item.proOnly));
 
   return (
     <aside className="flex h-full w-64 flex-shrink-0 flex-col bg-[#0C1F3F] print:hidden">
@@ -51,7 +55,7 @@ export function Sidebar() {
       {/* Primary nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="flex flex-col gap-0.5">
-          {navItems.map(({ href, label, icon: Icon }) => {
+          {visibleNavItems.map(({ href, label, icon: Icon }) => {
             const isActive =
               pathname === href ||
               (href !== "/dashboard" && pathname.startsWith(href));

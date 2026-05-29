@@ -41,6 +41,9 @@ interface Props {
   printMode?: PrintMode;
   onPrintDone?: () => void;
   onScheduleChange?: () => void;
+  /** Pro+ only — the auto-reschedule action on rained-out rows. Marking a
+   *  game rained out stays Free. */
+  canReschedule?: boolean;
 }
 
 type Team = { id: string; name: string };
@@ -85,6 +88,7 @@ function vsLabel(g: GameRow): string {
 export function DivisionSchedulePanel({
   divisionId, divisionName, leagueName, leagueId, leagueSport,
   triggerPrint, printMode = "games", onPrintDone, onScheduleChange,
+  canReschedule = false,
 }: Props) {
   const router = useRouter();
   const [teams, setTeams] = useState<Team[]>([]);
@@ -903,7 +907,7 @@ export function DivisionSchedulePanel({
                             <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-400">
                               Rained out
                             </span>
-                            {!game.interleague_org_id && (
+                            {canReschedule && !game.interleague_org_id && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); setRescheduleGame(game); }}
                                 className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"

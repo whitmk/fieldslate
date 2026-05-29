@@ -25,9 +25,12 @@ interface Props {
   initialGames: RainedOutGame[];
   leagueId: string;
   divisionNames: Record<string, string>;
+  /** Pro+ only — the auto-reschedule action. Basic logging + restore are
+   *  always available (Free). */
+  canReschedule?: boolean;
 }
 
-export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames }: Props) {
+export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames, canReschedule = false }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [games, setGames] = useState<RainedOutGame[]>(initialGames);
@@ -158,14 +161,16 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
 
                         {/* Actions */}
                         <div className="mt-3 flex items-center gap-2">
-                          <button
-                            onClick={() => setRescheduleGame(game)}
-                            disabled={isRestoring}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0C1F3F] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80 disabled:opacity-50"
-                          >
-                            <CalendarClock className="h-3 w-3" />
-                            Reschedule
-                          </button>
+                          {canReschedule && (
+                            <button
+                              onClick={() => setRescheduleGame(game)}
+                              disabled={isRestoring}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-[#0C1F3F] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80 disabled:opacity-50"
+                            >
+                              <CalendarClock className="h-3 w-3" />
+                              Reschedule
+                            </button>
+                          )}
                           <button
                             onClick={() => handleRestore(game)}
                             disabled={isRestoring}

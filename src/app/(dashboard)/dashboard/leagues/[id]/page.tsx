@@ -7,7 +7,7 @@ import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, UserCheck } from
 import type { League } from "@/types/database";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
-import { PLAN_LIMITS } from "@/lib/plan/limits";
+import { PLAN_LIMITS, isProPlus } from "@/lib/plan/limits";
 import { getDivisionCount, getTeamCountForOrg } from "@/lib/plan/counts";
 import {
   getOfficialTitle,
@@ -448,12 +448,14 @@ export default async function LeaguePage({ params }: { params: { id: string } })
           divisionNames={divisionNames}
         />
 
-        {/* Rained Out — interactive client card */}
+        {/* Rained Out — interactive client card. Basic logging + restore stay
+            Free; the auto-reschedule action is Pro+ (canReschedule). */}
         <RainedOutStatCard
           count={rainedOutCount}
           initialGames={rainedOutGames}
           leagueId={league.id}
           divisionNames={divisionNames}
+          canReschedule={isProPlus(plan)}
         />
       </div>
 
@@ -462,7 +464,9 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         initialAffectedGames={blackoutAffectedGames}
       />
 
-      <ActivityLogPanel leagueId={league.id} />
+      {/* Activity Log is Pro+ — hidden for Free (skips its data fetch too,
+          since the panel is the server component that runs the query). */}
+      {isProPlus(plan) && <ActivityLogPanel leagueId={league.id} />}
 
       <LeagueContent
         leagueId={league.id}

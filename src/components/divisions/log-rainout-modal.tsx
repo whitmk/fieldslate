@@ -30,9 +30,12 @@ interface Props {
   divisions: Division[];
   onClose: () => void;
   onRainedOut: () => void;
+  /** Pro+ only — the "Reschedule now" handoff after logging. Marking the
+   *  game rained out (the modal's core action) stays Free. */
+  canReschedule?: boolean;
 }
 
-export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut }: Props) {
+export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, canReschedule = false }: Props) {
   const [mode, setMode] = useState<"single" | "multi" | null>(null);
 
   // ── Single-game flow ──────────────────────────────────────────────────────
@@ -303,18 +306,20 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut }: P
                   </p>
                 </div>
                 <div className="flex w-full max-w-xs flex-col gap-2">
-                  <button
-                    onClick={() => setShowReschedule(true)}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#0C1F3F] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80"
-                  >
-                    <CalendarClock className="h-4 w-4" />
-                    Reschedule now
-                  </button>
+                  {canReschedule && (
+                    <button
+                      onClick={() => setShowReschedule(true)}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#0C1F3F] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80"
+                    >
+                      <CalendarClock className="h-4 w-4" />
+                      Reschedule now
+                    </button>
+                  )}
                   <button
                     onClick={onClose}
                     className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700"
                   >
-                    Do it later
+                    {canReschedule ? "Do it later" : "Done"}
                   </button>
                 </div>
               </div>

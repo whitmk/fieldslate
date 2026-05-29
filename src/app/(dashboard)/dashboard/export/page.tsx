@@ -2,11 +2,23 @@ import { createClient } from "@/lib/supabase/server";
 import { SportsConnectExporter, type LeagueOption } from "@/components/export/sportsconnect-exporter";
 import type { League, Division } from "@/types/database";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
 
 export default async function ExportPage() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const currentOrgId = await getCurrentOrgId(supabase, user!.id);
+
+  // The /dashboard/export route IS the SportsConnect/BYGA exporter (a Pro+
+  // feature, including its per-division picker). Guard server-side so Free
+  // deep-links never receive the league/division data the client CSV needs —
+  // the basic single-button export stays Free elsewhere (the league detail
+  // page's Export PDF/CSV modal). Nav is also hidden for Free.
+  const plan = await getOrgPlan(currentOrgId);
+  if (plan === "free") {
+    return <FeatureLockedCard feature="SportsConnect & BYGA export" />;
+  }
 
   // Export intentionally spans active + archived — exporting past-season
   // rosters / schedules is a primary use case. Active seasons sort first,

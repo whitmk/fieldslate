@@ -53,6 +53,9 @@ export type ScheduleGame = {
 
 interface Props {
   games: ScheduleGame[];
+  /** Pro+ only — the rainout auto-reschedule action. "Mark as rained out"
+   *  and the interleague "Request reschedule" stay Free. */
+  canReschedule?: boolean;
 }
 
 const gameStatusVariants: Record<string, "default" | "success" | "warning" | "danger" | "info" | "orange"> = {
@@ -101,7 +104,7 @@ function venueLabel(g: ScheduleGame): string {
   return "—";
 }
 
-export function ScheduleList({ games }: Props) {
+export function ScheduleList({ games, canReschedule = false }: Props) {
   const router = useRouter();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
@@ -209,6 +212,7 @@ export function ScheduleList({ games }: Props) {
                 setRescheduleError(null);
                 setRequestRescheduleGame(g);
               }}
+              canReschedule={canReschedule}
               onViewDetails={() => {
                 setOpenMenuId(null);
                 setDetailGame(g);
@@ -270,6 +274,7 @@ interface GameRowProps {
   onRainout: () => void;
   onReschedule: () => void;
   onRequestReschedule: () => void;
+  canReschedule: boolean;
   onViewDetails: () => void;
   rainoutLoading: boolean;
 }
@@ -281,6 +286,7 @@ function GameRowCells({
   onRainout,
   onReschedule,
   onRequestReschedule,
+  canReschedule,
   onViewDetails,
   rainoutLoading,
 }: GameRowProps) {
@@ -372,7 +378,7 @@ function GameRowCells({
                 <Repeat className="h-3.5 w-3.5 text-[#22C55E]" />
                 Request reschedule
               </button>
-            ) : (
+            ) : canReschedule ? (
               <button
                 onClick={onReschedule}
                 className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
@@ -380,7 +386,7 @@ function GameRowCells({
                 <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
                 Reschedule
               </button>
-            )}
+            ) : null}
             <button
               onClick={onViewDetails}
               className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"

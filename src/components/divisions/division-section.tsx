@@ -23,6 +23,7 @@ import {
 } from "./wizard-types";
 import { UpgradeModal } from "@/components/plan/upgrade-cta";
 import { planLabel } from "@/lib/plan/labels";
+import { isProPlus } from "@/lib/plan/limits";
 
 function divisionToWizardData(
   div: Division,
@@ -637,6 +638,7 @@ export function DivisionSection({
                           printMode={printMode}
                           onPrintDone={() => setPrintTriggerId(null)}
                           onScheduleChange={() => router.refresh()}
+                          canReschedule={isProPlus(plan)}
                         />
                       </div>
                     </div>
@@ -762,6 +764,7 @@ export function DivisionSection({
         <LogRainoutModal
           leagueId={leagueId}
           divisions={divisions}
+          canReschedule={isProPlus(plan)}
           onClose={() => setShowLogRainout(false)}
           onRainedOut={() => {
             router.refresh();

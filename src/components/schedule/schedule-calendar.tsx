@@ -23,6 +23,8 @@ interface Props {
   games: ScheduleGame[];
   month: string; // "YYYY-MM"
   today: string; // "YYYY-MM-DD"
+  /** Pro+ only — the auto-reschedule action. "Mark as rained out" stays Free. */
+  canReschedule?: boolean;
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -85,7 +87,7 @@ function pillMatchupLabel(g: ScheduleGame): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ScheduleCalendar({ games, month, today }: Props) {
+export function ScheduleCalendar({ games, month, today, canReschedule = false }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -339,16 +341,18 @@ export function ScheduleCalendar({ games, month, today }: Props) {
                 <CloudRain className="h-3.5 w-3.5 text-blue-400" />
                 Mark as rained out
               </button>
-              <button
-                onClick={() => {
-                  setRescheduleGame(pill.data);
-                  setSelected(null);
-                }}
-                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
-              >
-                <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
-                Reschedule
-              </button>
+              {canReschedule && (
+                <button
+                  onClick={() => {
+                    setRescheduleGame(pill.data);
+                    setSelected(null);
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
+                  Reschedule
+                </button>
+              )}
               <button
                 onClick={() => {
                   setDetailGame(pill.data);

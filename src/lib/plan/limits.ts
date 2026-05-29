@@ -38,6 +38,12 @@ export const PLAN_LIMITS = {
 
 export const isUnlimited = (limit: number) => limit === -1;
 
+// True for any paid tier (Pro or Elite). Pro+ feature gates use this rather
+// than an inline `plan !== "free"` so the intent is searchable and Elite is
+// never accidentally excluded — never gate a Pro+ feature with
+// `plan === "pro"`, which would lock Elite users out.
+export const isProPlus = (plan: Plan): boolean => plan !== "free";
+
 export function isPlan(value: unknown): value is Plan {
   return value === "free" || value === "pro" || value === "elite";
 }

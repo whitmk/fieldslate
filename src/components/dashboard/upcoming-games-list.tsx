@@ -23,9 +23,11 @@ export type UpcomingGame = {
 
 interface Props {
   initialGames: UpcomingGame[];
+  /** Pro+ only — the auto-reschedule action. "Log Rainout" stays Free. */
+  canReschedule?: boolean;
 }
 
-export function UpcomingGamesList({ initialGames }: Props) {
+export function UpcomingGamesList({ initialGames, canReschedule = false }: Props) {
   const router = useRouter();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
@@ -126,13 +128,15 @@ export function UpcomingGamesList({ initialGames }: Props) {
                     <CloudRain className="h-3.5 w-3.5 text-blue-400" />
                     Log Rainout
                   </button>
-                  <button
-                    onClick={() => handleRescheduleClick(game)}
-                    className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
-                  >
-                    <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
-                    Reschedule
-                  </button>
+                  {canReschedule && (
+                    <button
+                      onClick={() => handleRescheduleClick(game)}
+                      className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                    >
+                      <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
+                      Reschedule
+                    </button>
+                  )}
                 </div>
               )}
             </div>

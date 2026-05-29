@@ -15,6 +15,8 @@ import {
 } from "@/components/schedule/schedule-list";
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { isProPlus } from "@/lib/plan/limits";
 
 function parseMode(raw: string | undefined): ViewMode {
   return raw === "calendar" ? "calendar" : "list";
@@ -78,6 +80,9 @@ export default async function SchedulePage({
     data: { user },
   } = await supabase.auth.getUser();
   const currentOrgId = await getCurrentOrgId(supabase, user!.id);
+  // Plan drives the Pro+ auto-reschedule action in the row/pill menus
+  // (basic "Mark as rained out" stays Free). React-cached, shared w/ layout.
+  const plan = await getOrgPlan(currentOrgId);
   const selectedDivisionId = searchParams.division ?? "";
   const selectedTeamId = searchParams.team ?? "";
   const mode = parseMode(searchParams.mode);
@@ -233,9 +238,10 @@ export default async function SchedulePage({
               games={games}
               month={month}
               today={today}
+              canReschedule={isProPlus(plan)}
             />
           ) : (
-            <ScheduleList games={games} />
+            <ScheduleList games={games} canReschedule={isProPlus(plan)} />
           )}
         </CardContent>
       </Card>
