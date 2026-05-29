@@ -21,26 +21,46 @@ export async function getActiveSeasonCount(
   return count ?? 0;
 }
 
+// Two-step pattern (fetch league ids, then count by `in`) rather than the
+// shorter head+count+embedded-inner-join shorthand — supabase-js's
+// head+count=exact path doesn't reliably honor embedded filters, returning
+// pre-filter base-table counts in some PostgREST versions. The two-step
+// form is unambiguous and the league id list is small (typically <100).
 export async function getDivisionCount(
   supabase: ServerClient,
   orgId: string,
 ): Promise<number> {
+  const { data: leagueRows } = await supabase
+    .from("leagues")
+    .select("id")
+    .eq("owner_id", orgId);
+  const leagueIds = (leagueRows ?? []).map((l) => l.id);
+  if (leagueIds.length === 0) return 0;
+
   const { count } = await supabase
     .from("divisions")
-    .select("id, leagues!inner(owner_id)", { count: "exact", head: true })
-    .eq("leagues.owner_id", orgId);
+    .select("id", { count: "exact", head: true })
+    .in("league_id", leagueIds);
   return count ?? 0;
 }
 
 // Org-total team count (across all divisions / leagues), NOT per-division.
+// Same two-step pattern as getDivisionCount.
 export async function getTeamCountForOrg(
   supabase: ServerClient,
   orgId: string,
 ): Promise<number> {
+  const { data: leagueRows } = await supabase
+    .from("leagues")
+    .select("id")
+    .eq("owner_id", orgId);
+  const leagueIds = (leagueRows ?? []).map((l) => l.id);
+  if (leagueIds.length === 0) return 0;
+
   const { count } = await supabase
     .from("teams")
-    .select("id, leagues!inner(owner_id)", { count: "exact", head: true })
-    .eq("leagues.owner_id", orgId);
+    .select("id", { count: "exact", head: true })
+    .in("league_id", leagueIds);
   return count ?? 0;
 }
 

@@ -125,9 +125,19 @@ export function StepReview({
     | { cap: CapName; limit: number; plan: Plan }
     | null
   >(null);
+  // After the first successful create within this wizard session, capture
+  // the new divId so any subsequent save (e.g. user clicks back to fix a
+  // schedule-gen error and re-saves) routes through the edit-mode branch
+  // instead of creating a duplicate division. Lives for the lifetime of
+  // the StepReview mount, which is the lifetime of the wizard session.
+  const [createdDivId, setCreatedDivId] = useState<string | null>(null);
   const router = useRouter();
 
-  const isEditMode = !!divisionId;
+  // Prop divisionId is set when the wizard was opened via the Edit menu.
+  // createdDivId is set after we create one ourselves. Either flips the
+  // wizard into edit-mode semantics for the rest of the session.
+  const effectiveDivisionId = divisionId ?? createdDivId;
+  const isEditMode = !!effectiveDivisionId;
   const conflictCount = data.teams.filter((t) => t.has_coach_conflict).length;
   const hasConflicts = conflictCount > 0;
   const canSubmit = !!data.name.trim() && !!data.start_date && !!data.end_date;
@@ -178,7 +188,7 @@ export function StepReview({
         // Edit mode: net-new = wizard list minus the names already in the
         // division (matches the de-dupe logic the team-insert loop uses).
         const { data: existing } = await supabase
-          .from("teams").select("name").eq("division_id", divisionId);
+          .from("teams").select("name").eq("division_id", effectiveDivisionId);
         const existingNames = new Set(
           (existing ?? []).map((t: { name: string }) => t.name.toLowerCase().trim())
         );
@@ -211,22 +221,22 @@ export function StepReview({
           plays_interleague: data.plays_interleague,
           intra_division_games_per_team: data.games_per_team,
         } as never)
-        .eq("id", divisionId);
+        .eq("id", effectiveDivisionId);
 
       if (updateError) return { error: updateError.message };
 
-      await supabase.from("division_venues").delete().eq("division_id", divisionId);
+      await supabase.from("division_venues").delete().eq("division_id", effectiveDivisionId);
       if (data.venue_assignments.length > 0) {
         await supabase
           .from("division_venues")
           .insert(data.venue_assignments.map((a) => ({
-            division_id: divisionId,
+            division_id: effectiveDivisionId,
             venue_id: a.venue_id,
             allow_games: a.allow_games,
           })) as never[]);
       }
 
-      divId = divisionId;
+      divId = effectiveDivisionId as string;
     } else {
       const { data: rpcData, error: rpcError } = await supabase.rpc(
         "create_division" as never,
@@ -257,6 +267,9 @@ export function StepReview({
       }
 
       divId = (payload as { row: { id: string } }).row.id;
+      // Flip subsequent saves into edit-mode against this divId so a
+      // back-button retry doesn't create a duplicate division.
+      setCreatedDivId(divId);
 
       if (data.venue_assignments.length > 0) {
         await supabase
