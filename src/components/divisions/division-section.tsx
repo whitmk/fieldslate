@@ -192,6 +192,9 @@ export function DivisionSection({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingDiv, setEditingDiv] = useState<Division | null>(null);
   const [editInitialData, setEditInitialData] = useState<WizardData | null>(null);
+  // Live team count for the division being edited — feeds StepBasics' cap
+  // headroom math (existing teams stay, so they add back to available room).
+  const [editExistingTeamCount, setEditExistingTeamCount] = useState(0);
   const [fixingDivision, setFixingDivision] = useState<Division | null>(null);
   const [leagueStartDate, setLeagueStartDate] = useState<string>("");
   const [leagueEndDate, setLeagueEndDate] = useState<string>("");
@@ -283,7 +286,12 @@ export function DivisionSection({
       game_count: r.game_count,
       home_games_per_team: r.home_games_per_team ?? r.game_count,
     }));
-    void teamRows; // teams come from settings JSON, not the live teams table here
+    // Wizard's `data.teams` array is rehydrated from divisions.settings.teams
+    // (the JSON blob) — the live teams table isn't the source of truth for
+    // the wizard's names. But we still need the live row count for the cap
+    // headroom calc in StepBasics: those rows stay after save, so they add
+    // back to the org-wide team headroom.
+    setEditExistingTeamCount((teamRows ?? []).length);
     setEditInitialData(
       divisionToWizardData(div, venueAssignments, interleagueGames),
     );
@@ -679,6 +687,7 @@ export function DivisionSection({
           teamCount={teamCount}
           teamLimit={teamLimit}
           plan={plan}
+          existingTeamCountInDivision={editExistingTeamCount}
           onClose={() => { setEditingDiv(null); setEditInitialData(null); }}
           onComplete={handleComplete}
           editDivision={editingDiv}

@@ -3,9 +3,37 @@ import type { WizardData } from "../wizard-types";
 interface Props {
   data: WizardData;
   update: (patch: Partial<WizardData>) => void;
+  /** Org-wide team cap (-1 for unlimited). Pulled from the plan limits and
+   *  threaded down from the wizard's parent. */
+  teamLimit: number;
+  /** Org-wide team count as of wizard mount. */
+  teamCount: number;
+  /** In edit mode, the number of teams ALREADY in this division (from the
+   *  teams table, not divisions.team_count). They don't count against
+   *  headroom when re-saved — only NEW teams do. New mode passes 0. */
+  existingTeamCountInDivision: number;
 }
 
-export function StepBasics({ data, update }: Props) {
+export function StepBasics({
+  data,
+  update,
+  teamLimit,
+  teamCount,
+  existingTeamCountInDivision,
+}: Props) {
+  // Headroom: how many teams the org can still add before hitting the cap.
+  // For edit mode, the existing teams in this division already count toward
+  // teamCount and stay after save, so we add them back as available room.
+  // Floor of 2 keeps the input shape sane even when at cap; the server RPC
+  // is the authoritative enforcer.
+  const effectiveMax =
+    teamLimit === -1
+      ? 64
+      : Math.max(
+          2,
+          Math.min(64, teamLimit - teamCount + existingTeamCountInDivision),
+        );
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -29,12 +57,19 @@ export function StepBasics({ data, update }: Props) {
         <input
           type="number"
           min={2}
-          max={64}
+          max={effectiveMax}
           value={data.team_count}
-          onChange={(e) => update({ team_count: Math.max(2, parseInt(e.target.value) || 2) })}
+          onChange={(e) =>
+            update({
+              team_count: Math.min(
+                effectiveMax,
+                Math.max(2, parseInt(e.target.value) || 2),
+              ),
+            })
+          }
           className="h-11 w-32 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
         />
-        <p className="text-xs text-gray-400">Min 2, max 64</p>
+        <p className="text-xs text-gray-400">Min 2, max {effectiveMax}</p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">

@@ -22,19 +22,23 @@ interface Props {
   leagueStartDate?: string;
   leagueEndDate?: string;
   currentOrgId: string;
-  /** Org-wide team count + cap, forwarded to the review step so it can
-   *  fail-closed BEFORE any inserts run if the wizard's team list would
-   *  push the org over its cap. */
+  /** Org-wide team count + cap, forwarded to the review step (upfront cap
+   *  check) and to step-basics (clamp the "number of teams" input to real
+   *  headroom). */
   teamCount: number;
   teamLimit: number;
   plan: Plan;
+  /** In edit mode, the live team count in this division (from the teams
+   *  table). Those teams stay after save, so they add back to the input's
+   *  available headroom. New mode passes 0. */
+  existingTeamCountInDivision?: number;
   onClose: () => void;
   onComplete: () => void;
   editDivision?: Division;
   initialData?: WizardData;
 }
 
-export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartDate, leagueEndDate, currentOrgId, teamCount, teamLimit, plan, onClose, onComplete, editDivision, initialData }: Props) {
+export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartDate, leagueEndDate, currentOrgId, teamCount, teamLimit, plan, existingTeamCountInDivision = 0, onClose, onComplete, editDivision, initialData }: Props) {
   const officialsPlural = getOfficialTitlePlural(leagueSport);
 
   const STEPS = [
@@ -106,7 +110,14 @@ export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartD
   const canAdvance = step === 0 ? step1Valid : true;
 
   const stepContent = [
-    <StepBasics key="basics" data={data} update={update} />,
+    <StepBasics
+      key="basics"
+      data={data}
+      update={update}
+      teamLimit={teamLimit}
+      teamCount={teamCount}
+      existingTeamCountInDivision={existingTeamCountInDivision}
+    />,
     <StepPlayingSchedule key="schedule" data={data} update={update} leagueId={leagueId} />,
     <StepFields key="fields" data={data} update={update} leagueId={leagueId} currentOrgId={currentOrgId} />,
     <StepUmpires key="umpires" data={data} update={update} sport={leagueSport} />,
