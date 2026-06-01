@@ -14,6 +14,7 @@ import {
   ArchiveSeasonModal,
   UnarchiveSeasonModal,
 } from "@/components/seasons/archive-modals";
+import { UpgradeModal } from "@/components/plan/upgrade-cta";
 
 const MAX_NAME_LENGTH = 80;
 
@@ -31,6 +32,8 @@ interface Props {
   /** End date (YYYY-MM-DD or null) — fed to the unarchive modal. */
   endDate: string | null;
   sportClassName: string;
+  /** Elite-only: restoring (unarchiving). Archiving stays open to all tiers. */
+  canRestore: boolean;
 }
 
 export function EditableLeagueHeader({
@@ -42,11 +45,13 @@ export function EditableLeagueHeader({
   archivedAt,
   endDate,
   sportClassName,
+  canRestore,
 }: Props) {
   const [name, setName] = useState(initialName);
   const [editing, setEditing] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [unarchiveOpen, setUnarchiveOpen] = useState(false);
+  const [restoreUpgradeOpen, setRestoreUpgradeOpen] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
@@ -112,7 +117,9 @@ export function EditableLeagueHeader({
           <HeaderActionsMenu
             isArchived={isArchived}
             onArchive={() => setArchiveOpen(true)}
-            onUnarchive={() => setUnarchiveOpen(true)}
+            onUnarchive={() =>
+              canRestore ? setUnarchiveOpen(true) : setRestoreUpgradeOpen(true)
+            }
           />
         </div>
       </div>
@@ -152,6 +159,14 @@ export function EditableLeagueHeader({
           seasonName={name}
           endDate={endDate}
           onClose={() => setUnarchiveOpen(false)}
+        />
+      )}
+      {restoreUpgradeOpen && (
+        <UpgradeModal
+          mode="feature"
+          feature="Restoring archived seasons"
+          tier="Elite"
+          onClose={() => setRestoreUpgradeOpen(false)}
         />
       )}
     </>

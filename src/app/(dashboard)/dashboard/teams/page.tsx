@@ -6,7 +6,7 @@ import { TeamSnackShackButton } from "@/components/teams/team-snack-shack-button
 import type { Team } from "@/types/database";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
-import { PLAN_LIMITS, isUnlimited } from "@/lib/plan/limits";
+import { PLAN_LIMITS, isUnlimited, isElite } from "@/lib/plan/limits";
 import { planLabel } from "@/lib/plan/labels";
 import { getTeamCountForOrg } from "@/lib/plan/counts";
 
@@ -120,7 +120,11 @@ export default async function TeamsPage() {
                       <td className="py-3 text-gray-600">{team.league?.name ?? "—"}</td>
                       <td className="py-3 text-gray-600">{team.division?.name ?? "—"}</td>
                       <td className="py-2 text-right">
-                        <TeamSnackShackButton teamId={team.id} teamName={team.name} />
+                        {/* Snack Shack is Elite-only — hide the per-team
+                            email/print entry point for non-Elite tiers. */}
+                        {isElite(plan) && (
+                          <TeamSnackShackButton teamId={team.id} teamName={team.name} />
+                        )}
                       </td>
                     </tr>
                   ))}

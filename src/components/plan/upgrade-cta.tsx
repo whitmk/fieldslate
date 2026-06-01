@@ -58,10 +58,15 @@ export function upgradeMessage(
   return `You've reached your ${planLabel(plan)} plan limit of ${humanCapPhrase(cap, limit)}. Upgrade to add more.`;
 }
 
-// Pro+ feature-lock copy. `feature` is the human label, e.g. "Practices",
-// "Activity Log", "SportsConnect export".
-export function featureMessage(feature: string): string {
-  return `${feature} is available on Pro. Upgrade to unlock.`;
+// The tier a feature-lock upsell points at. Defaults to "Pro" so existing
+// Chunk 3 callers (Practices, SportsConnect export, etc.) keep their copy;
+// Chunk 4 Elite gates pass "Elite".
+export type UpgradeTier = "Pro" | "Elite";
+
+// Feature-lock copy. `feature` is the human label, e.g. "Practices",
+// "Playoff brackets", "Reports". `tier` controls which plan it points at.
+export function featureMessage(feature: string, tier: UpgradeTier = "Pro"): string {
+  return `${feature} is available on ${tier}. Upgrade to unlock.`;
 }
 
 // Discriminated union: cap mode is the default (existing callers pass
@@ -77,6 +82,7 @@ type UpgradeModalProps =
   | {
       mode: "feature";
       feature: string;
+      tier?: UpgradeTier;
       onClose: () => void;
     };
 
@@ -84,7 +90,7 @@ export function UpgradeModal(props: UpgradeModalProps) {
   const { onClose } = props;
   const message =
     props.mode === "feature"
-      ? featureMessage(props.feature)
+      ? featureMessage(props.feature, props.tier)
       : upgradeMessage(props.currentPlan, props.cap, props.limit);
 
   return (
@@ -132,15 +138,18 @@ export function UpgradeModal(props: UpgradeModalProps) {
   );
 }
 
-// Full-page upsell rendered by Pro-only route guards (server components) when
-// a Free user reaches the route directly. Same mailto CTA + copy source as
-// the modal, plus a back link so the locked route isn't a dead end.
+// Full-page upsell rendered by plan-gated route guards (server components)
+// when a non-entitled user reaches the route directly. Same mailto CTA + copy
+// source as the modal, plus a back link so the locked route isn't a dead end.
+// `tier` defaults to "Pro" (Chunk 3 gates); Elite gates pass tier="Elite".
 export function FeatureLockedCard({
   feature,
+  tier = "Pro",
   backHref = "/dashboard",
   backLabel = "Back to dashboard",
 }: {
   feature: string;
+  tier?: UpgradeTier;
   backHref?: string;
   backLabel?: string;
 }) {
@@ -159,8 +168,8 @@ export function FeatureLockedCard({
           <Lock className="h-6 w-6 text-[#22C55E]" />
         </div>
         <div>
-          <h2 className="text-base font-semibold text-[#0C1F3F]">Pro feature</h2>
-          <p className="mt-1.5 text-sm text-gray-600">{featureMessage(feature)}</p>
+          <h2 className="text-base font-semibold text-[#0C1F3F]">{tier} feature</h2>
+          <p className="mt-1.5 text-sm text-gray-600">{featureMessage(feature, tier)}</p>
         </div>
         <a
           href={UPGRADE_MAILTO}

@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { UmpireScheduleActions } from "@/components/umpires/umpire-schedule-actions";
 import { getOfficialTitle } from "@/lib/utils/official-title";
+import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { isElite } from "@/lib/plan/limits";
+import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
 
 type ScheduleAssignment = {
   role: string;
@@ -48,6 +52,16 @@ export default async function UmpireSchedulePage({
   params: { id: string };
 }) {
   const supabase = createClient();
+
+  // Standalone Officials feature is Elite-only — guard this deep-linkable route.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const currentOrgId = await getCurrentOrgId(supabase, user!.id);
+  const plan = await getOrgPlan(currentOrgId);
+  if (!isElite(plan)) {
+    return <FeatureLockedCard feature="Officials" tier="Elite" />;
+  }
 
   const { data: umpireRaw } = await supabase
     .from("umpires")

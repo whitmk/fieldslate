@@ -7,6 +7,9 @@ import { UmpireList, type UmpireRow, type SeasonPaySettings } from "@/components
 import { PayReportButton } from "@/components/umpires/pay-report-button";
 import { LeaguePaySettings } from "@/components/umpires/league-pay-settings";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { isElite } from "@/lib/plan/limits";
+import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
 
 export default async function UmpiresPage() {
   const supabase = createClient();
@@ -14,6 +17,13 @@ export default async function UmpiresPage() {
     data: { user },
   } = await supabase.auth.getUser();
   const currentOrgId = await getCurrentOrgId(supabase, user!.id);
+
+  // The standalone Officials page is Elite-only (in-schedule umpire assignment
+  // stays available to all tiers — that's a separate surface). Guard the route.
+  const plan = await getOrgPlan(currentOrgId);
+  if (!isElite(plan)) {
+    return <FeatureLockedCard feature="Officials" tier="Elite" />;
+  }
 
   // Sequenced: seasons first so we can scope every downstream query by their
   // ids. Before this change `rawUmpires` had no filter and RLS alone would

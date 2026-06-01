@@ -20,7 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 print:h-auto print:overflow-visible print:bg-white">
-      <Sidebar isFree={plan === "free"} />
+      <Sidebar isFree={plan === "free"} isElite={plan === "elite"} />
       <div className="flex flex-1 flex-col overflow-hidden print:overflow-visible">
         <Topbar />
         <main className="flex-1 overflow-y-auto p-6 print:overflow-visible print:p-0">{children}</main>

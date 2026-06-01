@@ -5,11 +5,11 @@ import { Trophy, Users, CalendarDays, MapPin, Plus, ArrowRight } from "lucide-re
 import { UpcomingGamesList, type UpcomingGame } from "@/components/dashboard/upcoming-games-list";
 import { CriticalAlertsCard, type CriticalAlertLeague } from "@/components/dashboard/critical-alerts-card";
 import { SeasonSelector, type SeasonOption } from "@/components/dashboard/season-selector";
-import { OverviewReports } from "@/components/reports/overview-reports";
 import { autoArchivePastSeasons } from "@/lib/seasons/auto-archive";
+import { resolveSelectedSeasonId } from "@/lib/seasons/resolve-selected";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
-import { isProPlus } from "@/lib/plan/limits";
+import { isProPlus, isElite } from "@/lib/plan/limits";
 
 type OwnedLeague = {
   id: string;
@@ -34,24 +34,6 @@ function fmtRangeDate(d: string | null): string | null {
   if (!d) return null;
   const [year, month, day] = d.substring(0, 10).split("-").map(Number);
   return `${MONTHS_SHORT[month - 1]} ${day}, ${year}`;
-}
-
-function resolveSelectedSeasonId(
-  param: string | undefined,
-  leagues: OwnedLeague[],
-): string {
-  if (param === "all") return "all";
-  if (param && leagues.some((l) => l.id === param)) return param;
-  // Default: most recently created NON-ARCHIVED active season; never auto-
-  // select an archived season (the admin has to opt in via Show archived +
-  // explicit pick). Fall back to any non-archived season, then to "all".
-  const mostRecentActive = leagues.find(
-    (l) => l.status === "active" && !l.archived_at,
-  );
-  if (mostRecentActive) return mostRecentActive.id;
-  const firstNonArchived = leagues.find((l) => !l.archived_at);
-  if (firstNonArchived) return firstNonArchived.id;
-  return "all";
 }
 
 export default async function DashboardPage({
@@ -82,7 +64,9 @@ export default async function DashboardPage({
     .order("created_at", { ascending: false });
 
   const ownedLeagues = (leaguesRaw ?? []) as OwnedLeague[];
-  const showArchived = searchParams.showArchived === "1";
+  // Browsing archived seasons is Elite-only — force off for Free/Pro even if
+  // ?showArchived=1 is in the URL (the toggle is also hidden for them).
+  const showArchived = isElite(plan) && searchParams.showArchived === "1";
   const selected = resolveSelectedSeasonId(searchParams.season, ownedLeagues);
   const selectedSeason =
     selected === "all" ? null : ownedLeagues.find((l) => l.id === selected) ?? null;
@@ -214,6 +198,7 @@ export default async function DashboardPage({
           seasons={seasonOptions}
           selectedValue={selected}
           showArchived={showArchived}
+          canShowArchived={isElite(plan)}
         />
       )}
 
@@ -282,11 +267,6 @@ export default async function DashboardPage({
               <UpcomingGamesList initialGames={upcomingGames} canReschedule={isProPlus(plan)} />
             </div>
           </div>
-
-          {/* Reports — reads the same `?season=` URL param the rest of the
-              page reacts to. `selected === "all"` is passed through as null
-              to render the "pick a season" explainer. */}
-          <OverviewReports leagueId={isAll ? null : selected} />
         </>
       )}
     </div>

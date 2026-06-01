@@ -5,6 +5,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ShoppingBag } from "lucide-react";
 import { SnackShackPageClient } from "@/components/snack-shack/snack-shack-page-client";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { isElite } from "@/lib/plan/limits";
+import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
 
 type TeamRow = { id: string; name: string; league_id: string };
 
@@ -14,6 +17,12 @@ export default async function SnackShackPage() {
     data: { user },
   } = await supabase.auth.getUser();
   const currentOrgId = await getCurrentOrgId(supabase, user!.id);
+
+  // Snack Shack is an Elite-only feature — guard the route server-side.
+  const plan = await getOrgPlan(currentOrgId);
+  if (!isElite(plan)) {
+    return <FeatureLockedCard feature="Snack Shack" tier="Elite" />;
+  }
 
   // Load active (non-archived) seasons only — snack shack assignments are
   // operational; archived seasons are accessible via /dashboard/leagues if

@@ -19,29 +19,41 @@ import {
   LogOut,
   UserCheck,
   ShoppingBag,
+  BarChart3,
 } from "lucide-react";
 
-// `proOnly` items are hidden from Free users' nav (Chunk 3). Hiding is
-// cosmetic only — the routes are still guarded server-side, so a Free user
-// who deep-links lands on the upgrade page.
+// Tier-gated nav items:
+//   - `proOnly`   → hidden from Free users (Chunk 3, Pro+ features)
+//   - `eliteOnly` → hidden from Free AND Pro users (Chunk 4, Elite features)
+// Hiding is cosmetic only — the routes are still guarded server-side, so a
+// non-entitled user who deep-links lands on the upgrade page.
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/dashboard/reports", label: "Reports", icon: BarChart3, eliteOnly: true },
   { href: "/dashboard/leagues", label: "Seasons", icon: Trophy },
   { href: "/dashboard/schedule", label: "Schedule", icon: CalendarDays },
   { href: "/dashboard/practices", label: "Practices", icon: CalendarRange, proOnly: true },
   { href: "/dashboard/teams", label: "Teams", icon: Users },
   { href: "/dashboard/venues", label: "Venues", icon: MapPin },
   { href: "/dashboard/divisions", label: "Divisions", icon: Layers },
-  { href: "/dashboard/umpires", label: "Officials", icon: UserCheck },
+  { href: "/dashboard/umpires", label: "Officials", icon: UserCheck, eliteOnly: true },
   { href: "/dashboard/interleague", label: "Interleague", icon: Building2 },
-  { href: "/dashboard/playoffs", label: "Playoffs", icon: Medal },
-  { href: "/dashboard/snack-shack", label: "Snack Shack", icon: ShoppingBag },
+  { href: "/dashboard/playoffs", label: "Playoffs", icon: Medal, eliteOnly: true },
+  { href: "/dashboard/snack-shack", label: "Snack Shack", icon: ShoppingBag, eliteOnly: true },
   { href: "/dashboard/export", label: "Export", icon: FileDown, proOnly: true },
 ];
 
-export function Sidebar({ isFree = false }: { isFree?: boolean }) {
+export function Sidebar({
+  isFree = false,
+  isElite = false,
+}: {
+  isFree?: boolean;
+  isElite?: boolean;
+}) {
   const pathname = usePathname();
-  const visibleNavItems = navItems.filter((item) => !(isFree && item.proOnly));
+  const visibleNavItems = navItems.filter(
+    (item) => !(isFree && item.proOnly) && !(!isElite && item.eliteOnly),
+  );
 
   return (
     <aside className="flex h-full w-64 flex-shrink-0 flex-col bg-[#0C1F3F] print:hidden">

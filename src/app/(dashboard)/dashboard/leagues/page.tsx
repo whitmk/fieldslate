@@ -4,7 +4,7 @@ import { SeasonsListClient } from "@/components/seasons/seasons-list-client";
 import { autoArchivePastSeasons } from "@/lib/seasons/auto-archive";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
-import { PLAN_LIMITS } from "@/lib/plan/limits";
+import { PLAN_LIMITS, isElite } from "@/lib/plan/limits";
 
 // Always render fresh — the auto-archive UPDATE needs to run on every visit,
 // and the season list reflects mutations from the archive/unarchive modals.
@@ -34,9 +34,14 @@ export default async function LeaguesPage({ searchParams }: PageProps) {
     .order("created_at", { ascending: false });
   const leagues = (data as League[] | null) ?? [];
 
-  const initialTab = searchParams.tab === "archived" ? "archived" : "active";
-
   const plan = await getOrgPlan(currentOrgId);
+  // Browsing/restoring archived seasons is Elite-only. Free/Pro can still
+  // archive (the action stays open), but the Archived tab is gated — so a
+  // non-Elite deep-link to ?tab=archived is forced back to the Active tab.
+  const canBrowseArchived = isElite(plan);
+  const initialTab =
+    canBrowseArchived && searchParams.tab === "archived" ? "archived" : "active";
+
   const activeSeasonCount = leagues.filter((l) => !l.archived_at).length;
   const activeSeasonLimit = PLAN_LIMITS[plan].activeSeasons;
 
@@ -47,6 +52,7 @@ export default async function LeaguesPage({ searchParams }: PageProps) {
       activeSeasonCount={activeSeasonCount}
       activeSeasonLimit={activeSeasonLimit}
       plan={plan}
+      canBrowseArchived={canBrowseArchived}
     />
   );
 }

@@ -18,13 +18,22 @@ interface Props {
   selectedValue: string;
   /** Whether archived seasons are currently visible in the dropdown. */
   showArchived: boolean;
+  /** Elite-only: the "Show archived" toggle. Defaults true (Reports route is
+   *  already Elite-gated); the Overview passes isElite so Free/Pro don't see
+   *  the toggle. */
+  canShowArchived?: boolean;
 }
 
 function seasonLabel(s: SeasonOption): string {
   return s.season ? `${s.name} · ${s.season}` : s.name;
 }
 
-export function SeasonSelector({ seasons, selectedValue, showArchived }: Props) {
+export function SeasonSelector({
+  seasons,
+  selectedValue,
+  showArchived,
+  canShowArchived = true,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -97,15 +106,17 @@ export function SeasonSelector({ seasons, selectedValue, showArchived }: Props) 
         </select>
       </div>
 
-      <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-gray-500 select-none">
-        <input
-          type="checkbox"
-          checked={showArchived}
-          onChange={(e) => handleToggleArchived(e.target.checked)}
-          className="h-3.5 w-3.5 cursor-pointer rounded border-gray-300 text-[#22C55E] focus:ring-[#22C55E]/30"
-        />
-        Show archived
-      </label>
+      {canShowArchived && (
+        <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-gray-500 select-none">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => handleToggleArchived(e.target.checked)}
+            className="h-3.5 w-3.5 cursor-pointer rounded border-gray-300 text-[#22C55E] focus:ring-[#22C55E]/30"
+          />
+          Show archived
+        </label>
+      )}
     </div>
   );
 }

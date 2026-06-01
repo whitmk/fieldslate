@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createClient } from "@/lib/supabase/server";
 import { getOfficialTitle } from "@/lib/utils/official-title";
+import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { isElite } from "@/lib/plan/limits";
 
 export const runtime = "nodejs";
 
@@ -143,6 +146,16 @@ export async function POST(
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
+  // Officials is an Elite feature — gate the external email send server-side.
+  const orgId = await getCurrentOrgId(supabase, user.id);
+  const plan = await getOrgPlan(orgId);
+  if (!isElite(plan)) {
+    return NextResponse.json(
+      { error: "Officials is an Elite feature." },
+      { status: 403 },
+    );
   }
 
   // Load umpire — RLS scopes to the owner's seasons.

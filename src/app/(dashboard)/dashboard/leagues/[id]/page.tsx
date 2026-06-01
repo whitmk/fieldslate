@@ -7,7 +7,7 @@ import { ArrowLeft, Users, CalendarDays, Layers, AlertTriangle, UserCheck } from
 import type { League } from "@/types/database";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
-import { PLAN_LIMITS, isProPlus } from "@/lib/plan/limits";
+import { PLAN_LIMITS, isProPlus, isElite } from "@/lib/plan/limits";
 import { getDivisionCount, getTeamCountForOrg } from "@/lib/plan/counts";
 import {
   getOfficialTitle,
@@ -381,6 +381,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         archivedAt={league.archived_at}
         endDate={league.end_date}
         sportClassName={sportColor[league.sport] ?? "bg-gray-100 text-gray-600"}
+        canRestore={isElite(plan)}
       />
 
       {/* Archived-season banner (only when archived_at is set) */}
@@ -389,6 +390,7 @@ export default async function LeaguePage({ params }: { params: { id: string } })
           seasonId={league.id}
           seasonName={league.name}
           endDate={league.end_date}
+          canRestore={isElite(plan)}
         />
       )}
 

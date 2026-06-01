@@ -7,15 +7,20 @@
 import { useState } from "react";
 import { Archive } from "lucide-react";
 import { UnarchiveSeasonModal } from "@/components/seasons/archive-modals";
+import { UpgradeModal } from "@/components/plan/upgrade-cta";
 
 interface Props {
   seasonId: string;
   seasonName: string;
   endDate: string | null;
+  /** Elite-only: restoring (unarchiving) a season. Non-Elite see the banner
+   *  but the button upsells instead of unarchiving. */
+  canRestore: boolean;
 }
 
-export function ArchivedSeasonBanner({ seasonId, seasonName, endDate }: Props) {
+export function ArchivedSeasonBanner({ seasonId, seasonName, endDate, canRestore }: Props) {
   const [open, setOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   return (
     <>
@@ -32,14 +37,15 @@ export function ArchivedSeasonBanner({ seasonId, seasonName, endDate }: Props) {
               This season is archived.
             </p>
             <p className="mt-0.5 text-xs text-[#7A4604]/85">
-              Edits are still allowed but will affect historical reports.
-              Unarchive to return it to active.
+              {canRestore
+                ? "Edits are still allowed but will affect historical reports. Unarchive to return it to active."
+                : "Edits are still allowed but will affect historical reports. Restoring archived seasons is an Elite feature."}
             </p>
           </div>
         </div>
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => (canRestore ? setOpen(true) : setUpgradeOpen(true))}
           className="flex-shrink-0 rounded-lg border border-[#EF9F27] bg-white px-3 py-1.5 text-sm font-semibold text-[#B36A05] transition-colors hover:bg-[#FFF7EA]"
         >
           Unarchive
@@ -51,6 +57,14 @@ export function ArchivedSeasonBanner({ seasonId, seasonName, endDate }: Props) {
           seasonName={seasonName}
           endDate={endDate}
           onClose={() => setOpen(false)}
+        />
+      )}
+      {upgradeOpen && (
+        <UpgradeModal
+          mode="feature"
+          feature="Restoring archived seasons"
+          tier="Elite"
+          onClose={() => setUpgradeOpen(false)}
         />
       )}
     </>

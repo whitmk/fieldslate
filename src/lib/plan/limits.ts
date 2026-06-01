@@ -44,6 +44,11 @@ export const isUnlimited = (limit: number) => limit === -1;
 // `plan === "pro"`, which would lock Elite users out.
 export const isProPlus = (plan: Plan): boolean => plan !== "free";
 
+// True only for the top tier. Elite-only feature gates use this (parallel to
+// isProPlus). Both Free AND Pro are denied — gate with `!isElite(plan)`, never
+// with `plan === "free"` (which would let Pro in).
+export const isElite = (plan: Plan): boolean => plan === "elite";
+
 export function isPlan(value: unknown): value is Plan {
   return value === "free" || value === "pro" || value === "elite";
 }

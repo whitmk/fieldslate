@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { MoreVertical, Plus, Trophy } from "lucide-react";
+import { Lock, MoreVertical, Plus, Trophy } from "lucide-react";
 import type { League } from "@/types/database";
 import {
   ArchiveSeasonModal,
@@ -28,6 +28,9 @@ interface Props {
   activeSeasonCount: number;
   activeSeasonLimit: number;
   plan: Plan;
+  /** Elite-only: browse the Archived tab + restore seasons. Archiving stays
+   *  available to all tiers. */
+  canBrowseArchived: boolean;
 }
 
 export function SeasonsListClient({
@@ -36,6 +39,7 @@ export function SeasonsListClient({
   activeSeasonCount,
   activeSeasonLimit,
   plan,
+  canBrowseArchived,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -46,6 +50,9 @@ export function SeasonsListClient({
     | null
   >(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  // Separate from the active-season cap upsell above — this one fires when a
+  // non-Elite user tries to open the Archived tab.
+  const [archivedUpgradeOpen, setArchivedUpgradeOpen] = useState(false);
 
   const atCap =
     activeSeasonLimit !== -1 && activeSeasonCount >= activeSeasonLimit;
@@ -112,7 +119,12 @@ export function SeasonsListClient({
           label="Archived"
           count={archived.length}
           selected={tab === "archived"}
-          onClick={() => setTabAndUrl("archived")}
+          locked={!canBrowseArchived}
+          onClick={() =>
+            canBrowseArchived
+              ? setTabAndUrl("archived")
+              : setArchivedUpgradeOpen(true)
+          }
         />
       </div>
 
@@ -155,6 +167,15 @@ export function SeasonsListClient({
           onClose={() => setUpgradeOpen(false)}
         />
       ) : null}
+
+      {archivedUpgradeOpen ? (
+        <UpgradeModal
+          mode="feature"
+          feature="Browsing & restoring archived seasons"
+          tier="Elite"
+          onClose={() => setArchivedUpgradeOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -165,11 +186,13 @@ function TabButton({
   label,
   count,
   selected,
+  locked = false,
   onClick,
 }: {
   label: string;
   count: number;
   selected: boolean;
+  locked?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -182,6 +205,7 @@ function TabButton({
           : "border-transparent text-gray-500 hover:text-[#0C1F3F]"
       }`}
     >
+      {locked && <Lock className="h-3 w-3 text-gray-400" />}
       {label}
       <span
         className={`inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
