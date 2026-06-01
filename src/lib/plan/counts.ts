@@ -30,10 +30,14 @@ export async function getDivisionCount(
   supabase: ServerClient,
   orgId: string,
 ): Promise<number> {
+  // Only ACTIVE seasons count toward the cap — archived seasons free their
+  // divisions back up (the archive-recovery flow Chunks 1–2 rely on). Mirrors
+  // getActiveSeasonCount's archived_at IS NULL filter.
   const { data: leagueRows } = await supabase
     .from("leagues")
     .select("id")
-    .eq("owner_id", orgId);
+    .eq("owner_id", orgId)
+    .is("archived_at", null);
   const leagueIds = (leagueRows ?? []).map((l) => l.id);
   if (leagueIds.length === 0) return 0;
 
@@ -50,10 +54,12 @@ export async function getTeamCountForOrg(
   supabase: ServerClient,
   orgId: string,
 ): Promise<number> {
+  // Archived seasons' teams don't count toward the cap (see getDivisionCount).
   const { data: leagueRows } = await supabase
     .from("leagues")
     .select("id")
-    .eq("owner_id", orgId);
+    .eq("owner_id", orgId)
+    .is("archived_at", null);
   const leagueIds = (leagueRows ?? []).map((l) => l.id);
   if (leagueIds.length === 0) return 0;
 
