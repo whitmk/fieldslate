@@ -10,10 +10,11 @@ import { StepFormat } from "./steps/step-format";
 import { StepInterleague } from "./steps/step-interleague";
 import { StepCoaches } from "./steps/step-coaches";
 import { StepReview } from "./steps/step-review";
+import { WizardPreviewStep } from "./steps/wizard-preview-step";
 import { DEFAULT_WIZARD_DATA, type WizardData } from "./wizard-types";
 import type { Division } from "@/types/database";
-import { getOfficialTitlePlural } from "@/lib/utils/official-title";
-import type { Plan } from "@/lib/plan/limits";
+import { getOfficialTitle, getOfficialTitlePlural } from "@/lib/utils/official-title";
+import { isElite, isProPlus, type Plan } from "@/lib/plan/limits";
 
 interface Props {
   leagueId: string;
@@ -41,14 +42,18 @@ interface Props {
 export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartDate, leagueEndDate, currentOrgId, teamCount, teamLimit, plan, existingTeamCountInDivision = 0, onClose, onComplete, editDivision, initialData }: Props) {
   const officialsPlural = getOfficialTitlePlural(leagueSport);
 
+  // Step order puts the tier-gated steps (Umpires = Elite, Interleague = Pro+)
+  // immediately before Review, so non-entitled users hit the preview/upsell
+  // screens last. Format stays ahead of Interleague (its games-per-team preview
+  // reads interleague data — same relative order as before the reorder).
   const STEPS = [
     { label: "Basics" },
     { label: "Schedule" },
     { label: "Fields" },
-    { label: officialsPlural },
     { label: "Format" },
-    { label: "Interleague" },
     { label: "Coaches" },
+    { label: officialsPlural },
+    { label: "Interleague" },
     { label: "Review" },
   ];
   const isEditMode = !!editDivision;
@@ -95,6 +100,26 @@ export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartD
     setData((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  // Tier-gated steps render an upsell-preview instead of the real step for
+  // non-entitled plans (Umpires = Elite, Interleague = Pro+). Clear any gated
+  // values in CREATE mode — including stale localStorage drafts — so a skipped
+  // preview never persists umpire/interleague data the plan can't use. Edit
+  // mode keeps existing config (the real step is shown when data exists), so
+  // opening the wizard never silently wipes a saved division.
+  useEffect(() => {
+    if (isEditMode) return;
+    setData((prev) => {
+      let next = prev;
+      if (!isElite(plan) && (prev.umpires_per_game !== 0 || prev.umpire_roles.length > 0)) {
+        next = { ...next, umpires_per_game: 0, umpire_roles: [] };
+      }
+      if (!isProPlus(plan) && (prev.plays_interleague || prev.interleague_games.length > 0)) {
+        next = { ...next, plays_interleague: false, interleague_games: [] };
+      }
+      return next;
+    });
+  }, [plan, isEditMode]);
+
   function clearAndClose() {
     if (!isEditMode) localStorage.removeItem(draftKey);
     onClose();
@@ -109,6 +134,54 @@ export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartD
     data.name.trim() !== "" && data.start_date !== "" && data.end_date !== "";
   const canAdvance = step === 0 ? step1Valid : true;
 
+  // Umpires is Elite-only; Interleague is Pro+. Non-entitled users get a
+  // skippable upsell preview instead of the real step. Edit mode shows the real
+  // step when the division already has data so existing config stays editable.
+  const officialTitle = getOfficialTitle(leagueSport);
+  const showUmpiresReal = isElite(plan) || (isEditMode && data.umpires_per_game > 0);
+  const showInterleagueReal = isProPlus(plan) || (isEditMode && data.plays_interleague);
+
+  const umpiresStep = showUmpiresReal ? (
+    <StepUmpires key="umpires" data={data} update={update} sport={leagueSport} />
+  ) : (
+    <WizardPreviewStep
+      key="umpires-preview"
+      feature={`${officialTitle} assignment`}
+      tier="Elite"
+      description={`Assign ${officialsPlural.toLowerCase()} to games and auto-fill open slots across your schedule.`}
+      previewBenefits={[
+        `Set how many ${officialsPlural.toLowerCase()} each game needs`,
+        `Build a season ${officialTitle.toLowerCase()} roster`,
+        `Auto-assign ${officialsPlural.toLowerCase()} and catch coverage shortfalls`,
+      ]}
+      onSkip={() => setStep((s) => s + 1)}
+    />
+  );
+
+  const interleagueStep = showInterleagueReal ? (
+    <StepInterleague
+      key="interleague"
+      data={data}
+      update={update}
+      currentOrgId={currentOrgId}
+      plan={plan}
+      leagueId={leagueId}
+    />
+  ) : (
+    <WizardPreviewStep
+      key="interleague-preview"
+      feature="Interleague play"
+      tier="Pro"
+      description="Schedule games against other organizations and invite them to confirm matchups together."
+      previewBenefits={[
+        "Add partner leagues you play against",
+        "Configure home/away interleague games per team",
+        "Send invites and resolve scheduling with the other org",
+      ]}
+      onSkip={() => setStep((s) => s + 1)}
+    />
+  );
+
   const stepContent = [
     <StepBasics
       key="basics"
@@ -120,10 +193,10 @@ export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartD
     />,
     <StepPlayingSchedule key="schedule" data={data} update={update} leagueId={leagueId} />,
     <StepFields key="fields" data={data} update={update} leagueId={leagueId} currentOrgId={currentOrgId} />,
-    <StepUmpires key="umpires" data={data} update={update} sport={leagueSport} />,
     <StepFormat key="format" data={data} update={update} />,
-    <StepInterleague key="interleague" data={data} update={update} currentOrgId={currentOrgId} />,
     <StepCoaches key="coaches" data={data} update={update} leagueId={leagueId} />,
+    umpiresStep,
+    interleagueStep,
     <StepReview
       key="review"
       data={data}

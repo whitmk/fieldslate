@@ -848,7 +848,7 @@ export function StepReview({
         )}
       </Section>
 
-      <Section title={officialsPlural} step={3} onEdit={onEdit}>
+      <Section title={officialsPlural} step={5} onEdit={onEdit}>
         <Row
           label={`${officialsPlural} per game`}
           value={
@@ -865,7 +865,7 @@ export function StepReview({
         )}
       </Section>
 
-      <Section title="Format" step={4} onEdit={onEdit}>
+      <Section title="Format" step={3} onEdit={onEdit}>
         {(() => {
           const interleagueGames = data.plays_interleague
             ? data.interleague_games.reduce((s, g) => s + g.game_count, 0)
@@ -893,7 +893,7 @@ export function StepReview({
       </Section>
 
       {data.plays_interleague && (
-        <Section title="Interleague" step={5} onEdit={onEdit}>
+        <Section title="Interleague" step={6} onEdit={onEdit}>
           {data.interleague_games.filter((g) => g.game_count > 0).length === 0 ? (
             <Row label="Games configured" value="None" />
           ) : (
@@ -920,7 +920,7 @@ export function StepReview({
         </Section>
       )}
 
-      <Section title="Coaches" step={6} onEdit={onEdit}>
+      <Section title="Coaches" step={4} onEdit={onEdit}>
         <Row label="Coach conflicts" value={conflictCount > 0 ? `${conflictCount} flagged` : "None"} />
       </Section>
 

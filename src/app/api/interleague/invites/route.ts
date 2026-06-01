@@ -3,7 +3,6 @@ import { randomBytes } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { buildInviteEmail } from "@/lib/interleague/invite-email";
-import { getCurrentOrgId } from "@/lib/orgs/context";
 import { validateNote } from "@/lib/validation/text-length";
 
 export const runtime = "nodejs";
@@ -71,7 +70,6 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
-  const currentOrgId = await getCurrentOrgId(supabase, user.id);
 
   // Load org (RLS confirms ownership)
   const { data: orgRaw, error: orgErr } = await supabase
@@ -175,31 +173,44 @@ export async function POST(request: Request) {
       .sort((a, b) => a.divisionName.localeCompare(b.divisionName));
   }
 
-  // Generate token and insert invite record.
-  // sender_user_id is set to the ORG (currentOrgId), not the individual user
-  // who clicked send. Migration 0049's interleague_invites RLS gates on
-  // is_org_member(sender_user_id), so anyone in the inviting org can see and
-  // manage these — necessary now that admins (not just the owner) can send
-  // invites. (Migration 0048 made org_id = the owner's user id.)
+  // Generate token and create the invite via the cap-checked RPC
+  // (migration 0057). create_interleague_org enforces the per-season partner
+  // cap server-side — Free: cannot initiate; Pro: 5 distinct partner orgs;
+  // Elite: unlimited — and inserts the interleague_invites row. It sets
+  // sender_user_id to the season's owning org (not the individual caller) so
+  // any org admin can manage the invite, matching the 0049 RLS gate.
   const token = generateToken();
-  const { data: inviteRaw, error: insertErr } = await supabase
-    .from("interleague_invites")
-    .insert([
-      {
-        token,
-        sender_user_id: currentOrgId,
-        interleague_org_id: orgId,
-        season_id: seasonId,
-        recipient_email: recipientEmail,
-        personal_note: personalNote,
-      },
-    ])
-    .select("id, token, created_at")
-    .single();
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    "create_interleague_org" as never,
+    {
+      p_season_id: seasonId,
+      p_interleague_org_id: orgId,
+      p_recipient_email: recipientEmail,
+      p_personal_note: personalNote,
+      p_token: token,
+    } as never,
+  );
 
-  if (insertErr || !inviteRaw) {
+  if (rpcError) {
+    return NextResponse.json({ error: rpcError.message }, { status: 500 });
+  }
+
+  const payload = rpcData as
+    | { row: { id: string; token: string; created_at: string } }
+    | { error: "cap_reached"; cap: string; limit: number; plan: string };
+
+  if ("error" in payload && payload.error === "cap_reached") {
+    // 403 + the raw cap payload so the client can open the right UpgradeModal
+    // (Free → upgrade to Pro; Pro at 5 → upgrade to Elite).
+    return NextResponse.json(payload, { status: 403 });
+  }
+
+  const inviteRaw = (payload as {
+    row: { id: string; token: string; created_at: string };
+  }).row;
+  if (!inviteRaw) {
     return NextResponse.json(
-      { error: insertErr?.message ?? "Failed to create invite record." },
+      { error: "Failed to create invite record." },
       { status: 500 },
     );
   }

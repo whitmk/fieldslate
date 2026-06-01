@@ -22,6 +22,10 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { InterleagueOrg, InterleagueInvite } from "@/types/database";
 import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
+import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
+import type { Plan } from "@/lib/plan/limits";
+
+type CapHit = { cap: CapName; limit: number; plan: Plan };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -319,6 +323,7 @@ interface SendInviteModalProps {
   org: InterleagueOrg;
   season: Season;
   onSent: () => void;
+  onCapHit: (hit: CapHit) => void;
   onClose: () => void;
 }
 
@@ -326,7 +331,7 @@ function seasonLabel(s: Season): string {
   return s.season ? `${s.name} · ${s.season}` : s.name;
 }
 
-function SendInviteModal({ org, season, onSent, onClose }: SendInviteModalProps) {
+function SendInviteModal({ org, season, onSent, onCapHit, onClose }: SendInviteModalProps) {
   const [recipientEmail, setRecipientEmail] = useState(org.admin_email);
   const [personalNote, setPersonalNote] = useState("");
   const [previewLoading, setPreviewLoading] = useState(true);
@@ -404,6 +409,13 @@ function SendInviteModal({ org, season, onSent, onClose }: SendInviteModalProps)
         }),
       });
       const data = await res.json();
+      if (data?.error === "cap_reached") {
+        // Per-season partner cap (migration 0057). Surface the upgrade path
+        // instead of a raw error string.
+        onCapHit({ cap: data.cap, limit: data.limit, plan: data.plan });
+        setSending(false);
+        return;
+      }
       if (!res.ok) {
         setError(data.error ?? "Failed to send invite.");
         setSending(false);
@@ -732,6 +744,7 @@ export function InterleaguePageClient({ currentOrgId }: InterleaguePageClientPro
   const [deleting, setDeleting] = useState(false);
 
   const [inviteTarget, setInviteTarget] = useState<InterleagueOrg | null>(null);
+  const [capHit, setCapHit] = useState<CapHit | null>(null);
   const [counterGames, setCounterGames] = useState<CounterProposedGame[]>([]);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
@@ -1513,9 +1526,30 @@ export function InterleaguePageClient({ currentOrgId }: InterleaguePageClientPro
           org={inviteTarget}
           season={selectedSeason}
           onSent={handleInviteSent}
+          onCapHit={(hit) => {
+            setInviteTarget(null);
+            setCapHit(hit);
+          }}
           onClose={() => setInviteTarget(null)}
         />
       )}
+
+      {capHit &&
+        (capHit.plan === "free" ? (
+          <UpgradeModal
+            mode="feature"
+            feature="Interleague play"
+            tier="Pro"
+            onClose={() => setCapHit(null)}
+          />
+        ) : (
+          <UpgradeModal
+            cap={capHit.cap}
+            limit={capHit.limit}
+            currentPlan={capHit.plan}
+            onClose={() => setCapHit(null)}
+          />
+        ))}
 
       {editTarget && (
         <ResolveEditModal
