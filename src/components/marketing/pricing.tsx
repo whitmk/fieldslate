@@ -4,6 +4,14 @@ import { Check, X } from "lucide-react";
 
 type Feature = { text: string; included: boolean };
 
+// Pricing model: FieldSlate bills PER SEASON, not as a monthly/annual
+// subscription. A season is the unit of sale — each plan includes 1 active
+// season and additional active seasons are purchased at the same per-season
+// price.
+//
+// NOTE (Item 13 — annual billing not yet wired): annual pricing
+// ($229 Pro / $399 Elite) is intentionally NOT surfaced on this page yet.
+// When Stripe annual billing lands, add the toggle + those numbers here.
 const plans: {
   name: string;
   price: string;
@@ -18,13 +26,13 @@ const plans: {
     name: "Free",
     price: "$0",
     period: null,
-    description: "One season, one sport. Great for trying it out.",
+    description: "Run a single season, free. No credit card required.",
     features: [
-      { text: "1 season (1 sport)", included: true },
-      { text: "Up to 2 divisions", included: true },
-      { text: "Up to 8 teams", included: true },
-      { text: "Game schedule generator", included: true },
-      { text: "PDF & CSV export", included: true },
+      { text: "1 division", included: true },
+      { text: "6 teams", included: true },
+      { text: "1 active season", included: true },
+      { text: "Basic game scheduling", included: true },
+      { text: "PDF export", included: true },
       { text: "1 admin seat", included: true },
     ],
     cta: "Get started free",
@@ -33,37 +41,42 @@ const plans: {
   },
   {
     name: "Pro",
-    price: "$159",
-    period: "/yr",
-    description: "Everything you need to run a full season.",
+    price: "$129",
+    period: "/season",
+    description: "Pay per season — everything you need to run a full season.",
     features: [
-      { text: "Unlimited divisions", included: true },
-      { text: "Unlimited teams", included: true },
-      { text: "Game + practice scheduling", included: true },
-      { text: "Field conflict detection", included: true },
-      { text: "Double-coach detection", included: true },
+      { text: "Unlimited divisions and teams", included: true },
+      { text: "1 active season included — add more at $129 each", included: true },
+      { text: "Up to 2 admin seats", included: true },
+      { text: "Interleague scheduling (up to 5 partner leagues per season)", included: true },
       { text: "Rainout rescheduler", included: true },
-      { text: "2 admin seats", included: true },
+      { text: "Practice scheduling", included: true },
+      { text: "Activity log", included: true },
+      { text: "Structured CSV export for league data migration", included: true },
+      { text: "Per-division export", included: true },
     ],
-    cta: "Start free trial",
+    cta: "Choose Pro",
     href: "/signup?plan=pro",
     highlighted: true,
   },
   {
     name: "Elite",
-    price: "$349",
-    period: "/yr",
-    description: "Everything in Pro, plus advanced tools for bigger seasons and multi-program clubs.",
+    price: "$249",
+    period: "/season",
+    description: "Everything in Pro, plus advanced tools for bigger programs.",
     features: [
-      { text: "Multiple programs (rec + comp)", included: true },
-      { text: "Cross-season scheduling", included: true },
-      { text: "Playoff brackets + standings", included: true },
-      { text: "Umpire & referee assignments", included: true },
-      { text: "Sports Connect & BYGA export", included: true },
-      { text: "5 admin seats", included: true },
+      { text: "Everything in Pro", included: true },
+      { text: "1 active season included — add more at $249 each", included: true },
+      { text: "Up to 5 admin seats", included: true },
+      { text: "Unlimited interleague partner leagues", included: true },
+      { text: "Playoff and tournament brackets", included: true },
+      { text: "Officials / umpire assignments", included: true },
+      { text: "Snack shack scheduling", included: true },
+      { text: "Reports dashboard", included: true },
+      { text: "Archived season browse and restore", included: true },
       { text: "Priority support", included: true },
     ],
-    cta: "Start free trial",
+    cta: "Choose Elite",
     href: "/signup?plan=elite",
     highlighted: false,
   },
@@ -78,7 +91,8 @@ export function Pricing() {
             Simple, transparent pricing
           </h2>
           <p className="mt-4 text-lg text-gray-500">
-            Start free. Upgrade when you&apos;re ready. Cancel any time.
+            Pay per season, not per month — buy only the seasons you run. Start
+            free and upgrade whenever you&apos;re ready.
           </p>
         </div>
 
