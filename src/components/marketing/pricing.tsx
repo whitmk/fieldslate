@@ -43,7 +43,7 @@ const plans: {
     name: "Pro",
     price: "$129",
     period: "/season",
-    description: "Pay per season — everything you need to run a full season.",
+    description: "Core scheduling and coordination tools for your season.",
     features: [
       { text: "Unlimited divisions and teams", included: true },
       { text: "1 active season included — add more at $129 each", included: true },
@@ -63,7 +63,7 @@ const plans: {
     name: "Elite",
     price: "$249",
     period: "/season",
-    description: "Everything in Pro, plus advanced tools for bigger programs.",
+    description: "Everything in Pro, plus brackets, officials assignments, snack shack scheduling, and advanced reporting.",
     features: [
       { text: "Everything in Pro", included: true },
       { text: "1 active season included — add more at $249 each", included: true },
