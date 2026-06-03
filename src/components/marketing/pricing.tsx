@@ -12,6 +12,11 @@ type Feature = { text: string; included: boolean };
 // NOTE (Item 13 — annual billing not yet wired): annual pricing
 // ($229 Pro / $399 Elite) is intentionally NOT surfaced on this page yet.
 // When Stripe annual billing lands, add the toggle + those numbers here.
+//
+// The "Choose Pro" / "Choose Elite" CTAs route to /signup?plan=<tier> (new
+// users). After signup, onboarding should kick off a quantity:1 Stripe
+// checkout for the chosen plan (POST /api/stripe/checkout, built in Item 13).
+// TODO Item 13: wire post-signup checkout — onboarding flow not built yet.
 const plans: {
   name: string;
   price: string;
