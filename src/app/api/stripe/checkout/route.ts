@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 type Body = {
   plan?: unknown;
   quantity?: unknown;
+  upgradeOnly?: unknown;
   orgId?: unknown;
   successUrl?: unknown;
   cancelUrl?: unknown;
@@ -23,6 +24,9 @@ export async function POST(request: Request) {
 
   const plan = body.plan;
   const quantity = body.quantity;
+  // Pro→Elite tier upgrade: charge the one-time difference via a dedicated
+  // Price, and signal the webhook to flip the tier without adding a season.
+  const upgradeOnly = body.upgradeOnly === true;
   const orgId = typeof body.orgId === "string" ? body.orgId : "";
   const successUrl = typeof body.successUrl === "string" ? body.successUrl : "";
   const cancelUrl = typeof body.cancelUrl === "string" ? body.cancelUrl : "";
@@ -36,6 +40,12 @@ export async function POST(request: Request) {
   if (quantity !== 1 && quantity !== 2) {
     return NextResponse.json(
       { error: "quantity must be 1 or 2." },
+      { status: 400 },
+    );
+  }
+  if (upgradeOnly && plan !== "elite") {
+    return NextResponse.json(
+      { error: "upgradeOnly applies only to an Elite upgrade." },
       { status: 400 },
     );
   }
@@ -54,15 +64,16 @@ export async function POST(request: Request) {
     const session = await stripe.checkout.sessions.create({
       // Per-season purchase = one-time payment, not a subscription.
       mode: "payment",
-      line_items: [{ price: seasonPriceId(plan), quantity }],
+      line_items: [{ price: seasonPriceId(plan, upgradeOnly), quantity }],
       success_url: successUrl,
       cancel_url: cancelUrl,
       // The webhook reads these to apply the plan + provision seasons.
-      // quantity is stringified because Stripe metadata values are strings.
+      // Stripe metadata values must be strings.
       metadata: {
         orgId,
         plan,
         quantity: String(quantity),
+        upgradeOnly: String(upgradeOnly),
       },
     });
 

@@ -13,14 +13,16 @@ type CheckoutMeta = {
   orgId: string;
   plan: "pro" | "elite";
   quantity: number;
+  upgradeOnly: boolean;
 };
 
 function readMeta(session: Stripe.Checkout.Session): CheckoutMeta | null {
   const orgId = session.metadata?.orgId;
   const plan = session.metadata?.plan;
   const quantity = Number(session.metadata?.quantity ?? "1");
+  const upgradeOnly = session.metadata?.upgradeOnly === "true";
   if (!orgId || (plan !== "pro" && plan !== "elite")) return null;
-  return { orgId, plan, quantity: quantity === 2 ? 2 : 1 };
+  return { orgId, plan, quantity: quantity === 2 ? 2 : 1, upgradeOnly };
 }
 
 // Build a blank active-season row, seeding sport/season label from an existing
@@ -82,7 +84,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { orgId, plan, quantity } = meta;
+  const { orgId, plan, quantity, upgradeOnly } = meta;
 
   try {
     const admin = createAdminClient();
@@ -106,7 +108,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: planErr.message }, { status: 500 });
     }
 
-    if (quantity === 2) {
+    if (upgradeOnly) {
+      // Pro→Elite tier upgrade (paid the $120 difference). profiles.plan was
+      // already flipped to 'elite' above, and tier is org-level — so every
+      // active season is now Elite. Touch the existing active season's
+      // updated_at to record the conversion; provision NO new season.
+      const { data: existing } = await admin
+        .from("leagues")
+        .select("id")
+        .eq("owner_id", orgId)
+        .is("archived_at", null)
+        .order("created_at", { ascending: true })
+        .limit(1);
+      const upgraded = existing?.[0] as { id: string } | undefined;
+      if (upgraded) {
+        await admin
+          .from("leagues")
+          .update({ updated_at: new Date().toISOString() } as never)
+          .eq("id", upgraded.id);
+      }
+    } else if (quantity === 2) {
       // First upgrade buying two seasons: the org's single existing (Free)
       // active season becomes the 1st paid season, and we add one more.
       const { data: existing } = await admin

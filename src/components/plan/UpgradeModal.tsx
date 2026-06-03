@@ -51,7 +51,11 @@ export function SeasonUpgradeModal({ reason, orgId, currentPlan, onClose }: Prop
   const [pending, setPending] = useState<PaidPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function startCheckout(plan: PaidPlan, quantity: 1 | 2) {
+  async function startCheckout(
+    plan: PaidPlan,
+    quantity: 1 | 2,
+    upgradeOnly = false,
+  ) {
     setPending(plan);
     setError(null);
     try {
@@ -61,6 +65,7 @@ export function SeasonUpgradeModal({ reason, orgId, currentPlan, onClose }: Prop
         body: JSON.stringify({
           plan,
           quantity,
+          upgradeOnly,
           orgId,
           // Absolute URLs — Stripe requires them. The route forwards as-is.
           successUrl: `${window.location.origin}/dashboard?upgraded=true`,
@@ -110,8 +115,11 @@ export function SeasonUpgradeModal({ reason, orgId, currentPlan, onClose }: Prop
 
         {reason === "locked-feature" ? (
           <LockedFeatureBody
+            currentPlan={currentPlan}
             pending={pending}
-            onChoose={(plan) => startCheckout(plan, 2)}
+            onChoose={(plan, upgradeOnly) =>
+              startCheckout(plan, upgradeOnly ? 1 : 2, upgradeOnly)
+            }
           />
         ) : (
           <AddSeasonBody
@@ -134,21 +142,59 @@ export function SeasonUpgradeModal({ reason, orgId, currentPlan, onClose }: Prop
 // ── locked-feature: Pro vs Elite, 2-season pricing ──────────────────────────
 
 function LockedFeatureBody({
+  currentPlan,
   pending,
   onChoose,
 }: {
+  currentPlan?: Plan;
   pending: PaidPlan | null;
-  onChoose: (plan: PaidPlan) => void;
+  onChoose: (plan: PaidPlan, upgradeOnly: boolean) => void;
 }) {
+  // Only offer tiers ABOVE the user's current plan — a Pro user shouldn't be
+  // shown the Pro card they already have. Absent currentPlan we treat them as
+  // Free and show everything.
+  const RANK: Record<Plan, number> = { free: 0, pro: 1, elite: 2 };
+  const currentRank = RANK[currentPlan ?? "free"];
+  const offers = (["pro", "elite"] as PaidPlan[]).filter(
+    (p) => RANK[p] > currentRank,
+  );
+  // Footnote only applies to the Free→paid conversion; a paid org has no Free
+  // season to convert. (NOTE Item 14: the Pro→Elite checkout still rides the
+  // 2-season flow — see approval notes; this only fixes the displayed copy.)
+  const isFreeUpgrade = currentRank === 0;
+
+  if (offers.length === 0) {
+    return (
+      <p className="mt-3 text-sm text-gray-600">
+        You already have access to every feature on your plan.
+      </p>
+    );
+  }
+
   return (
     <>
       <p className="mt-2 text-sm text-gray-600">
-        That&apos;s a paid feature. Pick a plan to unlock it — each upgrade
-        includes <span className="font-semibold text-[#0C1F3F]">2 seasons</span>.
+        {isFreeUpgrade ? (
+          <>
+            That&apos;s a paid feature. Pick a plan to unlock it — each upgrade
+            includes{" "}
+            <span className="font-semibold text-[#0C1F3F]">2 seasons</span>.
+          </>
+        ) : (
+          <>That&apos;s an Elite feature. Upgrade this season to unlock it.</>
+        )}
       </p>
 
-      <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {(["pro", "elite"] as PaidPlan[]).map((plan) => (
+      <div
+        className={`mt-5 grid grid-cols-1 gap-4 ${
+          offers.length > 1 ? "sm:grid-cols-2" : ""
+        }`}
+      >
+        {offers.map((plan) => {
+          // Pro→Elite is a tier upgrade, not a season purchase: charge the
+          // one-time difference, no "2 seasons" framing.
+          const isProToElite = currentPlan === "pro" && plan === "elite";
+          return (
           <div
             key={plan}
             className={`flex flex-col rounded-xl p-5 ${
@@ -170,14 +216,17 @@ function LockedFeatureBody({
                   plan === "elite" ? "text-white" : "text-[#0C1F3F]"
                 }`}
               >
-                ${SEASON_PRICE_USD[plan]}
+                $
+                {isProToElite
+                  ? SEASON_PRICE_USD.pro_to_elite
+                  : SEASON_PRICE_USD[plan]}
               </span>
               <span
                 className={`text-xs ${
                   plan === "elite" ? "text-white/50" : "text-gray-400"
                 }`}
               >
-                /season
+                {isProToElite ? "one-time upgrade" : "/season"}
               </span>
             </div>
 
@@ -200,7 +249,7 @@ function LockedFeatureBody({
 
             <button
               type="button"
-              onClick={() => onChoose(plan)}
+              onClick={() => onChoose(plan, isProToElite)}
               disabled={pending !== null}
               className={`mt-5 inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-60 ${
                 plan === "elite"
@@ -209,18 +258,31 @@ function LockedFeatureBody({
               }`}
             >
               {pending === plan && <Loader2 className="h-4 w-4 animate-spin" />}
-              {`Upgrade to ${plan === "pro" ? "Pro" : "Elite"} — ${priceLabel(
-                plan,
-                2,
-              )} for 2 seasons`}
+              {isProToElite
+                ? `Upgrade to Elite — $${SEASON_PRICE_USD.pro_to_elite} more`
+                : `Upgrade to ${plan === "pro" ? "Pro" : "Elite"} — ${priceLabel(
+                    plan,
+                    2,
+                  )} for 2 seasons`}
             </button>
+
+            {isProToElite && (
+              <p className="mt-3 text-center text-xs text-white/50">
+                You paid ${SEASON_PRICE_USD.pro} for Pro. Pay $
+                {SEASON_PRICE_USD.pro_to_elite} more to unlock all Elite features
+                for this season.
+              </p>
+            )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
-      <p className="mt-4 text-center text-xs text-gray-400">
-        Your current Free season will be converted to a paid season — not lost.
-      </p>
+      {isFreeUpgrade && (
+        <p className="mt-4 text-center text-xs text-gray-400">
+          Your current Free season will be converted to a paid season — not lost.
+        </p>
+      )}
     </>
   );
 }

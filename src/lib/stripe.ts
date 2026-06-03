@@ -1,13 +1,19 @@
 import Stripe from "stripe";
 import type { Plan } from "@/lib/plan/limits";
 
-// Per-season list price in whole USD. Single source of truth for the
-// upgrade-modal math ($129/$249 per season, $258/$498 for two). The actual
-// charge is driven by the Stripe Price IDs (env), NOT these numbers — these
-// are display-only and must stay in sync with the Price objects in Stripe.
-export const SEASON_PRICE_USD: Record<Exclude<Plan, "free">, number> = {
+// Per-season list price in whole USD, plus the one-time Pro→Elite upgrade
+// delta. Single source of truth for the upgrade-modal math ($129/$249 per
+// season; $120 to lift an existing Pro season to Elite). The actual charge is
+// driven by the Stripe Price IDs (env), NOT these numbers — these are
+// display-only and must stay in sync with the Price objects in Stripe.
+export const SEASON_PRICE_USD: Record<
+  Exclude<Plan, "free"> | "pro_to_elite",
+  number
+> = {
   pro: 129,
   elite: 249,
+  // Elite − Pro difference, charged once when a Pro org upgrades a season.
+  pro_to_elite: 120,
 };
 
 // Lazily construct the server-side Stripe client. Lazy (not module-scope) so
@@ -29,7 +35,21 @@ export function getStripe(): Stripe {
 }
 
 // Resolve the Stripe Price ID for a paid plan from env. Never hardcoded.
-export function seasonPriceId(plan: Exclude<Plan, "free">): string {
+// When upgradeOnly is set, returns the one-time Pro→Elite upgrade price
+// (the $120 difference) instead of a full Elite season.
+export function seasonPriceId(
+  plan: Exclude<Plan, "free">,
+  upgradeOnly = false,
+): string {
+  if (upgradeOnly) {
+    const upgradeId = process.env.STRIPE_ELITE_UPGRADE_FROM_PRO_PRICE_ID;
+    if (!upgradeId) {
+      throw new Error(
+        "Stripe price ID for the Pro→Elite upgrade is not configured.",
+      );
+    }
+    return upgradeId;
+  }
   const id =
     plan === "pro"
       ? process.env.STRIPE_PRO_SEASON_PRICE_ID

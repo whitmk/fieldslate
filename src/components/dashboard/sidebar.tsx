@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 import { FieldSlateLockup } from "@/components/brand";
+import { SeasonUpgradeModal } from "@/components/plan/UpgradeModal";
+import type { Plan } from "@/lib/plan/limits";
 import {
   LayoutDashboard,
   Trophy,
@@ -20,119 +23,181 @@ import {
   UserCheck,
   ShoppingBag,
   BarChart3,
+  Lock,
+  type LucideIcon,
 } from "lucide-react";
 
-// Tier-gated nav items:
-//   - `proOnly`   → hidden from Free users (Chunk 3, Pro+ features)
-//   - `eliteOnly` → hidden from Free AND Pro users (Chunk 4, Elite features)
-// Hiding is cosmetic only — the routes are still guarded server-side, so a
-// non-entitled user who deep-links lands on the upgrade page.
-const navItems = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/dashboard/reports", label: "Reports", icon: BarChart3, eliteOnly: true },
-  { href: "/dashboard/leagues", label: "Seasons", icon: Trophy },
-  { href: "/dashboard/schedule", label: "Schedule", icon: CalendarDays },
-  { href: "/dashboard/practices", label: "Practices", icon: CalendarRange, proOnly: true },
-  { href: "/dashboard/teams", label: "Teams", icon: Users },
-  { href: "/dashboard/venues", label: "Venues", icon: MapPin },
-  { href: "/dashboard/divisions", label: "Divisions", icon: Layers },
-  { href: "/dashboard/umpires", label: "Officials", icon: UserCheck, eliteOnly: true },
-  { href: "/dashboard/interleague", label: "Interleague", icon: Building2 },
-  { href: "/dashboard/playoffs", label: "Playoffs", icon: Medal, eliteOnly: true },
-  { href: "/dashboard/snack-shack", label: "Snack Shack", icon: ShoppingBag, eliteOnly: true },
-  { href: "/dashboard/export", label: "Export", icon: FileDown, proOnly: true },
+// Tier-gated nav items (Item 14):
+//   - tier: null     → always available
+//   - tier: "pro"    → locked for Free users
+//   - tier: "elite"  → locked for Free AND Pro users
+//
+// Locked items stay VISIBLE (Style B pill badge) but don't navigate — clicking
+// opens the upgrade modal. Routes remain server-guarded as defense-in-depth, so
+// a non-entitled user who deep-links still lands on the upgrade page.
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  tier: null | "pro" | "elite";
+};
+
+const navItems: NavItem[] = [
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard, tier: null },
+  { href: "/dashboard/reports", label: "Reports", icon: BarChart3, tier: "elite" },
+  { href: "/dashboard/leagues", label: "Seasons", icon: Trophy, tier: null },
+  { href: "/dashboard/schedule", label: "Schedule", icon: CalendarDays, tier: null },
+  { href: "/dashboard/practices", label: "Practices", icon: CalendarRange, tier: "pro" },
+  { href: "/dashboard/teams", label: "Teams", icon: Users, tier: null },
+  { href: "/dashboard/venues", label: "Venues", icon: MapPin, tier: null },
+  { href: "/dashboard/divisions", label: "Divisions", icon: Layers, tier: null },
+  { href: "/dashboard/umpires", label: "Officials", icon: UserCheck, tier: "elite" },
+  { href: "/dashboard/interleague", label: "Interleague", icon: Building2, tier: "pro" },
+  { href: "/dashboard/playoffs", label: "Playoffs", icon: Medal, tier: "elite" },
+  { href: "/dashboard/snack-shack", label: "Snack Shack", icon: ShoppingBag, tier: "elite" },
+  { href: "/dashboard/export", label: "Export", icon: FileDown, tier: "pro" },
 ];
 
-export function Sidebar({
-  isFree = false,
-  isElite = false,
-}: {
-  isFree?: boolean;
-  isElite?: boolean;
-}) {
-  const pathname = usePathname();
-  const visibleNavItems = navItems.filter(
-    (item) => !(isFree && item.proOnly) && !(!isElite && item.eliteOnly),
+// An item is locked when its required tier outranks the org's current plan.
+function isLocked(tier: NavItem["tier"], plan: Plan): boolean {
+  if (tier === "pro") return plan === "free";
+  if (tier === "elite") return plan !== "elite";
+  return false;
+}
+
+// Style B locked-feature pill: rounded, lock icon + tier name. Light fill on the
+// dark navy rail — blue for Pro, purple for Elite.
+function LockBadge({ tier }: { tier: "pro" | "elite" }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+        tier === "pro"
+          ? "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]"
+          : "border-[#ddd6fe] bg-[#f5f3ff] text-[#6d28d9]",
+      )}
+    >
+      <Lock className="h-3 w-3" />
+      {tier === "pro" ? "Pro" : "Elite"}
+    </span>
   );
+}
+
+export function Sidebar({ plan, orgId }: { plan: Plan; orgId: string }) {
+  const pathname = usePathname();
+  // A single modal serves every locked item — they all open the same
+  // locked-feature upgrade flow.
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   return (
-    <aside className="flex h-full w-64 flex-shrink-0 flex-col bg-[#0C1F3F] print:hidden">
-      {/* Logo — links home; dark surface → dark variant lockup */}
-      <div className="flex h-16 items-center px-6">
-        <Link href="/dashboard" aria-label="FieldSlate home" className="inline-flex">
-          <FieldSlateLockup height={28} variant="dark" />
-        </Link>
-      </div>
+    <>
+      <aside className="flex h-full w-64 flex-shrink-0 flex-col bg-[#0C1F3F] print:hidden">
+        {/* Logo — links home; dark surface → dark variant lockup */}
+        <div className="flex h-16 items-center px-6">
+          <Link href="/dashboard" aria-label="FieldSlate home" className="inline-flex">
+            <FieldSlateLockup height={28} variant="dark" />
+          </Link>
+        </div>
 
-      {/* Primary nav */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <ul className="flex flex-col gap-0.5">
-          {visibleNavItems.map(({ href, label, icon: Icon }) => {
-            const isActive =
-              pathname === href ||
-              (href !== "/dashboard" && pathname.startsWith(href));
-            return (
-              <li key={href}>
-                <Link
-                  href={href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-[#22C55E]/15 text-[#22C55E]"
-                      : "text-white/60 hover:bg-white/8 hover:text-white"
-                  )}
-                >
-                  <Icon
+        {/* Primary nav */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
+          <ul className="flex flex-col gap-0.5">
+            {navItems.map(({ href, label, icon: Icon, tier }) => {
+              // Locked: render as a button (never navigates) with a muted label
+              // and a tier badge; clicking opens the upgrade modal.
+              if (isLocked(tier, plan)) {
+                return (
+                  <li key={href}>
+                    <button
+                      type="button"
+                      onClick={() => setUpgradeOpen(true)}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/35 transition-colors hover:bg-white/5"
+                    >
+                      <Icon className="h-4 w-4 flex-shrink-0 text-white/35" />
+                      <span className="flex-1 text-left">{label}</span>
+                      {/* tier is non-null here — isLocked() only returns true for gated items */}
+                      <LockBadge tier={tier as "pro" | "elite"} />
+                    </button>
+                  </li>
+                );
+              }
+
+              // Unlocked: unchanged link with active-state styling.
+              const isActive =
+                pathname === href ||
+                (href !== "/dashboard" && pathname.startsWith(href));
+              return (
+                <li key={href}>
+                  <Link
+                    href={href}
                     className={cn(
-                      "h-4 w-4 flex-shrink-0",
-                      isActive ? "text-[#22C55E]" : "text-white"
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-[#22C55E]/15 text-[#22C55E]"
+                        : "text-white/60 hover:bg-white/8 hover:text-white"
                     )}
-                  />
-                  {label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+                  >
+                    <Icon
+                      className={cn(
+                        "h-4 w-4 flex-shrink-0",
+                        isActive ? "text-[#22C55E]" : "text-white"
+                      )}
+                    />
+                    {label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
 
-      {/* Bottom nav */}
-      <div className="border-t border-white/10 px-3 py-4">
-        <ul className="flex flex-col gap-0.5">
-          <li>
-            <Link
-              href="/dashboard/settings"
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                pathname === "/dashboard/settings"
-                  ? "bg-[#22C55E]/15 text-[#22C55E]"
-                  : "text-white/60 hover:bg-white/8 hover:text-white"
-              )}
-            >
-              <Settings
+        {/* Bottom nav */}
+        <div className="border-t border-white/10 px-3 py-4">
+          <ul className="flex flex-col gap-0.5">
+            <li>
+              <Link
+                href="/dashboard/settings"
                 className={cn(
-                  "h-4 w-4",
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                   pathname === "/dashboard/settings"
-                    ? "text-[#22C55E]"
-                    : "text-white"
+                    ? "bg-[#22C55E]/15 text-[#22C55E]"
+                    : "text-white/60 hover:bg-white/8 hover:text-white"
                 )}
-              />
-              Settings
-            </Link>
-          </li>
-          <li>
-            <form action="/api/auth/signout" method="post">
-              <button
-                type="submit"
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/60 transition-colors hover:bg-white/8 hover:text-white"
               >
-                <LogOut className="h-4 w-4 text-white" />
-                Sign out
-              </button>
-            </form>
-          </li>
-        </ul>
-      </div>
-    </aside>
+                <Settings
+                  className={cn(
+                    "h-4 w-4",
+                    pathname === "/dashboard/settings"
+                      ? "text-[#22C55E]"
+                      : "text-white"
+                  )}
+                />
+                Settings
+              </Link>
+            </li>
+            <li>
+              <form action="/api/auth/signout" method="post">
+                <button
+                  type="submit"
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/60 transition-colors hover:bg-white/8 hover:text-white"
+                >
+                  <LogOut className="h-4 w-4 text-white" />
+                  Sign out
+                </button>
+              </form>
+            </li>
+          </ul>
+        </div>
+      </aside>
+
+      {upgradeOpen && (
+        <SeasonUpgradeModal
+          reason="locked-feature"
+          orgId={orgId}
+          currentPlan={plan}
+          onClose={() => setUpgradeOpen(false)}
+        />
+      )}
+    </>
   );
 }
