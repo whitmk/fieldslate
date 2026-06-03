@@ -23,14 +23,23 @@ export const PLAN_LIMITS = {
   pro: {
     divisions: -1,
     teamsPerOrg: -1,
-    activeSeasons: -1,
+    // Seasons are the unit of sale: every tier includes 1 active season, and
+    // additional active seasons are PURCHASED (Stripe → webhook inserts the
+    // row). So the included allowance is 1 for all tiers. The "new season"
+    // trigger uses this to gate FREE creation — Free is hard-blocked at 1,
+    // Pro/Elite are routed to add-season checkout instead. (The create_league
+    // RPC still only hard-blocks Free; paid seasons come via the webhook, not
+    // that RPC — so this JS limit intentionally differs from the RPC for
+    // Pro/Elite. Direct /dashboard/leagues/new remains a route-guard-only gap.)
+    activeSeasons: 1,
     admins: 2,
     interleagueOrgsPerSeason: 5,
   },
   elite: {
     divisions: -1,
     teamsPerOrg: -1,
-    activeSeasons: -1,
+    // See the Pro note above — 1 included active season; more are purchased.
+    activeSeasons: 1,
     admins: 5,
     interleagueOrgsPerSeason: -1,
   },

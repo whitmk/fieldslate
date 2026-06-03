@@ -16,6 +16,7 @@ import {
 } from "@/components/seasons/archive-modals";
 import { deriveSeasonStatus } from "@/lib/seasons/derived-status";
 import { UpgradeModal } from "@/components/plan/upgrade-cta";
+import { SeasonUpgradeModal } from "@/components/plan/UpgradeModal";
 import type { Plan } from "@/lib/plan/limits";
 import { planLabel } from "@/lib/plan/labels";
 
@@ -25,6 +26,8 @@ interface Props {
   /** Already partitioned by the server; this component just renders. */
   leagues: League[];
   initialTab: Tab;
+  /** Org whose seasons these are — needed to start an add-season checkout. */
+  orgId: string;
   activeSeasonCount: number;
   activeSeasonLimit: number;
   plan: Plan;
@@ -36,6 +39,7 @@ interface Props {
 export function SeasonsListClient({
   leagues,
   initialTab,
+  orgId,
   activeSeasonCount,
   activeSeasonLimit,
   plan,
@@ -50,12 +54,16 @@ export function SeasonsListClient({
     | null
   >(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  // Paid-tier "buy another season" flow (Pro/Elite at the included-season cap).
+  const [addSeasonOpen, setAddSeasonOpen] = useState(false);
   // Separate from the active-season cap upsell above — this one fires when a
   // non-Elite user tries to open the Archived tab.
   const [archivedUpgradeOpen, setArchivedUpgradeOpen] = useState(false);
 
   const atCap =
     activeSeasonLimit !== -1 && activeSeasonCount >= activeSeasonLimit;
+  // Free is hard-blocked at the cap; Pro/Elite can buy another season.
+  const isPaid = plan === "pro" || plan === "elite";
 
   function setTabAndUrl(next: Tab) {
     setTab(next);
@@ -78,14 +86,38 @@ export function SeasonsListClient({
           <p className="mt-0.5 text-sm text-gray-500">Manage your seasons across sports.</p>
         </div>
         <div className="flex items-center gap-3">
-          {activeSeasonLimit !== -1 ? (
+          {/* Hard-cap counter — Free only. Pro/Elite can buy beyond 1, so an
+              "X of 1" reading would be misleading once they own more (and they
+              showed no counter before this, when their limit was unlimited). */}
+          {plan === "free" ? (
             <p className="text-xs text-gray-500">
               {activeSeasonCount} of {activeSeasonLimit}{" "}
               {activeSeasonLimit === 1 ? "active season" : "active seasons"} ·{" "}
               <span className="font-medium text-gray-700">{planLabel(plan)} plan</span>
             </p>
           ) : null}
-          {atCap ? (
+          {!atCap ? (
+            <Link
+              href="/dashboard/leagues/new"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
+            >
+              <Plus className="h-4 w-4" />
+              New season
+            </Link>
+          ) : isPaid ? (
+            // Pro/Elite at the included-season cap: adding another season is a
+            // purchase, not a block — route to the add-season checkout modal.
+            <button
+              type="button"
+              onClick={() => setAddSeasonOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
+              title="Add another active season"
+            >
+              <Plus className="h-4 w-4" />
+              New season
+            </button>
+          ) : (
+            // Free at cap: existing hard-block upsell (unchanged).
             <button
               type="button"
               onClick={() => setUpgradeOpen(true)}
@@ -95,14 +127,6 @@ export function SeasonsListClient({
               <Plus className="h-4 w-4" />
               New season
             </button>
-          ) : (
-            <Link
-              href="/dashboard/leagues/new"
-              className="inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
-            >
-              <Plus className="h-4 w-4" />
-              New season
-            </Link>
           )}
         </div>
       </div>
@@ -165,6 +189,15 @@ export function SeasonsListClient({
           limit={activeSeasonLimit}
           currentPlan={plan}
           onClose={() => setUpgradeOpen(false)}
+        />
+      ) : null}
+
+      {addSeasonOpen ? (
+        <SeasonUpgradeModal
+          reason="add-season"
+          orgId={orgId}
+          currentPlan={plan}
+          onClose={() => setAddSeasonOpen(false)}
         />
       ) : null}
 
