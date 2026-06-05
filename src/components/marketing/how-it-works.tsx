@@ -15,7 +15,7 @@ const steps = [
     number: "03",
     title: "Generate & export",
     description:
-      "Hit generate and get a full, conflict-free schedule in seconds. Export to PDF, CSV, or download a Sports Connect & BYGA formatted file — ready to upload directly to either platform.",
+      "Hit generate and get a full, conflict-free schedule in seconds. Export to PDF or a structured CSV — compatible with common league management platforms.",
   },
 ];
 
