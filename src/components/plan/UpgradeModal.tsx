@@ -259,7 +259,7 @@ function LockedFeatureBody({
             >
               {pending === plan && <Loader2 className="h-4 w-4 animate-spin" />}
               {isProToElite
-                ? `Upgrade to Elite — $${SEASON_PRICE_USD.pro_to_elite} more`
+                ? `Upgrade to Elite for just $${SEASON_PRICE_USD.pro_to_elite}`
                 : `Upgrade to ${plan === "pro" ? "Pro" : "Elite"} — ${priceLabel(
                     plan,
                     2,
