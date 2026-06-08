@@ -5,7 +5,7 @@ import { CheckCircle } from "lucide-react";
 const proofPoints = [
   "No credit card required",
   "Baseball & soccer ready",
-  "Export to Sports Connect & BYGA",
+  "Structured CSV export for league data migration",
 ];
 
 export function Hero() {
