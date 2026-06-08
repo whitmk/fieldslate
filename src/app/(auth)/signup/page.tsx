@@ -13,7 +13,7 @@ function SignupForm() {
   const [email, setEmail] = useState(prefilledEmail);
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [leagueName, setLeagueName] = useState("");
+  const [orgName, setOrgName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -34,7 +34,7 @@ function SignupForm() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName, league_name: leagueName } },
+      options: { data: { full_name: fullName, org_name: orgName } },
     });
 
     if (error) {
@@ -93,12 +93,12 @@ function SignupForm() {
           required
         />
         <Input
-          id="leagueName"
-          label="Season name"
+          id="orgName"
+          label="Organization name"
           type="text"
           placeholder="Riverside Youth Baseball"
-          value={leagueName}
-          onChange={(e) => setLeagueName(e.target.value)}
+          value={orgName}
+          onChange={(e) => setOrgName(e.target.value)}
           variant="dark"
           autoComplete="organization"
           required
