@@ -59,3 +59,48 @@ export function seasonPriceId(
   }
   return id;
 }
+
+export type CheckoutParams = {
+  plan: Exclude<Plan, "free">;
+  // Per-season multiplier. 1 = the plan's single included season (new signups);
+  // 2 = convert an existing Free season + add one more. The webhook reads this
+  // from metadata to decide whether to provision a new season row.
+  quantity: 1 | 2;
+  upgradeOnly?: boolean;
+  orgId: string;
+  // Stripe requires ABSOLUTE URLs here — callers must pass fully-qualified URLs.
+  successUrl: string;
+  cancelUrl: string;
+};
+
+// Single source of truth for building a per-season Checkout session. Shared by
+// the public /api/stripe/checkout route (client-driven purchases) and the
+// post-verification /api/auth/callback redirect (server-driven onboarding), so
+// the metadata the webhook depends on is constructed in exactly one place.
+// Throws if Stripe isn't configured or returns no URL — callers handle it.
+export async function createCheckoutSession(
+  params: CheckoutParams,
+): Promise<{ url: string }> {
+  const { plan, quantity, upgradeOnly = false, orgId, successUrl, cancelUrl } =
+    params;
+  const stripe = getStripe();
+  const session = await stripe.checkout.sessions.create({
+    // Per-season purchase = one-time payment, not a subscription.
+    mode: "payment",
+    line_items: [{ price: seasonPriceId(plan, upgradeOnly), quantity }],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    // The webhook reads these to apply the plan + provision seasons.
+    // Stripe metadata values must be strings.
+    metadata: {
+      orgId,
+      plan,
+      quantity: String(quantity),
+      upgradeOnly: String(upgradeOnly),
+    },
+  });
+  if (!session.url) {
+    throw new Error("Stripe did not return a checkout URL.");
+  }
+  return { url: session.url };
+}

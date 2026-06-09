@@ -10,6 +10,9 @@ import { resolveSelectedSeasonId } from "@/lib/seasons/resolve-selected";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isProPlus, isElite } from "@/lib/plan/limits";
+import { planLabel } from "@/lib/plan/labels";
+import { WelcomeBanner } from "@/components/dashboard/welcome-banner";
+import { CompleteSetupCta } from "@/components/dashboard/complete-setup-cta";
 
 type OwnedLeague = {
   id: string;
@@ -39,7 +42,7 @@ function fmtRangeDate(d: string | null): string | null {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: { season?: string; showArchived?: string };
+  searchParams: { season?: string; showArchived?: string; welcome?: string };
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -133,7 +136,7 @@ export default async function DashboardPage({
     upcomingQ,
     // Org name lives on the OWNER's profile (since org_id = owner's user id),
     // so when an admin views someone else's org they still see that org's name.
-    supabase.from("profiles").select("org_name").eq("id", currentOrgId).single(),
+    supabase.from("profiles").select("org_name, pending_plan").eq("id", currentOrgId).single(),
     supabase
       .from("leagues")
       .select("name")
@@ -143,10 +146,17 @@ export default async function DashboardPage({
       .maybeSingle(),
   ]);
 
-  const orgName =
-    (profileRow as { org_name: string | null } | null)?.org_name?.trim() ||
-    firstLeague?.name ||
-    "";
+  const typedProfile = profileRow as
+    | { org_name: string | null; pending_plan: string | null }
+    | null;
+  const orgName = typedProfile?.org_name?.trim() || firstLeague?.name || "";
+  const pendingPlan = typedProfile?.pending_plan;
+  // After a successful checkout the success_url carries ?welcome=true. The
+  // webhook (which flips the tier + clears pending_plan) may not have landed
+  // yet, so plan can still read 'free' for a beat — name the tier from
+  // pending_plan when it's set so the banner never shows the wrong plan.
+  const welcomePlan =
+    pendingPlan === "pro" || pendingPlan === "elite" ? pendingPlan : plan;
 
   const upcomingGames = (rawGames ?? []) as unknown as UpcomingGame[];
   const isEmpty = ownedLeagues.length === 0;
@@ -172,6 +182,19 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-col gap-6">
+
+      {searchParams.welcome === "true" && (
+        <WelcomeBanner planLabel={planLabel(welcomePlan)} />
+      )}
+      {searchParams.welcome !== "true" &&
+        plan === "free" &&
+        (pendingPlan === "pro" || pendingPlan === "elite") && (
+          <CompleteSetupCta
+            plan={pendingPlan}
+            planLabel={planLabel(pendingPlan)}
+            orgId={currentOrgId}
+          />
+        )}
 
       {/* Page header */}
       <div className="flex items-center justify-between">

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStripe, seasonPriceId } from "@/lib/stripe";
+import { createCheckoutSession } from "@/lib/stripe";
 
 // Server-only: creates a Stripe Checkout session for a per-season purchase.
 // Uses STRIPE_SECRET_KEY via getStripe(). Price IDs come from env only.
@@ -60,31 +60,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    const stripe = getStripe();
-    const session = await stripe.checkout.sessions.create({
-      // Per-season purchase = one-time payment, not a subscription.
-      mode: "payment",
-      line_items: [{ price: seasonPriceId(plan, upgradeOnly), quantity }],
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      // The webhook reads these to apply the plan + provision seasons.
-      // Stripe metadata values must be strings.
-      metadata: {
-        orgId,
-        plan,
-        quantity: String(quantity),
-        upgradeOnly: String(upgradeOnly),
-      },
+    const { url } = await createCheckoutSession({
+      plan,
+      quantity,
+      upgradeOnly,
+      orgId,
+      successUrl,
+      cancelUrl,
     });
-
-    if (!session.url) {
-      return NextResponse.json(
-        { error: "Stripe did not return a checkout URL." },
-        { status: 502 },
-      );
-    }
-
-    return NextResponse.json({ url: session.url });
+    return NextResponse.json({ url });
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to create checkout session.";

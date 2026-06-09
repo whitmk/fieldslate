@@ -892,6 +892,7 @@ export type Database = {
           full_name: string | null
           id: string
           org_name: string | null
+          pending_plan: string | null
           plan: string
           role: string
           updated_at: string
@@ -903,6 +904,7 @@ export type Database = {
           full_name?: string | null
           id: string
           org_name?: string | null
+          pending_plan?: string | null
           plan?: string
           role?: string
           updated_at?: string
@@ -914,6 +916,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           org_name?: string | null
+          pending_plan?: string | null
           plan?: string
           role?: string
           updated_at?: string

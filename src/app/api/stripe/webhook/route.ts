@@ -99,10 +99,13 @@ export async function POST(request: Request) {
     const wasPaid =
       profileRow?.plan === "pro" || profileRow?.plan === "elite";
 
-    // Apply the new plan tier to the org.
+    // Apply the new plan tier to the org and clear any pending_plan set at
+    // signup — payment is done, so the onboarding intent is resolved. Clearing
+    // here covers every checkout path (new signup, add-season, upgrade) and is
+    // what hides the dashboard "complete setup" CTA.
     const { error: planErr } = await admin
       .from("profiles")
-      .update({ plan } as never)
+      .update({ plan, pending_plan: null } as never)
       .eq("id", orgId);
     if (planErr) {
       return NextResponse.json({ error: planErr.message }, { status: 500 });

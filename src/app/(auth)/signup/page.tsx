@@ -9,6 +9,13 @@ import { createClient } from "@/lib/supabase/client";
 function SignupForm() {
   const searchParams = useSearchParams();
   const prefilledEmail = searchParams.get("email") ?? "";
+  // Paid tier chosen on the pricing page (/signup?plan=pro|elite). Only 'pro'
+  // or 'elite' is honored — anything else is treated as a Free signup. Carried
+  // through auth metadata so the handle_new_user trigger writes it to
+  // profiles.pending_plan; the post-verification callback reads it to start
+  // checkout. A Free signup (no/!valid param) leaves the whole flow untouched.
+  const planParam = searchParams.get("plan");
+  const pendingPlan = planParam === "pro" || planParam === "elite" ? planParam : null;
 
   const [email, setEmail] = useState(prefilledEmail);
   const [password, setPassword] = useState("");
@@ -34,7 +41,17 @@ function SignupForm() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName, org_name: orgName } },
+      options: {
+        data: {
+          full_name: fullName,
+          org_name: orgName,
+          ...(pendingPlan ? { plan: pendingPlan } : {}),
+        },
+        // Route the confirmation link through the PKCE callback so a session is
+        // established on click — that's where pending_plan is read and the user
+        // is bounced into Stripe checkout (or sent straight to the dashboard).
+        emailRedirectTo: `${window.location.origin}/api/auth/callback`,
+      },
     });
 
     if (error) {
