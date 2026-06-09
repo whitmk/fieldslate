@@ -18,7 +18,11 @@ export default function ForgotPasswordPage() {
 
     const supabase = createClient();
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/api/auth/callback?next=/reset-password`,
+      // `next` is intentionally slash-less ("reset-password", not "/reset-password"):
+      // Supabase's redirect-URL allowlist glob treats `/` as a separator, so a `/`
+      // inside the query string breaks the match and the link falls back to the
+      // Site URL. The callback re-adds the slash when it redirects.
+      redirectTo: `${window.location.origin}/api/auth/callback?next=reset-password`,
     });
 
     if (error) {

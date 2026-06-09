@@ -19,9 +19,11 @@ export async function GET(request: Request) {
       // Password-reset flow: the recovery session is now established. Skip the
       // signup-only pending_plan checkout logic entirely and hand off to the
       // reset-password page (otherwise a user with a pending_plan set would be
-      // wrongly bounced into Stripe checkout instead of resetting).
-      if (next === "/reset-password") {
-        return NextResponse.redirect(`${origin}${next}`);
+      // wrongly bounced into Stripe checkout instead of resetting). `next` is
+      // slash-less ("reset-password") so the redirect URL stays allowlist-clean;
+      // we re-add the leading slash here when building the redirect.
+      if (next === "reset-password") {
+        return NextResponse.redirect(new URL("/reset-password", origin));
       }
 
       // Read the tier the user chose at signup. plan is included only to avoid
