@@ -12,6 +12,7 @@ import {
   Repeat,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { createClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/activity-log";
@@ -183,7 +184,7 @@ export function ScheduleList({ games, canReschedule = false }: Props) {
 
   return (
     <div ref={tableRef} className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="hidden w-full text-sm md:table">
         <thead>
           <tr className="border-b border-gray-100 text-left">
             <th className="pb-3 font-medium text-gray-500">Date & Time</th>
@@ -222,6 +223,20 @@ export function ScheduleList({ games, canReschedule = false }: Props) {
           ))}
         </tbody>
       </table>
+
+      {/* Mobile card list — same games and the same handlers as the table
+          rows (modals are rendered once below, shared by both views). */}
+      <ul className="flex flex-col gap-3 md:hidden">
+        {games.map((g) => (
+          <GameCard
+            key={g.id}
+            game={g}
+            onRainout={() => handleRainout(g)}
+            onAddOfficial={() => setDetailGame(g)}
+            rainoutLoading={rainoutId === g.id}
+          />
+        ))}
+      </ul>
 
       {rescheduleGame && rescheduleGame.away_team_id && (
         <RainoutRescheduleModal
@@ -264,6 +279,61 @@ export function ScheduleList({ games, canReschedule = false }: Props) {
         />
       )}
     </div>
+  );
+}
+
+// Statuses where marking a rainout makes no sense — the game is already
+// rained out or already played. The button stays visible but disabled.
+const RAINOUT_BLOCKED_STATUSES = new Set(["cancelled", "completed"]);
+
+interface GameCardProps {
+  game: ScheduleGame;
+  onRainout: () => void;
+  onAddOfficial: () => void;
+  rainoutLoading: boolean;
+}
+
+function GameCard({ game, onRainout, onAddOfficial, rainoutLoading }: GameCardProps) {
+  return (
+    <li className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm text-gray-600">
+            {fmtGameDate(game.scheduled_at)} · {fmtGameTime(game.scheduled_at)}
+          </p>
+          <p className="mt-1 font-semibold text-gray-900">{matchupLabel(game)}</p>
+          <p className="mt-1 text-sm text-gray-600">
+            {venueLabel(game)} · {game.home_team?.division?.name ?? "—"}
+          </p>
+        </div>
+        <Badge
+          variant={gameStatusVariants[game.status] ?? "default"}
+          className="flex-shrink-0"
+        >
+          {gameStatusLabel(game.status)}
+        </Badge>
+      </div>
+      <div className="mt-4 flex gap-2">
+        <Button
+          variant="secondary"
+          className="h-11 flex-1 whitespace-nowrap px-2"
+          disabled={RAINOUT_BLOCKED_STATUSES.has(game.status)}
+          isLoading={rainoutLoading}
+          onClick={onRainout}
+        >
+          {!rainoutLoading && <CloudRain className="mr-2 h-4 w-4 text-blue-400" />}
+          Rainout
+        </Button>
+        <Button
+          variant="secondary"
+          className="h-11 flex-1 whitespace-nowrap px-2"
+          onClick={onAddOfficial}
+        >
+          <UserCheck className="mr-2 h-4 w-4 text-[#22C55E]" />
+          Add Official
+        </Button>
+      </div>
+    </li>
   );
 }
 
