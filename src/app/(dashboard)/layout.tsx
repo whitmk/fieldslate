@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Topbar } from "@/components/dashboard/topbar";
+import { MobileSidebarProvider } from "@/components/dashboard/mobile-sidebar";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { getActiveSeasonCount } from "@/lib/plan/counts";
@@ -23,12 +24,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const activeSeasonCount = await getActiveSeasonCount(supabase, currentOrgId);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50 print:h-auto print:overflow-visible print:bg-white">
-      <Sidebar plan={plan} orgId={currentOrgId} activeSeasonCount={activeSeasonCount} />
-      <div className="flex flex-1 flex-col overflow-hidden print:overflow-visible">
-        <Topbar />
-        <main className="flex-1 overflow-y-auto p-6 print:overflow-visible print:p-0">{children}</main>
+    <MobileSidebarProvider>
+      <div className="flex h-screen overflow-hidden bg-gray-50 print:h-auto print:overflow-visible print:bg-white">
+        <Sidebar plan={plan} orgId={currentOrgId} activeSeasonCount={activeSeasonCount} />
+        <div className="flex flex-1 flex-col overflow-hidden print:overflow-visible">
+          <Topbar />
+          <main className="flex-1 overflow-y-auto p-6 print:overflow-visible print:p-0">{children}</main>
+        </div>
       </div>
-    </div>
+    </MobileSidebarProvider>
   );
 }

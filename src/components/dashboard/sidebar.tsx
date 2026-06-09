@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 import { FieldSlateLockup } from "@/components/brand";
 import { SeasonUpgradeModal } from "@/components/plan/UpgradeModal";
+import { useMobileSidebar } from "@/components/dashboard/mobile-sidebar";
 import type { Plan } from "@/lib/plan/limits";
 import {
   LayoutDashboard,
@@ -24,6 +25,7 @@ import {
   ShoppingBag,
   BarChart3,
   Lock,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -96,15 +98,44 @@ export function Sidebar({
   // A single modal serves every locked item — they all open the same
   // locked-feature upgrade flow.
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  // Mobile drawer state lives in context — the open trigger is the Topbar's
+  // hamburger. On md+ the drawer classes are overridden and this is inert.
+  const { open: mobileOpen, setOpen: setMobileOpen } = useMobileSidebar();
+  const closeMobile = () => setMobileOpen(false);
 
   return (
     <>
-      <aside className="flex h-full w-64 flex-shrink-0 flex-col bg-[#0C1F3F] print:hidden">
+      {/* Mobile-only backdrop — tap to dismiss the drawer */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={closeMobile}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={cn(
+          // Mobile: fixed off-canvas drawer that slides in over the content
+          "fixed inset-y-0 left-0 z-50 flex h-full w-72 flex-shrink-0 flex-col bg-[#0C1F3F] transition-transform duration-200 ease-in-out print:hidden",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+          // Desktop: static rail, identical to the pre-drawer layout
+          "md:static md:z-auto md:w-64 md:translate-x-0 md:transition-none"
+        )}
+      >
         {/* Logo — links home; dark surface → dark variant lockup */}
-        <div className="flex h-16 items-center px-6">
-          <Link href="/dashboard" aria-label="FieldSlate home" className="inline-flex">
+        <div className="flex h-16 items-center justify-between px-6">
+          <Link href="/dashboard" aria-label="FieldSlate home" className="inline-flex" onClick={closeMobile}>
             <FieldSlateLockup height={28} variant="dark" />
           </Link>
+          <button
+            type="button"
+            onClick={closeMobile}
+            aria-label="Close menu"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/10 hover:text-white md:hidden"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Primary nav */}
@@ -138,6 +169,7 @@ export function Sidebar({
                 <li key={href}>
                   <Link
                     href={href}
+                    onClick={closeMobile}
                     className={cn(
                       "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                       isActive
@@ -165,6 +197,7 @@ export function Sidebar({
             <li>
               <Link
                 href="/dashboard/settings"
+                onClick={closeMobile}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                   pathname === "/dashboard/settings"

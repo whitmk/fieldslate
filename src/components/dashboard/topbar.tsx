@@ -2,6 +2,7 @@ import { Bell } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrgId, listMemberships } from "@/lib/orgs/context";
 import { OrgSwitcher } from "@/components/dashboard/org-switcher";
+import { MobileMenuButton } from "@/components/dashboard/mobile-sidebar";
 
 export async function Topbar() {
   const supabase = createClient();
@@ -16,7 +17,10 @@ export async function Topbar() {
 
   return (
     <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-white/10 bg-[#0C1F3F] px-6 print:hidden">
-      <div />
+      {/* Wrapper keeps justify-between intact on desktop, where the button is hidden */}
+      <div className="flex items-center">
+        <MobileMenuButton />
+      </div>
       <div className="flex items-center gap-3">
         {currentOrgId && memberships.length > 0 ? (
           <OrgSwitcher memberships={memberships} currentOrgId={currentOrgId} />
