@@ -289,14 +289,14 @@ function LockedFeatureBody({
               {isProToElite
                 ? `Upgrade to Elite for just $${SEASON_PRICE_USD.pro_to_elite}`
                 : hasSeasonToConvert
-                  ? `Upgrade to ${plan === "pro" ? "Pro" : "Elite"} — ${priceLabel(
+                  ? `Upgrade to ${plan === "pro" ? "Pro" : "Elite"} · ${priceLabel(
                       plan,
                       2,
                     )} for 2 seasons`
-                  : `Upgrade to ${plan === "pro" ? "Pro" : "Elite"} — ${priceLabel(
+                  : `Upgrade to ${plan === "pro" ? "Pro" : "Elite"} · ${priceLabel(
                       plan,
                       1,
-                    )} for 1 season`}
+                    )}/season`}
             </button>
 
             {isProToElite && (
