@@ -16,6 +16,14 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error && data.user) {
+      // Password-reset flow: the recovery session is now established. Skip the
+      // signup-only pending_plan checkout logic entirely and hand off to the
+      // reset-password page (otherwise a user with a pending_plan set would be
+      // wrongly bounced into Stripe checkout instead of resetting).
+      if (next === "/reset-password") {
+        return NextResponse.redirect(`${origin}${next}`);
+      }
+
       // Read the tier the user chose at signup. plan is included only to avoid
       // re-initiating checkout if the webhook already flipped the tier (in
       // which case pending_plan is already null — this is belt-and-suspenders).
