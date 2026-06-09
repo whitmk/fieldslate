@@ -3,8 +3,10 @@
 // Item 13 upgrade modal — drives Stripe Checkout. Two modes:
 //
 //   reason="locked-feature"  Free user hit a Pro/Elite gate. Shows Pro vs
-//                            Elite, each as a 2-season purchase (qty 2) so the
-//                            existing Free season is converted, not lost.
+//                            Elite. If the org already has an active season it's
+//                            a 2-season purchase (qty 2) so that season is
+//                            converted, not lost; with no season yet (e.g. a
+//                            brand-new signup) it's a single-season buy (qty 1).
 //   reason="add-season"      Paid user adds a season at their current price
 //                            (qty 1, no tier choice).
 //
@@ -24,6 +26,10 @@ interface Props {
   orgId: string;
   /** Required for reason="add-season" — the org's current paid plan. */
   currentPlan?: Plan;
+  /** Org's active (non-archived) season count. Drives the locked-feature
+   *  Free→paid flow: 0 → single-season buy (qty 1); ≥1 → convert-existing
+   *  2-season buy (qty 2). Ignored by the add-season and Pro→Elite paths. */
+  activeSeasonCount: number;
   onClose: () => void;
 }
 
@@ -46,7 +52,13 @@ function priceLabel(plan: PaidPlan, quantity: number): string {
   return `$${SEASON_PRICE_USD[plan] * quantity}`;
 }
 
-export function SeasonUpgradeModal({ reason, orgId, currentPlan, onClose }: Props) {
+export function SeasonUpgradeModal({
+  reason,
+  orgId,
+  currentPlan,
+  activeSeasonCount,
+  onClose,
+}: Props) {
   // Tracks which CTA is mid-flight so only that button shows a spinner.
   const [pending, setPending] = useState<PaidPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,10 +128,16 @@ export function SeasonUpgradeModal({ reason, orgId, currentPlan, onClose }: Prop
         {reason === "locked-feature" ? (
           <LockedFeatureBody
             currentPlan={currentPlan}
+            activeSeasonCount={activeSeasonCount}
             pending={pending}
-            onChoose={(plan, upgradeOnly) =>
-              startCheckout(plan, upgradeOnly ? 1 : 2, upgradeOnly)
-            }
+            onChoose={(plan, upgradeOnly) => {
+              // Pro→Elite (upgradeOnly) is always a single-tier upgrade (qty 1).
+              // Free→paid converts an existing season (qty 2) — but only if one
+              // exists; with no active season there's nothing to convert (qty 1).
+              const quantity: 1 | 2 =
+                !upgradeOnly && activeSeasonCount >= 1 ? 2 : 1;
+              startCheckout(plan, quantity, upgradeOnly);
+            }}
           />
         ) : (
           <AddSeasonBody
@@ -143,10 +161,12 @@ export function SeasonUpgradeModal({ reason, orgId, currentPlan, onClose }: Prop
 
 function LockedFeatureBody({
   currentPlan,
+  activeSeasonCount,
   pending,
   onChoose,
 }: {
   currentPlan?: Plan;
+  activeSeasonCount: number;
   pending: PaidPlan | null;
   onChoose: (plan: PaidPlan, upgradeOnly: boolean) => void;
 }) {
@@ -162,6 +182,10 @@ function LockedFeatureBody({
   // season to convert. (NOTE Item 14: the Pro→Elite checkout still rides the
   // 2-season flow — see approval notes; this only fixes the displayed copy.)
   const isFreeUpgrade = currentRank === 0;
+  // A Free org with an existing active season gets the 2-season convert flow;
+  // with none (e.g. a brand-new signup) it's a plain single-season purchase, so
+  // the "2 seasons" / "converted, not lost" framing is dropped.
+  const hasSeasonToConvert = activeSeasonCount >= 1;
 
   if (offers.length === 0) {
     return (
@@ -175,11 +199,15 @@ function LockedFeatureBody({
     <>
       <p className="mt-2 text-sm text-gray-600">
         {isFreeUpgrade ? (
-          <>
-            That&apos;s a paid feature. Pick a plan to unlock it — each upgrade
-            includes{" "}
-            <span className="font-semibold text-[#0C1F3F]">2 seasons</span>.
-          </>
+          hasSeasonToConvert ? (
+            <>
+              That&apos;s a paid feature. Pick a plan to unlock it — each upgrade
+              includes{" "}
+              <span className="font-semibold text-[#0C1F3F]">2 seasons</span>.
+            </>
+          ) : (
+            <>That&apos;s a paid feature. Pick a plan to unlock it.</>
+          )
         ) : (
           <>That&apos;s an Elite feature. Upgrade this season to unlock it.</>
         )}
@@ -260,10 +288,15 @@ function LockedFeatureBody({
               {pending === plan && <Loader2 className="h-4 w-4 animate-spin" />}
               {isProToElite
                 ? `Upgrade to Elite for just $${SEASON_PRICE_USD.pro_to_elite}`
-                : `Upgrade to ${plan === "pro" ? "Pro" : "Elite"} — ${priceLabel(
-                    plan,
-                    2,
-                  )} for 2 seasons`}
+                : hasSeasonToConvert
+                  ? `Upgrade to ${plan === "pro" ? "Pro" : "Elite"} — ${priceLabel(
+                      plan,
+                      2,
+                    )} for 2 seasons`
+                  : `Upgrade to ${plan === "pro" ? "Pro" : "Elite"} — ${priceLabel(
+                      plan,
+                      1,
+                    )} for 1 season`}
             </button>
 
             {isProToElite && (
@@ -278,7 +311,7 @@ function LockedFeatureBody({
         })}
       </div>
 
-      {isFreeUpgrade && (
+      {isFreeUpgrade && hasSeasonToConvert && (
         <p className="mt-4 text-center text-xs text-gray-400">
           Your current Free season will be converted to a paid season — not lost.
         </p>

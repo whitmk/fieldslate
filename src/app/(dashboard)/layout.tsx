@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/dashboard/sidebar";
 import { Topbar } from "@/components/dashboard/topbar";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { getActiveSeasonCount } from "@/lib/plan/counts";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
@@ -17,10 +18,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // below that also call it reuse this row — no extra DB round-trip.
   const currentOrgId = await getCurrentOrgId(supabase, user.id);
   const plan = await getOrgPlan(currentOrgId);
+  // Drives the sidebar's locked-feature upgrade modal: 0 active seasons → a
+  // single-season purchase (nothing to convert); ≥1 → the 2-season convert flow.
+  const activeSeasonCount = await getActiveSeasonCount(supabase, currentOrgId);
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 print:h-auto print:overflow-visible print:bg-white">
-      <Sidebar plan={plan} orgId={currentOrgId} />
+      <Sidebar plan={plan} orgId={currentOrgId} activeSeasonCount={activeSeasonCount} />
       <div className="flex flex-1 flex-col overflow-hidden print:overflow-visible">
         <Topbar />
         <main className="flex-1 overflow-y-auto p-6 print:overflow-visible print:p-0">{children}</main>
