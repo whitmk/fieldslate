@@ -167,7 +167,7 @@ export function GameDetailModal({ game, onClose }: Props) {
       ] = await Promise.all([
         supabase
           .from("umpires")
-          .select("id, name")
+          .select("id, name, team_id")
           .eq("season_id", game.league_id)
           .order("name"),
         supabase
@@ -333,6 +333,8 @@ export function GameDetailModal({ game, onClose }: Props) {
                     duration_minutes: loaded.durationMinutes,
                     home_team_name: game.home_team?.name ?? "TBD",
                     away_team_name: game.away_team?.name ?? "TBD",
+                    home_team_id: game.home_team_id,
+                    away_team_id: game.away_team_id,
                   }}
                   seasonId={game.league_id}
                   roles={loaded.roles}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Pencil, Trash2, X, Loader2, CalendarDays } from "lucide-react";
@@ -18,7 +18,9 @@ export type UmpireRow = {
   phone: string | null;
   max_games_per_week: number | null;
   notes: string | null;
+  team_id: string | null;
   season: { name: string; sport?: string | null } | null;
+  team: { name: string } | null;
 };
 
 export type SeasonPaySettings = {
@@ -88,7 +90,14 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Pro
               const showPay = ps?.pay_tracking_enabled ?? false;
               return (
                 <tr key={u.id} className="border-b border-gray-50 last:border-0">
-                  <td className="py-3 font-medium text-gray-900">{u.name}</td>
+                  <td className="py-3">
+                    <p className="font-medium text-gray-900">{u.name}</p>
+                    {u.team?.name && (
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        Coaches {u.team.name}
+                      </p>
+                    )}
+                  </td>
                   <td className="py-3">
                     <Badge variant={u.designation === "adult" ? "info" : "success"}>
                       {u.designation === "adult" ? "Adult" : "Youth"}
@@ -159,6 +168,11 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Pro
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-semibold text-[#0C1F3F]">{u.name}</p>
+                    {u.team?.name && (
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        Coaches {u.team.name}
+                      </p>
+                    )}
                     {showSeasonColumn && (
                       <p className="mt-0.5 text-xs text-gray-500">
                         {u.season?.name ?? "—"}
@@ -270,8 +284,28 @@ function EditUmpireModal({
     umpire.max_games_per_week != null ? String(umpire.max_games_per_week) : "",
   );
   const [notes, setNotes] = useState(umpire.notes ?? "");
+  const [teamId, setTeamId] = useState(umpire.team_id ?? "");
+  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Coached-team options for this official's season (coach conflict link,
+  // migration 0063).
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    supabase
+      .from("teams")
+      .select("id, name")
+      .eq("league_id", umpire.season_id)
+      .order("name")
+      .then(({ data }) => {
+        if (!cancelled) setTeams((data ?? []) as { id: string; name: string }[]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [umpire.season_id]);
 
   const showPayRate =
     paySettings?.pay_tracking_enabled && paySettings?.pay_rate_mode === "per_umpire";
@@ -290,6 +324,7 @@ function EditUmpireModal({
       max_games_per_week:
         maxGames !== "" ? Math.max(1, parseInt(maxGames, 10) || 1) : null,
       notes: notes.trim() || null,
+      team_id: teamId || null,
     };
     if (showPayRate) {
       updates.pay_rate = payRate !== "" ? parseFloat(payRate) || null : null;
@@ -420,6 +455,30 @@ function EditUmpireModal({
               className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
             />
           </div>
+          {(teams.length > 0 || umpire.team_id) && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-gray-700">
+                Coaches team{" "}
+                <span className="font-normal text-gray-400">(optional)</span>
+              </label>
+              <select
+                value={teamId}
+                onChange={(e) => setTeamId(e.target.value)}
+                className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              >
+                <option value="">— None —</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400">
+                Auto-assign skips games involving this team; manual assignments
+                show a warning.
+              </p>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-gray-700">
               Notes <span className="font-normal text-gray-400">(optional)</span>

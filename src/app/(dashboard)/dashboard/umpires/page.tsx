@@ -10,6 +10,10 @@ import {
   OfficialRolesManager,
   type SeasonRole,
 } from "@/components/umpires/official-roles-manager";
+import {
+  DivisionPriorityCard,
+  type PriorityDivision,
+} from "@/components/umpires/division-priority-card";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isElite } from "@/lib/plan/limits";
@@ -58,12 +62,13 @@ export default async function UmpiresPage() {
     { data: rawUmpires },
     { data: rawSeasonRoles },
     { data: rawRoleRates },
+    { data: rawDivisions },
   ] = await Promise.all([
     seasonIds.length > 0
       ? supabase
           .from("umpires")
           .select(
-            "id, name, designation, season_id, pay_rate, email, phone, max_games_per_week, notes, season:leagues(name, sport)",
+            "id, name, designation, season_id, pay_rate, email, phone, max_games_per_week, notes, team_id, season:leagues(name, sport), team:teams(name)",
           )
           .in("season_id", seasonIds)
           .order("name", { ascending: true })
@@ -80,6 +85,13 @@ export default async function UmpiresPage() {
           .from("umpire_role_rates")
           .select("season_id, role, rate")
           .in("season_id", seasonIds)
+      : Promise.resolve({ data: [] as unknown[] }),
+    seasonIds.length > 0
+      ? supabase
+          .from("divisions")
+          .select("id, name, priority, league_id")
+          .in("league_id", seasonIds)
+          .order("priority")
       : Promise.resolve({ data: [] as unknown[] }),
   ]);
 
@@ -117,6 +129,21 @@ export default async function UmpiresPage() {
     if (!ratesBySeason.has(r.season_id)) ratesBySeason.set(r.season_id, []);
     ratesBySeason.get(r.season_id)!.push({ role: r.role, rate: r.rate });
   }
+
+  // Divisions per season for the priority card (0063) — auto-assign fills
+  // higher-priority (lower number) divisions first.
+  const divisionsBySeason = new Map<string, PriorityDivision[]>();
+  for (const d of (rawDivisions ?? []) as (PriorityDivision & { league_id: string })[]) {
+    if (!divisionsBySeason.has(d.league_id)) divisionsBySeason.set(d.league_id, []);
+    divisionsBySeason.get(d.league_id)!.push({
+      id: d.id,
+      name: d.name,
+      priority: d.priority,
+    });
+  }
+  const anyDivisions = Array.from(divisionsBySeason.values()).some(
+    (list) => list.length > 0,
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -186,6 +213,33 @@ export default async function UmpiresPage() {
                 initialRoles={rolesBySeason.get(s.id) ?? []}
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {anyDivisions && (
+        <div className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-[#0C1F3F]">
+              Division priority
+            </h2>
+            <p className="mt-0.5 text-sm text-gray-500">
+              The order auto-assign works through divisions when officials are
+              shared across them.
+            </p>
+          </div>
+          <div className="flex flex-col gap-4">
+            {seasons.map((s) => {
+              const divs = divisionsBySeason.get(s.id) ?? [];
+              if (divs.length === 0) return null;
+              return (
+                <DivisionPriorityCard
+                  key={s.id}
+                  seasonName={s.name}
+                  divisions={divs}
+                />
+              );
+            })}
           </div>
         </div>
       )}

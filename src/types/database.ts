@@ -405,6 +405,7 @@ export type Database = {
           practice_season_end: string | null
           practice_season_start: string | null
           practice_venue_id: string | null
+          priority: number
           settings: Json
           start_date: string | null
           status: string
@@ -425,6 +426,7 @@ export type Database = {
           practice_season_end?: string | null
           practice_season_start?: string | null
           practice_venue_id?: string | null
+          priority?: number
           settings?: Json
           start_date?: string | null
           status?: string
@@ -445,6 +447,7 @@ export type Database = {
           practice_season_end?: string | null
           practice_season_start?: string | null
           practice_venue_id?: string | null
+          priority?: number
           settings?: Json
           start_date?: string | null
           status?: string
@@ -1173,6 +1176,7 @@ export type Database = {
           pay_rate: number | null
           phone: string | null
           season_id: string
+          team_id: string | null
         }
         Insert: {
           created_at?: string
@@ -1185,6 +1189,7 @@ export type Database = {
           pay_rate?: number | null
           phone?: string | null
           season_id: string
+          team_id?: string | null
         }
         Update: {
           created_at?: string
@@ -1197,6 +1202,7 @@ export type Database = {
           pay_rate?: number | null
           phone?: string | null
           season_id?: string
+          team_id?: string | null
         }
         Relationships: [
           {
@@ -1204,6 +1210,13 @@ export type Database = {
             columns: ["season_id"]
             isOneToOne: false
             referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "umpires_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
         ]

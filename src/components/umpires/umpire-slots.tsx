@@ -13,7 +13,12 @@ import {
 } from "@/lib/umpires/conflicts";
 import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
 
-export type UmpireOption = { id: string; name: string };
+export type UmpireOption = {
+  id: string;
+  name: string;
+  /** Team this official coaches (0063) — drives the coach-conflict warning. */
+  team_id?: string | null;
+};
 
 export type SlotAssignment = {
   id: string;        // game_umpires.id
@@ -28,6 +33,9 @@ export type UmpireSlotsGame = {
   duration_minutes?: number; // falls back to default if missing
   home_team_name: string;
   away_team_name: string;
+  /** Team ids (0063) — enable the coach-conflict warning when provided. */
+  home_team_id?: string | null;
+  away_team_id?: string | null;
 };
 
 interface Props {
@@ -57,23 +65,26 @@ export function UmpireSlots({
 }: Props) {
   const router = useRouter();
   const [errorByRole, setErrorByRole] = useState<Record<string, string>>({});
+  const [warningByRole, setWarningByRole] = useState<Record<string, string>>({});
   const [pendingRole, setPendingRole] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Clear error when user navigates away/clicks elsewhere.
+  // Clear messages when user navigates away/clicks elsewhere.
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (
         containerRef.current &&
         !containerRef.current.contains(e.target as Node) &&
-        Object.keys(errorByRole).length > 0
+        (Object.keys(errorByRole).length > 0 ||
+          Object.keys(warningByRole).length > 0)
       ) {
         setErrorByRole({});
+        setWarningByRole({});
       }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [errorByRole]);
+  }, [errorByRole, warningByRole]);
 
   // Roles now come from the season's official_roles list, but legacy
   // game_umpires rows carry free-text labels that may not be on it. Append
@@ -97,6 +108,11 @@ export function UmpireSlots({
   async function handleChange(role: string, nextUmpireId: string) {
     setPendingRole(role);
     setErrorByRole((prev) => {
+      const next = { ...prev };
+      delete next[role];
+      return next;
+    });
+    setWarningByRole((prev) => {
       const next = { ...prev };
       delete next[role];
       return next;
@@ -125,8 +141,8 @@ export function UmpireSlots({
     }
 
     // Conflict + blackout checks before persisting.
-    const umpName =
-      umpires.find((u) => u.id === nextUmpireId)?.name ?? "This umpire";
+    const nextUmpire = umpires.find((u) => u.id === nextUmpireId);
+    const umpName = nextUmpire?.name ?? "This umpire";
     const conflict = await findUmpireConflict(nextUmpireId, candidate);
     if (conflict) {
       setErrorByRole({
@@ -148,6 +164,22 @@ export function UmpireSlots({
       });
       setPendingRole(null);
       return;
+    }
+
+    // Coach conflict (0063) is a warning, not a block, on manual assignment —
+    // auto-assign hard-blocks it, but the commissioner can knowingly override
+    // here. Computed before the save, shown after it succeeds.
+    let coachWarning: string | null = null;
+    if (
+      nextUmpire?.team_id &&
+      (nextUmpire.team_id === game.home_team_id ||
+        nextUmpire.team_id === game.away_team_id)
+    ) {
+      const coachedTeam =
+        nextUmpire.team_id === game.home_team_id
+          ? game.home_team_name
+          : game.away_team_name;
+      coachWarning = `${umpName} coaches ${coachedTeam} — assigned anyway. Consider a neutral official.`;
     }
 
     // Resolve the normalized official_roles id for this slot's label (created
@@ -179,6 +211,9 @@ export function UmpireSlots({
       }
     }
 
+    if (coachWarning) {
+      setWarningByRole({ [role]: coachWarning });
+    }
     setPendingRole(null);
     router.refresh();
     onChanged?.();
@@ -192,6 +227,7 @@ export function UmpireSlots({
       {effectiveRoles.map((role) => {
         const current = assignments.find((a) => a.role === role);
         const err = errorByRole[role];
+        const warn = warningByRole[role];
         const isPending = pendingRole === role;
 
         return (
@@ -231,6 +267,12 @@ export function UmpireSlots({
               <div className="ml-[72px] flex items-start gap-1.5 text-[11px] text-red-600">
                 <AlertTriangle className="mt-0.5 h-3 w-3 flex-shrink-0" />
                 <span>{err}</span>
+              </div>
+            )}
+            {warn && !err && (
+              <div className="ml-[72px] flex items-start gap-1.5 text-[11px] text-amber-600">
+                <AlertTriangle className="mt-0.5 h-3 w-3 flex-shrink-0" />
+                <span>{warn}</span>
               </div>
             )}
           </div>

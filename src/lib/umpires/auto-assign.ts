@@ -16,10 +16,10 @@ import { padRoleLabels } from "@/lib/utils/official-title";
 /**
  * Why a slot couldn't be filled. Only the HARD constraints can empty a slot:
  * availability windows and weekly caps are soft (the fallback tier ignores
- * them), so a skip always means every candidate was double-booked or
- * blacked out.
+ * them), so a skip always means every candidate was double-booked, blacked
+ * out, or coaching a team in the game.
  */
-export type SkipReason = "conflict" | "blackout";
+export type SkipReason = "conflict" | "blackout" | "coach_conflict";
 
 export type AutoAssignResult = {
   success: boolean;
@@ -34,11 +34,14 @@ type GameRow = {
   id: string;
   scheduled_at: string;
   status: string;
+  home_team_id: string;
+  away_team_id: string | null;
   home_team: {
     division_id: string | null;
     division: {
       id: string;
       umpires_per_game: number;
+      priority: number;
       umpire_roles: unknown;
       settings: unknown;
     } | null;
@@ -53,7 +56,12 @@ type AssignmentRow = {
   role: string;
 };
 
-type UmpireRow = { id: string; name: string; max_games_per_week: number | null };
+type UmpireRow = {
+  id: string;
+  name: string;
+  max_games_per_week: number | null;
+  team_id: string | null;
+};
 
 function gameDuration(settings: unknown): number {
   if (settings && typeof settings === "object" && "game_duration" in settings) {
@@ -72,14 +80,16 @@ function gameDuration(settings: unknown): number {
  * the slot UIs use.
  *
  * Best-effort, two-tier selection per empty slot (least-loaded first):
- *   Tier 1: not on this game, no time overlap, no blackout, inside an
- *           availability window (no windows = always available), and under
- *           max_games_per_week for the game's Mon–Sun week.
+ *   Tier 1: not on this game, no time overlap, no blackout, not coaching a
+ *           team in the game, inside an availability window (no windows =
+ *           always available), and under max_games_per_week for the game's
+ *           Mon–Sun week.
  *   Tier 2: if nobody fully qualifies, availability windows and weekly caps
  *           go soft — an empty slot is worse than an over-cap official the
- *           commissioner can swap later. Blackouts, double-booking, and
- *           time overlap stay HARD: an official who marked a date
- *           unavailable is never assigned on it.
+ *           commissioner can swap later. Blackouts, coach conflicts,
+ *           double-booking, and time overlap stay HARD: an official who
+ *           marked a date unavailable or coaches a team in the game is
+ *           never assigned.
  * Slots that still can't be filled are counted as skipped (not an error),
  * with the distinct blocking reasons reported back for the UI.
  *
@@ -157,16 +167,26 @@ export async function autoAssignUmpires(
   const { data: gamesRaw } = await supabase
     .from("games")
     .select(
-      `id, scheduled_at, status,
-       home_team:teams!home_team_id(division_id, division:divisions(id, umpires_per_game, umpire_roles, settings)),
+      `id, scheduled_at, status, home_team_id, away_team_id,
+       home_team:teams!home_team_id(division_id, division:divisions(id, umpires_per_game, priority, umpire_roles, settings)),
        away_team:teams!away_team_id(name)`,
     )
     .in("home_team_id", teamIds)
     .neq("status", "cancelled")
     .order("scheduled_at", { ascending: true });
 
+  // Division priority (0063): lower number = assigned first, so
+  // higher-priority divisions get first pick of officials. Within a
+  // single-division run every game shares one priority — the sort matters
+  // if this ever spans divisions; the stable sort keeps time order within
+  // equal priority either way.
   const divisionGames = ((gamesRaw as unknown as GameRow[] | null) ?? [])
-    .filter((g) => g.home_team?.division_id === divisionId);
+    .filter((g) => g.home_team?.division_id === divisionId)
+    .sort(
+      (a, b) =>
+        (a.home_team?.division?.priority ?? 0) -
+        (b.home_team?.division?.priority ?? 0),
+    );
 
   if (divisionGames.length === 0) {
     return none();
@@ -175,7 +195,7 @@ export async function autoAssignUmpires(
   // 4. Load every umpire in this season.
   const { data: umpiresRaw, error: umpiresErr } = await supabase
     .from("umpires")
-    .select("id, name, max_games_per_week")
+    .select("id, name, max_games_per_week, team_id")
     .eq("season_id", seasonId)
     .order("name");
   if (umpiresErr) {
@@ -347,6 +367,16 @@ export async function autoAssignUmpires(
           }
           if (blackoutsByUmpire.get(candidate.id)?.has(gameDateKey)) {
             slotReasons.add("blackout");
+            continue;
+          }
+          // Coach conflict (0063): an official never works a game involving
+          // the team they coach — hard at both tiers, same as blackouts.
+          if (
+            candidate.team_id &&
+            (candidate.team_id === g.home_team_id ||
+              candidate.team_id === g.away_team_id)
+          ) {
+            slotReasons.add("coach_conflict");
             continue;
           }
           if (strict) {

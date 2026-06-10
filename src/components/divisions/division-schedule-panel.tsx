@@ -220,7 +220,7 @@ export function DivisionSchedulePanel({
     const [{ data: umpiresRaw }, { data: assignsRaw }] = await Promise.all([
       supabase
         .from("umpires")
-        .select("id, name")
+        .select("id, name, team_id")
         .eq("season_id", leagueId)
         .order("name"),
       rows.length > 0
@@ -955,6 +955,8 @@ export function DivisionSchedulePanel({
                               duration_minutes: gameDurationMinutes,
                               home_team_name: game.home_team?.name ?? "TBD",
                               away_team_name: opponentName(game),
+                              home_team_id: game.home_team_id,
+                              away_team_id: game.away_team_id,
                             }}
                             seasonId={leagueId}
                             roles={umpireRoles}

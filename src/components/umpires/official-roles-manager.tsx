@@ -286,12 +286,17 @@ export function OfficialRolesManager({
                   </div>
                 ) : (
                   <>
-                    <span className="flex-1 text-sm text-gray-700">
+                    <button
+                      type="button"
+                      onClick={() => startRename(role)}
+                      className="min-w-0 flex-1 truncate rounded text-left text-sm text-gray-700 hover:text-[#0C1F3F]"
+                      title="Click to rename"
+                    >
                       {role.name}
                       {isMoving && (
                         <Loader2 className="ml-2 inline h-3 w-3 animate-spin text-gray-300" />
                       )}
-                    </span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => startRename(role)}

@@ -9,6 +9,7 @@ import { getOfficialTitlePluralLower } from "@/lib/utils/official-title";
 const SKIP_REASON_LABELS: Record<SkipReason, string> = {
   conflict: "time conflicts",
   blackout: "blackout dates",
+  coach_conflict: "coach conflicts",
 };
 
 function skipSummary(skipped: number, reasons: SkipReason[]): string {

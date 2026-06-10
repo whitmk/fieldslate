@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/client";
 import { getOfficialTitleLower } from "@/lib/utils/official-title";
 
 export type SeasonOption = { id: string; name: string; sport?: string | null };
+
+type TeamOption = { id: string; name: string };
 
 interface Props {
   seasons: SeasonOption[];
@@ -23,8 +25,35 @@ export function AddUmpireButton({ seasons }: Props) {
   const [phone, setPhone] = useState("");
   const [maxGames, setMaxGames] = useState("");
   const [notes, setNotes] = useState("");
+  const [teamId, setTeamId] = useState("");
+  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Coached-team options follow the selected season (coach conflict link,
+  // migration 0063). Season change resets the pick — teams don't carry over.
+  useEffect(() => {
+    if (!open || !seasonId) {
+      setTeams([]);
+      setTeamId("");
+      return;
+    }
+    let cancelled = false;
+    const supabase = createClient();
+    supabase
+      .from("teams")
+      .select("id, name")
+      .eq("league_id", seasonId)
+      .order("name")
+      .then(({ data }) => {
+        if (cancelled) return;
+        setTeams((data ?? []) as TeamOption[]);
+        setTeamId("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, seasonId]);
 
   function openModal() {
     if (seasons.length === 0) return;
@@ -35,6 +64,7 @@ export function AddUmpireButton({ seasons }: Props) {
     setPhone("");
     setMaxGames("");
     setNotes("");
+    setTeamId("");
     setError("");
     setOpen(true);
   }
@@ -57,6 +87,7 @@ export function AddUmpireButton({ seasons }: Props) {
         max_games_per_week:
           maxGames !== "" ? Math.max(1, parseInt(maxGames, 10) || 1) : null,
         notes: notes.trim() || null,
+        team_id: teamId || null,
       }] as never);
 
     if (insertError) {
@@ -208,6 +239,31 @@ export function AddUmpireButton({ seasons }: Props) {
                   className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
                 />
               </div>
+
+              {seasonId && teams.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-gray-700">
+                    Coaches team{" "}
+                    <span className="font-normal text-gray-400">(optional)</span>
+                  </label>
+                  <select
+                    value={teamId}
+                    onChange={(e) => setTeamId(e.target.value)}
+                    className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+                  >
+                    <option value="">— None —</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400">
+                    Auto-assign skips games involving this team; manual
+                    assignments show a warning.
+                  </p>
+                </div>
+              )}
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-gray-700">
