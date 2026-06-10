@@ -668,6 +668,7 @@ export function DivisionSchedulePanel({
             seasonId={leagueId}
             sport={leagueSport}
             enabled
+            onAssigned={() => void fetchGames()}
           />
         )}
 

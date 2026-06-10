@@ -12,9 +12,19 @@ interface Props {
   /** Hide the button entirely when the division doesn't require officials. */
   enabled: boolean;
   sport?: string | null;
+  /** Fires after a successful run. Parents holding assignments in client
+   *  state must re-fetch here — router.refresh() alone only reaches server
+   *  components, so without this their selects keep stale values. */
+  onAssigned?: () => void;
 }
 
-export function AutoAssignUmpiresButton({ divisionId, seasonId, enabled, sport }: Props) {
+export function AutoAssignUmpiresButton({
+  divisionId,
+  seasonId,
+  enabled,
+  sport,
+  onAssigned,
+}: Props) {
   const officialsLower = getOfficialTitlePluralLower(sport);
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -37,6 +47,7 @@ export function AutoAssignUmpiresButton({ divisionId, seasonId, enabled, sport }
     }
     setResult({ kind: "ok", filled: res.filled, skipped: res.skipped });
     router.refresh();
+    onAssigned?.();
   }
 
   return (
