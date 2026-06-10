@@ -11,13 +11,20 @@ import {
   type AvailabilityWindow,
 } from "./eligibility";
 import { ensureSeasonRoleIds } from "./roles";
+import { padRoleLabels } from "@/lib/utils/official-title";
 
-/** Why a slot couldn't be filled — every candidate was excluded for one of these. */
-export type SkipReason = "conflict" | "blackout" | "unavailable" | "weekly_limit";
+/**
+ * Why a slot couldn't be filled. Only the HARD constraints can empty a slot:
+ * availability windows and weekly caps are soft (the fallback tier ignores
+ * them), so a skip always means every candidate was double-booked or
+ * blacked out.
+ */
+export type SkipReason = "conflict" | "blackout";
 
 export type AutoAssignResult = {
   success: boolean;
   filled: number;
+  fallbackFilled: number; // subset of filled that ignored availability/weekly caps
   skipped: number; // slots that couldn't be filled
   skipReasons: SkipReason[]; // distinct reasons encountered across skipped slots
   error?: string;
@@ -48,11 +55,6 @@ type AssignmentRow = {
 
 type UmpireRow = { id: string; name: string; max_games_per_week: number | null };
 
-function parseRoles(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((r): r is string => typeof r === "string");
-}
-
 function gameDuration(settings: unknown): number {
   if (settings && typeof settings === "object" && "game_duration" in settings) {
     const v = (settings as { game_duration?: unknown }).game_duration;
@@ -64,16 +66,22 @@ function gameDuration(settings: unknown): number {
 /**
  * Fill empty umpire slots across all games in a division.
  *
- * Skips games whose division has umpires_per_game = 0. For each remaining
- * empty slot, picks the umpire with the fewest current assignments who:
- *   - is not already on this game and has no time overlap with another
- *     assignment anywhere in the season,
- *   - has no blackout date on the game's (local) date,
- *   - is inside one of their weekly availability windows (officials with no
- *     windows recorded count as always available),
- *   - is under their max_games_per_week for the game's Mon–Sun week.
- * Slots that can't be filled are counted as skipped (not an error), with the
- * distinct blocking reasons reported back for the UI.
+ * Skips games whose division has umpires_per_game = 0. Role labels come from
+ * the season's normalized official_roles list (sort_order, first
+ * umpires_per_game), padded with sport-aware fallbacks — the same derivation
+ * the slot UIs use.
+ *
+ * Best-effort, two-tier selection per empty slot (least-loaded first):
+ *   Tier 1: not on this game, no time overlap, no blackout, inside an
+ *           availability window (no windows = always available), and under
+ *           max_games_per_week for the game's Mon–Sun week.
+ *   Tier 2: if nobody fully qualifies, availability windows and weekly caps
+ *           go soft — an empty slot is worse than an over-cap official the
+ *           commissioner can swap later. Blackouts, double-booking, and
+ *           time overlap stay HARD: an official who marked a date
+ *           unavailable is never assigned on it.
+ * Slots that still can't be filled are counted as skipped (not an error),
+ * with the distinct blocking reasons reported back for the UI.
  *
  * Inserts carry both the role text and the normalized official_roles id
  * (role_id, migration 0062) — missing season roles are created on the fly.
@@ -86,24 +94,37 @@ export async function autoAssignUmpires(
   const none = (error?: string): AutoAssignResult => ({
     success: !error,
     filled: 0,
+    fallbackFilled: 0,
     skipped: 0,
     skipReasons: [],
     error,
   });
 
-  // 1. Load division so we know how many slots per game and the role labels.
-  const { data: divisionRaw, error: divisionErr } = await supabase
-    .from("divisions")
-    .select("id, umpires_per_game, umpire_roles, settings")
-    .eq("id", divisionId)
-    .single();
+  // 1. Load division (slot count + duration), league sport (padding labels),
+  //    and the season's normalized role list.
+  const [
+    { data: divisionRaw, error: divisionErr },
+    { data: leagueRaw },
+    { data: seasonRolesRaw },
+  ] = await Promise.all([
+    supabase
+      .from("divisions")
+      .select("id, umpires_per_game, settings")
+      .eq("id", divisionId)
+      .single(),
+    supabase.from("leagues").select("sport").eq("id", seasonId).single(),
+    supabase
+      .from("official_roles")
+      .select("id, name")
+      .eq("season_id", seasonId)
+      .order("sort_order"),
+  ]);
 
   if (divisionErr || !divisionRaw) {
     return none(divisionErr?.message ?? "Division not found.");
   }
   const division = divisionRaw as unknown as {
     umpires_per_game: number;
-    umpire_roles: unknown;
     settings: unknown;
   };
 
@@ -111,11 +132,14 @@ export async function autoAssignUmpires(
     return none();
   }
 
-  const roles = parseRoles(division.umpire_roles);
-  // Backfill role labels if the persisted array is shorter than the slot count.
-  while (roles.length < division.umpires_per_game) {
-    roles.push(`Umpire ${roles.length + 1}`);
-  }
+  const sport = (leagueRaw as { sport: string | null } | null)?.sport ?? null;
+  const seasonRoleNames = ((seasonRolesRaw ?? []) as { id: string; name: string }[])
+    .map((r) => r.name);
+  const roles = padRoleLabels(
+    seasonRoleNames.slice(0, division.umpires_per_game),
+    division.umpires_per_game,
+    sport,
+  );
   const divisionDuration = gameDuration(division.settings);
 
   // 2. Load teams in this division so we can target games whose home_team belongs to it.
@@ -283,6 +307,7 @@ export async function autoAssignUmpires(
     role_id: string | null;
   }[] = [];
   let skipped = 0;
+  let fallbackFilled = 0;
   const allSkipReasons = new Set<SkipReason>();
 
   for (const g of divisionGames) {
@@ -300,50 +325,63 @@ export async function autoAssignUmpires(
     const occupiedUmpires = umpiresOnGame.get(g.id) ?? new Set();
 
     for (const role of roles) {
+      // Legacy assignments may use role text outside the current season
+      // list, so occupiedRoles alone can't see them — cap on total bodies
+      // per game so those games don't get over-staffed.
+      if (occupiedUmpires.size >= division.umpires_per_game) break;
       if (occupiedRoles.has(role)) continue;
 
-      // Find the least-loaded umpire who can take this slot, recording why
-      // each candidate was excluded so an unfillable slot can say why.
       const sorted = [...umpires].sort(
         (a, b) => (loadByUmpire.get(a.id) ?? 0) - (loadByUmpire.get(b.id) ?? 0),
       );
       const slotReasons = new Set<SkipReason>();
-      let chosen: UmpireRow | null = null;
-      for (const candidate of sorted) {
-        if (occupiedUmpires.has(candidate.id)) {
-          slotReasons.add("conflict");
-          continue;
+
+      // Least-loaded umpire who passes the hard constraints (always) and the
+      // soft ones (strict tier only). Only hard blockers are recorded — if
+      // the slot ends up empty, they're the reasons why.
+      const pick = (strict: boolean): UmpireRow | null => {
+        for (const candidate of sorted) {
+          if (occupiedUmpires.has(candidate.id)) {
+            slotReasons.add("conflict");
+            continue;
+          }
+          if (blackoutsByUmpire.get(candidate.id)?.has(gameDateKey)) {
+            slotReasons.add("blackout");
+            continue;
+          }
+          if (strict) {
+            if (
+              !isWithinAvailability(
+                availabilityByUmpire.get(candidate.id) ?? [],
+                gameStart,
+                divisionDuration,
+              )
+            ) {
+              continue;
+            }
+            const cap = candidate.max_games_per_week;
+            if (
+              cap != null &&
+              cap > 0 &&
+              (weeklyLoad.get(candidate.id)?.get(gameWeek) ?? 0) >= cap
+            ) {
+              continue;
+            }
+          }
+          const bookings = umpireBookings.get(candidate.id) ?? [];
+          if (bookings.some((b) => gamesOverlap(candidateInfo, b))) {
+            slotReasons.add("conflict");
+            continue;
+          }
+          return candidate;
         }
-        if (blackoutsByUmpire.get(candidate.id)?.has(gameDateKey)) {
-          slotReasons.add("blackout");
-          continue;
-        }
-        if (
-          !isWithinAvailability(
-            availabilityByUmpire.get(candidate.id) ?? [],
-            gameStart,
-            divisionDuration,
-          )
-        ) {
-          slotReasons.add("unavailable");
-          continue;
-        }
-        const cap = candidate.max_games_per_week;
-        if (
-          cap != null &&
-          cap > 0 &&
-          (weeklyLoad.get(candidate.id)?.get(gameWeek) ?? 0) >= cap
-        ) {
-          slotReasons.add("weekly_limit");
-          continue;
-        }
-        const bookings = umpireBookings.get(candidate.id) ?? [];
-        if (bookings.some((b) => gamesOverlap(candidateInfo, b))) {
-          slotReasons.add("conflict");
-          continue;
-        }
-        chosen = candidate;
-        break;
+        return null;
+      };
+
+      let chosen = pick(true);
+      if (!chosen) {
+        chosen = pick(false);
+        if (chosen) fallbackFilled++;
       }
 
       if (!chosen) {
@@ -376,6 +414,7 @@ export async function autoAssignUmpires(
       return {
         success: false,
         filled: 0,
+        fallbackFilled: 0,
         skipped,
         skipReasons: Array.from(allSkipReasons),
         error: insertErr.message,
@@ -386,6 +425,7 @@ export async function autoAssignUmpires(
   return {
     success: true,
     filled: inserts.length,
+    fallbackFilled,
     skipped,
     skipReasons: Array.from(allSkipReasons),
   };

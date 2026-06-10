@@ -38,3 +38,22 @@ export function getOfficialTitlePluralLower(
 ): "umpires" | "referees" | "officials" {
   return getOfficialTitlePlural(sport).toLowerCase() as "umpires" | "referees" | "officials";
 }
+
+/**
+ * Pad a role-label list up to the division's umpires_per_game with
+ * sport-aware fallbacks ("Umpire 3", "Referee 2"). Shared by every slot
+ * surface so the padded labels — which become game_umpires.role text and
+ * official_roles names on write — agree everywhere.
+ */
+export function padRoleLabels(
+  roles: string[],
+  count: number,
+  sport: string | null | undefined,
+): string[] {
+  const padded = [...roles];
+  const title = getOfficialTitle(sport);
+  while (padded.length < count) {
+    padded.push(`${title} ${padded.length + 1}`);
+  }
+  return padded;
+}

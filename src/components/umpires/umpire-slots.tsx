@@ -75,7 +75,16 @@ export function UmpireSlots({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [errorByRole]);
 
-  if (roles.length === 0) return null;
+  // Roles now come from the season's official_roles list, but legacy
+  // game_umpires rows carry free-text labels that may not be on it. Append
+  // those so an existing assignment is never invisible (an unseen row would
+  // look like a free slot and invite double-staffing).
+  const effectiveRoles = [...roles];
+  for (const a of assignments) {
+    if (!effectiveRoles.includes(a.role)) effectiveRoles.push(a.role);
+  }
+
+  if (effectiveRoles.length === 0) return null;
 
   const candidate: GameTimeInfo = {
     id: game.id,
@@ -180,7 +189,7 @@ export function UmpireSlots({
 
   return (
     <div ref={containerRef} className={`flex flex-col gap-2 ${compact ? "" : ""}`}>
-      {roles.map((role) => {
+      {effectiveRoles.map((role) => {
         const current = assignments.find((a) => a.role === role);
         const err = errorByRole[role];
         const isPending = pendingRole === role;

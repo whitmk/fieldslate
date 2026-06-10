@@ -25,8 +25,8 @@ import {
   type UmpireOption,
 } from "@/components/umpires/umpire-slots";
 import {
-  getOfficialTitle,
   getOfficialTitlePluralLower,
+  padRoleLabels,
 } from "@/lib/utils/official-title";
 
 
@@ -155,16 +155,22 @@ export function DivisionSchedulePanel({
       return;
     }
 
-    const { data: divDataRaw } = await supabase
-      .from("divisions")
-      .select("settings, umpires_per_game, umpire_roles, intra_division_games_per_team")
-      .eq("id", divisionId)
-      .single();
+    const [{ data: divDataRaw }, { data: seasonRolesRaw }] = await Promise.all([
+      supabase
+        .from("divisions")
+        .select("settings, umpires_per_game, intra_division_games_per_team")
+        .eq("id", divisionId)
+        .single(),
+      supabase
+        .from("official_roles")
+        .select("name")
+        .eq("season_id", leagueId)
+        .order("sort_order"),
+    ]);
 
     const divData = divDataRaw as unknown as {
       settings: Record<string, unknown>;
       umpires_per_game: number | null;
-      umpire_roles: unknown;
       intra_division_games_per_team: number | null;
     } | null;
     const settings = (divData?.settings ?? {}) as {
@@ -187,15 +193,13 @@ export function DivisionSchedulePanel({
 
     const upg = Number(divData?.umpires_per_game ?? 0);
     setUmpiresPerGame(upg);
-    const persistedRoles = Array.isArray(divData?.umpire_roles)
-      ? (divData!.umpire_roles as unknown[]).filter(
-          (r): r is string => typeof r === "string",
-        )
-      : [];
-    const roles = [...persistedRoles];
-    const roleTitle = getOfficialTitle(leagueSport);
-    while (roles.length < upg) roles.push(`${roleTitle} ${roles.length + 1}`);
-    setUmpireRoles(roles);
+    // Slot labels: first umpires_per_game season roles by sort_order, padded
+    // sport-aware — same derivation as game-detail-modal and auto-assign.
+    // UmpireSlots appends any legacy assignment labels outside this list.
+    const seasonRoleNames = ((seasonRolesRaw ?? []) as { name: string }[]).map(
+      (r) => r.name,
+    );
+    setUmpireRoles(padRoleLabels(seasonRoleNames.slice(0, upg), upg, leagueSport));
 
     const { data } = await supabase
       .from("games")

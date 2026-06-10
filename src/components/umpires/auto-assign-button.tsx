@@ -9,8 +9,6 @@ import { getOfficialTitlePluralLower } from "@/lib/utils/official-title";
 const SKIP_REASON_LABELS: Record<SkipReason, string> = {
   conflict: "time conflicts",
   blackout: "blackout dates",
-  unavailable: "outside availability",
-  weekly_limit: "weekly game limits",
 };
 
 function skipSummary(skipped: number, reasons: SkipReason[]): string {
@@ -42,7 +40,13 @@ export function AutoAssignUmpiresButton({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<
-    | { kind: "ok"; filled: number; skipped: number; skipReasons: SkipReason[] }
+    | {
+        kind: "ok";
+        filled: number;
+        fallbackFilled: number;
+        skipped: number;
+        skipReasons: SkipReason[];
+      }
     | { kind: "err"; message: string }
     | null
   >(null);
@@ -61,6 +65,7 @@ export function AutoAssignUmpiresButton({
     setResult({
       kind: "ok",
       filled: res.filled,
+      fallbackFilled: res.fallbackFilled,
       skipped: res.skipped,
       skipReasons: res.skipReasons,
     });
@@ -85,15 +90,25 @@ export function AutoAssignUmpiresButton({
 
       {result?.kind === "ok" && (
         <span className="flex items-center gap-1.5 text-sm">
-          {result.skipped === 0 && result.filled > 0 ? (
+          {result.skipped === 0 && result.fallbackFilled === 0 && result.filled > 0 ? (
             <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-[#22C55E]" />
           ) : (
             <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-500" />
           )}
-          <span className={result.skipped > 0 ? "text-amber-700" : "text-[#22C55E]"}>
+          <span
+            className={
+              result.skipped > 0 || result.fallbackFilled > 0
+                ? "text-amber-700"
+                : "text-[#22C55E]"
+            }
+          >
             {result.filled === 0 && result.skipped === 0
               ? "Nothing to assign — all slots are already filled."
               : `${result.filled} slot${result.filled !== 1 ? "s" : ""} filled${
+                  result.fallbackFilled > 0
+                    ? ` · ${result.fallbackFilled} ignored availability or weekly limits — review and swap if needed`
+                    : ""
+                }${
                   result.skipped > 0
                     ? ` · ${skipSummary(result.skipped, result.skipReasons)}`
                     : ""

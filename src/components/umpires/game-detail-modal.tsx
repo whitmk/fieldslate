@@ -12,8 +12,8 @@ import {
   type UmpireOption,
 } from "./umpire-slots";
 import {
-  getOfficialTitle,
   getOfficialTitlePlural,
+  padRoleLabels,
 } from "@/lib/utils/official-title";
 
 export type GameDetailGame = {
@@ -144,14 +144,13 @@ export function GameDetailModal({ game, onClose }: Props) {
         id: string;
         name: string;
         umpires_per_game: number;
-        umpire_roles: unknown;
         settings: unknown;
       };
       let division: DivisionRow | null = null;
       if (game.home_team?.division_id) {
         const { data: divRaw } = await supabase
           .from("divisions")
-          .select("id, name, umpires_per_game, umpire_roles, settings")
+          .select("id, name, umpires_per_game, settings")
           .eq("id", game.home_team.division_id)
           .single();
         division = (divRaw as unknown as DivisionRow | null) ?? null;
@@ -160,8 +159,12 @@ export function GameDetailModal({ game, onClose }: Props) {
       // Assignments for this game
       const assignments = await fetchAssignments(supabase, game.id);
 
-      // Umpire roster for the season + league sport
-      const [{ data: umpiresRaw, error: umpiresErr }, { data: leagueRaw }] = await Promise.all([
+      // Umpire roster, league sport, and the season's normalized role list
+      const [
+        { data: umpiresRaw, error: umpiresErr },
+        { data: leagueRaw },
+        { data: seasonRolesRaw },
+      ] = await Promise.all([
         supabase
           .from("umpires")
           .select("id, name")
@@ -172,6 +175,11 @@ export function GameDetailModal({ game, onClose }: Props) {
           .select("sport")
           .eq("id", game.league_id)
           .single(),
+        supabase
+          .from("official_roles")
+          .select("name")
+          .eq("season_id", game.league_id)
+          .order("sort_order"),
       ]);
       if (umpiresErr) {
         if (!cancelled) setError(umpiresErr.message);
@@ -179,15 +187,17 @@ export function GameDetailModal({ game, onClose }: Props) {
       const umpires = (umpiresRaw ?? []) as UmpireOption[];
       const sport = (leagueRaw as { sport: string | null } | null)?.sport ?? null;
 
-      const roles = Array.isArray(division?.umpire_roles)
-        ? (division!.umpire_roles as unknown[]).filter(
-            (r): r is string => typeof r === "string",
-          )
-        : [];
-      const roleTitle = getOfficialTitle(sport);
-      while (roles.length < (division?.umpires_per_game ?? 0)) {
-        roles.push(`${roleTitle} ${roles.length + 1}`);
-      }
+      // Slot labels: first umpires_per_game season roles by sort_order,
+      // padded sport-aware. UmpireSlots appends any legacy assignment labels
+      // that fall outside this list.
+      const seasonRoleNames = ((seasonRolesRaw ?? []) as { name: string }[]).map(
+        (r) => r.name,
+      );
+      const roles = padRoleLabels(
+        seasonRoleNames.slice(0, division?.umpires_per_game ?? 0),
+        division?.umpires_per_game ?? 0,
+        sport,
+      );
 
       const settings = (division?.settings ?? {}) as { game_duration?: number };
       const durationMinutes =

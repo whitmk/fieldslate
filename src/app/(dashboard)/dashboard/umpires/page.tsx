@@ -6,6 +6,10 @@ import { AddUmpireButton } from "@/components/umpires/add-umpire-button";
 import { UmpireList, type UmpireRow, type SeasonPaySettings } from "@/components/umpires/umpire-list";
 import { PayReportButton } from "@/components/umpires/pay-report-button";
 import { LeaguePaySettings } from "@/components/umpires/league-pay-settings";
+import {
+  OfficialRolesManager,
+  type SeasonRole,
+} from "@/components/umpires/official-roles-manager";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isElite } from "@/lib/plan/limits";
@@ -52,7 +56,7 @@ export default async function UmpiresPage() {
 
   const [
     { data: rawUmpires },
-    { data: rawDivisions },
+    { data: rawSeasonRoles },
     { data: rawRoleRates },
   ] = await Promise.all([
     seasonIds.length > 0
@@ -66,9 +70,10 @@ export default async function UmpiresPage() {
       : Promise.resolve({ data: [] as unknown[] }),
     seasonIds.length > 0
       ? supabase
-          .from("divisions")
-          .select("league_id, umpire_roles")
-          .in("league_id", seasonIds)
+          .from("official_roles")
+          .select("id, name, sort_order, season_id")
+          .in("season_id", seasonIds)
+          .order("sort_order")
       : Promise.resolve({ data: [] as unknown[] }),
     seasonIds.length > 0
       ? supabase
@@ -94,13 +99,17 @@ export default async function UmpiresPage() {
   const anyPayTracking = seasonPaySettings.some((s) => s.pay_tracking_enabled);
   const simpleSeasons = seasons.map((s) => ({ id: s.id, name: s.name, sport: s.sport }));
 
-  const rolesBySeason = new Map<string, Set<string>>();
-  for (const d of (rawDivisions ?? []) as { league_id: string; umpire_roles: unknown }[]) {
-    if (!Array.isArray(d.umpire_roles)) continue;
-    if (!rolesBySeason.has(d.league_id)) rolesBySeason.set(d.league_id, new Set());
-    for (const r of d.umpire_roles) {
-      if (typeof r === "string" && r) rolesBySeason.get(d.league_id)!.add(r);
-    }
+  // Season roles now come from the normalized official_roles list (sorted),
+  // not from flattening divisions.umpire_roles jsonb — these are the names
+  // the role manager edits and the pay-rate rows are keyed to.
+  const rolesBySeason = new Map<string, SeasonRole[]>();
+  for (const r of (rawSeasonRoles ?? []) as (SeasonRole & { season_id: string })[]) {
+    if (!rolesBySeason.has(r.season_id)) rolesBySeason.set(r.season_id, []);
+    rolesBySeason.get(r.season_id)!.push({
+      id: r.id,
+      name: r.name,
+      sort_order: r.sort_order,
+    });
   }
 
   const ratesBySeason = new Map<string, { role: string; rate: number }[]>();
@@ -161,6 +170,29 @@ export default async function UmpiresPage() {
       {seasons.length > 0 && (
         <div className="flex flex-col gap-3">
           <div>
+            <h2 className="text-lg font-semibold text-[#0C1F3F]">Official roles</h2>
+            <p className="mt-0.5 text-sm text-gray-500">
+              The roles officials can fill each season — these drive game slots,
+              auto-assign, and per-role pay rates.
+            </p>
+          </div>
+          <div className="flex flex-col gap-4">
+            {seasons.map((s) => (
+              <OfficialRolesManager
+                key={s.id}
+                seasonId={s.id}
+                seasonName={s.name}
+                sport={s.sport}
+                initialRoles={rolesBySeason.get(s.id) ?? []}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {seasons.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div>
             <h2 className="text-lg font-semibold text-[#0C1F3F]">Pay tracking</h2>
             <p className="mt-0.5 text-sm text-gray-500">
               Enable pay tracking per season and set rates here. Pay rates and totals
@@ -180,7 +212,7 @@ export default async function UmpiresPage() {
                     | "per_umpire"
                     | "per_role"
                 }
-                availableRoles={Array.from(rolesBySeason.get(s.id) ?? [])}
+                availableRoles={(rolesBySeason.get(s.id) ?? []).map((r) => r.name)}
                 initialRoleRates={ratesBySeason.get(s.id) ?? []}
               />
             ))}
