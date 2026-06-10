@@ -2,11 +2,17 @@
 
 import { createClient } from "@/lib/supabase/client";
 import type { PlayoffWizardData, SeededTeam, PlayoffFormat } from "@/components/playoffs/playoff-wizard-types";
+import {
+  dayKeyFromJsDate,
+  isVenueAvailable,
+  parseAvailability,
+  type VenueAvailability,
+} from "@/lib/venues/availability";
 
 // ─── Result type ──────────────────────────────────────────────────────────────
 
 export type BracketResult =
-  | { success: true; gamesCreated: number }
+  | { success: true; gamesCreated: number; tbdCount: number }
   | { success: false; error: string };
 
 // ─── Game row shape ───────────────────────────────────────────────────────────
@@ -49,13 +55,23 @@ interface Slot {
   venueId: string;
 }
 
+// Matches the hardcoded 105-min spacing below (90-min game + 15-min buffer).
+// If slot spacing ever switches to division settings, change both together.
+const PLAYOFF_GAME_DURATION_MIN = 90;
+
 /**
  * Returns all available (venue × time) pairs for each valid playoff date,
  * grouped so index 0 = first date, index 1 = second date, etc.
  * Within each date, slots are ordered by time then venue so that multiple
  * games on the same venue within a round are staggered across time windows.
+ *
+ * Venue hours are a hard filter — a slot the venue isn't open for is never
+ * emitted (same rule as the main schedule generator and findFreeSlot).
  */
-function buildSlotsByDate(data: PlayoffWizardData): Slot[][] {
+function buildSlotsByDate(
+  data: PlayoffWizardData,
+  venueAvailability: Map<string, VenueAvailability>,
+): Slot[][] {
   if (!data.start_date || !data.end_date) return [];
 
   const venueIds = data.venue_assignments.map((v) => v.venue_id);
@@ -82,12 +98,24 @@ function buildSlotsByDate(data: PlayoffWizardData): Slot[][] {
       const win = dayKey ? data.day_windows[dayKey as keyof typeof data.day_windows] : undefined;
       const earliest = timeToMinutes(win?.start ?? "09:00");
       const latest = timeToMinutes(win?.end ?? "21:00");
+      const availabilityDay = dayKeyFromJsDate(cur);
 
       const dateSlots: Slot[] = [];
       let t = earliest;
       while (t <= latest) {
+        const time = minutesToTimeStr(t);
         for (const venueId of venueIds) {
-          dateSlots.push({ date: iso, time: minutesToTimeStr(t), venueId });
+          // A venue missing from the map passes through — the wizard already
+          // filters to configured venues, so missing means the availability
+          // fetch failed, and blocking every slot would be worse.
+          const av = venueAvailability.get(venueId);
+          if (
+            av &&
+            !isVenueAvailable(av, availabilityDay, time, PLAYOFF_GAME_DURATION_MIN)
+          ) {
+            continue;
+          }
+          dateSlots.push({ date: iso, time, venueId });
         }
         t += interval;
       }
@@ -331,7 +359,22 @@ export async function generateBracket(
     return { success: false, error: "Need at least 2 teams to generate a bracket." };
   }
 
-  const slotsByDate = buildSlotsByDate(data);
+  // Venue hours for the slot filter — the wizard only carries venue ids.
+  // A failed fetch leaves the map empty, which passes slots through
+  // unfiltered (see buildSlotsByDate) rather than blocking the bracket.
+  const venueIds = data.venue_assignments.map((v) => v.venue_id);
+  const venueAvailability = new Map<string, VenueAvailability>();
+  if (venueIds.length > 0) {
+    const { data: venueRows } = await supabase
+      .from("venues")
+      .select("id, availability")
+      .in("id", venueIds);
+    for (const v of (venueRows ?? []) as { id: string; availability: unknown }[]) {
+      venueAvailability.set(v.id, parseAvailability(v.availability));
+    }
+  }
+
+  const slotsByDate = buildSlotsByDate(data, venueAvailability);
 
   const { error: delErr } = await supabase
     .from("playoff_games")
@@ -362,5 +405,10 @@ export async function generateBracket(
     .update({ status: "active", updated_at: new Date().toISOString() } as never)
     .eq("id", playoffId);
 
-  return { success: true, gamesCreated: games.length };
+  // Games whose slot fell through to null (slots exhausted, or every
+  // candidate filtered out by venue hours) — surfaced by the wizard so the
+  // commissioner knows to place them manually.
+  const tbdCount = games.filter((g) => g.scheduled_date === null).length;
+
+  return { success: true, gamesCreated: games.length, tbdCount };
 }

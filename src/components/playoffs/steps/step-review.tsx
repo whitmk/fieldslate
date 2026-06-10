@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ORDERED_DAYS } from "@/components/divisions/wizard-types";
 import { generateBracket } from "@/lib/playoffs/generate-bracket";
@@ -64,6 +64,9 @@ function Row({ label, value }: { label: string; value: string }) {
 export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Games the generator couldn't place (slots exhausted or filtered out by
+  // venue hours) — they save with no venue/time for manual assignment.
+  const [tbdCount, setTbdCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const activeDays = data.playing_days
@@ -121,6 +124,7 @@ export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
         setSaving(false);
         return;
       }
+      setTbdCount(result.tbdCount);
     }
 
     setSaved(true);
@@ -142,6 +146,16 @@ export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
             <strong>{data.division_name}</strong> has been saved as a draft.
           </p>
         </div>
+        {tbdCount > 0 && (
+          <div className="flex max-w-md items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-left">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+            <p className="text-xs text-amber-800">
+              {tbdCount} game{tbdCount !== 1 ? "s" : ""} could not be placed —
+              the proposed times fall outside venue availability. Assign{" "}
+              {tbdCount !== 1 ? "them" : "it"} manually from the bracket view.
+            </p>
+          </div>
+        )}
         <button
           onClick={onComplete}
           className="mt-2 rounded-lg bg-[#22C55E] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
