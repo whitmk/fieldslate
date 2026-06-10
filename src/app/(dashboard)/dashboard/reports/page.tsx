@@ -4,6 +4,7 @@ import { OverviewReports } from "@/components/reports/overview-reports";
 import { autoArchivePastSeasons } from "@/lib/seasons/auto-archive";
 import { resolveSelectedSeasonId } from "@/lib/seasons/resolve-selected";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isElite } from "@/lib/plan/limits";
 import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
@@ -47,7 +48,15 @@ export default async function ReportsPage({
 
   const ownedLeagues = (leaguesRaw ?? []) as OwnedLeague[];
   const showArchived = searchParams.showArchived === "1";
-  const selected = resolveSelectedSeasonId(searchParams.season, ownedLeagues);
+  // Default to the topbar's global season when no ?season= override is in
+  // the URL (Chunk C). The local selector stays — "All seasons" lives here —
+  // and writes the URL param only, never the global cookie.
+  const globalSeasonId = await getCurrentSeasonId(supabase, currentOrgId);
+  const selected = resolveSelectedSeasonId(
+    searchParams.season,
+    ownedLeagues,
+    globalSeasonId,
+  );
   const isAll = selected === "all";
 
   const seasonOptions: SeasonOption[] = ownedLeagues.map((l) => ({

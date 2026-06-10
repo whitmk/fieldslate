@@ -57,7 +57,7 @@ export default async function SnackShackPage() {
           <CardContent>
             <div className="flex flex-col items-center py-16 text-center">
               <ShoppingBag className="mb-3 h-10 w-10 text-gray-200" />
-              <p className="font-medium text-gray-900">No seasons yet</p>
+              <p className="font-medium text-gray-900">No active season</p>
               <p className="mt-1 text-sm text-gray-400">
                 Create a season first, then come back to set up the Snack Shack.
               </p>

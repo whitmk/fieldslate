@@ -8,6 +8,7 @@ import { SeasonSelector, type SeasonOption } from "@/components/dashboard/season
 import { autoArchivePastSeasons } from "@/lib/seasons/auto-archive";
 import { resolveSelectedSeasonId } from "@/lib/seasons/resolve-selected";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isProPlus, isElite } from "@/lib/plan/limits";
 import { planLabel } from "@/lib/plan/labels";
@@ -70,7 +71,16 @@ export default async function DashboardPage({
   // Browsing archived seasons is Elite-only — force off for Free/Pro even if
   // ?showArchived=1 is in the URL (the toggle is also hidden for them).
   const showArchived = isElite(plan) && searchParams.showArchived === "1";
-  const selected = resolveSelectedSeasonId(searchParams.season, ownedLeagues);
+  // Default to the topbar's global season when no ?season= override is in
+  // the URL (Chunk C). The local selector stays — it's the only place the
+  // "All seasons" rollup lives — and writes the URL param only, never the
+  // global cookie.
+  const globalSeasonId = await getCurrentSeasonId(supabase, currentOrgId);
+  const selected = resolveSelectedSeasonId(
+    searchParams.season,
+    ownedLeagues,
+    globalSeasonId,
+  );
   const selectedSeason =
     selected === "all" ? null : ownedLeagues.find((l) => l.id === selected) ?? null;
   const isAll = selected === "all";
