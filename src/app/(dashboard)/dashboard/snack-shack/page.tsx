@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ShoppingBag } from "lucide-react";
 import { SnackShackPageClient } from "@/components/snack-shack/snack-shack-page-client";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isElite } from "@/lib/plan/limits";
 import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
@@ -24,15 +25,18 @@ export default async function SnackShackPage() {
     return <FeatureLockedCard feature="Snack Shack" tier="Elite" />;
   }
 
-  // Load active (non-archived) seasons only — snack shack assignments are
-  // operational; archived seasons are accessible via /dashboard/leagues if
-  // historical lookup is needed.
-  const { data: seasonsRaw } = await supabase
-    .from("leagues")
-    .select("id, name, season")
-    .eq("owner_id", currentOrgId)
-    .is("archived_at", null)
-    .order("created_at", { ascending: false });
+  // Season-scoped (Chunk B2): only the topbar's selected season. The
+  // `seasons` array keeps its shape (now 0 or 1 elements) so the client's
+  // local season dropdown — which only renders for 2+ seasons — naturally
+  // disappears and its seasons[0] default IS the selected season.
+  const seasonId = await getCurrentSeasonId(supabase, currentOrgId);
+
+  const { data: seasonsRaw } = seasonId
+    ? await supabase
+        .from("leagues")
+        .select("id, name, season")
+        .eq("id", seasonId)
+    : { data: [] };
 
   const seasons = (seasonsRaw ?? []) as {
     id: string;
@@ -64,12 +68,11 @@ export default async function SnackShackPage() {
     );
   }
 
-  // Load snack_shack_settings for each season
-  const seasonIds = seasons.map((s) => s.id);
+  // Load snack_shack_settings for the selected season
   const { data: settingsRaw } = await supabase
     .from("snack_shack_settings")
     .select("*")
-    .in("season_id", seasonIds);
+    .eq("season_id", seasonId!);
 
   const allSettings = (settingsRaw ?? []) as {
     id: string;
@@ -83,11 +86,11 @@ export default async function SnackShackPage() {
     updated_at: string;
   }[];
 
-  // Load teams for all seasons
+  // Load teams for the selected season
   const { data: teamsRaw } = await supabase
     .from("teams")
     .select("id, name, league_id")
-    .in("league_id", seasonIds)
+    .eq("league_id", seasonId!)
     .order("name", { ascending: true });
   const allTeams = (teamsRaw ?? []) as TeamRow[];
 

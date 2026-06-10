@@ -72,10 +72,16 @@ function rowToWizardData(row: PlayoffRow): PlayoffWizardData {
 
 interface Props {
   currentOrgId: string;
+  /** The topbar's selected season (Chunk B2) — null when the org has no
+   *  active seasons. Single source of truth; the client no longer fetches
+   *  leagues itself. */
+  season: League | null;
 }
 
-export function PlayoffsPageClient({ currentOrgId }: Props) {
-  const [leagues, setLeagues] = useState<League[]>([]);
+export function PlayoffsPageClient({ currentOrgId, season }: Props) {
+  // Kept as an array so the grouped render below stays untouched — it just
+  // always has 0 or 1 entries now.
+  const leagues: League[] = season ? [season] : [];
   const [playoffs, setPlayoffs] = useState<PlayoffRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -84,24 +90,13 @@ export function PlayoffsPageClient({ currentOrgId }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [exportingPlayoff, setExportingPlayoff] = useState<PlayoffRow | null>(null);
 
+  const seasonId = season?.id ?? null;
+
   const load = useCallback(async () => {
     setLoading(true);
-    const supabase = createClient();
 
-    // Active (non-archived) seasons only — admins shouldn't be creating
-    // playoff brackets against a closed season.
-    const { data: leagueData } = await supabase
-      .from("leagues")
-      .select("id, name, sport")
-      .eq("owner_id", currentOrgId)
-      .is("archived_at", null)
-      .order("name");
-
-    const leagueList = (leagueData ?? []) as League[];
-    setLeagues(leagueList);
-
-    if (leagueList.length > 0) {
-      const leagueIds = leagueList.map((l) => l.id);
+    if (seasonId) {
+      const supabase = createClient();
       // Use FK hint to disambiguate: playoffs has two FKs to divisions
       const { data: playoffData, error } = await supabase
         .from("playoffs")
@@ -111,16 +106,18 @@ export function PlayoffsPageClient({ currentOrgId }: Props) {
            cross_division_enabled, cross_division_opponent_id,
            division:divisions!playoffs_division_id_fkey(id, name)`
         )
-        .in("league_id", leagueIds)
+        .eq("league_id", seasonId)
         .order("division_id");
 
       if (!error) {
         setPlayoffs((playoffData as unknown as PlayoffRow[]) ?? []);
       }
+    } else {
+      setPlayoffs([]);
     }
 
     setLoading(false);
-  }, [currentOrgId]);
+  }, [seasonId]);
 
   useEffect(() => {
     load();

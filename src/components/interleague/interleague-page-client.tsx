@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Building2,
   Plus,
@@ -724,16 +724,19 @@ function fmtSentDate(iso: string): string {
 
 interface InterleaguePageClientProps {
   currentOrgId: string;
+  /** The topbar's selected season (Chunk B2) — null when the org has no
+   *  active seasons. Replaces the old local season picker. */
+  season: Season | null;
 }
 
-export function InterleaguePageClient({ currentOrgId }: InterleaguePageClientProps) {
+export function InterleaguePageClient({
+  currentOrgId,
+  season,
+}: InterleaguePageClientProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const seasonFromUrl = searchParams.get("season");
   const [orgs, setOrgs] = useState<InterleagueOrg[]>([]);
-  const [seasons, setSeasons] = useState<Season[]>([]);
-  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(
-    seasonFromUrl,
-  );
   const [invites, setInvites] = useState<SentInviteRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -786,117 +789,106 @@ export function InterleaguePageClient({ currentOrgId }: InterleaguePageClientPro
     };
   }, []);
 
-  const selectedSeason = useMemo(
-    () => seasons.find((s) => s.id === selectedSeasonId) ?? null,
-    [seasons, selectedSeasonId],
-  );
+  // The topbar's selected season, threaded from the server (Chunk B2) —
+  // replaces the old client-fetched seasons list + local picker.
+  const selectedSeason = season;
+  const seasonId = season?.id ?? null;
+  const visibleInvites = invites;
 
-  // Sent invites are scoped to the season picker. The dropdown only carries
-  // real season ids today, so we always filter; if an "All seasons" option is
-  // ever added back, treat a falsy selection as "show everything".
-  const visibleInvites = useMemo(
-    () =>
-      selectedSeasonId
-        ? invites.filter((inv) => inv.season_id === selectedSeasonId)
-        : invites,
-    [invites, selectedSeasonId],
-  );
+  // `?season=<id>` deep links (e.g. the Season detail Quick Actions card)
+  // now sync the GLOBAL season selection: write the cookie via the selector
+  // API, strip the param, refresh. One-shot — never loops, and an invalid
+  // id (archived/foreign) is rejected by the API and simply ignored.
+  const syncedSeasonParamRef = useRef(false);
+  useEffect(() => {
+    if (syncedSeasonParamRef.current || !seasonFromUrl) return;
+    syncedSeasonParamRef.current = true;
+    if (seasonFromUrl === seasonId) {
+      router.replace("/dashboard/interleague", { scroll: false });
+      return;
+    }
+    void (async () => {
+      const res = await fetch("/api/seasons/select", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ season_id: seasonFromUrl }),
+      });
+      router.replace("/dashboard/interleague", { scroll: false });
+      if (res.ok) router.refresh();
+    })();
+  }, [seasonFromUrl, seasonId, router]);
 
   const loadAll = useCallback(async () => {
     const supabase = createClient();
 
-    // Fetch active seasons first so we can scope the invites query by
-    // season_id. Without this scope a multi-org admin would see invites
-    // sent from EVERY org they belong to (RLS permits both). interleague
-    // invites have no first-class "sending org" column — sender_user_id
-    // is a user-id reference, season_id is the cleanest org anchor since
-    // every season belongs to exactly one org via leagues.owner_id.
-    //
-    // Active (non-archived) seasons only — interleague invites/replies are
-    // operational. Historical interleague games on archived seasons stay
-    // visible through the season detail page.
-    const { data: seasonRowsRaw } = await supabase
-      .from("leagues")
-      .select("id, name, season")
-      .eq("owner_id", currentOrgId)
-      .is("archived_at", null)
-      .order("created_at", { ascending: false });
-    const seasonRows = (seasonRowsRaw as Season[]) ?? [];
-    const orgLeagueIds = seasonRows.map((s) => s.id);
-
     const [orgsRes, invitesRes, counterRes, reschedRes] = await Promise.all([
       // interleague_orgs has owner_id directly; this is just the standard
-      // owner-scoped filter every other "directory" surface uses.
+      // owner-scoped filter every other "directory" surface uses. The org
+      // DIRECTORY stays org-scoped — only the season-keyed surfaces below
+      // follow the selected season.
       supabase
         .from("interleague_orgs")
         .select("*")
         .eq("owner_id", currentOrgId)
         .order("name"),
       // Sent invites only (recipients are external; there is no in-app
-      // "received invites" surface). Scope via season_id rather than
-      // sender_user_id — season_id has a hard FK to leagues, so we anchor
-      // to the org that owns the season being invited TO. This still
-      // includes invites sent by admins (not just the owner) because
-      // their invite's season still belongs to currentOrgId's leagues.
-      orgLeagueIds.length
+      // "received invites" surface). season_id has a hard FK to leagues,
+      // so the selected season also carries the org scope.
+      seasonId
         ? supabase
             .from("interleague_invites")
             .select("*, org:interleague_orgs(name)")
-            .in("season_id", orgLeagueIds)
+            .eq("season_id", seasonId)
             .order("created_at", { ascending: false })
         : Promise.resolve({ data: [] as unknown[] }),
       // Counter-proposed games: pending_interleague with a recipient response
       // (external_team_name) and either a proposed time or proposed venue.
-      supabase
-        .from("games")
-        .select(
-          `id, scheduled_at, proposed_scheduled_at, proposed_venue_name,
-           external_team_name, is_away,
-           home_team:teams!home_team_id(name, division:divisions(name)),
-           venue:venues(name),
-           interleague_org:interleague_orgs(name),
-           league:leagues!inner(name, season, owner_id)`
-        )
-        .eq("status", "pending_interleague")
-        .eq("league.owner_id", currentOrgId)
-        .not("external_team_name", "is", null)
-        .order("scheduled_at", { ascending: true }),
+      seasonId
+        ? supabase
+            .from("games")
+            .select(
+              `id, scheduled_at, proposed_scheduled_at, proposed_venue_name,
+               external_team_name, is_away,
+               home_team:teams!home_team_id(name, division:divisions(name)),
+               venue:venues(name),
+               interleague_org:interleague_orgs(name),
+               league:leagues!inner(name, season, owner_id)`
+            )
+            .eq("status", "pending_interleague")
+            .eq("league_id", seasonId)
+            .not("external_team_name", "is", null)
+            .order("scheduled_at", { ascending: true })
+        : Promise.resolve({ data: [] as unknown[] }),
       // Inbound reschedule requests: pending, externally initiated
-      // (requested_by_user_id IS NULL), on games we own via league.
-      supabase
-        .from("interleague_reschedule_requests")
-        .select(
-          `id, proposed_scheduled_at, proposed_venue_name, note, created_at,
-           game:games!inner(
-             id, scheduled_at, is_away, external_team_name, proposed_venue_name,
-             home_team:teams!home_team_id(name, division:divisions(name)),
-             venue:venues(name),
-             interleague_org:interleague_orgs(name),
-             league:leagues!inner(name, season, owner_id)
-           )`
-        )
-        .eq("status", "pending")
-        .is("requested_by_user_id", null)
-        .eq("game.league.owner_id", currentOrgId)
-        .order("created_at", { ascending: false }),
+      // (requested_by_user_id IS NULL), on the selected season's games.
+      seasonId
+        ? supabase
+            .from("interleague_reschedule_requests")
+            .select(
+              `id, proposed_scheduled_at, proposed_venue_name, note, created_at,
+               game:games!inner(
+                 id, scheduled_at, is_away, external_team_name, proposed_venue_name,
+                 home_team:teams!home_team_id(name, division:divisions(name)),
+                 venue:venues(name),
+                 interleague_org:interleague_orgs(name),
+                 league:leagues!inner(name, season, owner_id)
+               )`
+            )
+            .eq("status", "pending")
+            .is("requested_by_user_id", null)
+            .eq("game.league_id", seasonId)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] as unknown[] }),
     ]);
 
     setOrgs((orgsRes.data as InterleagueOrg[]) ?? []);
-    setSeasons(seasonRows);
-    // Honor a `?season=<id>` deep link (e.g. from the Season detail Quick
-    // Actions card) when the id matches a season the user owns; otherwise
-    // keep any prior selection or fall back to the most recent season.
-    setSelectedSeasonId((prev) => {
-      if (prev && seasonRows.some((s) => s.id === prev)) return prev;
-      return seasonRows[0]?.id ?? null;
-    });
     setInvites((invitesRes.data as SentInviteRow[]) ?? []);
     // Filter to games where the recipient actually counter-proposed something
     const counter = ((counterRes.data as unknown as CounterProposedGame[]) ?? [])
       .filter((g) => g.proposed_scheduled_at || g.proposed_venue_name);
     setCounterGames(counter);
     setReschedRequests((reschedRes.data as unknown as PendingRescheduleRequest[]) ?? []);
-  }, [currentOrgId]);
+  }, [currentOrgId, seasonId]);
 
   useEffect(() => {
     loadAll().then(() => setLoading(false));
@@ -1049,24 +1041,7 @@ export function InterleaguePageClient({ currentOrgId }: InterleaguePageClientPro
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {seasons.length > 0 && (
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-                  Season
-                </label>
-                <select
-                  value={selectedSeasonId ?? ""}
-                  onChange={(e) => setSelectedSeasonId(e.target.value)}
-                  className="h-9 rounded-lg border border-gray-200 bg-white px-2.5 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-                >
-                  {seasons.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {seasonLabel(s)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            {/* Season selection moved to the topbar switcher (Chunk B2). */}
             {!loading && orgs.length > 0 && (
               <button
                 onClick={openAdd}
