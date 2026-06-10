@@ -562,6 +562,48 @@ export type Database = {
           },
         ]
       }
+      conflict_overrides: {
+        Row: {
+          conflict_type: string
+          created_at: string
+          game_id: string
+          id: string
+          overridden_by: string
+          reason: string
+        }
+        Insert: {
+          conflict_type: string
+          created_at?: string
+          game_id: string
+          id?: string
+          overridden_by: string
+          reason: string
+        }
+        Update: {
+          conflict_type?: string
+          created_at?: string
+          game_id?: string
+          id?: string
+          overridden_by?: string
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conflict_overrides_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conflict_overrides_overridden_by_fkey"
+            columns: ["overridden_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leagues: {
         Row: {
           archived_at: string | null
@@ -1614,6 +1656,7 @@ export type PlayoffGame  = Database["public"]["Tables"]["playoff_games"]["Row"];
 export type Umpire         = Database["public"]["Tables"]["umpires"]["Row"];
 export type GameUmpire     = Database["public"]["Tables"]["game_umpires"]["Row"];
 export type UmpireRoleRate    = Database["public"]["Tables"]["umpire_role_rates"]["Row"];
+export type ConflictOverride      = Database["public"]["Tables"]["conflict_overrides"]["Row"];
 export type OfficialRole          = Database["public"]["Tables"]["official_roles"]["Row"];
 export type OfficialAvailability  = Database["public"]["Tables"]["official_availability"]["Row"];
 export type OfficialBlackout      = Database["public"]["Tables"]["official_blackouts"]["Row"];

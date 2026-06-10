@@ -6,12 +6,30 @@ import { AlertTriangle, CheckCircle2, Loader2, Plus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import {
+  DAY_LABELS,
+  dayKeyFromIsoDate,
+  fmtTime12,
+  isVenueAvailable,
+  parseAvailability,
+} from "@/lib/venues/availability";
+import {
+  CONFLICT_TYPE_LABELS,
+  insertConflictOverrides,
+  type DetectedConflict,
+} from "@/lib/schedule/conflict-overrides";
 
 // Manually add a single game. Inserts directly into games using the same
 // column shape the schedule generator writes (see generate-schedule.ts §9),
 // so finishSchedule counts it toward per-team totals and avoids its
 // venue/time. Note that "Regenerate full schedule" wipes a division's games
 // (preserving accepted interleague) — manual games included, by design.
+//
+// Conflicts (venue double-book, venue hours, team double-book) BLOCK the
+// save; the admin can override only by supplying a required reason, which is
+// recorded per conflict type in conflict_overrides (0064) and surfaced in
+// the game detail modal. Override reasons are deliberately separate from
+// games.notes.
 
 export type AddGameSeason = { id: string; name: string };
 export type AddGameDivision = { id: string; name: string; league_id: string };
@@ -70,9 +88,12 @@ export function AddGameModal({
   const [venuesLoading, setVenuesLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // null = not checked yet; non-empty = warnings shown, next save overrides.
-  // A check that finds nothing inserts in the same click (never set to []).
-  const [conflicts, setConflicts] = useState<string[] | null>(null);
+  // null = not checked yet; non-empty = conflicts shown and Save is BLOCKED
+  // until an override reason is entered. A check that finds nothing inserts
+  // in the same click (never set to []).
+  const [conflicts, setConflicts] = useState<DetectedConflict[] | null>(null);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
 
   // Venues are org-scoped (owner_id), not season-scoped — resolve the org
   // from the first division's league, then list org venues (same query the
@@ -124,12 +145,14 @@ export function AddGameModal({
   const complete =
     !!divisionId && !!homeTeamId && !!awayTeamId && !!date && !!time && !!venueId;
 
-  // Any field change invalidates a previously shown conflict warning — the
-  // next save re-checks against the new values.
+  // Any field change invalidates previously detected conflicts (and any
+  // in-progress override) — the next save re-checks against the new values.
   function setField<T>(setter: (v: T) => void) {
     return (v: T) => {
       setter(v);
       setConflicts(null);
+      setOverrideOpen(false);
+      setOverrideReason("");
       setError(null);
     };
   }
@@ -153,11 +176,13 @@ export function AddGameModal({
   const updateTime = setField(setTime);
   const updateVenue = setField(setVenueId);
 
-  // Same date + time, exact match (the warning is advisory; the generator's
-  // duration+buffer spacing is not enforced here).
-  async function checkConflicts(iso: string): Promise<string[]> {
+  // Double-book checks are same date + time, exact match (the generator's
+  // duration+buffer spacing is not enforced here). Venue hours mirror
+  // gateVenueProposal: unconfigured venue is a conflict; a division without
+  // game_duration skips the window check (no end time to test).
+  async function checkConflicts(iso: string): Promise<DetectedConflict[]> {
     const supabase = createClient();
-    const [venueQ, teamQ] = await Promise.all([
+    const [venueQ, teamQ, venueRowQ, divQ] = await Promise.all([
       supabase
         .from("games")
         .select("id")
@@ -172,14 +197,58 @@ export function AddGameModal({
         .or(
           `home_team_id.in.(${homeTeamId},${awayTeamId}),away_team_id.in.(${homeTeamId},${awayTeamId})`,
         ),
+      supabase
+        .from("venues")
+        .select("name, availability, availability_configured")
+        .eq("id", venueId)
+        .single(),
+      supabase
+        .from("divisions")
+        .select("settings")
+        .eq("id", divisionId)
+        .single(),
     ]);
     if (venueQ.error ?? teamQ.error) {
       throw new Error((venueQ.error ?? teamQ.error)!.message);
     }
-    const msgs: string[] = [];
+    const found: DetectedConflict[] = [];
     if ((venueQ.data ?? []).length > 0) {
-      msgs.push(`${venue?.name ?? "This venue"} is already booked at this time.`);
+      found.push({
+        type: "venue_double_book",
+        message: `${venue?.name ?? "This venue"} is already booked at this time.`,
+      });
     }
+
+    const venueRow = venueRowQ.data as unknown as {
+      name: string;
+      availability: unknown;
+      availability_configured: boolean;
+    } | null;
+    const divSettings = ((divQ.data as unknown as { settings: unknown } | null)
+      ?.settings ?? {}) as { game_duration?: number };
+    const duration =
+      typeof divSettings.game_duration === "number" ? divSettings.game_duration : 0;
+    if (venueRow) {
+      if (!venueRow.availability_configured) {
+        found.push({
+          type: "venue_hours",
+          message: `${venueRow.name} doesn't have venue hours configured yet.`,
+        });
+      } else if (duration > 0) {
+        const av = parseAvailability(venueRow.availability);
+        const day = dayKeyFromIsoDate(iso);
+        if (!isVenueAvailable(av, day, iso.substring(11, 16), duration)) {
+          const win = av[day];
+          found.push({
+            type: "venue_hours",
+            message: `${venueRow.name} isn't open at this time (${DAY_LABELS[day]}: ${
+              win ? `${fmtTime12(win.start)} – ${fmtTime12(win.end)}` : "closed"
+            }).`,
+          });
+        }
+      }
+    }
+
     const rows = (teamQ.data ?? []) as {
       home_team_id: string;
       away_team_id: string | null;
@@ -187,25 +256,35 @@ export function AddGameModal({
     const busy = (teamId: string) =>
       rows.some((g) => g.home_team_id === teamId || g.away_team_id === teamId);
     if (busy(homeTeamId)) {
-      msgs.push(`${homeTeam?.name ?? "The home team"} already has a game at this time.`);
+      found.push({
+        type: "team_double_book",
+        message: `${homeTeam?.name ?? "The home team"} already has a game at this time.`,
+      });
     }
     if (busy(awayTeamId)) {
-      msgs.push(`${awayTeam?.name ?? "The away team"} already has a game at this time.`);
+      found.push({
+        type: "team_double_book",
+        message: `${awayTeam?.name ?? "The away team"} already has a game at this time.`,
+      });
     }
-    return msgs;
+    return found;
   }
+
+  const isOverriding = (conflicts?.length ?? 0) > 0;
+  const overrideReady = overrideReason.trim().length > 0;
 
   async function handleSave() {
     if (!complete || saving) return;
+    if (isOverriding && !overrideReady) return;
     setError(null);
     const iso = `${date}T${time}:00`;
     setSaving(true);
 
     if (conflicts === null) {
       try {
-        const msgs = await checkConflicts(iso);
-        if (msgs.length > 0) {
-          setConflicts(msgs);
+        const found = await checkConflicts(iso);
+        if (found.length > 0) {
+          setConflicts(found);
           setSaving(false);
           return;
         }
@@ -218,23 +297,47 @@ export function AddGameModal({
 
     const division = divisions.find((d) => d.id === divisionId);
     const supabase = createClient();
-    const { error: insertErr } = await supabase.from("games").insert([
-      {
-        league_id: division!.league_id,
-        home_team_id: homeTeamId,
-        away_team_id: awayTeamId,
-        interleague_org_id: null,
-        venue_id: venueId,
-        scheduled_at: iso,
-        status: "scheduled",
-        is_away: false,
-      },
-    ] as never[]);
+    const { data: inserted, error: insertErr } = await supabase
+      .from("games")
+      .insert([
+        {
+          league_id: division!.league_id,
+          home_team_id: homeTeamId,
+          away_team_id: awayTeamId,
+          interleague_org_id: null,
+          venue_id: venueId,
+          scheduled_at: iso,
+          status: "scheduled",
+          is_away: false,
+        },
+      ] as never[])
+      .select("id")
+      .single();
     if (insertErr) {
       setError(insertErr.message);
       setSaving(false);
       return;
     }
+
+    if (isOverriding && conflicts) {
+      const newGameId = (inserted as unknown as { id: string }).id;
+      const { error: overrideErr } = await insertConflictOverrides(
+        supabase,
+        newGameId,
+        conflicts,
+        overrideReason.trim(),
+      );
+      if (overrideErr) {
+        // The game IS saved at this point — say so, don't invite a retry
+        // that would double-insert it.
+        setError(
+          `The game was added, but recording the override reason failed: ${overrideErr}`,
+        );
+        setSaving(false);
+        return;
+      }
+    }
+
     router.refresh();
     onAdded(
       `${homeTeam?.name ?? "Home"} vs ${awayTeam?.name ?? "Away"} added — ${fmtGameDate(iso)} at ${fmtGameTime(iso)}`,
@@ -375,18 +478,47 @@ export function AddGameModal({
           </div>
 
           {conflicts && conflicts.length > 0 && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
-              <div className="flex flex-col gap-1 text-xs text-amber-700">
-                {conflicts.map((c) => (
-                  <p key={c} className="font-medium">
-                    {c}
+            <div className="flex flex-col gap-2">
+              {conflicts.map((c, i) => (
+                <div
+                  key={`${c.type}-${i}`}
+                  className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2.5"
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" />
+                  <div className="flex flex-col gap-0.5 text-xs">
+                    <p className="font-semibold text-red-600">
+                      {CONFLICT_TYPE_LABELS[c.type]}
+                    </p>
+                    <p className="text-red-600">{c.message}</p>
+                  </div>
+                </div>
+              ))}
+
+              {!overrideOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setOverrideOpen(true)}
+                  className="inline-flex w-fit items-center rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F]"
+                >
+                  Override — add reason
+                </button>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>Override reason</FieldLabel>
+                  <textarea
+                    rows={2}
+                    required
+                    autoFocus
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                    placeholder="Why is this conflict acceptable?"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+                  />
+                  <p className="text-xs text-gray-400">
+                    This reason will be visible to all admins in the game detail.
                   </p>
-                ))}
-                <p className="text-amber-600">
-                  You can save anyway — the game will be double-booked.
-                </p>
-              </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -411,9 +543,9 @@ export function AddGameModal({
           <button
             type="button"
             onClick={handleSave}
-            disabled={!complete || saving}
+            disabled={!complete || saving || (isOverriding && !overrideReady)}
             className={`inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              conflicts && conflicts.length > 0
+              isOverriding
                 ? "bg-amber-500 hover:bg-amber-600"
                 : "bg-[#22C55E] hover:bg-[#16a34a]"
             }`}
@@ -421,8 +553,8 @@ export function AddGameModal({
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {saving
               ? "Saving…"
-              : conflicts && conflicts.length > 0
-                ? "Save anyway"
+              : isOverriding
+                ? "Save with override"
                 : "Save game"}
           </button>
         </div>

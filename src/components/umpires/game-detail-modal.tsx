@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Calendar, MapPin, UserCheck, Loader2 } from "lucide-react";
+import { X, Calendar, MapPin, UserCheck, Loader2, History, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
@@ -15,6 +15,10 @@ import {
   getOfficialTitlePlural,
   padRoleLabels,
 } from "@/lib/utils/official-title";
+import {
+  CONFLICT_TYPE_LABELS,
+  type ConflictType,
+} from "@/lib/schedule/conflict-overrides";
 
 export type GameDetailGame = {
   id: string;
@@ -88,6 +92,14 @@ async function fetchAssignments(
     }));
 }
 
+type OverrideRow = {
+  id: string;
+  conflict_type: string;
+  reason: string;
+  created_at: string;
+  profile: { full_name: string | null; email: string | null } | null;
+};
+
 type Loaded = {
   divisionId: string | null;
   divisionName: string | null;
@@ -97,7 +109,23 @@ type Loaded = {
   assignments: SlotAssignment[];
   umpires: UmpireOption[];
   sport: string | null;
+  overrides: OverrideRow[];
 };
+
+// "Jun 10, 2026 · 8:42 AM"
+function fmtOverrideTimestamp(iso: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const time = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${date} · ${time}`;
+}
 
 const gameStatusVariants: Record<
   string,
@@ -159,11 +187,13 @@ export function GameDetailModal({ game, onClose }: Props) {
       // Assignments for this game
       const assignments = await fetchAssignments(supabase, game.id);
 
-      // Umpire roster, league sport, and the season's normalized role list
+      // Umpire roster, league sport, the season's normalized role list, and
+      // any conflict-override audit rows for this game (0064)
       const [
         { data: umpiresRaw, error: umpiresErr },
         { data: leagueRaw },
         { data: seasonRolesRaw },
+        { data: overridesRaw },
       ] = await Promise.all([
         supabase
           .from("umpires")
@@ -180,6 +210,11 @@ export function GameDetailModal({ game, onClose }: Props) {
           .select("name")
           .eq("season_id", game.league_id)
           .order("sort_order"),
+        supabase
+          .from("conflict_overrides")
+          .select("id, conflict_type, reason, created_at, profile:profiles(full_name, email)")
+          .eq("game_id", game.id)
+          .order("created_at", { ascending: true }),
       ]);
       if (umpiresErr) {
         if (!cancelled) setError(umpiresErr.message);
@@ -213,6 +248,7 @@ export function GameDetailModal({ game, onClose }: Props) {
           assignments,
           umpires,
           sport,
+          overrides: (overridesRaw as unknown as OverrideRow[] | null) ?? [],
         });
         setLoading(false);
       }
@@ -351,6 +387,44 @@ export function GameDetailModal({ game, onClose }: Props) {
               </>
             )}
           </div>
+
+          {/* Conflict history — admin overrides recorded when this game was
+              saved past a detected conflict (0064). Hidden when empty. */}
+          {loaded && loaded.overrides.length > 0 && (
+            <div className="border-t border-gray-100 pt-4">
+              <div className="mb-3 flex items-center gap-2">
+                <History className="h-3.5 w-3.5 text-gray-400" />
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Conflict history
+                </p>
+              </div>
+              <div className="flex flex-col gap-2">
+                {loaded.overrides.map((o) => {
+                  const adminName =
+                    o.profile?.full_name?.trim() || o.profile?.email || "Admin";
+                  return (
+                    <div
+                      key={o.id}
+                      className="flex items-start gap-2 rounded-lg border border-[#EF9F27] bg-[#FAEEDA] px-3 py-2.5"
+                    >
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-[#EF9F27]" />
+                      <div className="flex flex-col gap-0.5 text-xs text-[#633806]">
+                        <p className="font-semibold">
+                          {CONFLICT_TYPE_LABELS[o.conflict_type as ConflictType] ??
+                            o.conflict_type}{" "}
+                          override
+                        </p>
+                        <p className="italic">&ldquo;{o.reason}&rdquo;</p>
+                        <p className="opacity-80">
+                          {adminName} · {fmtOverrideTimestamp(o.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -8,6 +8,20 @@ import { createClient } from "@/lib/supabase/client";
 import { detectScheduleConflicts, type ScheduleConflict } from "@/lib/schedule/generate-schedule";
 import { fmtGameDate } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
+import {
+  DAY_LABELS,
+  dayKeyFromIsoDate,
+  dayKeyFromJsDate,
+  fmtTime12,
+  isVenueAvailable,
+  parseAvailability,
+  type VenueAvailability,
+} from "@/lib/venues/availability";
+import {
+  CONFLICT_TYPE_LABELS,
+  insertConflictOverrides,
+  type DetectedConflict,
+} from "@/lib/schedule/conflict-overrides";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,12 +30,13 @@ type GameRow = {
   scheduled_at: string;
   venue_id: string | null;
   home_team_id: string;
+  away_team_id: string | null;
   home_team: { name: string } | null;
   away_team: { name: string } | null;
   venue: { id: string; name: string } | null;
 };
 
-type Venue = { id: string; name: string };
+type Venue = { id: string; name: string; availability: VenueAvailability };
 
 type DivSettings = {
   game_duration: number;
@@ -64,11 +79,13 @@ function localDateStr(d: Date): string {
 /**
  * Finds the first open (venue, datetime) slot for a game that needs to move.
  * Excludes the game being moved from the occupied set so its current slot counts as free.
+ * Venue hours are a hard filter — a slot the venue isn't open for is never
+ * emitted (same "tighter of division + venue windows" rule as the generator).
  */
 function findFreeSlot(
   excludeGameId: string,
   allVenueGames: GameRow[],
-  venueIds: string[],
+  venues: Venue[],
   settings: DivSettings,
   startDate: string,
   endDate: string,
@@ -97,12 +114,16 @@ function findFreeSlot(
   while (cur <= rangeEnd) {
     if (allowedDays.has(cur.getDay())) {
       const date = localDateStr(cur);
-      for (const venueId of venueIds) {
-        const occ = occupied.get(`${venueId}:${date}`) ?? [];
+      const dayKey = dayKeyFromJsDate(cur);
+      for (const v of venues) {
+        const occ = occupied.get(`${v.id}:${date}`) ?? [];
         let t = earliest;
         while (t <= latest) {
-          if (occ.every((o) => Math.abs(o - t) >= gap)) {
-            return { scheduledAt: `${date}T${hhmmFromMins(t)}:00`, venueId };
+          if (
+            isVenueAvailable(v.availability, dayKey, hhmmFromMins(t), duration) &&
+            occ.every((o) => Math.abs(o - t) >= gap)
+          ) {
+            return { scheduledAt: `${date}T${hhmmFromMins(t)}:00`, venueId: v.id };
           }
           t += gap;
         }
@@ -137,6 +158,11 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
   // Per-game state
   const [expandedGame, setExpandedGame] = useState<string | null>(null);
   const [moveForms, setMoveForms] = useState<Record<string, MoveForm>>({});
+  // null/absent = not checked; non-empty = conflicts shown and Save is
+  // blocked until an override reason is entered (mirrors the Add Game modal).
+  const [moveConflicts, setMoveConflicts] = useState<Record<string, DetectedConflict[] | null>>({});
+  const [moveOverrideOpen, setMoveOverrideOpen] = useState<Record<string, boolean>>({});
+  const [moveReasons, setMoveReasons] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [resolving, setResolving] = useState<Record<string, boolean>>({}); // per conflict key
   const [autoResolvingAll, setAutoResolvingAll] = useState(false);
@@ -174,13 +200,13 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
       // games at unconfigured venues, so don't offer them as a move target.
       supabase
         .from("venues")
-        .select("id, name")
+        .select("id, name, availability")
         .in("id", venueIds)
         .eq("availability_configured", true),
       supabase
         .from("games")
         .select(`
-          id, scheduled_at, venue_id, home_team_id,
+          id, scheduled_at, venue_id, home_team_id, away_team_id,
           home_team:teams!home_team_id(name),
           away_team:teams!away_team_id(name),
           venue:venues(id, name)
@@ -191,7 +217,15 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
 
     const rows = (gamesRes.data ?? []) as unknown as GameRow[];
     setAllVenueGames(rows);
-    setVenues((venueRes.data ?? []) as Venue[]);
+    setVenues(
+      (
+        (venueRes.data ?? []) as { id: string; name: string; availability: unknown }[]
+      ).map((v) => ({
+        id: v.id,
+        name: v.name,
+        availability: parseAvailability(v.availability),
+      })),
+    );
 
     // Detect conflicts across all venue games, filter to those touching this division
     const flat = rows.map((g) => ({
@@ -225,26 +259,137 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
         time: game.scheduled_at.substring(11, 16),
       },
     }));
+    setMoveConflicts((p) => ({ ...p, [gameId]: null }));
+    setMoveOverrideOpen((p) => ({ ...p, [gameId]: false }));
+    setMoveReasons((p) => ({ ...p, [gameId]: "" }));
     setExpandedGame(gameId);
+  }
+
+  // Field edits invalidate previously detected conflicts for that game — the
+  // next save re-checks against the new values.
+  function updateMoveForm(gameId: string, patch: Partial<MoveForm>) {
+    setMoveForms((p) => ({ ...p, [gameId]: { ...p[gameId], ...patch } }));
+    setMoveConflicts((p) => ({ ...p, [gameId]: null }));
+  }
+
+  // Same three checks as the Add Game modal, against the new slot. Venue
+  // double-book is spacing-aware (duration + buffer) using the already-loaded
+  // venue games; the team check queries exact-time matches like Add Game.
+  async function detectMoveConflicts(
+    game: GameRow,
+    form: MoveForm,
+  ): Promise<DetectedConflict[]> {
+    const found: DetectedConflict[] = [];
+    const iso = `${form.date}T${form.time}:00`;
+    const targetVenue = venues.find((v) => v.id === form.venueId);
+    const duration = Number(settings?.game_duration ?? 0);
+    const buffer = Number(settings?.buffer_minutes ?? 0);
+    const gap = Math.max(1, duration + buffer);
+
+    if (targetVenue && duration > 0) {
+      const dayKey = dayKeyFromIsoDate(iso);
+      if (!isVenueAvailable(targetVenue.availability, dayKey, form.time, duration)) {
+        const win = targetVenue.availability[dayKey];
+        found.push({
+          type: "venue_hours",
+          message: `${targetVenue.name} isn't open at this time (${DAY_LABELS[dayKey]}: ${
+            win ? `${fmtTime12(win.start)} – ${fmtTime12(win.end)}` : "closed"
+          }).`,
+        });
+      }
+    }
+
+    const newMins = minsFromHHMM(form.time);
+    const venueClash = allVenueGames.some(
+      (g) =>
+        g.id !== game.id &&
+        g.venue_id === form.venueId &&
+        g.scheduled_at.substring(0, 10) === form.date &&
+        Math.abs(minsFromHHMM(g.scheduled_at.substring(11, 16)) - newMins) < gap,
+    );
+    if (venueClash) {
+      found.push({
+        type: "venue_double_book",
+        message: `${targetVenue?.name ?? "This venue"} already has a game within ${gap} minutes of this time.`,
+      });
+    }
+
+    const teamIds = [game.home_team_id, game.away_team_id].filter(
+      (id): id is string => !!id,
+    );
+    if (teamIds.length > 0) {
+      const supabase = createClient();
+      const { data: teamRows } = await supabase
+        .from("games")
+        .select("id, home_team_id, away_team_id")
+        .eq("scheduled_at", iso)
+        .neq("status", "cancelled")
+        .neq("id", game.id)
+        .or(
+          `home_team_id.in.(${teamIds.join(",")}),away_team_id.in.(${teamIds.join(",")})`,
+        );
+      if ((teamRows ?? []).length > 0) {
+        found.push({
+          type: "team_double_book",
+          message: `${game.home_team?.name ?? "A team"} or ${game.away_team?.name ?? "their opponent"} already has a game at this time.`,
+        });
+      }
+    }
+
+    return found;
   }
 
   async function saveManualMove(gameId: string) {
     const form = moveForms[gameId];
-    if (!form) return;
+    const game = allVenueGames.find((g) => g.id === gameId);
+    if (!form || !game) return;
     setSaving((p) => ({ ...p, [gameId]: true }));
     setError(null);
+
+    // First save click detects conflicts and blocks; the second (with a
+    // required reason) writes the move + the override audit rows.
+    const known = moveConflicts[gameId] ?? null;
+    if (known === null) {
+      const found = await detectMoveConflicts(game, form);
+      if (found.length > 0) {
+        setMoveConflicts((p) => ({ ...p, [gameId]: found }));
+        setSaving((p) => ({ ...p, [gameId]: false }));
+        return;
+      }
+    } else if (known.length > 0 && !moveReasons[gameId]?.trim()) {
+      setSaving((p) => ({ ...p, [gameId]: false }));
+      return;
+    }
 
     const { error: err } = await patchGame(gameId, {
       scheduled_at: `${form.date}T${form.time}:00`,
       venue_id: form.venueId,
     });
 
-    setSaving((p) => ({ ...p, [gameId]: false }));
-    if (err) { setError(err.message); return; }
+    if (err) {
+      setSaving((p) => ({ ...p, [gameId]: false }));
+      setError(err.message);
+      return;
+    }
 
-    const game = allVenueGames.find((g) => g.id === gameId);
-    const homeTeam = (game?.home_team as { name: string } | null)?.name ?? "Home";
-    const awayTeam = (game?.away_team as { name: string } | null)?.name ?? "Away";
+    if (known && known.length > 0) {
+      const { error: overrideErr } = await insertConflictOverrides(
+        createClient(),
+        gameId,
+        known,
+        moveReasons[gameId]!.trim(),
+      );
+      if (overrideErr) {
+        // The move IS saved — surface the audit failure without inviting a
+        // retry that would re-apply the move.
+        setError(`Game moved, but recording the override reason failed: ${overrideErr}`);
+      }
+    }
+
+    setSaving((p) => ({ ...p, [gameId]: false }));
+
+    const homeTeam = (game.home_team as { name: string } | null)?.name ?? "Home";
+    const awayTeam = (game.away_team as { name: string } | null)?.name ?? "Away";
     console.log("[logActivity] before call: game_conflict_resolved (saveManualMove)", { leagueId, divisionId });
     const _r1 = await logActivity(leagueId, divisionId, "game_conflict_resolved",
       `${homeTeam} vs ${awayTeam} moved to ${form.date} at ${form.time} — double-booking resolved`);
@@ -261,13 +406,12 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     setResolving((p) => ({ ...p, [key]: true }));
     setError(null);
 
-    const venueIds = venues.map((v) => v.id);
     // Keep the first game; move the rest (prefer moving non-division games last)
     const gamesToMove = conflict.games.slice(1);
     let localGames = [...allVenueGames];
 
     for (const g of gamesToMove) {
-      const slot = findFreeSlot(g.id, localGames, venueIds, settings, dateRange.start, dateRange.end);
+      const slot = findFreeSlot(g.id, localGames, venues, settings, dateRange.start, dateRange.end);
       if (!slot) {
         setError(`No free slot found for ${g.homeTeam} vs ${g.awayTeam}. Try resolving manually.`);
         setResolving((p) => ({ ...p, [key]: false }));
@@ -302,13 +446,12 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     setAutoResolvingAll(true);
     setError(null);
 
-    const venueIds = venues.map((v) => v.id);
     let localGames = [...allVenueGames];
 
     for (const conflict of conflicts) {
       const gamesToMove = conflict.games.slice(1);
       for (const g of gamesToMove) {
-        const slot = findFreeSlot(g.id, localGames, venueIds, settings, dateRange.start, dateRange.end);
+        const slot = findFreeSlot(g.id, localGames, venues, settings, dateRange.start, dateRange.end);
         if (!slot) {
           setError(`No free slot found for ${g.homeTeam} vs ${g.awayTeam}. Remaining conflicts resolved manually.`);
           setAutoResolvingAll(false);
@@ -476,12 +619,7 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
                                     <label className="mb-1 block text-xs font-medium text-gray-500">Field</label>
                                     <select
                                       value={form.venueId}
-                                      onChange={(e) =>
-                                        setMoveForms((p) => ({
-                                          ...p,
-                                          [g.id]: { ...p[g.id], venueId: e.target.value },
-                                        }))
-                                      }
+                                      onChange={(e) => updateMoveForm(g.id, { venueId: e.target.value })}
                                       className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-[#0C1F3F] focus:border-[#0C1F3F] focus:outline-none"
                                     >
                                       {venues.map((v) => (
@@ -496,12 +634,7 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
                                     <input
                                       type="date"
                                       value={form.date}
-                                      onChange={(e) =>
-                                        setMoveForms((p) => ({
-                                          ...p,
-                                          [g.id]: { ...p[g.id], date: e.target.value },
-                                        }))
-                                      }
+                                      onChange={(e) => updateMoveForm(g.id, { date: e.target.value })}
                                       className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-[#0C1F3F] focus:border-[#0C1F3F] focus:outline-none"
                                     />
                                   </div>
@@ -512,25 +645,81 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
                                     <input
                                       type="time"
                                       value={form.time}
-                                      onChange={(e) =>
-                                        setMoveForms((p) => ({
-                                          ...p,
-                                          [g.id]: { ...p[g.id], time: e.target.value },
-                                        }))
-                                      }
+                                      onChange={(e) => updateMoveForm(g.id, { time: e.target.value })}
                                       className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-[#0C1F3F] focus:border-[#0C1F3F] focus:outline-none"
                                     />
                                   </div>
                                 </div>
 
+                                {/* Conflict block + override-reason flow (mirrors Add Game) */}
+                                {(moveConflicts[g.id]?.length ?? 0) > 0 && (
+                                  <div className="mt-3 flex flex-col gap-2">
+                                    {moveConflicts[g.id]!.map((c, ci) => (
+                                      <div
+                                        key={`${c.type}-${ci}`}
+                                        className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2.5"
+                                      >
+                                        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" />
+                                        <div className="flex flex-col gap-0.5 text-xs">
+                                          <p className="font-semibold text-red-600">
+                                            {CONFLICT_TYPE_LABELS[c.type]}
+                                          </p>
+                                          <p className="text-red-600">{c.message}</p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                    {!moveOverrideOpen[g.id] ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setMoveOverrideOpen((p) => ({ ...p, [g.id]: true }))
+                                        }
+                                        className="inline-flex w-fit items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F]"
+                                      >
+                                        Override — add reason
+                                      </button>
+                                    ) : (
+                                      <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-medium text-gray-600">
+                                          Override reason
+                                        </label>
+                                        <textarea
+                                          rows={2}
+                                          required
+                                          autoFocus
+                                          value={moveReasons[g.id] ?? ""}
+                                          onChange={(e) =>
+                                            setMoveReasons((p) => ({ ...p, [g.id]: e.target.value }))
+                                          }
+                                          placeholder="Why is this conflict acceptable?"
+                                          className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+                                        />
+                                        <p className="text-xs text-gray-400">
+                                          This reason will be visible to all admins in the game detail.
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
                                 <div className="mt-3 flex items-center gap-2">
                                   <button
                                     onClick={() => saveManualMove(g.id)}
-                                    disabled={isSavingGame}
-                                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#0C1F3F] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80 disabled:opacity-50"
+                                    disabled={
+                                      isSavingGame ||
+                                      ((moveConflicts[g.id]?.length ?? 0) > 0 &&
+                                        !(moveReasons[g.id] ?? "").trim())
+                                    }
+                                    className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                      (moveConflicts[g.id]?.length ?? 0) > 0
+                                        ? "bg-amber-500 hover:bg-amber-600"
+                                        : "bg-[#0C1F3F] hover:bg-[#0C1F3F]/80"
+                                    }`}
                                   >
                                     {isSavingGame && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                    Save change
+                                    {(moveConflicts[g.id]?.length ?? 0) > 0
+                                      ? "Save with override"
+                                      : "Save change"}
                                   </button>
                                   <button
                                     onClick={() => setExpandedGame(null)}
