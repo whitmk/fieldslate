@@ -2,11 +2,16 @@
 
 // Amber "this season is archived" banner that sits below the page header on
 // the season detail page. Clicking Unarchive opens the same modal the
-// seasons list uses.
+// seasons list uses; Delete opens the permanent-delete modal and bounces
+// back to the seasons list on success (this page's season no longer exists).
 
 import { useState } from "react";
-import { Archive } from "lucide-react";
-import { UnarchiveSeasonModal } from "@/components/seasons/archive-modals";
+import { useRouter } from "next/navigation";
+import { Archive, Trash2 } from "lucide-react";
+import {
+  DeleteSeasonModal,
+  UnarchiveSeasonModal,
+} from "@/components/seasons/archive-modals";
 import { UpgradeModal } from "@/components/plan/upgrade-cta";
 
 interface Props {
@@ -19,7 +24,9 @@ interface Props {
 }
 
 export function ArchivedSeasonBanner({ seasonId, seasonName, endDate, canRestore }: Props) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   return (
@@ -43,13 +50,26 @@ export function ArchivedSeasonBanner({ seasonId, seasonName, endDate, canRestore
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => (canRestore ? setOpen(true) : setUpgradeOpen(true))}
-          className="flex-shrink-0 rounded-lg border border-[#EF9F27] bg-white px-3 py-1.5 text-sm font-semibold text-[#B36A05] transition-colors hover:bg-[#FFF7EA]"
-        >
-          Unarchive
-        </button>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {/* Deleting your own data isn't a paid feature — available on all
+              tiers, unlike restore. */}
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            aria-label="Delete season permanently"
+            className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete
+          </button>
+          <button
+            type="button"
+            onClick={() => (canRestore ? setOpen(true) : setUpgradeOpen(true))}
+            className="rounded-lg border border-[#EF9F27] bg-white px-3 py-1.5 text-sm font-semibold text-[#B36A05] transition-colors hover:bg-[#FFF7EA]"
+          >
+            Unarchive
+          </button>
+        </div>
       </div>
       {open && (
         <UnarchiveSeasonModal
@@ -57,6 +77,14 @@ export function ArchivedSeasonBanner({ seasonId, seasonName, endDate, canRestore
           seasonName={seasonName}
           endDate={endDate}
           onClose={() => setOpen(false)}
+        />
+      )}
+      {deleteOpen && (
+        <DeleteSeasonModal
+          seasonId={seasonId}
+          seasonName={seasonName}
+          onClose={() => setDeleteOpen(false)}
+          onSuccess={() => router.push("/dashboard/leagues")}
         />
       )}
       {upgradeOpen && (

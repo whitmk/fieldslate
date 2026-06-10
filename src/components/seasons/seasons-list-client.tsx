@@ -12,6 +12,7 @@ import { Lock, MoreVertical, Plus, Trophy } from "lucide-react";
 import type { League } from "@/types/database";
 import {
   ArchiveSeasonModal,
+  DeleteSeasonModal,
   UnarchiveSeasonModal,
 } from "@/components/seasons/archive-modals";
 import { deriveSeasonStatus } from "@/lib/seasons/derived-status";
@@ -50,7 +51,7 @@ export function SeasonsListClient({
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [modal, setModal] = useState<
-    | { kind: "archive" | "unarchive"; league: League }
+    | { kind: "archive" | "unarchive" | "delete"; league: League }
     | null
   >(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -162,6 +163,7 @@ export function SeasonsListClient({
               league={league}
               onArchive={() => setModal({ kind: "archive", league })}
               onUnarchive={() => setModal({ kind: "unarchive", league })}
+              onDelete={() => setModal({ kind: "delete", league })}
             />
           ))}
         </div>
@@ -179,6 +181,13 @@ export function SeasonsListClient({
           seasonId={modal.league.id}
           seasonName={modal.league.name}
           endDate={modal.league.end_date}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal?.kind === "delete" && (
+        <DeleteSeasonModal
+          seasonId={modal.league.id}
+          seasonName={modal.league.name}
           onClose={() => setModal(null)}
         />
       )}
@@ -258,10 +267,12 @@ function SeasonCard({
   league,
   onArchive,
   onUnarchive,
+  onDelete,
 }: {
   league: League;
   onArchive: () => void;
   onUnarchive: () => void;
+  onDelete: () => void;
 }) {
   const status = deriveSeasonStatus(league);
   const isArchived = !!league.archived_at;
@@ -292,6 +303,7 @@ function SeasonCard({
             isArchived={isArchived}
             onArchive={onArchive}
             onUnarchive={onUnarchive}
+            onDelete={onDelete}
           />
         </div>
       </div>
@@ -305,10 +317,12 @@ function CardActionMenu({
   isArchived,
   onArchive,
   onUnarchive,
+  onDelete,
 }: {
   isArchived: boolean;
   onArchive: () => void;
   onUnarchive: () => void;
+  onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -368,6 +382,21 @@ function CardActionMenu({
           >
             {isArchived ? "Unarchive season" : "Archive season"}
           </button>
+          {/* Permanent delete only exists on archived seasons — the
+              archive-first rule is also enforced by the RPC itself. */}
+          {isArchived && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onDelete();
+              }}
+              className="block w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
+            >
+              Delete permanently…
+            </button>
+          )}
         </div>
       )}
     </div>
