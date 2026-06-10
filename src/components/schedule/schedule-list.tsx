@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import { padRoleLabels } from "@/lib/utils/official-title";
 import { createClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/activity-log";
 import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
@@ -43,7 +44,6 @@ export type ScheduleGame = {
     division: {
       name: string;
       umpires_per_game?: number | null;
-      umpire_roles?: unknown;
     } | null;
   } | null;
   away_team: { name: string } | null;
@@ -57,6 +57,13 @@ interface Props {
   /** Pro+ only — the rainout auto-reschedule action. "Mark as rained out"
    *  and the interleague "Request reschedule" stay Free. */
   canReschedule?: boolean;
+  /** Season official_roles names (ordered by sort_order) + the season sport.
+   *  The row builds slot labels from these via padRoleLabels so they match the
+   *  game_umpires.role text the assign path writes (the modal uses the same
+   *  recipe). Sourcing labels from divisions.umpire_roles made assigned slots
+   *  read "Open" whenever the two label sets diverged. */
+  seasonRoleNames: string[];
+  sport: string | null;
 }
 
 const gameStatusVariants: Record<string, "default" | "success" | "warning" | "danger" | "info" | "orange"> = {
@@ -105,7 +112,12 @@ function venueLabel(g: ScheduleGame): string {
   return "—";
 }
 
-export function ScheduleList({ games, canReschedule = false }: Props) {
+export function ScheduleList({
+  games,
+  canReschedule = false,
+  seasonRoleNames,
+  sport,
+}: Props) {
   const router = useRouter();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
@@ -219,6 +231,8 @@ export function ScheduleList({ games, canReschedule = false }: Props) {
                 setDetailGame(g);
               }}
               rainoutLoading={rainoutId === g.id}
+              seasonRoleNames={seasonRoleNames}
+              sport={sport}
             />
           ))}
         </tbody>
@@ -347,6 +361,8 @@ interface GameRowProps {
   canReschedule: boolean;
   onViewDetails: () => void;
   rainoutLoading: boolean;
+  seasonRoleNames: string[];
+  sport: string | null;
 }
 
 function GameRowCells({
@@ -359,23 +375,32 @@ function GameRowCells({
   canReschedule,
   onViewDetails,
   rainoutLoading,
+  seasonRoleNames,
+  sport,
 }: GameRowProps) {
   const canRequestReschedule =
     !!game.interleague_org_id &&
     game.status === "scheduled" &&
     new Date(game.scheduled_at).getTime() > Date.now();
   const umpiresPerGame = Number(game.home_team?.division?.umpires_per_game ?? 0);
-  const umpireRoles: string[] = Array.isArray(game.home_team?.division?.umpire_roles)
-    ? (game.home_team!.division!.umpire_roles as unknown[]).filter(
-        (r): r is string => typeof r === "string",
-      )
-    : [];
-  while (umpireRoles.length < umpiresPerGame) {
-    umpireRoles.push(`Official ${umpireRoles.length + 1}`);
-  }
+  // Build slot labels from the season's official_roles (padded sport-aware) —
+  // the exact recipe the modal/assign path uses to write game_umpires.role.
+  // Keying off divisions.umpire_roles instead made assigned slots read "Open".
+  const umpireRoles = padRoleLabels(
+    seasonRoleNames.slice(0, umpiresPerGame),
+    umpiresPerGame,
+    sport,
+  );
   const assignmentsByRole = new Map<string, string>();
   for (const a of game.game_umpires ?? []) {
     if (a.umpire) assignmentsByRole.set(a.role, a.umpire.name);
+  }
+  // Surface any assignment whose role falls outside the computed list (legacy
+  // free-text rows) so an existing assignment is never hidden — mirrors
+  // UmpireSlots' effectiveRoles.
+  const effectiveRoles = [...umpireRoles];
+  for (const a of game.game_umpires ?? []) {
+    if (a.umpire && !effectiveRoles.includes(a.role)) effectiveRoles.push(a.role);
   }
   return (
     <tr className="border-b border-gray-50 last:border-0">
@@ -394,7 +419,7 @@ function GameRowCells({
             className="flex flex-wrap gap-1 text-left"
             title="Manage official assignments"
           >
-            {umpireRoles.map((role) => {
+            {effectiveRoles.map((role) => {
               const name = assignmentsByRole.get(role);
               return (
                 <span

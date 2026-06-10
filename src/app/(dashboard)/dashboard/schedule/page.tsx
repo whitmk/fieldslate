@@ -98,12 +98,30 @@ export default async function SchedulePage({
   const { data: seasonRow } = seasonId
     ? await supabase
         .from("leagues")
-        .select("id, name")
+        .select("id, name, sport")
         .eq("id", seasonId)
         .maybeSingle()
     : { data: null };
-  const season = (seasonRow as { id: string; name: string } | null) ?? null;
+  const season =
+    (seasonRow as { id: string; name: string; sport: string | null } | null) ??
+    null;
   const activeSeasons = season ? [{ id: season.id, name: season.name }] : [];
+
+  // Row-cell slot labels must match what the assign path writes to
+  // game_umpires.role: the season's official_roles names (by sort_order),
+  // padded sport-aware via padRoleLabels — NOT divisions.umpire_roles. The two
+  // diverging is what made assigned slots keep reading "Open". official_roles
+  // is season-scoped and every game here shares this season's league_id.
+  const { data: roleRows } = seasonId
+    ? await supabase
+        .from("official_roles")
+        .select("name")
+        .eq("season_id", seasonId)
+        .order("sort_order")
+    : { data: [] as { name: string }[] };
+  const seasonRoleNames = ((roleRows ?? []) as { name: string }[]).map(
+    (r) => r.name,
+  );
 
   // league_id rides along for the Add Game modal (games.league_id is NOT
   // NULL and derives from the chosen division).
@@ -163,7 +181,7 @@ export default async function SchedulePage({
       .select(`
         id, scheduled_at, status, league_id, home_team_id, away_team_id,
         interleague_org_id, is_away, external_team_name, proposed_venue_name,
-        home_team:teams!home_team_id(name, division_id, division:divisions(name, umpires_per_game, umpire_roles)),
+        home_team:teams!home_team_id(name, division_id, division:divisions(name, umpires_per_game)),
         away_team:teams!away_team_id(name),
         interleague_org:interleague_orgs(name),
         venue:venues(name),
@@ -258,7 +276,12 @@ export default async function SchedulePage({
               canReschedule={isProPlus(plan)}
             />
           ) : (
-            <ScheduleList games={games} canReschedule={isProPlus(plan)} />
+            <ScheduleList
+              games={games}
+              canReschedule={isProPlus(plan)}
+              seasonRoleNames={seasonRoleNames}
+              sport={season?.sport ?? null}
+            />
           )}
         </CardContent>
       </Card>
