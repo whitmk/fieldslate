@@ -952,6 +952,7 @@ export function DivisionSchedulePanel({
                               home_team_name: game.home_team?.name ?? "TBD",
                               away_team_name: opponentName(game),
                             }}
+                            seasonId={leagueId}
                             roles={umpireRoles}
                             assignments={gameAssignments}
                             umpires={umpireRoster}

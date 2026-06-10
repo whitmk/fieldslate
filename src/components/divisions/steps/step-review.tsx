@@ -17,6 +17,7 @@ import {
   type ScheduleConflict,
 } from "@/lib/schedule/generate-schedule";
 import { getOfficialTitlePlural } from "@/lib/utils/official-title";
+import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
 import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
 import type { Plan } from "@/lib/plan/limits";
 
@@ -299,6 +300,11 @@ export function StepReview({
       );
     }
 
+    // Keep the season's normalized role list (official_roles, 0062) a
+    // superset of this division's slot labels. Best-effort: assignment
+    // writes re-resolve ids anyway, so this must never fail the save.
+    await ensureSeasonRoleIds(supabase, leagueId, data.umpire_roles);
+
     return { divId };
   }
 
@@ -374,6 +380,9 @@ export function StepReview({
         capHit: { cap: payload.cap, limit: payload.limit, plan: payload.plan },
       };
     }
+
+    // Same official_roles sync as the edit path — see saveEditDivisionData.
+    await ensureSeasonRoleIds(supabase, leagueId, data.umpire_roles);
 
     return { divId: (payload as { row: { id: string } }).row.id };
   }

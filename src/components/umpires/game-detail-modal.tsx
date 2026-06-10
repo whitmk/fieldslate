@@ -324,6 +324,7 @@ export function GameDetailModal({ game, onClose }: Props) {
                     home_team_name: game.home_team?.name ?? "TBD",
                     away_team_name: game.away_team?.name ?? "TBD",
                   }}
+                  seasonId={game.league_id}
                   roles={loaded.roles}
                   assignments={loaded.assignments}
                   umpires={loaded.umpires}

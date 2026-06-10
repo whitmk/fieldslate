@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { localDateKey } from "./eligibility";
 
 export const DEFAULT_GAME_DURATION_MINS = 90;
 
@@ -83,6 +84,27 @@ export async function findUmpireConflict(
     if (gamesOverlap(candidate, other)) return other;
   }
   return null;
+}
+
+export type BlackoutInfo = { date: string; note: string | null };
+
+/**
+ * Returns the official's blackout entry covering the game's (local) date, or
+ * null. official_blackouts.date is a plain date — compared against the game's
+ * local calendar day, the same day the schedule UI shows.
+ */
+export async function findUmpireBlackout(
+  umpireId: string,
+  scheduledAt: string,
+): Promise<BlackoutInfo | null> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("official_blackouts")
+    .select("date, note")
+    .eq("umpire_id", umpireId)
+    .eq("date", localDateKey(new Date(scheduledAt)))
+    .maybeSingle();
+  return (data as BlackoutInfo | null) ?? null;
 }
 
 export function formatConflictTime(scheduled_at: string): string {

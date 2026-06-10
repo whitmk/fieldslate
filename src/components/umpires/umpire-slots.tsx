@@ -6,10 +6,12 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   DEFAULT_GAME_DURATION_MINS,
+  findUmpireBlackout,
   findUmpireConflict,
   formatConflictTime,
   type GameTimeInfo,
 } from "@/lib/umpires/conflicts";
+import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
 
 export type UmpireOption = { id: string; name: string };
 
@@ -30,6 +32,7 @@ export type UmpireSlotsGame = {
 
 interface Props {
   game: UmpireSlotsGame;
+  seasonId: string;                // leagues.id — resolves official_roles ids on write
   roles: string[];                 // ordered role labels for this division
   assignments: SlotAssignment[];   // existing rows for this game
   umpires: UmpireOption[];         // roster for the season
@@ -44,6 +47,7 @@ interface Props {
 
 export function UmpireSlots({
   game,
+  seasonId,
   roles,
   assignments,
   umpires,
@@ -111,22 +115,42 @@ export function UmpireSlots({
       return;
     }
 
-    // Conflict check before persisting.
+    // Conflict + blackout checks before persisting.
+    const umpName =
+      umpires.find((u) => u.id === nextUmpireId)?.name ?? "This umpire";
     const conflict = await findUmpireConflict(nextUmpireId, candidate);
     if (conflict) {
-      const umpName =
-        umpires.find((u) => u.id === nextUmpireId)?.name ?? "This umpire";
       setErrorByRole({
         [role]: `${umpName} is already assigned to ${conflict.home_team_name} vs ${conflict.away_team_name} at ${formatConflictTime(conflict.scheduled_at)}.`,
       });
       setPendingRole(null);
       return;
     }
+    const blackout = await findUmpireBlackout(nextUmpireId, game.scheduled_at);
+    if (blackout) {
+      const day = new Date(blackout.date + "T00:00:00").toLocaleDateString(
+        "en-US",
+        { month: "short", day: "numeric" },
+      );
+      setErrorByRole({
+        [role]: `${umpName} has a blackout date on ${day}${
+          blackout.note ? ` (${blackout.note})` : ""
+        }.`,
+      });
+      setPendingRole(null);
+      return;
+    }
+
+    // Resolve the normalized official_roles id for this slot's label (created
+    // on the fly if missing). Written alongside the role text on insert, and
+    // on reassign too so legacy text-only rows converge as they're touched.
+    const roleIds = await ensureSeasonRoleIds(supabase, seasonId, [role]);
+    const roleId = roleIds.get(role.trim()) ?? null;
 
     if (existing) {
       const { error } = await supabase
         .from("game_umpires")
-        .update({ umpire_id: nextUmpireId } as never)
+        .update({ umpire_id: nextUmpireId, role_id: roleId } as never)
         .eq("id", existing.id);
       if (error) {
         setErrorByRole({ [role]: humanizeUniqueViolation(error.message) });
@@ -136,7 +160,9 @@ export function UmpireSlots({
     } else {
       const { error } = await supabase
         .from("game_umpires")
-        .insert([{ game_id: game.id, umpire_id: nextUmpireId, role }] as never[]);
+        .insert([
+          { game_id: game.id, umpire_id: nextUmpireId, role, role_id: roleId },
+        ] as never[]);
       if (error) {
         setErrorByRole({ [role]: humanizeUniqueViolation(error.message) });
         setPendingRole(null);

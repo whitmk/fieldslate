@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DollarSign, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
 import {
   getOfficialTitle,
   getOfficialTitleLower,
@@ -79,9 +80,13 @@ export function LeaguePaySettings({
   async function saveRoleRates() {
     setSavingRates(true);
     const supabase = createClient();
+    // Dual-write the normalized official_roles id next to the role text
+    // (rates stay keyed by season_id+role; role_id is the 0062 link).
+    const roleIds = await ensureSeasonRoleIds(supabase, leagueId, availableRoles);
     const upserts = availableRoles.map((role) => ({
       season_id: leagueId,
       role,
+      role_id: roleIds.get(role.trim()) ?? null,
       rate: parseFloat(roleRates[role] ?? "0") || 0,
     }));
     if (upserts.length > 0) {

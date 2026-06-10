@@ -3,8 +3,21 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { UserCheck, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
-import { autoAssignUmpires } from "@/lib/umpires/auto-assign";
+import { autoAssignUmpires, type SkipReason } from "@/lib/umpires/auto-assign";
 import { getOfficialTitlePluralLower } from "@/lib/utils/official-title";
+
+const SKIP_REASON_LABELS: Record<SkipReason, string> = {
+  conflict: "time conflicts",
+  blackout: "blackout dates",
+  unavailable: "outside availability",
+  weekly_limit: "weekly game limits",
+};
+
+function skipSummary(skipped: number, reasons: SkipReason[]): string {
+  const base = `${skipped} couldn't be filled`;
+  if (reasons.length === 0) return `${base} without a conflict`;
+  return `${base} (${reasons.map((r) => SKIP_REASON_LABELS[r]).join(", ")})`;
+}
 
 interface Props {
   divisionId: string;
@@ -29,7 +42,7 @@ export function AutoAssignUmpiresButton({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<
-    | { kind: "ok"; filled: number; skipped: number }
+    | { kind: "ok"; filled: number; skipped: number; skipReasons: SkipReason[] }
     | { kind: "err"; message: string }
     | null
   >(null);
@@ -45,7 +58,12 @@ export function AutoAssignUmpiresButton({
       setResult({ kind: "err", message: res.error ?? "Auto-assign failed." });
       return;
     }
-    setResult({ kind: "ok", filled: res.filled, skipped: res.skipped });
+    setResult({
+      kind: "ok",
+      filled: res.filled,
+      skipped: res.skipped,
+      skipReasons: res.skipReasons,
+    });
     router.refresh();
     onAssigned?.();
   }
@@ -77,7 +95,7 @@ export function AutoAssignUmpiresButton({
               ? "Nothing to assign — all slots are already filled."
               : `${result.filled} slot${result.filled !== 1 ? "s" : ""} filled${
                   result.skipped > 0
-                    ? ` · ${result.skipped} couldn't be filled without a conflict`
+                    ? ` · ${skipSummary(result.skipped, result.skipReasons)}`
                     : ""
                 }`}
           </span>
