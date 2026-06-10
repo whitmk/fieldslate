@@ -19,6 +19,10 @@ export function AddUmpireButton({ seasons }: Props) {
   const [name, setName] = useState("");
   const [seasonId, setSeasonId] = useState("");
   const [designation, setDesignation] = useState<"youth" | "adult">("youth");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [maxGames, setMaxGames] = useState("");
+  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -27,6 +31,10 @@ export function AddUmpireButton({ seasons }: Props) {
     setName("");
     setSeasonId(seasons.length === 1 ? seasons[0].id : "");
     setDesignation("youth");
+    setEmail("");
+    setPhone("");
+    setMaxGames("");
+    setNotes("");
     setError("");
     setOpen(true);
   }
@@ -40,7 +48,16 @@ export function AddUmpireButton({ seasons }: Props) {
     const supabase = createClient();
     const { error: insertError } = await supabase
       .from("umpires")
-      .insert([{ season_id: seasonId, name: name.trim(), designation }] as never);
+      .insert([{
+        season_id: seasonId,
+        name: name.trim(),
+        designation,
+        email: email.trim() || null,
+        phone: phone.trim() || null,
+        max_games_per_week:
+          maxGames !== "" ? Math.max(1, parseInt(maxGames, 10) || 1) : null,
+        notes: notes.trim() || null,
+      }] as never);
 
     if (insertError) {
       setError(insertError.message);
@@ -79,10 +96,10 @@ export function AddUmpireButton({ seasons }: Props) {
           onClick={() => !saving && setOpen(false)}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white shadow-2xl"
+            className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+            <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-100 px-6 py-4">
               <h2 className="font-semibold text-[#0C1F3F]">Add {titleLower}</h2>
               <button
                 type="button"
@@ -95,7 +112,10 @@ export function AddUmpireButton({ seasons }: Props) {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="flex flex-col gap-5 px-6 py-6">
+            <form
+              onSubmit={handleSubmit}
+              className="flex flex-col gap-5 overflow-y-auto px-6 py-6"
+            >
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-gray-700">Name</label>
                 <input
@@ -146,6 +166,60 @@ export function AddUmpireButton({ seasons }: Props) {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">
+                  Email <span className="font-normal text-gray-400">(optional)</span>
+                </label>
+                <input
+                  type="email"
+                  placeholder="ump@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">
+                  Phone <span className="font-normal text-gray-400">(optional)</span>
+                </label>
+                <input
+                  type="tel"
+                  placeholder="(555) 555-5555"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">
+                  Max games per week{" "}
+                  <span className="font-normal text-gray-400">(optional)</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="No limit"
+                  value={maxGames}
+                  onChange={(e) => setMaxGames(e.target.value)}
+                  className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">
+                  Notes <span className="font-normal text-gray-400">(optional)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Prefers weekend games…"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+                />
               </div>
 
               {error && (

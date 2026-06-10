@@ -14,6 +14,10 @@ export type UmpireRow = {
   designation: string;
   season_id: string;
   pay_rate: number | null;
+  email: string | null;
+  phone: string | null;
+  max_games_per_week: number | null;
+  notes: string | null;
   season: { name: string; sport?: string | null } | null;
 };
 
@@ -64,7 +68,7 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Pro
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="hidden w-full text-sm md:table">
           <thead>
             <tr className="border-b border-gray-100 text-left">
               <th className="pb-3 font-medium text-gray-500">Name</th>
@@ -144,6 +148,76 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Pro
             })}
           </tbody>
         </table>
+
+        {/* Mobile card list — same rows and actions as the table */}
+        <ul className="flex flex-col gap-3 md:hidden">
+          {umpires.map((u) => {
+            const ps = getPaySettings(u.season_id, seasonPaySettings);
+            const showPay = ps?.pay_tracking_enabled ?? false;
+            return (
+              <li key={u.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-[#0C1F3F]">{u.name}</p>
+                    {showSeasonColumn && (
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {u.season?.name ?? "—"}
+                      </p>
+                    )}
+                    {anyPayTracking && showPay && (
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {ps?.pay_rate_mode === "per_role" ? (
+                          <span className="italic text-gray-400">Paid per role</span>
+                        ) : u.pay_rate != null ? (
+                          <span className="font-medium tabular-nums">
+                            ${u.pay_rate.toFixed(2)}/game
+                          </span>
+                        ) : (
+                          <span className="text-amber-600">Pay rate not set</span>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                  <Badge
+                    variant={u.designation === "adult" ? "info" : "success"}
+                    className="flex-shrink-0"
+                  >
+                    {u.designation === "adult" ? "Adult" : "Youth"}
+                  </Badge>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <Link
+                    href={`/dashboard/umpires/${u.id}`}
+                    className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-2 text-sm font-medium text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
+                  >
+                    <CalendarDays className="h-4 w-4" />
+                    Schedule
+                  </Link>
+                  <button
+                    onClick={() => setEditing(u)}
+                    disabled={pending === u.id}
+                    aria-label={`Edit ${u.name}`}
+                    className="flex min-h-[44px] w-12 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F] disabled:opacity-50"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setDeleting(u)}
+                    disabled={pending === u.id}
+                    aria-label={`Delete ${u.name}`}
+                    className="flex min-h-[44px] w-12 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-red-300 hover:text-red-500 disabled:opacity-50"
+                  >
+                    {pending === u.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       </div>
 
       {editing && (
@@ -190,6 +264,12 @@ function EditUmpireModal({
   const [payRate, setPayRate] = useState<string>(
     umpire.pay_rate != null ? String(umpire.pay_rate) : "",
   );
+  const [email, setEmail] = useState(umpire.email ?? "");
+  const [phone, setPhone] = useState(umpire.phone ?? "");
+  const [maxGames, setMaxGames] = useState<string>(
+    umpire.max_games_per_week != null ? String(umpire.max_games_per_week) : "",
+  );
+  const [notes, setNotes] = useState(umpire.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -202,7 +282,15 @@ function EditUmpireModal({
     setSaving(true);
     setError("");
     const supabase = createClient();
-    const updates: Record<string, unknown> = { name: name.trim(), designation };
+    const updates: Record<string, unknown> = {
+      name: name.trim(),
+      designation,
+      email: email.trim() || null,
+      phone: phone.trim() || null,
+      max_games_per_week:
+        maxGames !== "" ? Math.max(1, parseInt(maxGames, 10) || 1) : null,
+      notes: notes.trim() || null,
+    };
     if (showPayRate) {
       updates.pay_rate = payRate !== "" ? parseFloat(payRate) || null : null;
     }
@@ -224,10 +312,10 @@ function EditUmpireModal({
       onClick={() => !saving && onClose()}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-white shadow-2xl"
+        className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-100 px-6 py-4">
           <h2 className="font-semibold text-[#0C1F3F]">
             Edit {getOfficialTitleLower(umpire.season?.sport)}
           </h2>
@@ -241,7 +329,10 @@ function EditUmpireModal({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5 px-6 py-6">
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-5 overflow-y-auto px-6 py-6"
+        >
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-gray-700">Name</label>
             <input
@@ -291,6 +382,56 @@ function EditUmpireModal({
               </div>
             </div>
           )}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-gray-700">
+              Email <span className="font-normal text-gray-400">(optional)</span>
+            </label>
+            <input
+              type="email"
+              placeholder="ump@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-gray-700">
+              Phone <span className="font-normal text-gray-400">(optional)</span>
+            </label>
+            <input
+              type="tel"
+              placeholder="(555) 555-5555"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-gray-700">
+              Max games per week{" "}
+              <span className="font-normal text-gray-400">(optional)</span>
+            </label>
+            <input
+              type="number"
+              min={1}
+              placeholder="No limit"
+              value={maxGames}
+              onChange={(e) => setMaxGames(e.target.value)}
+              className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-gray-700">
+              Notes <span className="font-normal text-gray-400">(optional)</span>
+            </label>
+            <textarea
+              rows={2}
+              placeholder="Prefers weekend games…"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+            />
+          </div>
           {error && (
             <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2.5 text-sm text-red-600">
               {error}

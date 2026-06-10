@@ -1125,6 +1125,7 @@ export type Database = {
           id: string
           rate: number
           role: string
+          role_id: string | null
           season_id: string
         }
         Insert: {
@@ -1132,6 +1133,7 @@ export type Database = {
           id?: string
           rate?: number
           role: string
+          role_id?: string | null
           season_id: string
         }
         Update: {
@@ -1139,6 +1141,7 @@ export type Database = {
           id?: string
           rate?: number
           role?: string
+          role_id?: string | null
           season_id?: string
         }
         Relationships: [
@@ -1149,31 +1152,50 @@ export type Database = {
             referencedRelation: "leagues"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "umpire_role_rates_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "official_roles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       umpires: {
         Row: {
           created_at: string
           designation: string
+          email: string | null
           id: string
+          max_games_per_week: number | null
           name: string
+          notes: string | null
           pay_rate: number | null
+          phone: string | null
           season_id: string
         }
         Insert: {
           created_at?: string
           designation: string
+          email?: string | null
           id?: string
+          max_games_per_week?: number | null
           name: string
+          notes?: string | null
           pay_rate?: number | null
+          phone?: string | null
           season_id: string
         }
         Update: {
           created_at?: string
           designation?: string
+          email?: string | null
           id?: string
+          max_games_per_week?: number | null
           name?: string
+          notes?: string | null
           pay_rate?: number | null
+          phone?: string | null
           season_id?: string
         }
         Relationships: [
@@ -1193,6 +1215,7 @@ export type Database = {
           id: string
           paid: boolean
           role: string
+          role_id: string | null
           umpire_id: string
         }
         Insert: {
@@ -1201,6 +1224,7 @@ export type Database = {
           id?: string
           paid?: boolean
           role: string
+          role_id?: string | null
           umpire_id: string
         }
         Update: {
@@ -1209,6 +1233,7 @@ export type Database = {
           id?: string
           paid?: boolean
           role?: string
+          role_id?: string | null
           umpire_id?: string
         }
         Relationships: [
@@ -1221,6 +1246,147 @@ export type Database = {
           },
           {
             foreignKeyName: "game_umpires_umpire_id_fkey"
+            columns: ["umpire_id"]
+            isOneToOne: false
+            referencedRelation: "umpires"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_umpires_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "official_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      official_roles: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          season_id: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          season_id: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          season_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "official_roles_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      official_availability: {
+        Row: {
+          created_at: string
+          day_of_week: string
+          end_time: string
+          id: string
+          start_time: string
+          umpire_id: string
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: string
+          end_time: string
+          id?: string
+          start_time: string
+          umpire_id: string
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: string
+          end_time?: string
+          id?: string
+          start_time?: string
+          umpire_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "official_availability_umpire_id_fkey"
+            columns: ["umpire_id"]
+            isOneToOne: false
+            referencedRelation: "umpires"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      official_blackouts: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          note: string | null
+          umpire_id: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          note?: string | null
+          umpire_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          note?: string | null
+          umpire_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "official_blackouts_umpire_id_fkey"
+            columns: ["umpire_id"]
+            isOneToOne: false
+            referencedRelation: "umpires"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      official_certifications: {
+        Row: {
+          created_at: string
+          expiry_date: string | null
+          id: string
+          issued_date: string | null
+          name: string
+          umpire_id: string
+        }
+        Insert: {
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          issued_date?: string | null
+          name: string
+          umpire_id: string
+        }
+        Update: {
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          issued_date?: string | null
+          name?: string
+          umpire_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "official_certifications_umpire_id_fkey"
             columns: ["umpire_id"]
             isOneToOne: false
             referencedRelation: "umpires"
@@ -1435,6 +1601,10 @@ export type PlayoffGame  = Database["public"]["Tables"]["playoff_games"]["Row"];
 export type Umpire         = Database["public"]["Tables"]["umpires"]["Row"];
 export type GameUmpire     = Database["public"]["Tables"]["game_umpires"]["Row"];
 export type UmpireRoleRate    = Database["public"]["Tables"]["umpire_role_rates"]["Row"];
+export type OfficialRole          = Database["public"]["Tables"]["official_roles"]["Row"];
+export type OfficialAvailability  = Database["public"]["Tables"]["official_availability"]["Row"];
+export type OfficialBlackout      = Database["public"]["Tables"]["official_blackouts"]["Row"];
+export type OfficialCertification = Database["public"]["Tables"]["official_certifications"]["Row"];
 export type SnackShackSettings = Database["public"]["Tables"]["snack_shack_settings"]["Row"];
 export type SnackShackBlock    = Database["public"]["Tables"]["snack_shack_blocks"]["Row"];
 export type PracticeSlot   = Database["public"]["Tables"]["practice_slots"]["Row"];

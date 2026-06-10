@@ -4,6 +4,13 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { UmpireScheduleActions } from "@/components/umpires/umpire-schedule-actions";
+import { PaidToggle } from "@/components/umpires/paid-toggle";
+import {
+  OfficialProfileSections,
+  type AvailabilityRow,
+  type BlackoutRow,
+  type CertificationRow,
+} from "@/components/umpires/official-profile-sections";
 import { getOfficialTitle } from "@/lib/utils/official-title";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
@@ -11,6 +18,7 @@ import { isElite } from "@/lib/plan/limits";
 import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
 
 type ScheduleAssignment = {
+  id: string;
   role: string;
   paid: boolean;
   game: {
@@ -65,7 +73,7 @@ export default async function UmpireSchedulePage({
 
   const { data: umpireRaw } = await supabase
     .from("umpires")
-    .select("id, name, designation, pay_rate, season_id, season:leagues(name, season, sport, pay_tracking_enabled, pay_rate_mode)")
+    .select("id, name, designation, pay_rate, email, season_id, season:leagues(name, season, sport, pay_tracking_enabled, pay_rate_mode)")
     .eq("id", params.id)
     .single();
 
@@ -75,6 +83,7 @@ export default async function UmpireSchedulePage({
     name: string;
     designation: string;
     pay_rate: number | null;
+    email: string | null;
     season_id: string;
     season: {
       name: string;
@@ -103,10 +112,35 @@ export default async function UmpireSchedulePage({
     }
   }
 
+  // Per-official profile rows (migration 0062 tables)
+  const [
+    { data: availabilityRaw },
+    { data: blackoutsRaw },
+    { data: certificationsRaw },
+  ] = await Promise.all([
+    supabase
+      .from("official_availability")
+      .select("id, day_of_week, start_time, end_time")
+      .eq("umpire_id", umpire.id),
+    supabase
+      .from("official_blackouts")
+      .select("id, date, note")
+      .eq("umpire_id", umpire.id)
+      .order("date"),
+    supabase
+      .from("official_certifications")
+      .select("id, name, issued_date, expiry_date")
+      .eq("umpire_id", umpire.id)
+      .order("name"),
+  ]);
+  const availability = (availabilityRaw ?? []) as AvailabilityRow[];
+  const blackouts = (blackoutsRaw ?? []) as BlackoutRow[];
+  const certifications = (certificationsRaw ?? []) as CertificationRow[];
+
   const { data: rawRows } = await supabase
     .from("game_umpires")
     .select(
-      `role, paid,
+      `id, role, paid,
        game:games(
          id, scheduled_at,
          league:leagues(name, season),
@@ -183,7 +217,11 @@ export default async function UmpireSchedulePage({
             )}
           </div>
         </div>
-        <UmpireScheduleActions umpireId={umpire.id} umpireName={umpire.name} />
+        <UmpireScheduleActions
+          umpireId={umpire.id}
+          umpireName={umpire.name}
+          savedEmail={umpire.email}
+        />
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none">
@@ -231,16 +269,21 @@ export default async function UmpireSchedulePage({
                       </td>
                       {payEnabled && (
                         <td className="px-4 py-3 tabular-nums">
-                          {pay != null ? (
-                            <span className={r.paid ? "text-gray-500 line-through" : "font-medium text-gray-900"}>
-                              {fmtCurrency(pay)}
-                            </span>
-                          ) : (
-                            <span className="text-gray-300">—</span>
-                          )}
-                          {r.paid && (
-                            <span className="ml-1.5 text-xs text-[#22C55E]">paid</span>
-                          )}
+                          <span className="inline-flex items-center gap-2">
+                            {pay != null ? (
+                              <span className={r.paid ? "text-gray-500 line-through" : "font-medium text-gray-900"}>
+                                {fmtCurrency(pay)}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                            <PaidToggle assignmentId={r.id} paid={r.paid} />
+                            {r.paid && (
+                              <span className="hidden text-xs text-[#22C55E] print:inline">
+                                paid
+                              </span>
+                            )}
+                          </span>
                         </td>
                       )}
                     </tr>
@@ -261,6 +304,14 @@ export default async function UmpireSchedulePage({
           </>
         )}
       </div>
+
+      {/* Availability / blackout / certification profile (migration 0062) */}
+      <OfficialProfileSections
+        umpireId={umpire.id}
+        availability={availability}
+        blackouts={blackouts}
+        certifications={certifications}
+      />
     </div>
   );
 }

@@ -58,7 +58,9 @@ export default async function UmpiresPage() {
     seasonIds.length > 0
       ? supabase
           .from("umpires")
-          .select("id, name, designation, season_id, pay_rate, season:leagues(name, sport)")
+          .select(
+            "id, name, designation, season_id, pay_rate, email, phone, max_games_per_week, notes, season:leagues(name, sport)",
+          )
           .in("season_id", seasonIds)
           .order("name", { ascending: true })
       : Promise.resolve({ data: [] as unknown[] }),

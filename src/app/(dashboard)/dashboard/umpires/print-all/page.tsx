@@ -66,7 +66,8 @@ export default async function PrintAllUmpireSchedulesPage() {
   const { data: seasonRows } = await supabase
     .from("leagues")
     .select("id")
-    .eq("owner_id", currentOrgId);
+    .eq("owner_id", currentOrgId)
+    .is("archived_at", null);
   const seasonIds = ((seasonRows ?? []) as { id: string }[]).map((r) => r.id);
 
   const [{ data: umpiresRaw }, { data: assignsRaw }] = await Promise.all([
