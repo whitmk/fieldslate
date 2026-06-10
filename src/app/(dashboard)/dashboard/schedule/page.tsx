@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { AddGameButton } from "@/components/schedule/add-game-modal";
 import { DivisionFilter } from "@/components/schedule/division-filter";
 import { TeamFilter } from "@/components/schedule/team-filter";
 import { HidePastToggle } from "@/components/schedule/hide-past-toggle";
@@ -99,14 +98,20 @@ export default async function SchedulePage({
     .eq("owner_id", currentOrgId);
   const orgLeagueIds = ((orgLeagueData ?? []) as { id: string }[]).map((l) => l.id);
 
+  // league_id rides along for the Add Game modal (games.league_id is NOT
+  // NULL and derives from the chosen division).
   const { data: divisionData } = orgLeagueIds.length
     ? await supabase
         .from("divisions")
-        .select("id, name")
+        .select("id, name, league_id")
         .in("league_id", orgLeagueIds)
         .order("name")
-    : { data: [] as { id: string; name: string }[] };
-  const divisions = (divisionData ?? []) as { id: string; name: string }[];
+    : { data: [] as { id: string; name: string; league_id: string }[] };
+  const divisions = (divisionData ?? []) as {
+    id: string;
+    name: string;
+    league_id: string;
+  }[];
 
   const { data: teamData } = orgLeagueIds.length
     ? await supabase
@@ -200,10 +205,13 @@ export default async function SchedulePage({
         </div>
         <div className="flex items-center gap-2">
           <ViewModeToggle mode={mode} />
-          <Button size="sm" className="h-11 flex-1 whitespace-nowrap md:h-8 md:flex-none">
-            <Plus className="mr-2 h-4 w-4" />
-            Add game
-          </Button>
+          <AddGameButton
+            divisions={divisions}
+            teams={teams.filter(
+              (t): t is { id: string; name: string; division_id: string } =>
+                !!t.division_id,
+            )}
+          />
         </div>
       </div>
 

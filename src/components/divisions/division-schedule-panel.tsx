@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Zap, Loader2, CheckCircle2, AlertTriangle, CalendarDays,
-  RefreshCw, PlusCircle, Printer, CloudRain, CalendarClock,
+  RefreshCw, Plus, PlusCircle, Printer, CloudRain, CalendarClock,
   Pencil, Trash2, Check, Users, ListChecks,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -16,6 +16,7 @@ import {
 import type { ScheduleConflict } from "@/lib/schedule/generate-schedule";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
+import { AddGameModal } from "@/components/schedule/add-game-modal";
 import { logActivity } from "@/lib/activity-log";
 import { AutoAssignUmpiresButton } from "@/components/umpires/auto-assign-button";
 import {
@@ -102,6 +103,7 @@ export function DivisionSchedulePanel({
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<GameRow | null>(null);
+  const [addGameOpen, setAddGameOpen] = useState(false);
 
   // Team inline-edit state
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
@@ -966,6 +968,23 @@ export function DivisionSchedulePanel({
         </div>
       )}
 
+      {/* ── Add game quick action ── */}
+      <div className="mt-3 print:hidden">
+        <button
+          onClick={() => setAddGameOpen(true)}
+          disabled={teams.length < 2}
+          title={
+            teams.length < 2
+              ? "Add at least two teams before scheduling a game"
+              : "Manually add a single game to this division"
+          }
+          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:border-[#22C55E] hover:text-[#22C55E] disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0"
+        >
+          <Plus className="h-4 w-4" />
+          Add game
+        </button>
+      </div>
+
       {/* ── Print regions — only the active mode is rendered ── */}
 
       {/* Games */}
@@ -1095,6 +1114,22 @@ export function DivisionSchedulePanel({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Add game modal — division locked to this panel's division ── */}
+      {addGameOpen && (
+        <AddGameModal
+          divisions={[{ id: divisionId, name: divisionName, league_id: leagueId }]}
+          teams={teams.map((t) => ({ ...t, division_id: divisionId }))}
+          lockedDivisionId={divisionId}
+          onClose={() => setAddGameOpen(false)}
+          onAdded={(summary) => {
+            setAddGameOpen(false);
+            setResult({ type: "success", message: summary });
+            fetchGames();
+            onScheduleChange?.();
+          }}
+        />
       )}
 
       {/* ── Reschedule modal ── */}
