@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { ORG_COOKIE_NAME } from "@/lib/orgs/context";
+import { SEASON_COOKIE_NAME } from "@/lib/seasons/context";
 
 export const runtime = "nodejs";
 
@@ -57,6 +58,11 @@ export async function POST(request: Request) {
     // membership on every read anyway.
     maxAge: 60 * 60 * 24 * 365,
   });
+
+  // Season selection can't survive an org switch — season ids from the old
+  // org are meaningless in the new one. getCurrentSeasonId would silently
+  // fall back anyway; clearing makes the reset deterministic.
+  cookies().delete(SEASON_COOKIE_NAME);
 
   return NextResponse.json({ ok: true, org_id: orgId });
 }
