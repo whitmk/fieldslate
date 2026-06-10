@@ -5,13 +5,13 @@ import { AddTeamButton } from "@/components/teams/add-team-button";
 import { TeamSnackShackButton } from "@/components/teams/team-snack-shack-button";
 import type { Team } from "@/types/database";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { PLAN_LIMITS, isUnlimited, isElite } from "@/lib/plan/limits";
 import { planLabel } from "@/lib/plan/labels";
 import { getTeamCountForOrg } from "@/lib/plan/counts";
 
-type TeamWithLeague = Team & {
-  league: { name: string } | null;
+type TeamWithDivision = Team & {
   division: { name: string } | null;
 };
 
@@ -22,37 +22,32 @@ export default async function TeamsPage() {
   } = await supabase.auth.getUser();
   const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
-  // Two-step fetch: pull THIS org's league ids first, then scope every child
-  // query to those ids. RLS would only stop access to *other people's* orgs;
-  // for a user who belongs to multiple orgs it would still merge data from
-  // both, which is why we scope explicitly.
-  const { data: allOrgLeagues } = await supabase
-    .from("leagues")
-    .select("id, name, archived_at")
-    .eq("owner_id", currentOrgId);
-  const orgLeagueIds = (allOrgLeagues ?? []).map((l) => l.id);
+  // Season-scoped (Chunk B1): only the selected season's teams — this also
+  // closes the old quirk of archived-season teams leaking into the list. A
+  // null season (no active seasons) flows to the existing empty state.
+  const seasonId = await getCurrentSeasonId(supabase, currentOrgId);
 
-  const [{ data: rawTeams }, { data: rawDivisions }] = orgLeagueIds.length
-    ? await Promise.all([
-        supabase
-          .from("teams")
-          .select("*, league:leagues(name), division:divisions(name)")
-          .in("league_id", orgLeagueIds)
-          .order("name", { ascending: true }),
-        supabase
-          .from("divisions")
-          .select("id, name, league_id")
-          .in("league_id", orgLeagueIds)
-          .order("name", { ascending: true }),
-      ])
-    : [{ data: [] }, { data: [] }];
+  const [{ data: rawSeason }, { data: rawTeams }, { data: rawDivisions }] =
+    seasonId
+      ? await Promise.all([
+          supabase.from("leagues").select("id, name").eq("id", seasonId).maybeSingle(),
+          supabase
+            .from("teams")
+            .select("*, division:divisions(name)")
+            .eq("league_id", seasonId)
+            .order("name", { ascending: true }),
+          supabase
+            .from("divisions")
+            .select("id, name, league_id")
+            .eq("league_id", seasonId)
+            .order("name", { ascending: true }),
+        ])
+      : [{ data: null }, { data: [] }, { data: [] }];
 
-  const teams = (rawTeams as TeamWithLeague[] | null) ?? [];
-  // The add-team dropdown only shows active (non-archived) seasons.
-  const leagues = (allOrgLeagues ?? [])
-    .filter((l) => !l.archived_at)
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((l) => ({ id: l.id, name: l.name }));
+  const season = (rawSeason as { id: string; name: string } | null) ?? null;
+  const teams = (rawTeams as TeamWithDivision[] | null) ?? [];
+  // The add-team dropdown is locked to the selected season.
+  const leagues = season ? [{ id: season.id, name: season.name }] : [];
   const divisions =
     (rawDivisions as { id: string; name: string; league_id: string }[] | null) ??
     [];
@@ -68,7 +63,9 @@ export default async function TeamsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Teams</h1>
-          <p className="mt-1 text-sm text-gray-500">All teams across your seasons.</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {season ? `Teams in ${season.name}.` : "No active season."}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           {!isUnlimited(teamLimit) ? (
@@ -108,7 +105,8 @@ export default async function TeamsPage() {
                 <thead>
                   <tr className="border-b border-gray-100 text-left">
                     <th className="pb-3 font-medium text-gray-500">Team</th>
-                    <th className="pb-3 font-medium text-gray-500">Season</th>
+                    {/* Season column dropped — the page is scoped to one
+                        season, so it carried the same value on every row. */}
                     <th className="pb-3 font-medium text-gray-500">Division</th>
                     <th className="pb-3 font-medium text-gray-500" />
                   </tr>
@@ -117,7 +115,6 @@ export default async function TeamsPage() {
                   {teams.map((team) => (
                     <tr key={team.id} className="border-b border-gray-50 last:border-0">
                       <td className="py-3 font-medium text-gray-900">{team.name}</td>
-                      <td className="py-3 text-gray-600">{team.league?.name ?? "—"}</td>
                       <td className="py-3 text-gray-600">{team.division?.name ?? "—"}</td>
                       <td className="py-2 text-right">
                         {/* Snack Shack is Elite-only — hide the per-team

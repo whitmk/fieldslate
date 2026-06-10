@@ -5,8 +5,8 @@ import { Layers } from "lucide-react";
 import { DivisionBallIcon } from "@/components/divisions/division-ball-icon";
 import { AddDivisionButton } from "@/components/divisions/add-division-button";
 import type { Division, League } from "@/types/database";
-import { activeLeaguesOnly } from "@/lib/seasons/queries";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { PLAN_LIMITS, isUnlimited } from "@/lib/plan/limits";
 import { planLabel } from "@/lib/plan/labels";
@@ -30,40 +30,33 @@ export default async function DivisionsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
-  // Active (non-archived) seasons only — Divisions is an operational surface;
-  // archived seasons still keep their divisions but they shouldn't crowd this
-  // grouped-by-season view.
-  const { data: rawLeagues } = await activeLeaguesOnly(
-    supabase
-      .from("leagues")
-      .select("id, name, sport, start_date, end_date")
-      .eq("owner_id", currentOrgId),
-  ).order("name", { ascending: true });
+  // Season-scoped: only the selected season's divisions (Chunk B1). A null
+  // season (org has no active seasons) flows to the existing empty state.
+  const seasonId = await getCurrentSeasonId(supabase, currentOrgId);
 
-  const leagues = (rawLeagues ?? []) as LeagueRow[];
-  const leagueIds = leagues.map((l) => l.id);
-  const leagueMap = new Map(leagues.map((l) => [l.id, l]));
+  const { data: rawLeague } = seasonId
+    ? await supabase
+        .from("leagues")
+        .select("id, name, sport, start_date, end_date")
+        .eq("id", seasonId)
+        .maybeSingle()
+    : { data: null };
+  const league = (rawLeague as LeagueRow | null) ?? null;
 
-  const { data: rawDivisions } = leagueIds.length
+  const { data: rawDivisions } = seasonId
     ? await supabase
         .from("divisions")
         .select("*")
-        .in("league_id", leagueIds)
+        .eq("league_id", seasonId)
         .order("created_at", { ascending: true })
     : { data: [] };
 
   const divisions = (rawDivisions ?? []) as Division[];
+  const divisionsWithLeague: DivisionWithLeague[] = league
+    ? divisions.map((div) => ({ ...div, league }))
+    : [];
 
-  // Group by league, preserving league order
-  const byLeague = new Map<string, DivisionWithLeague[]>();
-  for (const league of leagues) byLeague.set(league.id, []);
-  divisions.forEach((div) => {
-    const league = leagueMap.get(div.league_id);
-    if (!league) return;
-    byLeague.get(div.league_id)?.push({ ...div, league });
-  });
-
-  const hasAny = divisions.length > 0;
+  const hasAny = divisionsWithLeague.length > 0;
 
   const [plan, divisionCount, teamCount] = await Promise.all([
     getOrgPlan(currentOrgId),
@@ -78,7 +71,9 @@ export default async function DivisionsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[#0C1F3F]">Divisions</h1>
-          <p className="mt-1 text-sm text-gray-500">All divisions across your seasons.</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {league ? `Divisions in ${league.name}.` : "No active season."}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           {!isUnlimited(divisionLimit) ? (
@@ -89,12 +84,18 @@ export default async function DivisionsPage() {
             </p>
           ) : null}
           <AddDivisionButton
-            leagues={leagues.map((l) => ({
-              id: l.id,
-              name: l.name,
-              start_date: l.start_date,
-              end_date: l.end_date,
-            }))}
+            leagues={
+              league
+                ? [
+                    {
+                      id: league.id,
+                      name: league.name,
+                      start_date: league.start_date,
+                      end_date: league.end_date,
+                    },
+                  ]
+                : []
+            }
             currentOrgId={currentOrgId}
             divisionCount={divisionCount}
             divisionLimit={divisionLimit}
@@ -116,61 +117,58 @@ export default async function DivisionsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="flex flex-col gap-8">
-          {leagues.map((league) => {
-            const divs = byLeague.get(league.id) ?? [];
-            if (divs.length === 0) return null;
-            return (
-              <section key={league.id}>
-                <div className="mb-3 flex items-center gap-2">
-                  <Link
-                    href={`/dashboard/leagues/${league.id}`}
-                    className="text-sm font-semibold text-[#0C1F3F] hover:underline"
-                  >
-                    {league.name}
-                  </Link>
-                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
-                    {league.sport}
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    {divs.length} division{divs.length !== 1 ? "s" : ""}
-                  </span>
-                </div>
+        // Single-season view (Chunk B1) — the old grouped-by-season layer is
+        // gone; one header for the selected season, then its divisions.
+        <section>
+          {league && (
+            <div className="mb-3 flex items-center gap-2">
+              <Link
+                href={`/dashboard/leagues/${league.id}`}
+                className="text-sm font-semibold text-[#0C1F3F] hover:underline"
+              >
+                {league.name}
+              </Link>
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+                {league.sport}
+              </span>
+              <span className="text-xs text-gray-400">
+                {divisionsWithLeague.length} division
+                {divisionsWithLeague.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+          )}
 
-                <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-                  {divs.map((div, idx) => (
-                    <div
-                      key={div.id}
-                      className="flex items-center gap-3 border-b border-gray-50 px-4 py-3 last:border-0"
-                    >
-                      <DivisionBallIcon
-                        sport={league.sport}
-                        index={idx}
-                        containerClassName="h-8 w-8 rounded-md"
-                        iconClassName="h-3.5 w-3.5"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="truncate text-sm font-medium text-gray-900">{div.name}</p>
-                        <p className="text-xs text-gray-400">{div.team_count} teams</p>
-                      </div>
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[div.status]}`}
-                      >
-                        {div.status}
-                      </span>
-                      <Link
-                        href={`/dashboard/leagues/${league.id}`}
-                        className="text-xs text-gray-400 hover:text-[#0C1F3F]"
-                      >
-                        View →
-                      </Link>
-                    </div>
-                  ))}
+          <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+            {divisionsWithLeague.map((div, idx) => (
+              <div
+                key={div.id}
+                className="flex items-center gap-3 border-b border-gray-50 px-4 py-3 last:border-0"
+              >
+                <DivisionBallIcon
+                  sport={div.league.sport}
+                  index={idx}
+                  containerClassName="h-8 w-8 rounded-md"
+                  iconClassName="h-3.5 w-3.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="truncate text-sm font-medium text-gray-900">{div.name}</p>
+                  <p className="text-xs text-gray-400">{div.team_count} teams</p>
                 </div>
-              </section>
-            );
-          })}
-        </div>
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[div.status]}`}
+                >
+                  {div.status}
+                </span>
+                <Link
+                  href={`/dashboard/leagues/${div.league.id}`}
+                  className="text-xs text-gray-400 hover:text-[#0C1F3F]"
+                >
+                  View →
+                </Link>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );

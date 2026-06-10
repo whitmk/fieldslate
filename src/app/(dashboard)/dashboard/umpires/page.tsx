@@ -15,6 +15,7 @@ import {
   type PriorityDivision,
 } from "@/components/umpires/division-priority-card";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isElite } from "@/lib/plan/limits";
 import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
@@ -33,15 +34,20 @@ export default async function UmpiresPage() {
     return <FeatureLockedCard feature="Officials" tier="Elite" />;
   }
 
-  // Sequenced: seasons first so we can scope every downstream query by their
-  // ids. Before this change `rawUmpires` had no filter and RLS alone would
-  // surface a multi-org admin's umpires from BOTH orgs.
-  const { data: rawSeasons } = await supabase
-    .from("leagues")
-    .select("id, name, sport, pay_tracking_enabled, pay_rate_mode")
-    .eq("owner_id", currentOrgId)
-    .is("archived_at", null)
-    .order("name", { ascending: true });
+  // Season-scoped (Chunk B1): the whole page — roster, roles, rates,
+  // priority — follows the topbar's selected season. umpires are season-
+  // scoped rows (umpires.season_id NOT NULL), so there is no org-level
+  // roster to preserve. A null season (no active seasons) flows to the
+  // existing empty states below. The `seasons` array keeps its shape (now
+  // 0 or 1 elements) so the per-season card stacks render a single card.
+  const seasonId = await getCurrentSeasonId(supabase, currentOrgId);
+
+  const { data: rawSeasons } = seasonId
+    ? await supabase
+        .from("leagues")
+        .select("id, name, sport, pay_tracking_enabled, pay_rate_mode")
+        .eq("id", seasonId)
+    : { data: [] };
 
   const seasons = (rawSeasons ?? []) as {
     id: string;
@@ -51,53 +57,47 @@ export default async function UmpiresPage() {
     pay_rate_mode: string;
   }[];
 
-  // Active (non-archived) seasons only — umpire/official assignment is an
-  // operational surface; pay-tracking for archived seasons stays accessible
-  // via /dashboard/leagues > season detail. Note: this means an umpire that
-  // belongs to ONLY an archived season won't appear here either (same intent
-  // as the seasons scope below).
-  const seasonIds = seasons.map((s) => s.id);
-
   const [
     { data: rawUmpires },
     { data: rawSeasonRoles },
     { data: rawRoleRates },
     { data: rawDivisions },
   ] = await Promise.all([
-    seasonIds.length > 0
+    seasonId
       ? supabase
           .from("umpires")
           .select(
             "id, name, designation, season_id, pay_rate, email, phone, max_games_per_week, notes, team_id, season:leagues(name, sport), team:teams(name)",
           )
-          .in("season_id", seasonIds)
+          .eq("season_id", seasonId)
           .order("name", { ascending: true })
       : Promise.resolve({ data: [] as unknown[] }),
-    seasonIds.length > 0
+    seasonId
       ? supabase
           .from("official_roles")
           .select("id, name, sort_order, season_id")
-          .in("season_id", seasonIds)
+          .eq("season_id", seasonId)
           .order("sort_order")
       : Promise.resolve({ data: [] as unknown[] }),
-    seasonIds.length > 0
+    seasonId
       ? supabase
           .from("umpire_role_rates")
           .select("season_id, role, rate")
-          .in("season_id", seasonIds)
+          .eq("season_id", seasonId)
       : Promise.resolve({ data: [] as unknown[] }),
-    seasonIds.length > 0
+    seasonId
       ? supabase
           .from("divisions")
           .select("id, name, priority, league_id")
-          .in("league_id", seasonIds)
+          .eq("league_id", seasonId)
           .order("priority")
       : Promise.resolve({ data: [] as unknown[] }),
   ]);
 
   const umpires = (rawUmpires as unknown as UmpireRow[] | null) ?? [];
 
-  const showSeasonColumn = seasons.length > 1;
+  // Single-season view — the season column never applies anymore.
+  const showSeasonColumn = false;
 
   const seasonPaySettings: SeasonPaySettings[] = seasons.map((s) => ({
     id: s.id,
@@ -151,7 +151,9 @@ export default async function UmpiresPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Officials</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Manage the officials available to your seasons.
+            {seasons[0]
+              ? `Officials for ${seasons[0].name}.`
+              : "No active season."}
           </p>
         </div>
         <div className="flex items-center gap-2">

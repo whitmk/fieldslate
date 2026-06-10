@@ -14,6 +14,7 @@ import {
 } from "@/components/schedule/schedule-list";
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
 import { getCurrentOrgId } from "@/lib/orgs/context";
+import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isProPlus } from "@/lib/plan/limits";
 
@@ -89,34 +90,28 @@ export default async function SchedulePage({
   // Default ON; the URL only carries `past=1` when the user has switched it OFF.
   const hidePast = searchParams.past !== "1";
 
-  // League ids for THIS org. RLS would already let a multi-org admin see
-  // rows from every org they belong to; this narrows the dropdowns and the
-  // games list to just the selected org. name/archived_at ride along for the
-  // Add Game modal's Season picker — the games list itself still spans all
-  // seasons, archived included.
-  const { data: orgLeagueData } = await supabase
-    .from("leagues")
-    .select("id, name, archived_at")
-    .eq("owner_id", currentOrgId)
-    .order("name");
-  const orgLeagues = (orgLeagueData ?? []) as {
-    id: string;
-    name: string;
-    archived_at: string | null;
-  }[];
-  const orgLeagueIds = orgLeagues.map((l) => l.id);
-  // Active seasons only — new games shouldn't be written into archived seasons.
-  const activeSeasons = orgLeagues
-    .filter((l) => !l.archived_at)
-    .map((l) => ({ id: l.id, name: l.name }));
+  // Season-scoped (Chunk B1): the games list, the filter dropdowns, and the
+  // Add Game modal all follow the topbar's selected season. A null season
+  // (no active seasons) renders the existing empty list state.
+  const seasonId = await getCurrentSeasonId(supabase, currentOrgId);
+
+  const { data: seasonRow } = seasonId
+    ? await supabase
+        .from("leagues")
+        .select("id, name")
+        .eq("id", seasonId)
+        .maybeSingle()
+    : { data: null };
+  const season = (seasonRow as { id: string; name: string } | null) ?? null;
+  const activeSeasons = season ? [{ id: season.id, name: season.name }] : [];
 
   // league_id rides along for the Add Game modal (games.league_id is NOT
   // NULL and derives from the chosen division).
-  const { data: divisionData } = orgLeagueIds.length
+  const { data: divisionData } = seasonId
     ? await supabase
         .from("divisions")
         .select("id, name, league_id")
-        .in("league_id", orgLeagueIds)
+        .eq("league_id", seasonId)
         .order("name")
     : { data: [] as { id: string; name: string; league_id: string }[] };
   const divisions = (divisionData ?? []) as {
@@ -125,11 +120,11 @@ export default async function SchedulePage({
     league_id: string;
   }[];
 
-  const { data: teamData } = orgLeagueIds.length
+  const { data: teamData } = seasonId
     ? await supabase
         .from("teams")
         .select("id, name, division_id")
-        .in("league_id", orgLeagueIds)
+        .eq("league_id", seasonId)
         .order("name")
     : { data: [] as { id: string; name: string; division_id: string | null }[] };
   const teams = (teamData ?? []) as {
@@ -162,58 +157,59 @@ export default async function SchedulePage({
       .map((t) => t.id);
   }
 
-  let gamesQuery = supabase
-    .from("games")
-    .select(`
-      id, scheduled_at, status, league_id, home_team_id, away_team_id,
-      interleague_org_id, is_away, external_team_name, proposed_venue_name,
-      home_team:teams!home_team_id(name, division_id, division:divisions(name, umpires_per_game, umpire_roles)),
-      away_team:teams!away_team_id(name),
-      interleague_org:interleague_orgs(name),
-      venue:venues(name),
-      game_umpires:game_umpires(id, role, umpire:umpires(id, name))
-    `)
-    // Org scope is non-optional — without it a multi-org admin viewing the
-    // page with no team/division filter would see games merged from every
-    // org they belong to.
-    .in("league_id", orgLeagueIds.length ? orgLeagueIds : [
-      "00000000-0000-0000-0000-000000000000",
-    ])
-    .order("scheduled_at", { ascending: true })
-    .limit(mode === "calendar" ? 1000 : 200);
+  if (seasonId) {
+    let gamesQuery = supabase
+      .from("games")
+      .select(`
+        id, scheduled_at, status, league_id, home_team_id, away_team_id,
+        interleague_org_id, is_away, external_team_name, proposed_venue_name,
+        home_team:teams!home_team_id(name, division_id, division:divisions(name, umpires_per_game, umpire_roles)),
+        away_team:teams!away_team_id(name),
+        interleague_org:interleague_orgs(name),
+        venue:venues(name),
+        game_umpires:game_umpires(id, role, umpire:umpires(id, name))
+      `)
+      // Season scope is non-optional — it also carries the org scope, since
+      // the season id was validated against the current org's active seasons.
+      .eq("league_id", seasonId)
+      .order("scheduled_at", { ascending: true })
+      .limit(mode === "calendar" ? 1000 : 200);
 
-  if (teamIdScope !== null) {
-    if (teamIdScope.length === 0) {
-      gamesQuery = gamesQuery.in("home_team_id", [
-        "00000000-0000-0000-0000-000000000000",
-      ]);
-    } else if (effectiveTeamId) {
-      gamesQuery = gamesQuery.or(
-        `home_team_id.eq.${effectiveTeamId},away_team_id.eq.${effectiveTeamId}`,
-      );
-    } else {
-      gamesQuery = gamesQuery.in("home_team_id", teamIdScope);
+    if (teamIdScope !== null) {
+      if (teamIdScope.length === 0) {
+        gamesQuery = gamesQuery.in("home_team_id", [
+          "00000000-0000-0000-0000-000000000000",
+        ]);
+      } else if (effectiveTeamId) {
+        gamesQuery = gamesQuery.or(
+          `home_team_id.eq.${effectiveTeamId},away_team_id.eq.${effectiveTeamId}`,
+        );
+      } else {
+        gamesQuery = gamesQuery.in("home_team_id", teamIdScope);
+      }
     }
-  }
 
-  if (gridRange) {
-    gamesQuery = gamesQuery
-      .gte("scheduled_at", `${gridRange.gridStart}T00:00:00`)
-      .lt("scheduled_at", `${gridRange.dayAfterGridEnd}T00:00:00`);
-  }
-  if (hidePast) {
-    gamesQuery = gamesQuery.gte("scheduled_at", todayIso);
-  }
+    if (gridRange) {
+      gamesQuery = gamesQuery
+        .gte("scheduled_at", `${gridRange.gridStart}T00:00:00`)
+        .lt("scheduled_at", `${gridRange.dayAfterGridEnd}T00:00:00`);
+    }
+    if (hidePast) {
+      gamesQuery = gamesQuery.gte("scheduled_at", todayIso);
+    }
 
-  const { data: rawGames } = await gamesQuery;
-  games = (rawGames as unknown as ScheduleGame[] | null) ?? [];
+    const { data: rawGames } = await gamesQuery;
+    games = (rawGames as unknown as ScheduleGame[] | null) ?? [];
+  }
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Schedule</h1>
-          <p className="mt-1 text-sm text-gray-500">All games across your seasons.</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {season ? `Games in ${season.name}.` : "No active season."}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <ViewModeToggle mode={mode} />
