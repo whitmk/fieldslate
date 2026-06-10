@@ -35,6 +35,11 @@ interface Props {
   umpires: UmpireOption[];         // roster for the season
   layout?: "stacked" | "inline";   // "inline" = one row per slot; "stacked" = vertical
   compact?: boolean;               // smaller text/padding
+  /** Fires after any successful write (assign/reassign/unassign). Parents
+   *  that hold `assignments` in client state must re-fetch here —
+   *  router.refresh() alone only reaches server components, so without this
+   *  the select snaps back to its stale prop value. */
+  onChanged?: () => void;
 }
 
 export function UmpireSlots({
@@ -44,6 +49,7 @@ export function UmpireSlots({
   umpires,
   layout = "stacked",
   compact = false,
+  onChanged,
 }: Props) {
   const router = useRouter();
   const [errorByRole, setErrorByRole] = useState<Record<string, string>>({});
@@ -101,6 +107,7 @@ export function UmpireSlots({
       }
       setPendingRole(null);
       router.refresh();
+      onChanged?.();
       return;
     }
 
@@ -139,6 +146,7 @@ export function UmpireSlots({
 
     setPendingRole(null);
     router.refresh();
+    onChanged?.();
   }
 
   const inputHeight = compact ? "h-8" : "h-9";

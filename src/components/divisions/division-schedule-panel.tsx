@@ -955,6 +955,7 @@ export function DivisionSchedulePanel({
                             assignments={gameAssignments}
                             umpires={umpireRoster}
                             compact
+                            onChanged={() => void fetchGames()}
                           />
                         )}
                       </div>

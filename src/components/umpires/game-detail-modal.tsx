@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { X, Calendar, MapPin, UserCheck, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +61,33 @@ interface Props {
   onClose: () => void;
 }
 
+type AssignRow = {
+  id: string;
+  role: string;
+  umpire: { id: string; name: string } | null;
+};
+
+// Shared by the initial load and the post-save reload — the modal holds
+// assignments in client state, so a write inside UmpireSlots must re-fetch
+// here (router.refresh() only reaches server components).
+async function fetchAssignments(
+  supabase: ReturnType<typeof createClient>,
+  gameId: string,
+): Promise<SlotAssignment[]> {
+  const { data } = await supabase
+    .from("game_umpires")
+    .select("id, role, umpire:umpires(id, name)")
+    .eq("game_id", gameId);
+  return ((data as unknown as AssignRow[] | null) ?? [])
+    .filter((r) => r.umpire)
+    .map<SlotAssignment>((r) => ({
+      id: r.id,
+      umpire_id: r.umpire!.id,
+      umpire_name: r.umpire!.name,
+      role: r.role,
+    }));
+}
+
 type Loaded = {
   divisionId: string | null;
   divisionName: string | null;
@@ -94,10 +120,16 @@ function gameStatusLabel(status: string) {
 }
 
 export function GameDetailModal({ game, onClose }: Props) {
-  const router = useRouter();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Post-save reload: pull the fresh assignment rows into local state so the
+  // UmpireSlots selects reflect the write immediately.
+  async function reloadAssignments() {
+    const assignments = await fetchAssignments(createClient(), game.id);
+    setLoaded((prev) => (prev ? { ...prev, assignments } : prev));
+  }
 
   useEffect(() => {
     const supabase = createClient();
@@ -126,23 +158,7 @@ export function GameDetailModal({ game, onClose }: Props) {
       }
 
       // Assignments for this game
-      type AssignRow = {
-        id: string;
-        role: string;
-        umpire: { id: string; name: string } | null;
-      };
-      const { data: assignsRaw } = await supabase
-        .from("game_umpires")
-        .select("id, role, umpire:umpires(id, name)")
-        .eq("game_id", game.id);
-      const assignments = ((assignsRaw as unknown as AssignRow[] | null) ?? [])
-        .filter((r) => r.umpire)
-        .map<SlotAssignment>((r) => ({
-          id: r.id,
-          umpire_id: r.umpire!.id,
-          umpire_name: r.umpire!.name,
-          role: r.role,
-        }));
+      const assignments = await fetchAssignments(supabase, game.id);
 
       // Umpire roster for the season + league sport
       const [{ data: umpiresRaw, error: umpiresErr }, { data: leagueRaw }] = await Promise.all([
@@ -197,13 +213,6 @@ export function GameDetailModal({ game, onClose }: Props) {
       cancelled = true;
     };
   }, [game.id, game.home_team?.division_id, game.league_id]);
-
-  // Refresh when the modal data may have changed beneath us (e.g., another tab).
-  // Children call router.refresh() after writes, but the modal itself is local
-  // state — re-fetch on every router refresh by re-running the load effect.
-  useEffect(() => {
-    // no-op; the load effect already depends on stable props.
-  }, [router]);
 
   const unfilledCount = loaded
     ? Math.max(0, loaded.umpiresPerGame - loaded.assignments.length)
@@ -318,6 +327,7 @@ export function GameDetailModal({ game, onClose }: Props) {
                   roles={loaded.roles}
                   assignments={loaded.assignments}
                   umpires={loaded.umpires}
+                  onChanged={() => void reloadAssignments()}
                 />
                 {unfilledCount > 0 && (
                   <p className="mt-3 text-[11px] text-amber-600">
