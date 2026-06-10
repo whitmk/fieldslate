@@ -8,7 +8,16 @@ import { createClient } from "@/lib/supabase/client";
 import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
 import type { Plan } from "@/lib/plan/limits";
 
-const SPORTS = ["Baseball", "Softball", "Soccer"] as const;
+const SPORTS = [
+  "Baseball",
+  "Softball",
+  "Soccer",
+  "Football",
+  "Basketball",
+  "Volleyball",
+  "Lacrosse",
+  "Hockey",
+] as const;
 
 function getSeasonLabel(startDate: string): string {
   const month = new Date(startDate + "T00:00:00").getMonth() + 1;
