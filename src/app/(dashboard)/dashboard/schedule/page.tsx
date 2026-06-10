@@ -193,14 +193,14 @@ export default async function SchedulePage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Schedule</h1>
           <p className="mt-1 text-sm text-gray-500">All games across your seasons.</p>
         </div>
         <div className="flex items-center gap-2">
           <ViewModeToggle mode={mode} />
-          <Button size="sm">
+          <Button size="sm" className="h-11 flex-1 whitespace-nowrap md:h-8 md:flex-none">
             <Plus className="mr-2 h-4 w-4" />
             Add game
           </Button>

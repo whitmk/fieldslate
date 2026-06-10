@@ -6,6 +6,8 @@ import {
   CalendarRange,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Copy,
   Download,
@@ -747,8 +749,9 @@ export function PracticesPageClient({ orgLeagueIds, orgDivisionIds }: Props) {
             No fields match the current filters.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] border-collapse text-xs">
+          <>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[900px] border-collapse text-xs">
               <thead>
                 <tr className="bg-gray-50 text-left text-[10px] font-medium uppercase tracking-wide text-gray-400">
                   <th className="w-40 border-b border-gray-100 px-3 py-2 font-medium">
@@ -800,8 +803,16 @@ export function PracticesPageClient({ orgLeagueIds, orgDivisionIds }: Props) {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+            <MobileDayView
+              venueRows={venueRows}
+              teamById={teamById}
+              divisionById={divisionById}
+              onEmptyClick={openCreateSlot}
+              onOccupantClick={openEditSlot}
+            />
+          </>
         )}
       </div>
 
@@ -997,6 +1008,194 @@ function SlotRow({
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ── Mobile day view ──────────────────────────────────────────────────────
+// One day at a time, consuming the SAME venueRows the weekly grid renders —
+// no recomputation or refetching. Taps call the same openCreateSlot /
+// openEditSlot the grid cells use, so the one page-level PracticeSlotModal
+// serves both views.
+
+const JS_DAY_TO_KEY = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const MONTHS_FULL = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function MobileDayView({
+  venueRows,
+  teamById,
+  divisionById,
+  onEmptyClick,
+  onOccupantClick,
+}: {
+  venueRows: { venue: Venue; days: Map<string, CellRowLite[]> }[];
+  teamById: Map<string, Team>;
+  divisionById: Map<string, Division>;
+  onEmptyClick: (venue: Venue, day: string, startTime: string) => void;
+  onOccupantClick: (slot: PracticeSlotRow) => void;
+}) {
+  const [date, setDate] = useState(() => new Date());
+  const dayKey = JS_DAY_TO_KEY[date.getDay()];
+
+  function shiftDay(delta: number) {
+    setDate((prev) => {
+      const next = new Date(prev);
+      next.setDate(prev.getDate() + delta);
+      return next;
+    });
+  }
+
+  const entries = venueRows.flatMap(({ venue, days }) =>
+    (days.get(dayKey) ?? []).map((row) => ({ venue, row })),
+  );
+  entries.sort(
+    (a, b) =>
+      a.row.start_time.localeCompare(b.row.start_time) ||
+      a.venue.name.localeCompare(b.venue.name),
+  );
+
+  return (
+    <div className="md:hidden">
+      <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
+        <button
+          type="button"
+          onClick={() => shiftDay(-1)}
+          aria-label="Previous day"
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-[#22C55E]/40 hover:text-[#22C55E]"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <span className="text-sm font-semibold text-[#0C1F3F]">
+          {dayFull(dayKey)}, {MONTHS_FULL[date.getMonth()]} {date.getDate()}
+        </span>
+        <button
+          type="button"
+          onClick={() => shiftDay(1)}
+          aria-label="Next day"
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-[#22C55E]/40 hover:text-[#22C55E]"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+      {entries.length === 0 ? (
+        <p className="px-4 py-8 text-center text-sm text-gray-500">
+          No practices scheduled for this day
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2 p-4">
+          {entries.map(({ venue, row }) => (
+            <MobileSlotRow
+              key={`${venue.id}-${row.start_time}`}
+              venue={venue}
+              row={row}
+              teamById={teamById}
+              divisionById={divisionById}
+              onEmptyClick={() => onEmptyClick(venue, dayKey, row.start_time)}
+              onOccupantClick={onOccupantClick}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MobileSlotRow({
+  venue,
+  row,
+  teamById,
+  divisionById,
+  onEmptyClick,
+  onOccupantClick,
+}: {
+  venue: Venue;
+  row: CellRowLite;
+  teamById: Map<string, Team>;
+  divisionById: Map<string, Division>;
+  onEmptyClick: () => void;
+  onOccupantClick: (slot: PracticeSlotRow) => void;
+}) {
+  // Open slot — same dashed/muted treatment as the grid's empty cells.
+  if (row.occupants.length === 0) {
+    return (
+      <button
+        type="button"
+        onClick={onEmptyClick}
+        className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-lg border border-dashed border-gray-200 px-3 py-2.5 text-left transition-colors hover:border-[#22C55E]/40 hover:bg-[#22C55E]/5"
+      >
+        <span className="flex flex-col">
+          <span className="text-sm font-semibold text-gray-500">{venue.name}</span>
+          <span className="text-xs text-gray-400">{fmtTime(row.start_time)}</span>
+        </span>
+        <span className="text-xs text-gray-400">Open</span>
+      </button>
+    );
+  }
+
+  const occupantRows = row.occupants.map((slot) => {
+    const team = teamById.get(slot.team_id);
+    const div = team ? divisionById.get(team.division_id) : null;
+    return { slot, team, div };
+  });
+
+  // Single assignment — the whole card is the tap target.
+  if (occupantRows.length === 1) {
+    const { slot, team, div } = occupantRows[0];
+    return (
+      <button
+        type="button"
+        onClick={() => onOccupantClick(slot)}
+        className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-[#22C55E]/40"
+      >
+        <span className="flex flex-col">
+          <span className="text-sm font-semibold text-[#0C1F3F]">{venue.name}</span>
+          <span className="text-xs text-gray-500">{fmtTime(row.start_time)}</span>
+        </span>
+        <span className="flex flex-col items-end">
+          <span className="flex items-center gap-1 text-sm font-semibold text-[#0C1F3F]">
+            {slot.placement_source === "manual" && (
+              <Lock className="h-3 w-3 text-gray-500" aria-label="Manually placed" />
+            )}
+            {team?.name ?? "Unknown team"}
+          </span>
+          <span className="text-xs text-gray-500">{div?.name ?? "?"}</span>
+        </span>
+      </button>
+    );
+  }
+
+  // Cross-division collision — amber, matching the grid's warning treatment,
+  // with each claiming team tappable.
+  return (
+    <div className="rounded-lg border border-amber-300 border-l-4 border-l-amber-400 bg-amber-50">
+      <div className="flex items-center justify-between gap-3 px-3 pt-2.5">
+        <span className="text-sm font-semibold text-[#0C1F3F]">{venue.name}</span>
+        <span className="flex items-center gap-1 text-xs font-medium text-amber-700">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          {fmtTime(row.start_time)}
+        </span>
+      </div>
+      <div className="flex flex-col divide-y divide-amber-100">
+        {occupantRows.map(({ slot, team, div }) => (
+          <button
+            key={slot.id}
+            type="button"
+            onClick={() => onOccupantClick(slot)}
+            className="flex min-h-[44px] w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-amber-100/50"
+          >
+            <span className="flex items-center gap-1 text-sm font-semibold text-[#0C1F3F]">
+              {slot.placement_source === "manual" && (
+                <Lock className="h-3 w-3 text-gray-500" aria-label="Manually placed" />
+              )}
+              {team?.name ?? "Unknown team"}
+            </span>
+            <span className="text-xs text-gray-500">{div?.name ?? "?"}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
