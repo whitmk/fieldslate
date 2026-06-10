@@ -91,12 +91,24 @@ export default async function SchedulePage({
 
   // League ids for THIS org. RLS would already let a multi-org admin see
   // rows from every org they belong to; this narrows the dropdowns and the
-  // games list to just the selected org.
+  // games list to just the selected org. name/archived_at ride along for the
+  // Add Game modal's Season picker — the games list itself still spans all
+  // seasons, archived included.
   const { data: orgLeagueData } = await supabase
     .from("leagues")
-    .select("id")
-    .eq("owner_id", currentOrgId);
-  const orgLeagueIds = ((orgLeagueData ?? []) as { id: string }[]).map((l) => l.id);
+    .select("id, name, archived_at")
+    .eq("owner_id", currentOrgId)
+    .order("name");
+  const orgLeagues = (orgLeagueData ?? []) as {
+    id: string;
+    name: string;
+    archived_at: string | null;
+  }[];
+  const orgLeagueIds = orgLeagues.map((l) => l.id);
+  // Active seasons only — new games shouldn't be written into archived seasons.
+  const activeSeasons = orgLeagues
+    .filter((l) => !l.archived_at)
+    .map((l) => ({ id: l.id, name: l.name }));
 
   // league_id rides along for the Add Game modal (games.league_id is NOT
   // NULL and derives from the chosen division).
@@ -206,6 +218,7 @@ export default async function SchedulePage({
         <div className="flex items-center gap-2">
           <ViewModeToggle mode={mode} />
           <AddGameButton
+            seasons={activeSeasons}
             divisions={divisions}
             teams={teams.filter(
               (t): t is { id: string; name: string; division_id: string } =>

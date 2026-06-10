@@ -1119,6 +1119,7 @@ export function DivisionSchedulePanel({
       {/* ── Add game modal — division locked to this panel's division ── */}
       {addGameOpen && (
         <AddGameModal
+          seasons={[{ id: leagueId, name: leagueName }]}
           divisions={[{ id: divisionId, name: divisionName, league_id: leagueId }]}
           teams={teams.map((t) => ({ ...t, division_id: divisionId }))}
           lockedDivisionId={divisionId}

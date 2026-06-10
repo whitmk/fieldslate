@@ -13,6 +13,7 @@ import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 // venue/time. Note that "Regenerate full schedule" wipes a division's games
 // (preserving accepted interleague) — manual games included, by design.
 
+export type AddGameSeason = { id: string; name: string };
 export type AddGameDivision = { id: string; name: string; league_id: string };
 export type AddGameTeam = { id: string; name: string; division_id: string };
 
@@ -26,6 +27,9 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 interface AddGameModalProps {
+  /** Active (non-archived) seasons. The Season field only renders when there
+   *  is more than one and the division isn't locked; otherwise it's implied. */
+  seasons: AddGameSeason[];
   /** Selectable divisions (exactly one when opened from a division panel). */
   divisions: AddGameDivision[];
   /** Teams across those divisions; filtered by the selected division. */
@@ -39,6 +43,7 @@ interface AddGameModalProps {
 }
 
 export function AddGameModal({
+  seasons,
   divisions,
   teams,
   lockedDivisionId,
@@ -46,6 +51,12 @@ export function AddGameModal({
   onAdded,
 }: AddGameModalProps) {
   const router = useRouter();
+  const [seasonId, setSeasonId] = useState(() => {
+    if (lockedDivisionId) {
+      return divisions.find((d) => d.id === lockedDivisionId)?.league_id ?? "";
+    }
+    return seasons.length === 1 ? seasons[0].id : "";
+  });
   const [divisionId, setDivisionId] = useState(
     lockedDivisionId ?? (divisions.length === 1 ? divisions[0].id : ""),
   );
@@ -104,6 +115,8 @@ export function AddGameModal({
     };
   }, [firstLeagueId]);
 
+  const showSeasonField = !lockedDivisionId && seasons.length > 1;
+  const seasonDivisions = divisions.filter((d) => d.league_id === seasonId);
   const divisionTeams = teams.filter((t) => t.division_id === divisionId);
   const homeTeam = divisionTeams.find((t) => t.id === homeTeamId);
   const awayTeam = divisionTeams.find((t) => t.id === awayTeamId);
@@ -120,6 +133,12 @@ export function AddGameModal({
       setError(null);
     };
   }
+  const updateSeason = setField<string>((v) => {
+    setSeasonId(v);
+    setDivisionId("");
+    setHomeTeamId("");
+    setAwayTeamId("");
+  });
   const updateDivision = setField<string>((v) => {
     setDivisionId(v);
     setHomeTeamId("");
@@ -244,16 +263,34 @@ export function AddGameModal({
 
         {/* Body */}
         <div className="flex flex-col gap-4 overflow-y-auto px-6 py-5">
+          {showSeasonField && (
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel>Season</FieldLabel>
+              <select
+                value={seasonId}
+                onChange={(e) => updateSeason(e.target.value)}
+                className={inputClasses}
+              >
+                <option value="">Select a season…</option>
+                {seasons.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Division</FieldLabel>
             <select
               value={divisionId}
               onChange={(e) => updateDivision(e.target.value)}
-              disabled={!!lockedDivisionId}
+              disabled={!!lockedDivisionId || !seasonId}
               className={inputClasses}
             >
               <option value="">Select a division…</option>
-              {divisions.map((d) => (
+              {seasonDivisions.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
                 </option>
@@ -398,9 +435,11 @@ export function AddGameModal({
  *  a brief success toast. Lives client-side so the server page stays a
  *  server component. */
 export function AddGameButton({
+  seasons,
   divisions,
   teams,
 }: {
+  seasons: AddGameSeason[];
   divisions: AddGameDivision[];
   teams: AddGameTeam[];
 }) {
@@ -436,6 +475,7 @@ export function AddGameButton({
 
       {open && (
         <AddGameModal
+          seasons={seasons}
           divisions={divisions}
           teams={teams}
           onClose={() => setOpen(false)}
