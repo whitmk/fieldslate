@@ -13,6 +13,7 @@ import {
   type ScheduleGame,
 } from "@/components/schedule/schedule-list";
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
+import { SchedulePrintButton } from "@/components/schedule/schedule-print-button";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
@@ -231,6 +232,7 @@ export default async function SchedulePage({
         </div>
         <div className="flex items-center gap-2">
           <ViewModeToggle mode={mode} />
+          <SchedulePrintButton />
           <AddGameButton
             seasons={activeSeasons}
             divisions={divisions}
