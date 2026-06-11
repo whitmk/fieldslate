@@ -34,7 +34,10 @@ interface Props {
    *  available headroom. New mode passes 0. */
   existingTeamCountInDivision?: number;
   onClose: () => void;
-  onComplete: () => void;
+  /** Forwarded from the review step's result panels with the saved
+   *  division's id — optional arg, so existing no-arg handlers (the
+   *  divisions page) need no change. */
+  onComplete: (savedDivisionId?: string) => void;
   editDivision?: Division;
   initialData?: WizardData;
 }
@@ -125,9 +128,9 @@ export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartD
     onClose();
   }
 
-  function handleComplete() {
+  function handleComplete(savedDivisionId?: string) {
     localStorage.removeItem(draftKey);
-    onComplete();
+    onComplete(savedDivisionId);
   }
 
   const step1Valid =

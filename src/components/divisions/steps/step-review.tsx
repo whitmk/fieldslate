@@ -38,7 +38,10 @@ interface Props {
   currentOrgId: string;
   sport?: string | null;
   onEdit: (step: number) => void;
-  onComplete: () => void;
+  /** Fires from the result panels' Close/View actions. Carries the saved
+   *  division's id so embedders (the /setup loop) can name their follow-up
+   *  screen — optional arg, so existing no-arg handlers stay valid. */
+  onComplete: (savedDivisionId?: string) => void;
   divisionId?: string;
   /** Org-wide team count + cap as of wizard mount. Used for the upfront
    *  cap check inside saveDivisionData so a Free user with the team cap
@@ -731,7 +734,7 @@ export function StepReview({
                 </ul>
                 <Link
                   href={`/dashboard/schedule?division=${regenResult.savedDivisionId}`}
-                  onClick={onComplete}
+                  onClick={() => onComplete(regenResult.savedDivisionId)}
                   className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-red-700 underline underline-offset-2 hover:text-red-900"
                 >
                   View schedule <ExternalLink className="h-3 w-3" />
@@ -743,7 +746,7 @@ export function StepReview({
 
         <button
           type="button"
-          onClick={onComplete}
+          onClick={() => onComplete(regenResult.savedDivisionId)}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0C1F3F] py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[#0C1F3F]/80"
         >
           <X className="h-5 w-5" />
@@ -783,7 +786,7 @@ export function StepReview({
 
         <button
           type="button"
-          onClick={onComplete}
+          onClick={() => onComplete(saveOnlyResult.savedDivisionId)}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0C1F3F] py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[#0C1F3F]/80"
         >
           <X className="h-5 w-5" />

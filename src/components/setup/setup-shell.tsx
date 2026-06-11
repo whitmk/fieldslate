@@ -7,13 +7,15 @@ import { FieldSlateLockup } from "@/components/brand/FieldSlateLockup";
 import { createClient } from "@/lib/supabase/client";
 import { VenuesPageClient } from "@/components/venues/venues-page-client";
 import { NewLeagueForm } from "@/components/leagues/new-league-form";
+import { SetupDivisionsStep } from "@/components/setup/setup-divisions-step";
+import type { Plan } from "@/lib/plan/limits";
 
 // First-run setup wizard shell (/setup). Chrome-less — no dashboard sidebar;
 // a navy progress rail (horizontal stepper on mobile) frames the embedded
 // real product components. Progress is data-derived: the server page computes
-// initialStep from venue/season counts, and this shell only ever advances
-// within a visit — a reload re-derives. Steps 3–4 are placeholders until the
-// division-wizard and generate chunks land.
+// initialStep from venue/season/division state, and this shell only ever
+// advances within a visit — a reload re-derives. Step 4 is a placeholder
+// until the generate chunk lands.
 
 const STEPS = [
   { label: "Venues", sub: "Fields and open hours" },
@@ -27,12 +29,23 @@ interface Props {
   /** 1-based; derived from data state by the server page. */
   initialStep: number;
   initialVenueCount: number;
+  /** The selected season (Chunk 1 cookie chain) — the division wizard's
+   *  leagueId. Null until a season exists; step 2 fills it client-side. */
+  initialSeasonId: string | null;
+  plan: Plan;
 }
 
-export function SetupShell({ currentOrgId, initialStep, initialVenueCount }: Props) {
+export function SetupShell({
+  currentOrgId,
+  initialStep,
+  initialVenueCount,
+  initialSeasonId,
+  plan,
+}: Props) {
   const router = useRouter();
   const [step, setStep] = useState(initialStep);
   const [venueCount, setVenueCount] = useState(initialVenueCount);
+  const [seasonId, setSeasonId] = useState(initialSeasonId);
   const [dismissing, setDismissing] = useState(false);
   const [dismissError, setDismissError] = useState<string | null>(null);
 
@@ -75,6 +88,7 @@ export function SetupShell({ currentOrgId, initialStep, initialVenueCount }: Pro
         body: JSON.stringify({ season_id: leagueId }),
       });
     } catch {}
+    setSeasonId(leagueId);
     setStep(3);
   }
 
@@ -219,20 +233,29 @@ export function SetupShell({ currentOrgId, initialStep, initialVenueCount }: Pro
                   onCreated={(leagueId) => void handleSeasonCreated(leagueId)}
                 />
               </div>
+            ) : step === 3 && seasonId ? (
+              <SetupDivisionsStep
+                currentOrgId={currentOrgId}
+                seasonId={seasonId}
+                plan={plan}
+                onAllDone={() => setStep(4)}
+              />
             ) : (
-              /* Steps 3–4 placeholder until the division-wizard and
-                 generate chunks land. By now a season exists, so the
-                 dashboard no longer redirects back here. */
+              /* Step 4 placeholder until the generate chunk lands (also the
+                 defensive fallback if step 3 is somehow reached without a
+                 season — never a blank screen). By now a season exists, so
+                 the dashboard no longer redirects back here. */
               <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center">
                 <Hammer className="h-8 w-8 text-gray-300" />
                 <div>
                   <p className="font-semibold text-[#0C1F3F]">
-                    Divisions &amp; teams — coming in the next update
+                    Generate schedule — coming in the next update
                   </p>
                   <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">
-                    Venues and season: done. You can add divisions and generate
-                    schedules from the dashboard today — this guided version is
-                    on its way.
+                    Your divisions are in. One click will schedule every
+                    division around your field availability — that&rsquo;s
+                    next. Until then, each division can generate its own
+                    schedule from the dashboard.
                   </p>
                 </div>
                 <button

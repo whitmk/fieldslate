@@ -9,7 +9,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrgId, listMemberships } from "@/lib/orgs/context";
-import { getActiveSeasonCount } from "@/lib/plan/counts";
+import { getCurrentSeasonId } from "@/lib/seasons/context";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { SetupShell } from "@/components/setup/setup-shell";
 
 export default async function SetupPage() {
@@ -29,24 +30,30 @@ export default async function SetupPage() {
     redirect("/dashboard");
   }
 
-  const [{ count: venueCount }, activeSeasonCount] = await Promise.all([
+  const [{ count: venueCount }, seasonId, plan] = await Promise.all([
     supabase
       .from("venues")
       .select("id", { count: "exact", head: true })
       .eq("owner_id", currentOrgId),
-    getActiveSeasonCount(supabase, currentOrgId),
+    // The selected season (cookie chain) — null iff zero active seasons.
+    getCurrentSeasonId(supabase, currentOrgId),
+    getOrgPlan(currentOrgId),
   ]);
 
   // Data-derived progress: no venues → step 1; venues but no active season →
-  // step 2; both → step 3 (placeholder until the division-wizard chunk).
-  const initialStep =
-    (venueCount ?? 0) === 0 ? 1 : activeSeasonCount === 0 ? 2 : 3;
+  // step 2; season → step 3 (the divisions step derives launch-vs-branch from
+  // its own division fetch).
+  // Chunk 3 seam: "divisions exist AND every division has games" → step 4
+  // belongs here once the generate step is real.
+  const initialStep = (venueCount ?? 0) === 0 ? 1 : seasonId === null ? 2 : 3;
 
   return (
     <SetupShell
       currentOrgId={currentOrgId}
       initialStep={initialStep}
       initialVenueCount={venueCount ?? 0}
+      initialSeasonId={seasonId}
+      plan={plan}
     />
   );
 }
