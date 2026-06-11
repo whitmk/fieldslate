@@ -144,7 +144,12 @@ export default async function PrintAllUmpireSchedulesPage() {
           No officials on the roster yet.
         </div>
       ) : (
-        <div className="flex flex-col gap-12 print:gap-0">
+        // Wrap in the print region so these schedules escape the global
+        // @media print collapse (body hidden + main height:0) — without it the
+        // page prints blank. `.fieldslate-print-region` also forces display:block
+        // on print, so the per-official `print:break-after-page` sections
+        // paginate reliably (block children, not flex items).
+        <div className="fieldslate-print-region flex flex-col gap-12 print:gap-0">
           {umpires.map((u, idx) => {
             const rows = byUmpire.get(u.id) ?? [];
             const officialTitle = getOfficialTitle(u.season?.sport);
