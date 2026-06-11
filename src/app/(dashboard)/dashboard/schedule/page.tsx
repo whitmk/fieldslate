@@ -14,6 +14,7 @@ import {
 } from "@/components/schedule/schedule-list";
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
 import { SchedulePrintButton } from "@/components/schedule/schedule-print-button";
+import { SchedulePrintRegion } from "@/components/schedule/schedule-print-region";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
@@ -287,6 +288,11 @@ export default async function SchedulePage({
           )}
         </CardContent>
       </Card>
+
+      {/* Print-only region — hidden on screen, revealed by the global
+          @media print rules. Renders in both list and calendar modes since a
+          printed calendar grid isn't useful. */}
+      <SchedulePrintRegion games={games} seasonName={season?.name ?? null} />
     </div>
   );
 }
