@@ -178,7 +178,11 @@ export default async function UmpireSchedulePage({
   const seasonLabel = umpire.season?.season ?? "";
 
   return (
-    <div className="flex flex-col gap-6">
+    // Wrap the page in the print region so the schedule escapes the global
+    // @media print collapse — without it this prints blank. The back link and
+    // action buttons are already print:hidden, and the profile sections are
+    // print:hidden per card, so only the header + schedule table print.
+    <div className="fieldslate-print-region flex flex-col gap-6">
       <Link
         href="/dashboard/umpires"
         className="inline-flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-[#0C1F3F] print:hidden"
