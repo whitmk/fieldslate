@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { VenuesPageClient } from "@/components/venues/venues-page-client";
 import { NewLeagueForm } from "@/components/leagues/new-league-form";
 import { SetupDivisionsStep } from "@/components/setup/setup-divisions-step";
+import { SetupGenerateStep } from "@/components/setup/setup-generate-step";
 import type { Plan } from "@/lib/plan/limits";
 
 // First-run setup wizard shell (/setup). Chrome-less — no dashboard sidebar;
@@ -48,6 +49,9 @@ export function SetupShell({
   const [seasonId, setSeasonId] = useState(initialSeasonId);
   const [dismissing, setDismissing] = useState(false);
   const [dismissError, setDismissError] = useState<string | null>(null);
+  // Generation loop in flight — locks the later-link so the user can't
+  // navigate away mid-run and lose the progress view.
+  const [genRunning, setGenRunning] = useState(false);
 
   // Step 1 gating — re-count after every venue write the embed reports.
   async function refreshVenueCount() {
@@ -182,7 +186,7 @@ export function SetupShell({
             <div className="flex flex-col items-end">
               <button
                 onClick={handleDismiss}
-                disabled={dismissing}
+                disabled={dismissing || genRunning}
                 className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-400 transition-colors hover:text-[#0C1F3F] disabled:opacity-50"
               >
                 {dismissing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -240,22 +244,28 @@ export function SetupShell({
                 plan={plan}
                 onAllDone={() => setStep(4)}
               />
+            ) : step >= 4 && seasonId ? (
+              /* Step 4 (and 5 = finished — same component, it derives
+                 generate-vs-done itself; 5 just marks the rail done). */
+              <SetupGenerateStep
+                currentOrgId={currentOrgId}
+                seasonId={seasonId}
+                onBackToDivisions={() => setStep(3)}
+                onAllScheduled={() => setStep(5)}
+                onRunningChange={setGenRunning}
+              />
             ) : (
-              /* Step 4 placeholder until the generate chunk lands (also the
-                 defensive fallback if step 3 is somehow reached without a
-                 season — never a blank screen). By now a season exists, so
-                 the dashboard no longer redirects back here. */
+              /* Defensive fallback: steps 3+ reached without a season —
+                 derivation prevents this, but never a blank screen. */
               <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center">
                 <Hammer className="h-8 w-8 text-gray-300" />
                 <div>
                   <p className="font-semibold text-[#0C1F3F]">
-                    Generate schedule — coming in the next update
+                    We couldn&rsquo;t find your season
                   </p>
                   <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">
-                    Your divisions are in. One click will schedule every
-                    division around your field availability — that&rsquo;s
-                    next. Until then, each division can generate its own
-                    schedule from the dashboard.
+                    Head to the dashboard — your venues and any saved work are
+                    still there.
                   </p>
                 </div>
                 <button
