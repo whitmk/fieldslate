@@ -359,7 +359,19 @@ export function SetupGenerateStep({
 
               {/* Honest per-division detail under the row */}
               {status?.state === "failed" && (
-                <p className="ml-7 text-xs text-red-600">{status.error}</p>
+                <div className="ml-7 flex flex-col items-start gap-1">
+                  <p className="text-xs text-red-600">{status.error}</p>
+                  {/* The fix for "no slots / no venues / not enough teams"
+                      lives in division settings. Editing is the wizard modal
+                      on the season detail page (DivisionSection) — there is
+                      no per-division route to deep-link. */}
+                  <Link
+                    href={`/dashboard/leagues/${seasonId}`}
+                    className="text-xs font-semibold text-gray-500 underline-offset-2 transition-colors hover:text-[#0C1F3F] hover:underline"
+                  >
+                    Review division settings →
+                  </Link>
+                </div>
               )}
               {status?.state === "done" &&
                 (status.unscheduledCount > 0 ||

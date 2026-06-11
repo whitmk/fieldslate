@@ -3,6 +3,7 @@ import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
+import { isSetupIncomplete } from "@/lib/setup/derive-step";
 import { PracticesPageClient } from "@/components/practices/practices-page-client";
 
 // Server wrapper: resolve org + season context once and thread them as
@@ -45,10 +46,18 @@ export default async function PracticesPage() {
     (r) => r.id,
   );
 
+  // Empty-state /setup link gate (Chunk 4), resolved server-side and passed
+  // down — the client decides WHEN to show it (its no-eligible-venues empty
+  // state), the server decides WHETHER it may show at all.
+  const showSetupLink =
+    currentOrgId === user!.id &&
+    (await isSetupIncomplete(supabase, currentOrgId, seasonId));
+
   return (
     <PracticesPageClient
       orgLeagueIds={orgLeagueIds}
       orgDivisionIds={orgDivisionIds}
+      showSetupLink={showSetupLink}
     />
   );
 }

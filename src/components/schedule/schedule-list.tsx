@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { padRoleLabels } from "@/lib/utils/official-title";
 import { createClient } from "@/lib/supabase/client";
+import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { logActivity } from "@/lib/activity-log";
 import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
 import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
@@ -64,6 +65,10 @@ interface Props {
    *  read "Open" whenever the two label sets diverged. */
   seasonRoleNames: string[];
   sport: string | null;
+  /** Server-resolved /setup link gate (Chunk 4): own-org owner mid-setup
+   *  AND the season has zero games unfiltered — the server checks the total
+   *  count, so this is never true while filters are merely hiding games. */
+  showSetupLink?: boolean;
 }
 
 const gameStatusVariants: Record<string, "default" | "success" | "warning" | "danger" | "info" | "orange"> = {
@@ -117,6 +122,7 @@ export function ScheduleList({
   canReschedule = false,
   seasonRoleNames,
   sport,
+  showSetupLink,
 }: Props) {
   const router = useRouter();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -191,7 +197,12 @@ export function ScheduleList({
   }
 
   if (games.length === 0) {
-    return <p className="text-sm text-gray-500">No games found.</p>;
+    return (
+      <div className="flex flex-col items-start gap-2">
+        <p className="text-sm text-gray-500">No games found.</p>
+        {showSetupLink && <FinishSetupLink />}
+      </div>
+    );
   }
 
   return (

@@ -11,6 +11,8 @@ import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { PLAN_LIMITS, isUnlimited } from "@/lib/plan/limits";
 import { planLabel } from "@/lib/plan/labels";
 import { getDivisionCount, getTeamCountForOrg } from "@/lib/plan/counts";
+import { isSetupIncomplete } from "@/lib/setup/derive-step";
+import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 
 type LeagueRow = Pick<League, "id" | "name" | "sport"> & {
   start_date: string | null;
@@ -66,6 +68,13 @@ export default async function DivisionsPage() {
   const divisionLimit = PLAN_LIMITS[plan].divisions;
   const teamLimit = PLAN_LIMITS[plan].teamsPerOrg;
 
+  // Empty-state /setup link (Chunk 4): own-org owners mid-setup only;
+  // derived lazily so the check runs only when the empty state renders.
+  const showSetupLink =
+    !hasAny &&
+    currentOrgId === user!.id &&
+    (await isSetupIncomplete(supabase, currentOrgId, seasonId));
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
@@ -90,6 +99,7 @@ export default async function DivisionsPage() {
                     {
                       id: league.id,
                       name: league.name,
+                      sport: league.sport,
                       start_date: league.start_date,
                       end_date: league.end_date,
                     },
@@ -114,6 +124,7 @@ export default async function DivisionsPage() {
             <p className="mt-1 text-sm text-gray-500">
               Create a season and add divisions to get started.
             </p>
+            {showSetupLink && <FinishSetupLink className="mt-3" />}
           </CardContent>
         </Card>
       ) : (

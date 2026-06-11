@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import {
   PracticeSlotModal,
   type EditableSlot,
@@ -119,9 +120,16 @@ interface Props {
    *  are division-scoped and have no league_id (division_venues,
    *  practice_time_slots). */
   orgDivisionIds: string[];
+  /** Server-resolved /setup link gate (Chunk 4): own-org owner with setup
+   *  incomplete. The client only decides WHEN (its empty state). */
+  showSetupLink?: boolean;
 }
 
-export function PracticesPageClient({ orgLeagueIds, orgDivisionIds }: Props) {
+export function PracticesPageClient({
+  orgLeagueIds,
+  orgDivisionIds,
+  showSetupLink,
+}: Props) {
   const [loading, setLoading] = useState(true);
 
   // Raw data
@@ -740,10 +748,13 @@ export function PracticesPageClient({ orgLeagueIds, orgDivisionIds }: Props) {
           </div>
         </div>
         {!hasAnyEligibleVenue ? (
-          <p className="px-4 py-10 text-center text-sm text-gray-500">
-            No practice-eligible venues yet. In a division&apos;s venue setup,
-            mark at least one venue as allowed for practices.
-          </p>
+          <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+            <p className="text-sm text-gray-500">
+              No practice-eligible venues yet. In a division&apos;s venue setup,
+              mark at least one venue as allowed for practices.
+            </p>
+            {showSetupLink && <FinishSetupLink />}
+          </div>
         ) : venueRows.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-gray-500">
             No fields match the current filters.

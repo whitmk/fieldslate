@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrgId, listMemberships } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
-import { getDivisionGameCounts } from "@/lib/schedule/division-game-counts";
+import { deriveSetupStep } from "@/lib/setup/derive-step";
 import { SetupShell } from "@/components/setup/setup-shell";
 
 export default async function SetupPage() {
@@ -41,33 +41,14 @@ export default async function SetupPage() {
     getOrgPlan(currentOrgId),
   ]);
 
-  // Data-derived progress: no venues → step 1; venues but no active season →
-  // step 2; season but no divisions → step 3 (the divisions step derives
-  // launch-vs-branch itself); divisions with any unscheduled → step 4
-  // (generate state); all divisions scheduled → 5 ("finished" — same
-  // generate component showing the done screen, with the rail's step 4
-  // marked done).
-  let initialStep = (venueCount ?? 0) === 0 ? 1 : seasonId === null ? 2 : 3;
-  if (initialStep === 3 && seasonId) {
-    const { data: divisionRows } = await supabase
-      .from("divisions")
-      .select("id")
-      .eq("league_id", seasonId);
-    const divisionIds = ((divisionRows ?? []) as { id: string }[]).map(
-      (d) => d.id,
-    );
-    if (divisionIds.length > 0) {
-      const gameCounts = await getDivisionGameCounts(
-        supabase,
-        seasonId,
-        divisionIds,
-      );
-      const hasUnscheduled = divisionIds.some(
-        (id) => (gameCounts.get(id) ?? 0) === 0,
-      );
-      initialStep = hasUnscheduled ? 4 : 5;
-    }
-  }
+  // Data-derived progress — the shared deriveSetupStep helper (extracted in
+  // Chunk 4, logic unchanged): no venues → 1; no active season → 2; no
+  // divisions → 3; any division with zero games → 4; all scheduled → 5
+  // ("finished" — the generate component shows the done screen and the rail
+  // marks step 4 done). venueCount is still fetched above for the shell's
+  // step-1 gating prop; the helper re-counts internally (one cheap head
+  // count) to stay context-free for its other callers.
+  const initialStep = await deriveSetupStep(supabase, currentOrgId, seasonId);
 
   return (
     <SetupShell

@@ -19,6 +19,8 @@ import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isElite } from "@/lib/plan/limits";
 import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
+import { isSetupIncomplete } from "@/lib/setup/derive-step";
+import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 
 export default async function UmpiresPage() {
   const supabase = createClient();
@@ -145,6 +147,13 @@ export default async function UmpiresPage() {
     (list) => list.length > 0,
   );
 
+  // Empty-state /setup link (Chunk 4): own-org owners mid-setup only;
+  // derived lazily so the check runs only when the empty state renders.
+  const showSetupLink =
+    umpires.length === 0 &&
+    currentOrgId === user!.id &&
+    (await isSetupIncomplete(supabase, currentOrgId, seasonId));
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
@@ -185,6 +194,7 @@ export default async function UmpiresPage() {
               <p className="mt-1 text-sm text-gray-500">
                 Add officials so divisions can require them for game scheduling.
               </p>
+              {showSetupLink && <FinishSetupLink className="mt-3" />}
             </div>
           ) : (
             <UmpireList

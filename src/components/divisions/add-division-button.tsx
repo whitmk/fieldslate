@@ -11,6 +11,9 @@ import type { Plan } from "@/lib/plan/limits";
 export type LeagueOption = {
   id: string;
   name: string;
+  /** Drives the wizard's sport-aware labels (Umpires step) — without it
+   *  the wizard falls back to generic "Officials". */
+  sport: string;
   start_date: string | null;
   end_date: string | null;
 };
@@ -136,6 +139,7 @@ export function AddDivisionButton({
         <DivisionWizard
           leagueId={activeLeague.id}
           leagueName={activeLeague.name}
+          leagueSport={activeLeague.sport}
           leagueStartDate={activeLeague.start_date ?? undefined}
           leagueEndDate={activeLeague.end_date ?? undefined}
           currentOrgId={currentOrgId}

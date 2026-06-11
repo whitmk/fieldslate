@@ -14,6 +14,8 @@ import { isProPlus, isElite } from "@/lib/plan/limits";
 import { planLabel } from "@/lib/plan/labels";
 import { WelcomeBanner } from "@/components/dashboard/welcome-banner";
 import { CompleteSetupCta } from "@/components/dashboard/complete-setup-cta";
+import { isSetupIncomplete } from "@/lib/setup/derive-step";
+import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 
 type OwnedLeague = {
   id: string;
@@ -171,6 +173,15 @@ export default async function DashboardPage({
   const upcomingGames = (rawGames ?? []) as unknown as UpcomingGame[];
   const isEmpty = ownedLeagues.length === 0;
 
+  // Empty-state /setup link (Chunk 4): only for owners acting in their OWN
+  // org with setup still incomplete — invited admins and finished owners
+  // never see it. Derived lazily: the check only runs when the empty state
+  // will actually render.
+  const showSetupLink =
+    isEmpty &&
+    currentOrgId === user!.id &&
+    (await isSetupIncomplete(supabase, currentOrgId, globalSeasonId));
+
   // Critical alerts: filter to the selected season when specific; otherwise
   // span all of the org's seasons exactly like before.
   const alertLeagues = isAll
@@ -265,6 +276,7 @@ export default async function DashboardPage({
           <p className="mt-2 max-w-sm text-sm leading-relaxed text-gray-500">
             Set up a season to start building your schedule. You can add divisions, teams, and venues once it&apos;s created.
           </p>
+          {showSetupLink && <FinishSetupLink className="mt-3" />}
           <Link
             href="/dashboard/leagues/new"
             className="mt-6 inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"

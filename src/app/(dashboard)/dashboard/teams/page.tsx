@@ -10,6 +10,8 @@ import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { PLAN_LIMITS, isUnlimited, isElite } from "@/lib/plan/limits";
 import { planLabel } from "@/lib/plan/labels";
 import { getTeamCountForOrg } from "@/lib/plan/counts";
+import { isSetupIncomplete } from "@/lib/setup/derive-step";
+import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 
 type TeamWithDivision = Team & {
   division: { name: string } | null;
@@ -58,6 +60,13 @@ export default async function TeamsPage() {
   ]);
   const teamLimit = PLAN_LIMITS[plan].teamsPerOrg;
 
+  // Empty-state /setup link (Chunk 4): own-org owners mid-setup only;
+  // derived lazily so the check runs only when the empty state renders.
+  const showSetupLink =
+    teams.length === 0 &&
+    currentOrgId === user!.id &&
+    (await isSetupIncomplete(supabase, currentOrgId, seasonId));
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
@@ -98,6 +107,7 @@ export default async function TeamsPage() {
               <p className="mt-1 text-sm text-gray-500">
                 Add teams to this season to get started.
               </p>
+              {showSetupLink && <FinishSetupLink className="mt-3" />}
             </div>
           ) : (
             <div className="overflow-x-auto">

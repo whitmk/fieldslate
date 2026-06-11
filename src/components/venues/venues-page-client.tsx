@@ -12,6 +12,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import type { Venue } from "@/types/database";
 import {
   DAY_KEYS,
@@ -60,9 +61,17 @@ interface Props {
    *  venue state outside this component (the /setup wizard's step gating)
    *  re-check here instead of polling. */
   onChanged?: () => void;
+  /** Server-resolved /setup link gate (Chunk 4): own-org owner with setup
+   *  incomplete. Absent in the /setup embed itself — no self-referential
+   *  link inside the wizard. */
+  showSetupLink?: boolean;
 }
 
-export function VenuesPageClient({ currentOrgId, onChanged }: Props) {
+export function VenuesPageClient({
+  currentOrgId,
+  onChanged,
+  showSetupLink,
+}: Props) {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -276,6 +285,7 @@ export function VenuesPageClient({ currentOrgId, onChanged }: Props) {
           <MapPin className="mb-3 h-8 w-8 text-gray-300" />
           <p className="font-medium text-[#0C1F3F]">No venues yet</p>
           <p className="mt-1 text-sm text-gray-400">Add your first venue to assign games to fields.</p>
+          {showSetupLink && <FinishSetupLink className="mt-3" />}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">

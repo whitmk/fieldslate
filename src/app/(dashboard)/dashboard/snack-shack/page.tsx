@@ -9,6 +9,8 @@ import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isElite } from "@/lib/plan/limits";
 import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
+import { isSetupIncomplete } from "@/lib/setup/derive-step";
+import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 
 type TeamRow = { id: string; name: string; league_id: string };
 
@@ -45,6 +47,12 @@ export default async function SnackShackPage() {
   }[];
 
   if (seasons.length === 0) {
+    // Empty-state /setup link (Chunk 4): own-org owners mid-setup only.
+    // Zero seasons means setup can't be past step 2, but the shared helper
+    // stays the single source of truth for the gate.
+    const showSetupLink =
+      currentOrgId === user!.id &&
+      (await isSetupIncomplete(supabase, currentOrgId, seasonId));
     return (
       <div className="flex flex-col gap-6">
         <div>
@@ -61,6 +69,7 @@ export default async function SnackShackPage() {
               <p className="mt-1 text-sm text-gray-400">
                 Create a season first, then come back to set up the Snack Shack.
               </p>
+              {showSetupLink && <FinishSetupLink className="mt-3" />}
             </div>
           </CardContent>
         </Card>

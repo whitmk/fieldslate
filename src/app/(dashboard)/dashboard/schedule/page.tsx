@@ -19,6 +19,7 @@ import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isProPlus } from "@/lib/plan/limits";
+import { isSetupIncomplete } from "@/lib/setup/derive-step";
 
 function parseMode(raw: string | undefined): ViewMode {
   return raw === "calendar" ? "calendar" : "list";
@@ -222,6 +223,29 @@ export default async function SchedulePage({
     games = (rawGames as unknown as ScheduleGame[] | null) ?? [];
   }
 
+  // Empty-state /setup link gate (Chunk 4): own-org owner mid-setup AND the
+  // season GENUINELY has zero games. "No games found." also renders under
+  // narrowing filters (division/team/hide-past/calendar range), and the list
+  // component can't see filter state — so the gate goes by the unfiltered
+  // season-wide count: zero there means every filtered view is empty too,
+  // so the link can never appear while filters are merely hiding games.
+  let showSetupLink = false;
+  if (
+    currentOrgId === user!.id &&
+    (await isSetupIncomplete(supabase, currentOrgId, seasonId))
+  ) {
+    if (seasonId) {
+      const { count: totalGames } = await supabase
+        .from("games")
+        .select("id", { count: "exact", head: true })
+        .eq("league_id", seasonId);
+      showSetupLink = (totalGames ?? 0) === 0;
+    } else {
+      // No active season — trivially zero games.
+      showSetupLink = true;
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -284,6 +308,7 @@ export default async function SchedulePage({
               canReschedule={isProPlus(plan)}
               seasonRoleNames={seasonRoleNames}
               sport={season?.sport ?? null}
+              showSetupLink={showSetupLink}
             />
           )}
         </CardContent>

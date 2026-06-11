@@ -113,14 +113,18 @@ export function NewLeagueForm({ currentOrgId, onCreated }: Props) {
 
   return (
     <div className="mx-auto max-w-xl">
-      {/* Back link */}
-      <Link
-        href="/dashboard/leagues"
-        className="mb-6 inline-flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-[#0C1F3F]"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to seasons
-      </Link>
+      {/* Back link — hidden in the /setup embed (onCreated set), where
+          navigation escape hatches are the shell's job ("I'll do this
+          later"), not the form's. */}
+      {!onCreated && (
+        <Link
+          href="/dashboard/leagues"
+          className="mb-6 inline-flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-[#0C1F3F]"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to seasons
+        </Link>
+      )}
 
       {/* Header */}
       <div className="mb-8">
@@ -229,12 +233,15 @@ export function NewLeagueForm({ currentOrgId, onCreated }: Props) {
           )}
 
           <div className="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
-            <Link
-              href="/dashboard/leagues"
-              className="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
-            >
-              Cancel
-            </Link>
+            {/* Cancel is the same escape hatch as the back link — see above. */}
+            {!onCreated && (
+              <Link
+                href="/dashboard/leagues"
+                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
+              >
+                Cancel
+              </Link>
+            )}
             <button
               type="submit"
               disabled={loading}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Medal, Plus, Pencil, ChevronDown, ChevronUp, Trophy, FileDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { PlayoffWizard } from "@/components/playoffs/playoff-wizard";
 import { BracketView } from "@/components/playoffs/bracket-view";
 import { PlayoffExportModal } from "@/components/playoffs/playoff-export-modal";
@@ -76,9 +77,12 @@ interface Props {
    *  active seasons. Single source of truth; the client no longer fetches
    *  leagues itself. */
   season: League | null;
+  /** Server-resolved /setup link gate (Chunk 4): own-org owner with setup
+   *  incomplete. The client only decides WHEN (its empty state). */
+  showSetupLink?: boolean;
 }
 
-export function PlayoffsPageClient({ currentOrgId, season }: Props) {
+export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Props) {
   // Kept as an array so the grouped render below stays untouched — it just
   // always has 0 or 1 entries now.
   const leagues: League[] = season ? [season] : [];
@@ -197,6 +201,7 @@ export function PlayoffsPageClient({ currentOrgId, season }: Props) {
           <p className="mt-1 text-sm text-gray-500">
             Create a playoff bracket for any of your divisions.
           </p>
+          {showSetupLink && <FinishSetupLink className="mt-3" />}
           {leagues.length > 0 && (
             <div className="mt-6 flex flex-wrap justify-center gap-2">
               {leagues.map((league) => (

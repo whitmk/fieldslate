@@ -4,6 +4,7 @@ import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isElite } from "@/lib/plan/limits";
 import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
+import { isSetupIncomplete } from "@/lib/setup/derive-step";
 import { PlayoffsPageClient } from "@/components/playoffs/playoffs-page-client";
 
 export default async function PlayoffsPage() {
@@ -35,5 +36,18 @@ export default async function PlayoffsPage() {
   const season =
     (seasonRow as { id: string; name: string; sport: string } | null) ?? null;
 
-  return <PlayoffsPageClient currentOrgId={currentOrgId} season={season} />;
+  // Empty-state /setup link gate (Chunk 4), resolved server-side and passed
+  // down — the client decides WHEN (its zero-playoffs empty state), the
+  // server decides WHETHER it may show at all.
+  const showSetupLink =
+    currentOrgId === user!.id &&
+    (await isSetupIncomplete(supabase, currentOrgId, seasonId));
+
+  return (
+    <PlayoffsPageClient
+      currentOrgId={currentOrgId}
+      season={season}
+      showSetupLink={showSetupLink}
+    />
+  );
 }
