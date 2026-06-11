@@ -56,9 +56,13 @@ function draftToAvailability(draft: AvailabilityDraft): VenueAvailability {
 
 interface Props {
   currentOrgId: string;
+  /** Fires after a successful venue insert or update. Embedders that track
+   *  venue state outside this component (the /setup wizard's step gating)
+   *  re-check here instead of polling. */
+  onChanged?: () => void;
 }
 
-export function VenuesPageClient({ currentOrgId }: Props) {
+export function VenuesPageClient({ currentOrgId, onChanged }: Props) {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -117,6 +121,7 @@ export function VenuesPageClient({ currentOrgId }: Props) {
     setAdding(false);
     // Drop the admin straight into the availability editor for the new venue.
     startEdit(newRow as Venue);
+    onChanged?.();
   }
 
   function startEdit(venue: Venue) {
@@ -185,6 +190,7 @@ export function VenuesPageClient({ currentOrgId }: Props) {
     await loadVenues();
     setEditId(null);
     setSaving(false);
+    onChanged?.();
   }
 
   const unconfiguredCount = venues.filter((v) => !v.availability_configured).length;

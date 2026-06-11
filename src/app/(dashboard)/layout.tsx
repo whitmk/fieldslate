@@ -3,8 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Topbar } from "@/components/dashboard/topbar";
 import { MobileSidebarProvider } from "@/components/dashboard/mobile-sidebar";
-import { getCurrentOrgId } from "@/lib/orgs/context";
-import { getOrgPlan } from "@/lib/plan/get-org-plan";
+import { getCurrentOrgId, listMemberships } from "@/lib/orgs/context";
+import { getOrgPlan, getOrgSetupDismissed } from "@/lib/plan/get-org-plan";
 import { getActiveSeasonCount } from "@/lib/plan/counts";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -17,11 +17,36 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   // Resolve plan once for nav gating. getOrgPlan is React-cached, so pages
   // below that also call it reuse this row — no extra DB round-trip.
-  const currentOrgId = await getCurrentOrgId(supabase, user.id);
+  // Memberships are fetched once here and passed through so the setup
+  // trigger below doesn't repeat getCurrentOrgId's internal lookup.
+  const memberships = await listMemberships(supabase, user.id);
+  const currentOrgId = await getCurrentOrgId(supabase, user.id, memberships);
   const plan = await getOrgPlan(currentOrgId);
   // Drives the sidebar's locked-feature upgrade modal: 0 active seasons → a
   // single-season purchase (nothing to convert); ≥1 → the 2-season convert flow.
   const activeSeasonCount = await getActiveSeasonCount(supabase, currentOrgId);
+
+  // First-run setup: bounce brand-new owners to /setup (its own route group,
+  // so this layout — and this redirect — never applies there). Conditions,
+  // cheapest first: acting in their own org; never invited to another org
+  // (volunteer co-admins are never redirected, even when browsing their own
+  // empty org); hasn't dismissed (shares getOrgPlan's cached profile row —
+  // no extra query); zero active seasons (already fetched for the sidebar).
+  // Only then pay for the one extra venues head-count.
+  if (
+    currentOrgId === user.id &&
+    memberships.every((m) => m.is_own) &&
+    activeSeasonCount === 0 &&
+    !(await getOrgSetupDismissed(currentOrgId))
+  ) {
+    const { count: venueCount } = await supabase
+      .from("venues")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_id", currentOrgId);
+    if ((venueCount ?? 0) === 0) {
+      redirect("/setup");
+    }
+  }
 
   return (
     <MobileSidebarProvider>

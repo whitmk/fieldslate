@@ -30,9 +30,13 @@ function getSeasonLabel(startDate: string): string {
 
 interface Props {
   currentOrgId: string;
+  /** When provided, called with the new league id on success INSTEAD of the
+   *  default redirect to the season detail page — embedders (the /setup
+   *  wizard) own post-create navigation. Absent = behavior unchanged. */
+  onCreated?: (leagueId: string) => void;
 }
 
-export function NewLeagueForm({ currentOrgId }: Props) {
+export function NewLeagueForm({ currentOrgId, onCreated }: Props) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [sport, setSport] = useState<string>("");
@@ -98,6 +102,12 @@ export function NewLeagueForm({ currentOrgId }: Props) {
     }
 
     const league = (payload as { row: { id: string } }).row;
+    if (onCreated) {
+      // Leave `loading` true — the embedder is about to swap this form out,
+      // and re-enabling the button first would invite a double submit.
+      onCreated(league.id);
+      return;
+    }
     router.push(`/dashboard/leagues/${league.id}`);
   }
 

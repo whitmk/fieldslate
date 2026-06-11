@@ -940,6 +940,7 @@ export type Database = {
           pending_plan: string | null
           plan: string
           role: string
+          setup_dismissed: boolean
           updated_at: string
         }
         Insert: {
@@ -952,6 +953,7 @@ export type Database = {
           pending_plan?: string | null
           plan?: string
           role?: string
+          setup_dismissed?: boolean
           updated_at?: string
         }
         Update: {
@@ -964,6 +966,7 @@ export type Database = {
           pending_plan?: string | null
           plan?: string
           role?: string
+          setup_dismissed?: boolean
           updated_at?: string
         }
         Relationships: []
