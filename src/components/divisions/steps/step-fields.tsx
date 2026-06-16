@@ -4,6 +4,12 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { MapPin, AlertTriangle, Plus, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  parseAvailability,
+  DAY_KEYS,
+  DAY_LABELS,
+  type DayKey,
+} from "@/lib/venues/availability";
 import type { WizardData, VenueAssignment } from "../wizard-types";
 import type { Venue } from "@/types/database";
 
@@ -73,6 +79,24 @@ export function StepFields({ data, update, leagueId, currentOrgId }: Props) {
     }
   }
 
+  // Live closed-day warning: once at least one game venue is selected, flag any
+  // chosen playing day that none of those venues are open on — those games
+  // won't schedule (the same condition generateSchedule now rejects by name).
+  // Derived in render, so it tracks venue selection and playing days live.
+  const selectedGameVenueIds = new Set(
+    data.venue_assignments.filter((a) => a.allow_games).map((a) => a.venue_id),
+  );
+  const openDays = new Set<DayKey>();
+  for (const v of venues) {
+    if (!selectedGameVenueIds.has(v.id)) continue;
+    const av = parseAvailability(v.availability);
+    for (const key of DAY_KEYS) if (av[key]) openDays.add(key);
+  }
+  const uncoveredDays = DAY_KEYS.filter(
+    (d) => data.playing_days.includes(d) && !openDays.has(d),
+  );
+  const showDayWarning = selectedGameVenueIds.size > 0 && uncoveredDays.length > 0;
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -81,6 +105,19 @@ export function StepFields({ data, update, leagueId, currentOrgId }: Props) {
           Choose which venues this division can use for games.
         </p>
       </div>
+
+      {!loading && showDayWarning && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+          <span>
+            This division plays{" "}
+            {uncoveredDays.map((d) => DAY_LABELS[d]).join(", ")}, but none of
+            your selected fields are open{" "}
+            {uncoveredDays.length === 1 ? "that day" : "those days"} — those
+            games won&rsquo;t schedule.
+          </span>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-8">

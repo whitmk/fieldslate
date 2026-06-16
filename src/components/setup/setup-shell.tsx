@@ -96,6 +96,20 @@ export function SetupShell({
     setStep(3);
   }
 
+  // Rail back-navigation: completed steps are revisitable as an in-session
+  // view override (the derived seed still picks the initial step on load —
+  // this only overrides within a visit). Excluded: anything not yet
+  // completed; the Season step once a season exists (NewLeagueForm is
+  // create-only, so re-entering would attempt a second season and hit the
+  // active-season cap); and every step while a generate loop is running
+  // (navigating away would orphan it, matching the dismiss button's lock).
+  function canNavigateTo(n: number): boolean {
+    if (genRunning) return false;
+    if (n >= step) return false;
+    if (n === 2 && seasonId) return false;
+    return true;
+  }
+
   return (
     <div className="flex min-h-screen bg-[#f4f5f0]">
       {/* ── Desktop progress rail ── */}
@@ -109,8 +123,9 @@ export function SetupShell({
             {STEPS.map((s, i) => {
               const n = i + 1;
               const state = n < step ? "done" : n === step ? "active" : "upcoming";
-              return (
-                <li key={s.label} className="flex items-start gap-3">
+              const navigable = canNavigateTo(n);
+              const content = (
+                <>
                   <span
                     className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                       state === "done"
@@ -122,7 +137,7 @@ export function SetupShell({
                   >
                     {state === "done" ? <Check className="h-3.5 w-3.5" /> : n}
                   </span>
-                  <span className="flex flex-col">
+                  <span className="flex flex-col text-left">
                     <span
                       className={`text-sm font-semibold ${
                         state === "active" ? "text-white" : state === "done" ? "text-white/70" : "text-white/40"
@@ -132,6 +147,21 @@ export function SetupShell({
                     </span>
                     <span className="text-xs text-white/30">{s.sub}</span>
                   </span>
+                </>
+              );
+              return (
+                <li key={s.label}>
+                  {navigable ? (
+                    <button
+                      type="button"
+                      onClick={() => setStep(n)}
+                      className="flex w-full items-start gap-3 rounded-md transition-opacity hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                    >
+                      {content}
+                    </button>
+                  ) : (
+                    <div className="flex items-start gap-3">{content}</div>
+                  )}
                 </li>
               );
             })}
@@ -152,8 +182,9 @@ export function SetupShell({
             {STEPS.map((s, i) => {
               const n = i + 1;
               const state = n < step ? "done" : n === step ? "active" : "upcoming";
-              return (
-                <li key={s.label} className="flex min-w-0 flex-1 flex-col gap-1">
+              const navigable = canNavigateTo(n);
+              const content = (
+                <>
                   <span
                     className={`h-1 rounded-full ${
                       state === "done"
@@ -170,6 +201,21 @@ export function SetupShell({
                   >
                     {s.label}
                   </span>
+                </>
+              );
+              return (
+                <li key={s.label} className="flex min-w-0 flex-1">
+                  {navigable ? (
+                    <button
+                      type="button"
+                      onClick={() => setStep(n)}
+                      className="flex min-w-0 flex-1 flex-col gap-1 text-left focus:outline-none"
+                    >
+                      {content}
+                    </button>
+                  ) : (
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">{content}</div>
+                  )}
                 </li>
               );
             })}

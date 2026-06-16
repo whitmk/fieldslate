@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/client";
 import {
   isVenueAvailable,
   parseAvailability,
+  DAY_KEYS,
+  DAY_LABELS,
   type DayKey,
   type VenueAvailability,
 } from "@/lib/venues/availability";
@@ -262,6 +264,47 @@ function buildInterleagueMatchups(
 }
 
 // ─── Slot pool generation ──────────────────────────────────────────────────────
+
+/**
+ * Pre-flight for the most common "no slots" cause: a division whose playing
+ * days don't intersect ANY assigned venue's open days (e.g. a weekend
+ * division on weekday-only fields). buildSlots would drop every candidate and
+ * return empty, surfacing the generic "no valid slots" message that asks the
+ * user to cross-reference two screens. This names the conflict instead.
+ *
+ * Purely config-driven — it reads venue availability and playing days only,
+ * never existing bookings, so it CANNOT misfire when the real cause is an
+ * open-but-fully-booked venue (those still have intersecting days, return
+ * null here, and fall through to buildSlots / planSchedule and their own
+ * messages). playing_days codes are DayKey values, so no mapping is needed.
+ *
+ * Returns the user-facing message, or null when at least one playing day is
+ * covered by some venue.
+ */
+function closedPlayingDayMessage(
+  playingDays: string[],
+  venueAvailability: Map<string, VenueAvailability>,
+  divisionName?: string,
+): string | null {
+  if (!playingDays.length || venueAvailability.size === 0) return null;
+
+  const openDays = new Set<DayKey>();
+  for (const av of venueAvailability.values()) {
+    for (const key of DAY_KEYS) {
+      if (av[key]) openDays.add(key);
+    }
+  }
+
+  // Canonical order, and only days this division actually plays.
+  const playKeys = DAY_KEYS.filter((d) => playingDays.includes(d));
+  if (playKeys.length === 0) return null;
+  if (playKeys.some((d) => openDays.has(d))) return null;
+
+  const subject = divisionName ?? "This division";
+  const dayList = playKeys.map((d) => DAY_LABELS[d]).join(", ");
+  const dayWord = playKeys.length === 1 ? "that day" : "those days";
+  return `${subject} is set to play ${dayList}, but none of its assigned fields are open ${dayWord}. Open ${dayWord} on a field, or change the division's playing days.`;
+}
 
 /**
  * Returns all (venue × datetime) pairs in chronological order.
@@ -791,6 +834,16 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
 
   // ── 7. Build slot pool ───────────────────────────────────────────────────────
 
+  // Name the closed-playing-day conflict before buildSlots would silently
+  // drop every slot (added branch — the 806/924 messages below stay for
+  // their genuine causes: too-narrow windows and unplaceable-but-present slots).
+  const closedDayMsg = closedPlayingDayMessage(
+    settings.playing_days,
+    venueAvailability,
+    div.name,
+  );
+  if (closedDayMsg) return { success: false, error: closedDayMsg };
+
   const slots = buildSlots(
     div.start_date,
     div.end_date,
@@ -1255,6 +1308,15 @@ export async function planScheduleForNewDivision(
     };
   }
 
+  // Same closed-playing-day pre-check as generateSchedule. This input carries
+  // no division name (the division doesn't exist yet), so the message says
+  // "This division".
+  const closedDayMsg = closedPlayingDayMessage(
+    input.settings.playing_days,
+    venueAvailability,
+  );
+  if (closedDayMsg) return { success: false, error: closedDayMsg };
+
   const slots = buildSlots(
     input.startDate,
     input.endDate,
@@ -1590,6 +1652,15 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
   }
 
   // ── 8. Build slot pool ───────────────────────────────────────────────────────
+
+  // Same closed-playing-day pre-check as generateSchedule (#6 parity) — name
+  // the conflict before buildSlots would silently drop every slot.
+  const closedDayMsg = closedPlayingDayMessage(
+    settings.playing_days,
+    venueAvailability,
+    div.name,
+  );
+  if (closedDayMsg) return { success: false, error: closedDayMsg };
 
   const slots = buildSlots(
     div.start_date,

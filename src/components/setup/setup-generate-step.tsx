@@ -42,7 +42,11 @@ type RunStatus =
       unscheduledCount: number;
       conflictGameCount: number;
     }
-  | { state: "failed"; error: string };
+  | { state: "failed"; error: string }
+  // A live re-count just before generating found this division already has
+  // games (another tab/session scheduled it after load). Skipped rather than
+  // regenerated, since generateSchedule deletes + recreates.
+  | { state: "skipped" };
 
 interface Props {
   currentOrgId: string;
@@ -156,6 +160,18 @@ export function SetupGenerateStep({
   async function generateOne(division: DivisionRow) {
     setStatus(division.id, { state: "running" });
     try {
+      // Race guard: `unscheduled` was derived from the game counts at load.
+      // If another tab/session scheduled this division since, re-counting now
+      // catches it — skip rather than let generateSchedule delete + recreate
+      // a live schedule. Makes the "already-scheduled divisions won't be
+      // touched" footnote literally true even under a race.
+      const liveCounts = await getDivisionGameCounts(createClient(), seasonId, [
+        division.id,
+      ]);
+      if ((liveCounts.get(division.id) ?? 0) > 0) {
+        setStatus(division.id, { state: "skipped" });
+        return;
+      }
       const res = await generateSchedule(division.id);
       if (res.success) {
         setStatus(division.id, {
@@ -323,7 +339,7 @@ export function SetupGenerateStep({
                   <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-[#22C55E]" />
                 ) : status?.state === "failed" ? (
                   <AlertTriangle className="h-4 w-4 flex-shrink-0 text-red-500" />
-                ) : count > 0 ? (
+                ) : status?.state === "skipped" || count > 0 ? (
                   <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-[#22C55E]" />
                 ) : (
                   <span className="h-2 w-2 flex-shrink-0 rounded-full border border-gray-300 bg-gray-100" />
@@ -350,6 +366,8 @@ export function SetupGenerateStep({
                   <p className="text-xs text-gray-500">
                     {count} game{count !== 1 ? "s" : ""}
                   </p>
+                ) : status?.state === "skipped" ? (
+                  <p className="text-xs text-gray-500">Already scheduled</p>
                 ) : (
                   <p className="text-xs text-gray-400">
                     {isQueued ? "Waiting…" : "Not scheduled yet"}
@@ -396,6 +414,11 @@ export function SetupGenerateStep({
                     </Link>
                   </p>
                 )}
+              {status?.state === "skipped" && (
+                <p className="ml-7 text-xs text-gray-500">
+                  Already had a schedule — left untouched.
+                </p>
+              )}
             </div>
           );
         })}
