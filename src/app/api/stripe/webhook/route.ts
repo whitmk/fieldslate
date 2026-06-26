@@ -25,22 +25,6 @@ function readMeta(session: Stripe.Checkout.Session): CheckoutMeta | null {
   return { orgId, plan, quantity: quantity === 2 ? 2 : 1, upgradeOnly };
 }
 
-// Build a blank active-season row, seeding sport/season label from an existing
-// season when available so the new row matches the org's setup.
-function blankSeason(
-  orgId: string,
-  seed: { sport: string | null; season: string | null } | undefined,
-) {
-  return {
-    owner_id: orgId,
-    name: "New Season",
-    sport: seed?.sport ?? "baseball",
-    season: seed?.season ?? "",
-    status: "active",
-    archived_at: null,
-  };
-}
-
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -89,106 +73,33 @@ export async function POST(request: Request) {
   try {
     const admin = createAdminClient();
 
-    // Capture the PRE-update plan: distinguishes a first upgrade (Free → paid)
-    // from an existing paid org buying an extra season.
-    const { data: profileRow } = await admin
-      .from("profiles")
-      .select("plan")
-      .eq("id", orgId)
-      .single();
-    const wasPaid =
-      profileRow?.plan === "pro" || profileRow?.plan === "elite";
+    // All dedup + plan/season writes happen in ONE transaction inside the RPC
+    // (Chunk A). It claims event.id in stripe_events (first writer wins) and
+    // ONLY THEN reads the pre-update plan, applies the tier, and runs the same
+    // branch logic this route used to do inline. A duplicate delivery conflicts
+    // on the claim and returns 'skipped_duplicate' having touched nothing — so
+    // retries can no longer double-provision a season, and wasPaid can no
+    // longer be recomputed from already-mutated state.
+    const { data: result, error: rpcErr } = await admin.rpc(
+      "process_checkout_event" as never,
+      {
+        p_event_id: event.id,
+        p_org_id: orgId,
+        p_plan: plan,
+        p_quantity: quantity,
+        p_upgrade_only: upgradeOnly,
+      } as never,
+    );
 
-    // Apply the new plan tier to the org and clear any pending_plan set at
-    // signup — payment is done, so the onboarding intent is resolved. Clearing
-    // here covers every checkout path (new signup, add-season, upgrade) and is
-    // what hides the dashboard "complete setup" CTA.
-    const { error: planErr } = await admin
-      .from("profiles")
-      .update({ plan, pending_plan: null } as never)
-      .eq("id", orgId);
-    if (planErr) {
-      return NextResponse.json({ error: planErr.message }, { status: 500 });
+    if (rpcErr) {
+      // Transient failure: the transaction rolled back, so event.id was NOT
+      // recorded. Return 500 so Stripe retries — the retry re-runs cleanly.
+      return NextResponse.json({ error: rpcErr.message }, { status: 500 });
     }
 
-    if (upgradeOnly) {
-      // Pro→Elite tier upgrade (paid the $120 difference). profiles.plan was
-      // already flipped to 'elite' above, and tier is org-level — so every
-      // active season is now Elite. Touch the existing active season's
-      // updated_at to record the conversion; provision NO new season.
-      const { data: existing } = await admin
-        .from("leagues")
-        .select("id")
-        .eq("owner_id", orgId)
-        .is("archived_at", null)
-        .order("created_at", { ascending: true })
-        .limit(1);
-      const upgraded = existing?.[0] as { id: string } | undefined;
-      if (upgraded) {
-        await admin
-          .from("leagues")
-          .update({ updated_at: new Date().toISOString() } as never)
-          .eq("id", upgraded.id);
-      }
-    } else if (quantity === 2) {
-      // First upgrade buying two seasons: the org's single existing (Free)
-      // active season becomes the 1st paid season, and we add one more.
-      const { data: existing } = await admin
-        .from("leagues")
-        .select("id, sport, season")
-        .eq("owner_id", orgId)
-        .is("archived_at", null)
-        .order("created_at", { ascending: true })
-        .limit(1);
-      const seed = existing?.[0] as
-        | { id: string; sport: string | null; season: string | null }
-        | undefined;
-
-      // "Convert" the existing season. Seasons carry no per-tier column — the
-      // tier lives on profiles.plan (already updated above), so the conversion
-      // is org-level; we touch updated_at to record the conversion moment.
-      if (seed) {
-        await admin
-          .from("leagues")
-          .update({ updated_at: new Date().toISOString() } as never)
-          .eq("id", seed.id);
-      }
-
-      // Provision the second season.
-      const { error: insErr } = await admin
-        .from("leagues")
-        .insert(blankSeason(orgId, seed) as never);
-      if (insErr) {
-        return NextResponse.json({ error: insErr.message }, { status: 500 });
-      }
-    } else if (quantity === 1 && wasPaid) {
-      // Existing paid org adding one more season.
-      const { data: existing } = await admin
-        .from("leagues")
-        .select("sport, season")
-        .eq("owner_id", orgId)
-        .is("archived_at", null)
-        .order("created_at", { ascending: true })
-        .limit(1);
-      const seed = existing?.[0] as
-        | { sport: string | null; season: string | null }
-        | undefined;
-
-      const { error: insErr } = await admin
-        .from("leagues")
-        .insert(blankSeason(orgId, seed) as never);
-      if (insErr) {
-        return NextResponse.json({ error: insErr.message }, { status: 500 });
-      }
-    }
-    // quantity === 1 && !wasPaid (Free → paid via the marketing/post-signup
-    // path): the plan update alone converts the org's single existing season
-    // into its paid season — no new season row needed.
-
-    // TODO Item 13 (follow-up): make this idempotent (dedupe on event.id /
-    // session.id) so a Stripe re-delivery can't create duplicate seasons.
-
-    return NextResponse.json({ received: true });
+    // 'processed' or 'skipped_duplicate' — both are success. Ack 200 so Stripe
+    // stops retrying (a deduped duplicate must not look like a failure).
+    return NextResponse.json({ received: true, result });
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Webhook handler failed.";
