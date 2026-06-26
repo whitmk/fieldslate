@@ -4,7 +4,7 @@ import { CheckCircle } from "lucide-react";
 
 const proofPoints = [
   "No credit card required",
-  "Baseball & soccer ready",
+  "Any sport",
   "Structured CSV export for league data migration",
 ];
 
@@ -17,7 +17,7 @@ export function Hero() {
           {/* Pill tag */}
           <div className="mb-6 inline-flex items-center rounded-full border border-[#22C55E]/30 bg-[#22C55E]/10 px-4 py-1.5">
             <span className="text-sm font-medium text-[#22C55E]">
-              Built for multi-season admins
+              Retire the scheduling spreadsheet
             </span>
           </div>
 

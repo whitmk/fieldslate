@@ -8,6 +8,9 @@ import { createClient } from "@/lib/supabase/client";
 import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
 import type { Plan } from "@/lib/plan/limits";
 
+// "Other" keeps the field open-ended for any sport not named above — the
+// engine is sport-agnostic (sport is unconstrained text; official labels fall
+// back to "Referee"), so the homepage can truthfully claim any-sport support.
 const SPORTS = [
   "Baseball",
   "Softball",
@@ -17,6 +20,7 @@ const SPORTS = [
   "Volleyball",
   "Lacrosse",
   "Hockey",
+  "Other",
 ] as const;
 
 function getSeasonLabel(startDate: string): string {
