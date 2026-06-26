@@ -73,6 +73,23 @@ export async function POST(request: Request) {
   try {
     const admin = createAdminClient();
 
+    // Comp guard (Chunk B): a manually-comped org must never be touched by the
+    // billing path. A comped org should never have a live checkout, but if one
+    // somehow fires, ack it (so Stripe stops retrying) and no-op — never call
+    // the RPC, never overwrite the comp's plan, never provision a season. The
+    // flag is independent of plan: a "never let billing touch this row" marker.
+    const { data: orgProfile } = await admin
+      .from("profiles")
+      .select("comped")
+      .eq("id", orgId)
+      .maybeSingle();
+    if ((orgProfile as unknown as { comped: boolean } | null)?.comped === true) {
+      console.log(
+        `[stripe webhook] skipped checkout event ${event.id} for comped org ${orgId}`,
+      );
+      return NextResponse.json({ received: true, result: "skipped_comped" });
+    }
+
     // All dedup + plan/season writes happen in ONE transaction inside the RPC
     // (Chunk A). It claims event.id in stripe_events (first writer wins) and
     // ONLY THEN reads the pre-update plan, applies the tier, and runs the same

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createCheckoutSession } from "@/lib/stripe";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 // Server-only: creates a Stripe Checkout session for a per-season purchase.
 // Uses STRIPE_SECRET_KEY via getStripe(). Price IDs come from env only.
@@ -56,6 +57,34 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "successUrl and cancelUrl are required." },
       { status: 400 },
+    );
+  }
+
+  // Comp guard (Chunk B): a complimentary account must never reach Stripe —
+  // this is what protects live smoke-testing through the team's own comped
+  // accounts. Independent of plan: a "this row is never charged" marker, not a
+  // tier check. FAIL CLOSED — the session is created ONLY on a confirmed
+  // not-comped read; a comped read, a Supabase error, or a missing row all
+  // refuse, so a transient DB failure can never let a comp through to Stripe.
+  const admin = createAdminClient();
+  const { data: orgProfile, error: compErr } = await admin
+    .from("profiles")
+    .select("comped")
+    .eq("id", orgId)
+    .maybeSingle();
+  const comped = (orgProfile as unknown as { comped: boolean } | null)?.comped;
+  if (comped === true) {
+    return NextResponse.json(
+      { error: "This account has complimentary access and cannot be charged." },
+      { status: 403 },
+    );
+  }
+  if (compErr || comped !== false) {
+    // Could not confirm not-comped (read error or no matching row) — refuse
+    // rather than risk charging a comp.
+    return NextResponse.json(
+      { error: "Could not verify account billing status — please try again." },
+      { status: 503 },
     );
   }
 
