@@ -38,9 +38,11 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (quantity !== 1 && quantity !== 2) {
+  // Feature upgrades and add-season purchases are always a single season.
+  // The quantity:2 convert-and-also-provision path has been removed.
+  if (quantity !== 1) {
     return NextResponse.json(
-      { error: "quantity must be 1 or 2." },
+      { error: "quantity must be 1." },
       { status: 400 },
     );
   }

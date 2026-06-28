@@ -206,7 +206,6 @@ export function SeasonsListClient({
           reason="add-season"
           orgId={orgId}
           currentPlan={plan}
-          activeSeasonCount={activeSeasonCount}
           onClose={() => setAddSeasonOpen(false)}
         />
       ) : null}

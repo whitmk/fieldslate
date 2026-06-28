@@ -88,11 +88,9 @@ function LockBadge({ tier }: { tier: "pro" | "elite" }) {
 export function Sidebar({
   plan,
   orgId,
-  activeSeasonCount,
 }: {
   plan: Plan;
   orgId: string;
-  activeSeasonCount: number;
 }) {
   const pathname = usePathname();
   // A single modal serves every locked item — they all open the same
@@ -236,7 +234,6 @@ export function Sidebar({
           reason="locked-feature"
           orgId={orgId}
           currentPlan={plan}
-          activeSeasonCount={activeSeasonCount}
           onClose={() => setUpgradeOpen(false)}
         />
       )}

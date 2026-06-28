@@ -62,10 +62,11 @@ export function seasonPriceId(
 
 export type CheckoutParams = {
   plan: Exclude<Plan, "free">;
-  // Per-season multiplier. 1 = the plan's single included season (new signups);
-  // 2 = convert an existing Free season + add one more. The webhook reads this
-  // from metadata to decide whether to provision a new season row.
-  quantity: 1 | 2;
+  // Always 1 — every purchase is a single season. A Free→paid feature upgrade
+  // converts the org's current season in place; the add-season flow buys one
+  // more. (The old quantity:2 "convert + also provision a second season" path
+  // has been removed.) The webhook keys provisioning off wasPaid, not quantity.
+  quantity: 1;
   upgradeOnly?: boolean;
   orgId: string;
   // Stripe requires ABSOLUTE URLs here — callers must pass fully-qualified URLs.

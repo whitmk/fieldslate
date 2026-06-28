@@ -22,8 +22,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const memberships = await listMemberships(supabase, user.id);
   const currentOrgId = await getCurrentOrgId(supabase, user.id, memberships);
   const plan = await getOrgPlan(currentOrgId);
-  // Drives the sidebar's locked-feature upgrade modal: 0 active seasons → a
-  // single-season purchase (nothing to convert); ≥1 → the 2-season convert flow.
+  // Used only by the first-run /setup redirect below (0 active seasons is one
+  // of its conditions).
   const activeSeasonCount = await getActiveSeasonCount(supabase, currentOrgId);
 
   // First-run setup: bounce brand-new owners to /setup (its own route group,
@@ -51,7 +51,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <MobileSidebarProvider>
       <div className="flex h-screen overflow-hidden bg-gray-50 print:h-auto print:overflow-visible print:bg-white">
-        <Sidebar plan={plan} orgId={currentOrgId} activeSeasonCount={activeSeasonCount} />
+        <Sidebar plan={plan} orgId={currentOrgId} />
         <div className="flex flex-1 flex-col overflow-hidden print:overflow-visible">
           <Topbar />
           <main className="flex-1 overflow-y-auto p-6 print:overflow-visible print:p-0">{children}</main>
