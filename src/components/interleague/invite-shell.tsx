@@ -53,14 +53,12 @@ export function InviteFooter() {
           Curious about FieldSlate? It&apos;s a scheduling tool for youth sports
           leagues.{" "}
           <Link
-            href="https://thefieldslate.com/?utm_source=invite&utm_medium=email&promo=INTERLEAGUE"
+            href="https://thefieldslate.com/signup?promo=INTERLEAGUE&utm_source=invite&utm_medium=email"
             className="font-semibold text-[#22C55E] hover:underline"
           >
-            Try it free
-          </Link>{" "}
-          — use code{" "}
-          <span className="font-mono text-[#0C1F3F]">INTERLEAGUE</span> for 20%
-          off your first season.
+            Try your first season for 20% off
+          </Link>
+          .
         </p>
       </div>
     </footer>

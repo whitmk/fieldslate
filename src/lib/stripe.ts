@@ -72,6 +72,11 @@ export type CheckoutParams = {
   // Stripe requires ABSOLUTE URLs here — callers must pass fully-qualified URLs.
   successUrl: string;
   cancelUrl: string;
+  // Optional Stripe coupon to AUTO-APPLY (e.g. the INTERLEAGUE promo). When set,
+  // passed as discounts:[{ coupon }] on the session. NOT allow_promotion_codes
+  // (this is link auto-apply, not manual code entry). Omitted entirely when
+  // absent — never an empty discounts array.
+  couponId?: string;
 };
 
 // Single source of truth for building a per-season Checkout session. Shared by
@@ -82,13 +87,16 @@ export type CheckoutParams = {
 export async function createCheckoutSession(
   params: CheckoutParams,
 ): Promise<{ url: string }> {
-  const { plan, quantity, upgradeOnly = false, orgId, successUrl, cancelUrl } =
+  const { plan, quantity, upgradeOnly = false, orgId, successUrl, cancelUrl, couponId } =
     params;
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({
     // Per-season purchase = one-time payment, not a subscription.
     mode: "payment",
     line_items: [{ price: seasonPriceId(plan, upgradeOnly), quantity }],
+    // Auto-apply a coupon when one was resolved (e.g. INTERLEAGUE). Omit the
+    // key entirely otherwise — never an empty array, never allow_promotion_codes.
+    ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
     success_url: successUrl,
     cancel_url: cancelUrl,
     // The webhook reads these to apply the plan + provision seasons.

@@ -368,8 +368,7 @@ export async function POST(
       </p>
       <p style="margin:8px 0 0;color:#9ca3af;font-size:11px;line-height:1.5;">
         Curious about FieldSlate for your own league?
-        <a href="https://thefieldslate.com/?utm_source=invite&amp;utm_medium=email&amp;promo=INTERLEAGUE" style="color:#22C55E;text-decoration:none;font-weight:600;">Try it free</a>
-        — use code <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#0C1F3F;">INTERLEAGUE</span> for 20% off your first season.
+        <a href="https://thefieldslate.com/signup?promo=INTERLEAGUE&amp;utm_source=invite&amp;utm_medium=email" style="color:#22C55E;text-decoration:none;font-weight:600;">Try your first season for 20% off</a>.
       </p>
     </div>
   </div>
@@ -383,7 +382,7 @@ export async function POST(
       division ? `Division: ${division}` : "",
       "",
       "— FieldSlate",
-      "Curious about FieldSlate for your own league? Use code INTERLEAGUE for 20% off your first season at https://thefieldslate.com",
+      "Curious about FieldSlate for your own league? Try your first season for 20% off: https://thefieldslate.com/signup?promo=INTERLEAGUE",
     ]
       .filter((l) => l !== "")
       .join("\n");

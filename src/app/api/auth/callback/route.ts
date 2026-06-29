@@ -21,14 +21,28 @@ export async function GET(request: Request) {
       // which case pending_plan is already null — this is belt-and-suspenders).
       const { data: profile } = await supabase
         .from("profiles")
-        .select("pending_plan, plan")
+        .select("pending_plan, plan, pending_promo")
         .eq("id", data.user.id)
         .single();
 
-      const pending = (profile as { pending_plan: string | null } | null)
-        ?.pending_plan;
+      const typedProfile = profile as
+        | { pending_plan: string | null; pending_promo: string | null }
+        | null;
+      const pending = typedProfile?.pending_plan;
+      const pendingPromo = typedProfile?.pending_promo;
 
       if (pending === "pro" || pending === "elite") {
+        // Auto-apply the INTERLEAGUE promo coupon when the user arrived via an
+        // interleague invite link (?promo=INTERLEAGUE → pending_promo). A
+        // missing coupon env var must NEVER block a paid signup — log and
+        // proceed without the discount.
+        let couponId: string | undefined;
+        if (pendingPromo?.toUpperCase() === "INTERLEAGUE") {
+          couponId = process.env.STRIPE_INTERLEAGUE_COUPON_ID;
+          if (!couponId) {
+            console.error("[promo] INTERLEAGUE coupon id not configured");
+          }
+        }
         try {
           // quantity:1 — the plan's single included season. The webhook flips
           // the tier and provisions NO season; the user creates their first
@@ -37,6 +51,7 @@ export async function GET(request: Request) {
             plan: pending,
             quantity: 1,
             orgId: data.user.id,
+            couponId,
             successUrl: `${origin}/dashboard?welcome=true`,
             cancelUrl: `${origin}/dashboard`,
           });

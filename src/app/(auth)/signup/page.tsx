@@ -16,6 +16,14 @@ function SignupForm() {
   // checkout. A Free signup (no/!valid param) leaves the whole flow untouched.
   const planParam = searchParams.get("plan");
   const pendingPlan = planParam === "pro" || planParam === "elite" ? planParam : null;
+  // Promo code from /signup?promo=… (e.g. INTERLEAGUE on interleague invite
+  // links). Mirrors the plan param: carried through auth metadata so the
+  // handle_new_user trigger persists it to profiles.pending_promo; the
+  // post-verification callback reads it to auto-apply the matching Stripe
+  // coupon to the first checkout. Normalized (trim + uppercase) for a stable
+  // match; an unknown code simply never resolves a coupon.
+  const promoParam = searchParams.get("promo");
+  const pendingPromo = promoParam?.trim() ? promoParam.trim().toUpperCase() : null;
 
   const [email, setEmail] = useState(prefilledEmail);
   const [password, setPassword] = useState("");
@@ -39,6 +47,7 @@ function SignupForm() {
           full_name: fullName,
           org_name: orgName,
           ...(pendingPlan ? { plan: pendingPlan } : {}),
+          ...(pendingPromo ? { promo: pendingPromo } : {}),
         },
         // Route the confirmation link through the PKCE callback so a session is
         // established on click — that's where pending_plan is read and the user

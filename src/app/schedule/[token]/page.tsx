@@ -258,7 +258,7 @@ function UpsellCard() {
           className="inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
         >
           <Check className="h-4 w-4" />
-          Sign up — 20% off your first season with code INTERLEAGUE
+          Sign up — 20% off your first season
         </Link>
       </div>
     </section>
