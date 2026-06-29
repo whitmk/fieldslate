@@ -84,6 +84,10 @@ export async function POST(request: Request) {
   if (compErr || comped !== false) {
     // Could not confirm not-comped (read error or no matching row) — refuse
     // rather than risk charging a comp.
+    // Diagnostic: surface the swallowed read result so the real cause of a
+    // fail-closed 503 (errored read vs null/RLS-filtered row) is visible in
+    // the runtime logs. Logging only — does not change guard behavior.
+    console.error("[comp-guard]", { compErr, orgId, orgProfile });
     return NextResponse.json(
       { error: "Could not verify account billing status — please try again." },
       { status: 503 },
