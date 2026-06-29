@@ -21,7 +21,6 @@ function SignupForm() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [orgName, setOrgName] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -30,12 +29,6 @@ function SignupForm() {
     e.preventDefault();
     setLoading(true);
     setError("");
-
-    if (inviteCode.trim().toUpperCase() !== "FIELDSLATE2026") {
-      setError("Invalid invite code.");
-      setLoading(false);
-      return;
-    }
 
     const supabase = createClient();
     const { error } = await supabase.auth.signUp({
@@ -143,18 +136,6 @@ function SignupForm() {
           minLength={8}
           required
         />
-        <Input
-          id="inviteCode"
-          label="Beta invite code"
-          type="text"
-          placeholder="Enter your invite code"
-          value={inviteCode}
-          onChange={(e) => setInviteCode(e.target.value)}
-          variant="dark"
-          autoComplete="off"
-          required
-        />
-
         {error && (
           <div className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2.5">
             <p className="text-sm text-red-400">{error}</p>
