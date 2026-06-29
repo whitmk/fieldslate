@@ -1,0 +1,28 @@
+-- Fix the comp-guard 503: grant service_role SELECT on public.profiles.
+--
+-- The Stripe checkout and webhook routes use the service-role admin client to
+-- read profiles.comped directly (the "never let billing charge this row" check)
+-- before creating a Stripe session / processing an event. service_role was
+-- never granted SELECT on public.profiles — it held only REFERENCES/TRIGGER/
+-- TRUNCATE — so every such read failed with:
+--   42501 "permission denied for table profiles"
+-- The checkout route fails CLOSED on that error, so EVERY checkout returned a
+-- 503 "Could not verify account billing status". (Confirmed in prod via a
+-- [comp-guard] diagnostic log: compErr code 42501, orgProfile null.)
+--
+-- service_role bypasses RLS (rolbypassrls = true), so the table-level GRANT is
+-- the only thing missing — no policy change is required.
+--
+-- Scope is deliberately just this one privilege:
+--   • checkout route comp guard  → reads profiles.comped as service_role.
+--   • webhook route comp guard   → reads profiles.comped as service_role.
+--   • process_checkout_event is SECURITY DEFINER owned by postgres (which has
+--     full DML on profiles/leagues/stripe_events), so its tier update + season
+--     insert run as the owner — no service_role table grants needed there
+--     (EXECUTE is already granted, migrations 0067/0069).
+--   • The Stripe routes never read leagues/stripe_events directly via the admin
+--     client (only through the RPC), and /api/auth/callback reads profiles via
+--     the user-session client (authenticated already has SELECT).
+-- => GRANT SELECT ON public.profiles TO service_role, and nothing more.
+
+grant select on table public.profiles to service_role;
