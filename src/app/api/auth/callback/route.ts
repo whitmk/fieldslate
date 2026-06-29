@@ -41,10 +41,17 @@ export async function GET(request: Request) {
             cancelUrl: `${origin}/dashboard`,
           });
           return NextResponse.redirect(url);
-        } catch {
+        } catch (err) {
           // Stripe misconfigured / transient failure — don't strand the user
           // on an error page. Send them to the dashboard, where the
           // "complete setup" CTA (pending_plan still set) lets them retry.
+          // Log it so a systemic checkout-start failure (e.g. every paid
+          // signup) isn't invisible — the redirect behavior is unchanged.
+          console.error("[auth-callback] checkout start failed", {
+            err,
+            userId: data.user.id,
+            pending,
+          });
           return NextResponse.redirect(`${origin}${next}`);
         }
       }

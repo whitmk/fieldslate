@@ -78,16 +78,34 @@ export async function POST(request: Request) {
     // somehow fires, ack it (so Stripe stops retrying) and no-op — never call
     // the RPC, never overwrite the comp's plan, never provision a season. The
     // flag is independent of plan: a "never let billing touch this row" marker.
-    const { data: orgProfile } = await admin
+    const { data: orgProfile, error: compErr } = await admin
       .from("profiles")
       .select("comped")
       .eq("id", orgId)
       .maybeSingle();
-    if ((orgProfile as unknown as { comped: boolean } | null)?.comped === true) {
+    const comped = (orgProfile as unknown as { comped: boolean } | null)?.comped;
+    if (comped === true) {
       console.log(
         `[stripe webhook] skipped checkout event ${event.id} for comped org ${orgId}`,
       );
       return NextResponse.json({ received: true, result: "skipped_comped" });
+    }
+    // FAIL CLOSED — mirror the checkout route: proceed ONLY on a confirmed
+    // not-comped read. A read error or missing row leaves comp status unknown,
+    // so refuse rather than fall through to the RPC and risk overwriting a
+    // comp's plan / provisioning a season. Return 500 (not 200) so Stripe
+    // RETRIES — the retry's read likely succeeds; a one-time read error must
+    // never permanently skip a real paying customer.
+    if (compErr || comped !== false) {
+      console.error("[comp-guard webhook]", {
+        compErr,
+        orgId,
+        eventId: event.id,
+      });
+      return NextResponse.json(
+        { error: "Could not verify account billing status." },
+        { status: 500 },
+      );
     }
 
     // All dedup + plan/season writes happen in ONE transaction inside the RPC
