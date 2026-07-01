@@ -40,7 +40,7 @@ export function Features() {
             Built for how seasons actually work
           </h2>
           <p className="mt-4 text-lg text-gray-500">
-            Every feature was designed around the real problems season admins face every spring.
+            Every feature was designed around the real problems season admins face.
           </p>
         </div>
 
