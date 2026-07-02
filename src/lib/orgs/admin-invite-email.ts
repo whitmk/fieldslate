@@ -4,6 +4,8 @@
 // Both are intentionally short and plain — no game-schedule preview, no
 // per-org branding.
 
+import { SITE_URL } from "@/lib/site";
+
 export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -18,7 +20,7 @@ function shellHtml(headlineLabel: string, body: string): string {
 <html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;background:#f6f7f9;margin:0;padding:24px;">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
     <div style="background:#0C1F3F;padding:24px 28px;">
-      <img src="https://thefieldslate.com/brand/lockup-email-dark-2x.png" alt="FieldSlate" width="160" height="36" style="display:block;border:0;outline:none;text-decoration:none;" />
+      <img src="${SITE_URL}/brand/lockup-email-dark-2x.png" alt="FieldSlate" width="160" height="36" style="display:block;border:0;outline:none;text-decoration:none;" />
       <p style="margin:2px 0 0;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">${escapeHtml(headlineLabel)}</p>
     </div>
     <div style="padding:28px;">${body}</div>

@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { buildEmailInviteEmail } from "@/lib/orgs/admin-invite-email";
+import { SITE_URL } from "@/lib/site";
 
 export const runtime = "nodejs";
 
@@ -20,15 +21,6 @@ const RPC_ERROR_MAP: Record<string, { status: number; message: string }> = {
     message: "Only pending invitations can be resent.",
   },
 };
-
-function originFrom(req: Request): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
-    new URL(req.url).origin ??
-    "https://thefieldslate.com"
-  );
-}
 
 export async function POST(request: Request) {
   let body: { invitation_id?: unknown };
@@ -74,8 +66,7 @@ export async function POST(request: Request) {
     expires_at: string;
   };
 
-  const origin = originFrom(request);
-  const acceptUrl = `${origin.replace(/\/$/, "")}/org-invite/${result.token}`;
+  const acceptUrl = `${SITE_URL}/org-invite/${result.token}`;
   const { subject, html, text } = buildEmailInviteEmail({
     recipientEmail: result.email,
     orgName: result.org_name,

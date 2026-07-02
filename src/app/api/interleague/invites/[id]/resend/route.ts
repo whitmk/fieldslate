@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { buildInviteEmail } from "@/lib/interleague/invite-email";
+import { SITE_URL } from "@/lib/site";
 
 export const runtime = "nodejs";
 
@@ -120,11 +121,7 @@ export async function POST(
       .sort((a, b) => a.divisionName.localeCompare(b.divisionName));
   }
 
-  const origin =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
-    new URL(request.url).origin ??
-    "https://thefieldslate.com";
+  const origin = SITE_URL;
   const inviteUrl = `${origin.replace(/\/$/, "")}/invite/${inviteRaw.token}`;
 
   const seasonLabel = seasonRes.data.season

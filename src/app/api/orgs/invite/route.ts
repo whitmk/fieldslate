@@ -11,6 +11,7 @@ import {
   buildDirectAddEmail,
   buildEmailInviteEmail,
 } from "@/lib/orgs/admin-invite-email";
+import { SITE_URL } from "@/lib/site";
 
 export const runtime = "nodejs";
 
@@ -40,15 +41,6 @@ const RPC_ERROR_MAP: Record<string, { status: number; message: string }> = {
       "You've reached your plan's admin limit. Upgrade to add more admins.",
   },
 };
-
-function originFrom(req: Request): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
-    new URL(req.url).origin ??
-    "https://thefieldslate.com"
-  );
-}
 
 export async function POST(request: Request) {
   let body: { email?: unknown };
@@ -107,14 +99,12 @@ export async function POST(request: Request) {
         expires_at: string;
       };
 
-  const origin = originFrom(request);
-
   if (result.kind === "direct_add") {
     const { subject, html, text } = buildDirectAddEmail({
       recipientEmail: result.email,
       orgName: result.org_name,
       inviterName: result.inviter_name,
-      dashboardUrl: `${origin.replace(/\/$/, "")}/dashboard`,
+      dashboardUrl: `${SITE_URL}/dashboard`,
     });
     // Email failure shouldn't undo the membership — the admin is in either way,
     // and the org owner can re-notify out of band if Resend is misconfigured.
@@ -126,7 +116,7 @@ export async function POST(request: Request) {
   }
 
   // email_invite path
-  const acceptUrl = `${origin.replace(/\/$/, "")}/org-invite/${result.token}`;
+  const acceptUrl = `${SITE_URL}/org-invite/${result.token}`;
   const { subject, html, text } = buildEmailInviteEmail({
     recipientEmail: result.email,
     orgName: result.org_name,

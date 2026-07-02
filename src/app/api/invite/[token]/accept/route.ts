@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
+import { SITE_URL } from "@/lib/site";
 import {
   validateVenueName,
   validateTeamName,
@@ -181,7 +182,7 @@ function buildAcceptanceEmail(params: {
 <html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;background:#f6f7f9;margin:0;padding:24px;">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
     <div style="background:#0C1F3F;padding:24px 28px;">
-      <img src="https://thefieldslate.com/brand/lockup-email-dark-2x.png" alt="FieldSlate" width="160" height="36" style="display:block;border:0;outline:none;text-decoration:none;" />
+      <img src="${SITE_URL}/brand/lockup-email-dark-2x.png" alt="FieldSlate" width="160" height="36" style="display:block;border:0;outline:none;text-decoration:none;" />
       <p style="margin:2px 0 0;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Invite response</p>
     </div>
 
@@ -317,7 +318,7 @@ function buildRecipientConfirmationEmail(params: {
 <html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;background:#f6f7f9;margin:0;padding:24px;">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
     <div style="background:#0C1F3F;padding:24px 28px;">
-      <img src="https://thefieldslate.com/brand/lockup-email-dark-2x.png" alt="FieldSlate" width="160" height="36" style="display:block;border:0;outline:none;text-decoration:none;" />
+      <img src="${SITE_URL}/brand/lockup-email-dark-2x.png" alt="FieldSlate" width="160" height="36" style="display:block;border:0;outline:none;text-decoration:none;" />
       <p style="margin:2px 0 0;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Interleague schedule</p>
     </div>
 
@@ -368,7 +369,7 @@ function buildRecipientConfirmationEmail(params: {
       </p>
       <p style="margin:8px 0 0;color:#9ca3af;font-size:11px;line-height:1.5;">
         Curious about FieldSlate for ${escapeHtml(orgName)}?
-        <a href="https://thefieldslate.com/signup?promo=INTERLEAGUE&amp;utm_source=invite&amp;utm_medium=email" style="color:#22C55E;text-decoration:none;font-weight:600;">Try your first season for 20% off</a>.
+        <a href="${SITE_URL}/signup?promo=INTERLEAGUE&amp;utm_source=invite&amp;utm_medium=email" style="color:#22C55E;text-decoration:none;font-weight:600;">Try your first season for 20% off</a>.
       </p>
     </div>
   </div>
@@ -400,7 +401,7 @@ function buildRecipientConfirmationEmail(params: {
     "Bookmark this link to always see the latest schedule.",
     "",
     "— FieldSlate, a scheduling tool for youth sports leagues.",
-    `Curious about FieldSlate for ${orgName}? Try your first season for 20% off: https://thefieldslate.com/signup?promo=INTERLEAGUE`,
+    `Curious about FieldSlate for ${orgName}? Try your first season for 20% off: ${SITE_URL}/signup?promo=INTERLEAGUE`,
   ]
     .filter((l) => l !== "")
     .join("\n");
@@ -472,11 +473,7 @@ export async function POST(
         "your season"
       : result.season_name ?? "your season";
 
-  const origin =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
-    new URL(request.url).origin ??
-    "https://thefieldslate.com";
+  const origin = SITE_URL;
   const baseOrigin = origin.replace(/\/$/, "");
   const dashboardUrl = `${baseOrigin}/dashboard/interleague`;
 

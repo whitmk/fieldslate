@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { SITE_URL } from "@/lib/site";
 import {
   ScheduleHeader,
   InviteFooter,
@@ -254,7 +255,7 @@ function UpsellCard() {
       </ul>
       <div className="mt-5">
         <Link
-          href="https://thefieldslate.com/signup?promo=INTERLEAGUE&utm_source=interleague_schedule&utm_medium=upsell"
+          href={`${SITE_URL}/signup?promo=INTERLEAGUE&utm_source=interleague_schedule&utm_medium=upsell`}
           className="inline-flex items-center gap-2 rounded-lg bg-[#22C55E] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
         >
           <Check className="h-4 w-4" />

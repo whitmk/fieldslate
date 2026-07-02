@@ -209,7 +209,7 @@ export default function PrivacyPolicyPage() {
             <strong>How do you exercise your rights?</strong> The easiest way to
             exercise your rights is by visiting{" "}
             <a
-              href="https://thefieldslate.com/contact"
+              href="/contact"
               className="font-medium text-[#22C55E] hover:underline"
             >
               https://thefieldslate.com/contact
@@ -1022,7 +1022,7 @@ export default function PrivacyPolicyPage() {
           <p>
             To exercise these rights, you can contact us by visiting{" "}
             <a
-              href="https://thefieldslate.com/contact"
+              href="/contact"
               className="font-medium text-[#22C55E] hover:underline"
             >
               https://thefieldslate.com/contact
@@ -1168,7 +1168,7 @@ export default function PrivacyPolicyPage() {
             limited in some circumstances by applicable law. To request to
             review, update, or delete your personal information, please visit:{" "}
             <a
-              href="https://thefieldslate.com/contact"
+              href="/contact"
               className="font-medium text-[#22C55E] hover:underline"
             >
               https://thefieldslate.com/contact

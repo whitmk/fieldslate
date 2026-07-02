@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FieldSlateLockup } from "@/components/brand";
+import { SITE_URL } from "@/lib/site";
 
 export function ScheduleHeader({ seasonLabel }: { seasonLabel: string }) {
   return (
@@ -53,7 +54,7 @@ export function InviteFooter() {
           Curious about FieldSlate? It&apos;s a scheduling tool for youth sports
           leagues.{" "}
           <Link
-            href="https://thefieldslate.com/signup?promo=INTERLEAGUE&utm_source=invite&utm_medium=email"
+            href={`${SITE_URL}/signup?promo=INTERLEAGUE&utm_source=invite&utm_medium=email`}
             className="font-semibold text-[#22C55E] hover:underline"
           >
             Try your first season for 20% off
