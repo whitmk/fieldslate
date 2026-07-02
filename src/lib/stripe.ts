@@ -72,10 +72,11 @@ export type CheckoutParams = {
   // Stripe requires ABSOLUTE URLs here — callers must pass fully-qualified URLs.
   successUrl: string;
   cancelUrl: string;
-  // Optional Stripe coupon to AUTO-APPLY (e.g. the INTERLEAGUE promo). When set,
-  // passed as discounts:[{ coupon }] on the session. NOT allow_promotion_codes
-  // (this is link auto-apply, not manual code entry). Omitted entirely when
-  // absent — never an empty discounts array.
+  // Optional Stripe coupon to AUTO-APPLY (e.g. the INTERLEAGUE promo,
+  // resolved from the promo_codes table by src/lib/promo.ts). When set, passed
+  // as discounts:[{ coupon }]. When absent, the session sets
+  // allow_promotion_codes instead (Stripe's typed promo-code field) — Stripe
+  // forbids sending both on one session, so it's strictly one or the other.
   couponId?: string;
 };
 
@@ -94,9 +95,12 @@ export async function createCheckoutSession(
     // Per-season purchase = one-time payment, not a subscription.
     mode: "payment",
     line_items: [{ price: seasonPriceId(plan, upgradeOnly), quantity }],
-    // Auto-apply a coupon when one was resolved (e.g. INTERLEAGUE). Omit the
-    // key entirely otherwise — never an empty array, never allow_promotion_codes.
-    ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
+    // Auto-apply a coupon when one was resolved (e.g. INTERLEAGUE); otherwise
+    // enable Stripe's typed promo-code field. Never both — Stripe rejects a
+    // session carrying discounts AND allow_promotion_codes.
+    ...(couponId
+      ? { discounts: [{ coupon: couponId }] }
+      : { allow_promotion_codes: true }),
     success_url: successUrl,
     cancel_url: cancelUrl,
     // The webhook reads these to apply the plan + provision seasons.

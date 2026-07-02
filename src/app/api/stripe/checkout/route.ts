@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createCheckoutSession } from "@/lib/stripe";
+import { createCheckoutSession, type CheckoutParams } from "@/lib/stripe";
+import { resolvePromoCoupon } from "@/lib/promo";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // Server-only: creates a Stripe Checkout session for a per-season purchase.
@@ -68,13 +69,22 @@ export async function POST(request: Request) {
   // tier check. FAIL CLOSED — the session is created ONLY on a confirmed
   // not-comped read; a comped read, a Supabase error, or a missing row all
   // refuse, so a transient DB failure can never let a comp through to Stripe.
+  // pending_promo rides the same read: if the user signed up through a promo
+  // link but their first checkout starts here (dashboard CTA retry) instead of
+  // in /api/auth/callback, the discount must still apply. The webhook clears
+  // pending_promo on the first successful checkout, so it can never ride a
+  // second purchase.
   const admin = createAdminClient();
   const { data: orgProfile, error: compErr } = await admin
     .from("profiles")
-    .select("comped")
+    .select("comped, pending_promo")
     .eq("id", orgId)
     .maybeSingle();
-  const comped = (orgProfile as unknown as { comped: boolean } | null)?.comped;
+  const profileRow = orgProfile as unknown as {
+    comped: boolean;
+    pending_promo: string | null;
+  } | null;
+  const comped = profileRow?.comped;
   if (comped === true) {
     return NextResponse.json(
       { error: "This account has complimentary access and cannot be charged." },
@@ -94,15 +104,36 @@ export async function POST(request: Request) {
     );
   }
 
+  // Resolve the signup promo (if still pending) to a Stripe coupon via the
+  // promo_codes table. Null for unknown/inactive/expired codes — a bad promo
+  // must never block a purchase; the session then carries the typed
+  // promo-code field instead (allow_promotion_codes).
+  const couponId =
+    (await resolvePromoCoupon(profileRow?.pending_promo)) ?? undefined;
+
   try {
-    const { url } = await createCheckoutSession({
+    const params: Omit<CheckoutParams, "couponId"> = {
       plan,
       quantity,
       upgradeOnly,
       orgId,
       successUrl,
       cancelUrl,
-    });
+    };
+    let url: string;
+    try {
+      ({ url } = await createCheckoutSession({ ...params, couponId }));
+    } catch (couponErr) {
+      // Mirror the auth-callback retry: a stale coupon must never 500 a
+      // purchase — retry ONCE without it. Couponless failures go straight to
+      // the outer catch; a retry would rebuild the identical session.
+      if (!couponId) throw couponErr;
+      console.error(
+        "[stripe-checkout] coupon checkout failed — retrying without coupon",
+        { err: couponErr, orgId, couponId },
+      );
+      ({ url } = await createCheckoutSession(params));
+    }
     return NextResponse.json({ url });
   } catch (err) {
     const message =

@@ -971,6 +971,30 @@ export type Database = {
         }
         Relationships: []
       }
+      promo_codes: {
+        Row: {
+          active: boolean
+          code: string
+          expires_at: string | null
+          notes: string | null
+          stripe_coupon_id: string
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          expires_at?: string | null
+          notes?: string | null
+          stripe_coupon_id: string
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          expires_at?: string | null
+          notes?: string | null
+          stripe_coupon_id?: string
+        }
+        Relationships: []
+      }
       teams: {
         Row: {
           contact_email: string | null

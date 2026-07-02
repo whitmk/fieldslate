@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createCheckoutSession } from "@/lib/stripe";
+import { createCheckoutSession, type CheckoutParams } from "@/lib/stripe";
+import { resolvePromoCoupon } from "@/lib/promo";
 
 // Auth redirect target for both email confirmation (signup) and password
 // reset. Exchanges the PKCE code for a session, then — for a paid signup —
@@ -32,29 +33,39 @@ export async function GET(request: Request) {
       const pendingPromo = typedProfile?.pending_promo;
 
       if (pending === "pro" || pending === "elite") {
-        // Auto-apply the INTERLEAGUE promo coupon when the user arrived via an
-        // interleague invite link (?promo=INTERLEAGUE → pending_promo). A
-        // missing coupon env var must NEVER block a paid signup — log and
-        // proceed without the discount.
-        let couponId: string | undefined;
-        if (pendingPromo?.toUpperCase() === "INTERLEAGUE") {
-          couponId = process.env.STRIPE_INTERLEAGUE_COUPON_ID;
-          if (!couponId) {
-            console.error("[promo] INTERLEAGUE coupon id not configured");
-          }
-        }
+        // Auto-apply the signup promo when the user arrived via a promo link
+        // (e.g. ?promo=INTERLEAGUE → pending_promo), resolved to a Stripe
+        // coupon through the promo_codes table. An unknown/inactive/expired
+        // code resolves to null and must NEVER block a paid signup — the
+        // checkout proceeds without the discount.
+        const couponId = (await resolvePromoCoupon(pendingPromo)) ?? undefined;
         try {
           // quantity:1 — the plan's single included season. The webhook flips
           // the tier and provisions NO season; the user creates their first
           // season manually in the dashboard.
-          const { url } = await createCheckoutSession({
+          const params: Omit<CheckoutParams, "couponId"> = {
             plan: pending,
             quantity: 1,
             orgId: data.user.id,
-            couponId,
             successUrl: `${origin}/dashboard?welcome=true`,
             cancelUrl: `${origin}/dashboard`,
-          });
+          };
+          let url: string;
+          try {
+            ({ url } = await createCheckoutSession({ ...params, couponId }));
+          } catch (couponErr) {
+            // A stale coupon (e.g. the table pointed at an expired Stripe
+            // coupon) must not cost the customer their signup — retry ONCE
+            // without the coupon; that session shows the typed promo-code
+            // field instead. Couponless failures skip straight to the outer
+            // catch: a retry would rebuild the identical session.
+            if (!couponId) throw couponErr;
+            console.error(
+              "[auth-callback] coupon checkout failed — retrying without coupon",
+              { err: couponErr, userId: data.user.id, couponId },
+            );
+            ({ url } = await createCheckoutSession(params));
+          }
           return NextResponse.redirect(url);
         } catch (err) {
           // Stripe misconfigured / transient failure — don't strand the user
