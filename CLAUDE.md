@@ -29,7 +29,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0071.** The repo files are the record, not the
+  **Latest migration: 0072.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **`service_role` gets NO default grants on new tables in `public`.** This
