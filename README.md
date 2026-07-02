@@ -1,6 +1,6 @@
 # FieldSlate
 
-Youth sports league scheduling SaaS — [thefieldslate.com](https://thefieldslate.com).
+Youth sports league scheduling SaaS — [www.thefieldslate.com](https://www.thefieldslate.com).
 
 League commissioners create seasons, divisions, and teams; generate conflict-free game and practice schedules; manage venues, officials, interleague play, snack shacks, and pay tracking; and share schedules with coaches and families.
 
