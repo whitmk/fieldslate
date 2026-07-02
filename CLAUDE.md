@@ -69,6 +69,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `checkout.session.async_payment_failed` is unhandled. This is moot while the
   Stripe dashboard is card-only; revisit before enabling any async payment
   method.
+- **The webhook handles ONLY `checkout.session.completed`.** Every other
+  event type — `charge.refunded`, all dispute events, anything else Stripe
+  sends — is acked with a 200 and dropped. A refund therefore does NOT
+  auto-downgrade the plan or remove the provisioned season; refund/dispute
+  cleanup is manual by design for now.
 - **`profiles.comped` means "billing must never touch this row"** — it is
   independent of `plan` and exists so the team's own accounts can smoke-test
   production safely. `/api/stripe/checkout` fails CLOSED: 403 if comped, 503
@@ -77,6 +82,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   unconfirmed read so Stripe retries. **To convert a comped account into a
   paying one, clear `comped` BEFORE starting checkout** — while set, every
   checkout is blocked and every webhook is a no-op.
+- **`comped` covers two populations:** the team's own smoke-test accounts
+  AND founding-league comps (see COMPING-RUNBOOK.md) — do not treat comped
+  rows as disposable test data.
 
 ## Promo codes
 
