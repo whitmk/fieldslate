@@ -112,6 +112,23 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   couponless checkout — including upgrades and add-seasons — shows the typed
   promo-code field.
 
+## Blog
+
+- **Architecture:** markdown files in `content/blog/` (frontmatter: title,
+  description, slug, datePublished, dateModified) parsed with `gray-matter`,
+  rendered with `react-markdown` via explicit per-element styled components.
+  `src/lib/blog.ts` reads posts at build time; routes live in
+  `src/app/(marketing)/blog/` (index + `[slug]`, fully static via
+  `generateStaticParams`, unknown slugs 404). `src/app/sitemap.ts` covers the
+  public marketing routes plus each post; `public/llms.txt` describes the site
+  for LLM crawlers. All absolute URLs come from `SITE_URL`.
+- **Live article:**
+  https://www.thefieldslate.com/blog/sports-connect-alternatives-little-league
+- **The FAQPage JSON-LD on the article page is hardcoded** (four Q/A pairs in
+  `src/app/(marketing)/blog/[slug]/page.tsx`, gated to that slug) — editing
+  the article's FAQ section in the markdown requires a manual matching update
+  to the JSON-LD, or the two silently drift.
+
 ## Open items
 
 - **Vercel `STRIPE_INTERLEAGUE_COUPON_ID` still points at the dead
@@ -125,3 +142,5 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   drop bare-domain entries).
 - `divisions.umpire_roles` jsonb stays populated until a future cleanup
   migration (see README data-model notes).
+- Follow-up (separate commit): add metadataBase: new URL(SITE_URL) to the
+  root layout so OG URL resolution stops depending on Vercel domain config.
