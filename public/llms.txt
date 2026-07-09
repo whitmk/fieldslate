@@ -1,0 +1,16 @@
+# FieldSlate
+
+FieldSlate is season-scheduling software for youth sports leagues: field-conflict
+detection, interleague coordination, umpire assignments, and playoff brackets.
+It is built for the volunteer admins who run Little League and other rec leagues,
+and it stores no player or coach personal data — ever. Season scheduling only;
+it is not a registration platform.
+
+## Links
+
+- Homepage: https://www.thefieldslate.com/
+- Pricing: https://www.thefieldslate.com/#pricing
+- Blog: https://www.thefieldslate.com/blog
+- Sports Connect Alternatives in 2026 — what the PlayMetrics transition does and
+  doesn't solve for Little League admins:
+  https://www.thefieldslate.com/blog/sports-connect-alternatives-little-league

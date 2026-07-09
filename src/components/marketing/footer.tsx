@@ -22,6 +22,7 @@ export function Footer() {
             <Link href="/#features" className="text-sm text-white/40 transition-colors hover:text-white">Features</Link>
             <Link href="/#how-it-works" className="text-sm text-white/40 transition-colors hover:text-white">How it works</Link>
             <Link href="/#pricing" className="text-sm text-white/40 transition-colors hover:text-white">Pricing</Link>
+            <Link href="/blog" className="text-sm text-white/40 transition-colors hover:text-white">Blog</Link>
             <Link href="/contact" className="text-sm text-white/40 transition-colors hover:text-white">Contact</Link>
             <Link href="/privacy" className="text-sm text-white/40 transition-colors hover:text-white">Privacy</Link>
             <Link href="/terms-of-service" className="text-sm text-white/40 transition-colors hover:text-white">Terms of Service</Link>
