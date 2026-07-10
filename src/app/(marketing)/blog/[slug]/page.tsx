@@ -96,32 +96,6 @@ const markdownComponents: Components = {
   hr: () => <hr className="my-10 border-fs-navy/15" />,
 };
 
-// The FAQ Q/A pairs are hardcoded from the article's FAQ section (rather than
-// parsed out of the markdown), so this JSON-LD block is gated to that one slug.
-const FAQ_SLUG = "sports-connect-alternatives-little-league";
-const FAQ_ENTRIES = [
-  {
-    question: "Is Sports Connect really shutting down?",
-    answer:
-      "Yes. Following the 2025 Stack Sports–PlayMetrics merger, the company announced Sports Connect and the Association Platform will be sunset in 2027.",
-  },
-  {
-    question: "Do Little Leagues get to choose their registration platform?",
-    answer:
-      "Effectively no — Little League Central Registration moves to PlayMetrics beginning with the 2027 season. Confirm details with your District Administrator.",
-  },
-  {
-    question: "Does the PlayMetrics transition handle my game and field scheduling?",
-    answer:
-      "That's the question to ask in a demo. Registration and volunteer management are the announced scope; whether its scheduling fits a shared-field, interleague, volunteer-umpire baseball league is something to verify against your own season, not assume.",
-  },
-  {
-    question: "What should we do first?",
-    answer:
-      'Export your data from Sports Connect, and put "scheduling plan for 2027" on your next board agenda as its own line item — separate from the registration migration.',
-  },
-];
-
 export default function BlogPostPage({ params }: { params: { slug: string } }) {
   const post = getPostBySlug(params.slug);
   if (!post) notFound();
@@ -138,15 +112,19 @@ export default function BlogPostPage({ params }: { params: { slug: string } }) {
     mainEntityOfPage: url,
     url,
   };
-  const faqJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: FAQ_ENTRIES.map(({ question, answer }) => ({
-      "@type": "Question",
-      name: question,
-      acceptedAnswer: { "@type": "Answer", text: answer },
-    })),
-  };
+  // FAQ pairs live in the post's frontmatter (plain-text answers), so any post
+  // with a `faq` field gets a FAQPage block — nothing is gated to one slug.
+  const faqJsonLd = post.faq
+    ? {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: post.faq.map(({ question, answer }) => ({
+          "@type": "Question",
+          name: question,
+          acceptedAnswer: { "@type": "Answer", text: answer },
+        })),
+      }
+    : null;
 
   return (
     <div className="bg-fs-paper">
@@ -154,7 +132,7 @@ export default function BlogPostPage({ params }: { params: { slug: string } }) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
       />
-      {post.slug === FAQ_SLUG && (
+      {faqJsonLd && (
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}

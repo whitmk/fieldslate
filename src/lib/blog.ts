@@ -6,12 +6,18 @@ import matter from "gray-matter";
 // the blog routes are fully static (generateStaticParams + no dynamic APIs),
 // so none of this runs per-request in production.
 
+export type BlogFaqEntry = {
+  question: string;
+  answer: string; // plain text — no markdown; rendered into FAQPage JSON-LD
+};
+
 export type BlogPost = {
   title: string;
   description: string;
   slug: string;
   datePublished: string; // ISO date, e.g. "2026-07-09"
   dateModified: string; // ISO date
+  faq?: BlogFaqEntry[]; // optional; when present the post page emits FAQPage JSON-LD
   content: string; // raw markdown body (frontmatter stripped)
 };
 
@@ -33,12 +39,34 @@ function parsePost(filePath: string): BlogPost {
       throw new Error(`Blog post ${filePath} is missing frontmatter field "${key}"`);
     }
   }
+  let faq: BlogFaqEntry[] | undefined;
+  if (data.faq !== undefined) {
+    const entries: unknown = data.faq;
+    const valid =
+      Array.isArray(entries) &&
+      entries.length > 0 &&
+      entries.every(
+        (e) =>
+          e &&
+          typeof e.question === "string" &&
+          e.question.length > 0 &&
+          typeof e.answer === "string" &&
+          e.answer.length > 0
+      );
+    if (!valid) {
+      throw new Error(
+        `Blog post ${filePath} has a malformed "faq" field — expected a non-empty list of { question, answer } strings`
+      );
+    }
+    faq = entries.map((e) => ({ question: e.question, answer: e.answer }));
+  }
   return {
     title: data.title,
     description: data.description,
     slug: data.slug,
     datePublished: data.datePublished,
     dateModified: data.dateModified,
+    faq,
     content,
   };
 }

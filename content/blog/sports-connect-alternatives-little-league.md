@@ -4,6 +4,15 @@ description: "Sports Connect sunsets in 2027 and Little League registration move
 slug: "sports-connect-alternatives-little-league"
 datePublished: "2026-07-09"
 dateModified: "2026-07-09"
+faq:
+  - question: "Is Sports Connect really shutting down?"
+    answer: "Yes. Following the 2025 Stack Sports–PlayMetrics merger, the company announced Sports Connect and the Association Platform will be sunset in 2027."
+  - question: "Do Little Leagues get to choose their registration platform?"
+    answer: "Effectively no — Little League Central Registration moves to PlayMetrics beginning with the 2027 season. Confirm details with your District Administrator."
+  - question: "Does the PlayMetrics transition handle my game and field scheduling?"
+    answer: "That's the question to ask in a demo. Registration and volunteer management are the announced scope; whether its scheduling fits a shared-field, interleague, volunteer-umpire baseball league is something to verify against your own season, not assume."
+  - question: "What should we do first?"
+    answer: "Export your data from Sports Connect, and put \"scheduling plan for 2027\" on your next board agenda as its own line item — separate from the registration migration."
 ---
 # Sports Connect Alternatives in 2026: What Little League Admins Actually Need to Know
 
@@ -79,6 +88,8 @@ This is the category **FieldSlate** ([thefieldslate.com](https://www.thefieldsla
 **Pricing:** free for a single-division league; paid tiers are $129 or $249 per season (not per player, not a subscription), which for most leagues is less than one team's uniform order.
 
 The same unbundling logic applies to other point solutions too — some leagues pair mandated registration with a standalone website builder, or a dedicated umpire-assigning tool. The principle is the same: the mandate covers registration; everything else is your call.
+
+For a deeper look at the scheduling decision itself — including a six-step demo script to run on any vendor — see our guide: [Little League Scheduling Software: An Honest Guide for Volunteer Boards](https://www.thefieldslate.com/blog/little-league-scheduling-software).
 
 ## A sane timeline for the transition
 
