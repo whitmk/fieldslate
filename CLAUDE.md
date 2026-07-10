@@ -119,15 +119,19 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   rendered with `react-markdown` via explicit per-element styled components.
   `src/lib/blog.ts` reads posts at build time; routes live in
   `src/app/(marketing)/blog/` (index + `[slug]`, fully static via
-  `generateStaticParams`, unknown slugs 404). `src/app/sitemap.ts` covers the
-  public marketing routes plus each post; `public/llms.txt` describes the site
-  for LLM crawlers. All absolute URLs come from `SITE_URL`.
-- **Live article:**
+  `generateStaticParams`, unknown slugs 404). `src/app/sitemap.ts` hardcodes
+  the marketing routes and generates blog entries from the posts lib, so new
+  posts appear in the sitemap automatically; `public/llms.txt` describes the
+  site for LLM crawlers. All absolute URLs come from `SITE_URL`.
+- **Live articles:**
   https://www.thefieldslate.com/blog/sports-connect-alternatives-little-league
-- **The FAQPage JSON-LD on the article page is hardcoded** (four Q/A pairs in
-  `src/app/(marketing)/blog/[slug]/page.tsx`, gated to that slug) — editing
-  the article's FAQ section in the markdown requires a manual matching update
-  to the JSON-LD, or the two silently drift.
+  https://www.thefieldslate.com/blog/little-league-scheduling-software
+- **FAQPage JSON-LD comes from frontmatter.** A post with an optional `faq`
+  list ({question, answer} pairs, answers plain text — no markdown) gets a
+  FAQPage block on its page; `src/lib/blog.ts` fails the build on a malformed
+  `faq` entry. Caveat: FAQ text lives in TWO places per file — the body's FAQ
+  section (what readers see) and the frontmatter `faq` list (what search
+  engines see) — so any FAQ edit must update both or they silently drift.
 
 ## Open items
 
