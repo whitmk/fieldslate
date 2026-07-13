@@ -27,3 +27,15 @@ type IsFilter<T> = T & { is: (column: string, value: any) => T };
 export function activeLeaguesOnly<T>(query: IsFilter<T>): T {
   return query.is("archived_at", null);
 }
+
+/**
+ * In-memory counterpart of activeLeaguesOnly for already-fetched league rows.
+ * Keyed on `archived_at` (the archive source of truth — never the legacy
+ * `status` column). "Not archived" deliberately includes draft/upcoming
+ * seasons: the Overview/Reports "All seasons" rollup means exactly this.
+ */
+export function nonArchivedLeagues<T extends { archived_at: string | null }>(
+  leagues: T[],
+): T[] {
+  return leagues.filter((l) => !l.archived_at);
+}

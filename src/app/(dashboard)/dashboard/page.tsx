@@ -6,6 +6,8 @@ import { UpcomingGamesList, type UpcomingGame } from "@/components/dashboard/upc
 import { CriticalAlertsCard, type CriticalAlertLeague } from "@/components/dashboard/critical-alerts-card";
 import { SeasonSelector, type SeasonOption } from "@/components/dashboard/season-selector";
 import { autoArchivePastSeasons } from "@/lib/seasons/auto-archive";
+import { nonArchivedLeagues } from "@/lib/seasons/queries";
+import { deriveSeasonStatus } from "@/lib/seasons/derived-status";
 import { resolveSelectedSeasonId } from "@/lib/seasons/resolve-selected";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
@@ -86,19 +88,24 @@ export default async function DashboardPage({
   const selectedSeason =
     selected === "all" ? null : ownedLeagues.find((l) => l.id === selected) ?? null;
   const isAll = selected === "all";
-  // League ids for THIS org — used to narrow the isAll branches so a
-  // multi-org admin doesn't see counts/games merged across their orgs. RLS
-  // alone would permit rows from every org they belong to.
-  const orgLeagueIds = ownedLeagues.map((l) => l.id);
+  // League ids for the "All seasons" rollup — deliberately "not archived"
+  // (draft/upcoming seasons count), keyed on archived_at. Also narrows the
+  // isAll branches to THIS org so a multi-org admin doesn't see counts/games
+  // merged across their orgs (RLS alone would permit rows from every org
+  // they belong to).
+  const nonArchivedLeagueIds = nonArchivedLeagues(ownedLeagues).map((l) => l.id);
+  // Every rollup season may be archived (the exact state after a season
+  // wraps) — skip the count/list queries instead of issuing `in.()` filters.
+  const rollupIsEmpty = isAll && nonArchivedLeagueIds.length === 0;
 
   // Filter helper — when a specific season is picked we constrain to that
-  // league_id; the "all" branch constrains to ANY league owned by the
-  // current org so cross-org rows can't sneak in via RLS.
+  // league_id; the "all" branch constrains to the org's non-archived leagues
+  // so cross-org rows can't sneak in via RLS.
   const teamsQ = isAll
     ? supabase
         .from("teams")
         .select("*", { count: "exact", head: true })
-        .in("league_id", orgLeagueIds)
+        .in("league_id", nonArchivedLeagueIds)
     : supabase.from("teams").select("*", { count: "exact", head: true }).eq("league_id", selected);
 
   const gamesCountQ = isAll
@@ -106,7 +113,7 @@ export default async function DashboardPage({
         .from("games")
         .select("*", { count: "exact", head: true })
         .eq("status", "scheduled")
-        .in("league_id", orgLeagueIds)
+        .in("league_id", nonArchivedLeagueIds)
     : supabase
         .from("games")
         .select("*", { count: "exact", head: true })
@@ -127,7 +134,7 @@ export default async function DashboardPage({
       .order("scheduled_at", { ascending: true })
       .limit(5);
     if (isAll) {
-      q = q.in("league_id", orgLeagueIds);
+      q = q.in("league_id", nonArchivedLeagueIds);
     } else {
       q = q.eq("league_id", selected);
     }
@@ -142,10 +149,10 @@ export default async function DashboardPage({
     { data: profileRow },
     { data: firstLeague },
   ] = await Promise.all([
-    teamsQ,
-    gamesCountQ,
+    rollupIsEmpty ? { count: 0 } : teamsQ,
+    rollupIsEmpty ? { count: 0 } : gamesCountQ,
     supabase.from("venues").select("*", { count: "exact", head: true }).eq("owner_id", currentOrgId),
-    upcomingQ,
+    rollupIsEmpty ? { data: [] } : upcomingQ,
     // Org name lives on the OWNER's profile (since org_id = owner's user id),
     // so when an admin views someone else's org they still see that org's name.
     supabase.from("profiles").select("org_name, pending_plan").eq("id", currentOrgId).single(),
@@ -182,11 +189,12 @@ export default async function DashboardPage({
     currentOrgId === user!.id &&
     (await isSetupIncomplete(supabase, currentOrgId, globalSeasonId));
 
-  // Critical alerts: filter to the selected season when specific; otherwise
-  // span all of the org's seasons exactly like before.
+  // Critical alerts are actionable-now items: they only ever draw from
+  // non-archived seasons — the rollup skips archived ones, and an explicitly
+  // selected archived season gets the silent all-clear card.
   const alertLeagues = isAll
-    ? ownedLeagues.map((l) => ({ id: l.id, name: l.name, season: l.season }))
-    : selectedSeason
+    ? nonArchivedLeagues(ownedLeagues).map((l) => ({ id: l.id, name: l.name, season: l.season }))
+    : selectedSeason && !selectedSeason.archived_at
     ? [{ id: selectedSeason.id, name: selectedSeason.name, season: selectedSeason.season }]
     : [];
   const criticalAlertLeagues = await buildCriticalAlertLeagues(supabase, alertLeagues);
@@ -251,7 +259,7 @@ export default async function DashboardPage({
         {isAll ? (
           <StatsCard
             title="Active Seasons"
-            value={ownedLeagues.filter((l) => l.status === "active").length}
+            value={nonArchivedLeagueIds.length}
             icon={Trophy}
           />
         ) : selectedSeason ? (
@@ -322,7 +330,7 @@ function SeasonStatsCard({ season }: { season: OwnedLeague }) {
   const start = fmtRangeDate(season.start_date);
   const end = fmtRangeDate(season.end_date);
   const range = start && end ? `${start} – ${end}` : start || end || "Dates not set";
-  const isActive = season.status === "active";
+  const status = deriveSeasonStatus(season);
   return (
     <div className="flex items-start justify-between rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
       <div className="min-w-0">
@@ -335,11 +343,9 @@ function SeasonStatsCard({ season }: { season: OwnedLeague }) {
           {range}
         </p>
         <span
-          className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${
-            isActive ? "bg-[#22C55E]/10 text-[#22C55E]" : "bg-gray-100 text-gray-500"
-          }`}
+          className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${status.pillClass}`}
         >
-          {season.status}
+          {status.label}
         </span>
       </div>
       <Trophy className="h-5 w-5 flex-shrink-0 text-gray-300" />
