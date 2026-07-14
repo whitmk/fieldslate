@@ -239,6 +239,14 @@ export function buildSingleElimination(
 
 // ─── Double elimination ────────────────────────────────────────────────────────
 
+// The only team counts the double-elim generator + advancement mapping
+// support. Any other count silently drops "bye" teams from the bracket
+// entirely (e.g. 3 teams → seed 1 never plays), and >32 needs round labels
+// ROUND_ORDER doesn't know. generateBracket rejects everything else until
+// bye handling exists. (buildSingleElimination drops bye teams the same way
+// — its validation should join this when byes are tackled.)
+export const DOUBLE_ELIM_SUPPORTED_COUNTS = [2, 4, 8, 16, 32];
+
 // Exported so the advancement mapping in advancement.ts can be verified
 // against real generator output (see that file's header).
 export function buildDoubleElimination(
@@ -361,6 +369,20 @@ export async function generateBracket(
 
   if (seeds.length < 2) {
     return { success: false, error: "Need at least 2 teams to generate a bracket." };
+  }
+
+  // Must run before the games delete below so an invalid re-generate never
+  // wipes an existing bracket.
+  if (
+    data.format === "double_elimination" &&
+    !DOUBLE_ELIM_SUPPORTED_COUNTS.includes(seeds.length)
+  ) {
+    return {
+      success: false,
+      error:
+        `Double elimination needs exactly 2, 4, 8, 16, or 32 teams — this division has ${seeds.length}. ` +
+        `Adjust the division's teams or pick a different format (bye rounds aren't supported yet).`,
+    };
   }
 
   // Venue hours for the slot filter — the wizard only carries venue ids.
