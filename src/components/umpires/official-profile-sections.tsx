@@ -9,9 +9,19 @@ import {
   Clock,
   Loader2,
   Plus,
+  ShieldAlert,
   Trash2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  coachTeamLabel,
+  fetchCoachTeamOptions,
+  type CoachTeamOption,
+} from "@/lib/umpires/team-options";
+import {
+  COI_RELATIONSHIP_OPTIONS,
+  coiRelationshipLabel,
+} from "@/lib/umpires/coi";
 
 // Availability / blackout / certification sections for the per-official page
 // (tables from migration 0062). Rows are fetched server-side by the page and
@@ -35,6 +45,14 @@ export type CertificationRow = {
   name: string;
   issued_date: string | null;
   expiry_date: string | null;
+};
+
+export type ConflictRow = {
+  id: string;
+  team_id: string;
+  relationship: string;
+  note: string | null;
+  team: { name: string; division: { name: string } | null } | null;
 };
 
 export const DAY_OPTIONS: { key: string; full: string }[] = [
@@ -499,6 +517,199 @@ export function BlackoutsSection({
   );
 }
 
+// ── Conflicts of interest ────────────────────────────────────────────────────
+// official_conflicts (0073): non-coach relationships (parent/sibling/family/
+// other) between an official and a team. Additive to the umpires.team_id
+// coach link. Same onChanged contract as the sections above.
+
+export function ConflictsSection({
+  umpireId,
+  seasonId,
+  rows,
+  onChanged,
+}: {
+  umpireId: string;
+  seasonId: string;
+  rows: ConflictRow[];
+  onChanged?: () => void;
+}) {
+  const router = useRouter();
+  const [adding, setAdding] = useState(false);
+  // null = not fetched; team options load on first open of the add form.
+  const [teamOptions, setTeamOptions] = useState<CoachTeamOption[] | null>(null);
+  const [teamId, setTeamId] = useState("");
+  const [relationship, setRelationship] = useState("parent");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function openAddForm() {
+    setAdding(true);
+    if (teamOptions === null) {
+      const supabase = createClient();
+      fetchCoachTeamOptions(supabase, seasonId).then(setTeamOptions);
+    }
+  }
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    // Rendered inside the edit modal's <form> when reused there: without this,
+    // the submit bubbles up and triggers the modal's profile save + close.
+    e.stopPropagation();
+    setError(null);
+    if (!teamId) return;
+    setSaving(true);
+    const supabase = createClient();
+    const { error: insertErr } = await supabase
+      .from("official_conflicts")
+      .insert([
+        {
+          umpire_id: umpireId,
+          team_id: teamId,
+          relationship,
+          note: note.trim() || null,
+        },
+      ] as never[]);
+    setSaving(false);
+    if (insertErr) {
+      // UNIQUE(umpire_id, team_id)
+      const teamName =
+        teamOptions?.find((t) => t.id === teamId)?.name ?? "this team";
+      setError(
+        insertErr.code === "23505" || /duplicate key|unique/i.test(insertErr.message)
+          ? `This official already has a conflict listed for ${teamName}.`
+          : insertErr.message,
+      );
+      return;
+    }
+    setAdding(false);
+    setTeamId("");
+    setRelationship("parent");
+    setNote("");
+    router.refresh();
+    onChanged?.();
+  }
+
+  async function handleDelete(id: string) {
+    setDeletingId(id);
+    const supabase = createClient();
+    const { error: delErr } = await supabase
+      .from("official_conflicts")
+      .delete()
+      .eq("id", id);
+    setDeletingId(null);
+    if (delErr) {
+      setError(delErr.message);
+      return;
+    }
+    router.refresh();
+    onChanged?.();
+  }
+
+  return (
+    <Section
+      icon={<ShieldAlert className="h-4 w-4 text-[#22C55E]" />}
+      title="Conflicts of interest"
+      count={rows.length}
+      defaultOpen={rows.length === 0}
+    >
+      <div className="flex flex-col gap-2">
+        {rows.length === 0 && !adding && (
+          <p className="text-sm text-gray-400">
+            No conflicts listed — use this for parents, siblings, or anyone who
+            shouldn&apos;t officiate a team&apos;s games.
+          </p>
+        )}
+        {rows.map((r) => (
+          <div
+            key={r.id}
+            className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 px-3 py-1.5"
+          >
+            <span className="min-w-0 text-sm text-gray-700">
+              <span className="font-medium text-[#0C1F3F]">
+                {r.team
+                  ? coachTeamLabel(r.team.name, r.team.division?.name)
+                  : "Unknown team"}
+              </span>{" "}
+              · {coiRelationshipLabel(r.relationship)}
+              {r.note && <span className="text-gray-500"> — {r.note}</span>}
+            </span>
+            <DeleteRowButton
+              onClick={() => handleDelete(r.id)}
+              busy={deletingId === r.id}
+              label="Delete conflict of interest"
+            />
+          </div>
+        ))}
+
+        {error && <FormError message={error} />}
+
+        {adding ? (
+          <form
+            onSubmit={handleAdd}
+            className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-gray-50/60 p-3"
+          >
+            {teamOptions === null ? (
+              <div className="flex items-center gap-2 py-1 text-sm text-gray-400">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading teams…
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <select
+                    value={teamId}
+                    onChange={(e) => setTeamId(e.target.value)}
+                    aria-label="Team"
+                    required
+                    className={inputClasses}
+                  >
+                    <option value="">Select a team…</option>
+                    {teamOptions.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {coachTeamLabel(t.name, t.division?.name)}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={relationship}
+                    onChange={(e) => setRelationship(e.target.value)}
+                    aria-label="Relationship"
+                    className={inputClasses}
+                  >
+                    {COI_RELATIONSHIP_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  type="text"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Note (optional, e.g. neighbor, close family friend)"
+                  className={inputClasses}
+                />
+              </>
+            )}
+            <FormActions
+              saving={saving}
+              onCancel={() => {
+                setAdding(false);
+                setError(null);
+              }}
+            />
+          </form>
+        ) : (
+          <AddRowButton onClick={openAddForm} label="Add conflict" />
+        )}
+      </div>
+    </Section>
+  );
+}
+
 // ── Certifications ───────────────────────────────────────────────────────────
 
 function CertificationsSection({
@@ -670,17 +881,22 @@ function CertificationsSection({
 
 export function OfficialSchedulingSections({
   umpireId,
+  seasonId,
   availability,
   blackouts,
+  conflicts,
 }: {
   umpireId: string;
+  seasonId: string;
   availability: AvailabilityRow[];
   blackouts: BlackoutRow[];
+  conflicts: ConflictRow[];
 }) {
   return (
     <div className="flex flex-col gap-3">
       <AvailabilitySection umpireId={umpireId} rows={availability} />
       <BlackoutsSection umpireId={umpireId} rows={blackouts} />
+      <ConflictsSection umpireId={umpireId} seasonId={seasonId} rows={conflicts} />
     </div>
   );
 }

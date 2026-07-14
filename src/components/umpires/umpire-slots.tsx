@@ -13,6 +13,7 @@ import {
 } from "@/lib/umpires/conflicts";
 import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
 import { coachTeamLabel } from "@/lib/umpires/team-options";
+import { coiPhrase, type CoiLink } from "@/lib/umpires/coi";
 
 export type UmpireOption = {
   id: string;
@@ -21,6 +22,9 @@ export type UmpireOption = {
   team_id?: string | null;
   /** Coached team's name + division — display only, marks coaches in the picker. */
   team?: { name: string; division: { name: string } | null } | null;
+  /** Conflict-of-interest links (0073) — drive the COI warning, parallel to
+   *  the coach conflict. */
+  conflicts?: CoiLink[] | null;
 };
 
 export type SlotAssignment = {
@@ -169,10 +173,11 @@ export function UmpireSlots({
       return;
     }
 
-    // Coach conflict (0063) is a warning, not a block, on manual assignment —
-    // auto-assign hard-blocks it, but the commissioner can knowingly override
-    // here. Computed before the save, shown after it succeeds.
-    let coachWarning: string | null = null;
+    // Coach conflict (0063) and conflicts of interest (0073) are warnings,
+    // not blocks, on manual assignment — auto-assign hard-blocks both, but
+    // the commissioner can knowingly override here. Computed before the
+    // save, shown after it succeeds. Both can apply at once.
+    const warnings: string[] = [];
     if (
       nextUmpire?.team_id &&
       (nextUmpire.team_id === game.home_team_id ||
@@ -182,7 +187,18 @@ export function UmpireSlots({
         nextUmpire.team_id === game.home_team_id
           ? game.home_team_name
           : game.away_team_name;
-      coachWarning = `${umpName} coaches ${coachedTeam} — assigned anyway. Consider a neutral official.`;
+      warnings.push(
+        `${umpName} coaches ${coachedTeam} — assigned anyway. Consider a neutral official.`,
+      );
+    }
+    for (const c of nextUmpire?.conflicts ?? []) {
+      const isHome = c.team_id === game.home_team_id;
+      const isAway = game.away_team_id != null && c.team_id === game.away_team_id;
+      if (!isHome && !isAway) continue;
+      const conflictTeam = isHome ? game.home_team_name : game.away_team_name;
+      warnings.push(
+        `${umpName} is listed as ${coiPhrase(c.relationship)} on ${conflictTeam} — assigned anyway. Consider a neutral official.`,
+      );
     }
 
     // Resolve the normalized official_roles id for this slot's label (created
@@ -214,8 +230,8 @@ export function UmpireSlots({
       }
     }
 
-    if (coachWarning) {
-      setWarningByRole({ [role]: coachWarning });
+    if (warnings.length > 0) {
+      setWarningByRole({ [role]: warnings.join(" ") });
     }
     setPendingRole(null);
     router.refresh();

@@ -35,7 +35,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0072.** The repo files are the record, not the
+  **Latest migration: 0073.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **`service_role` gets NO default grants on new tables in `public`.** This
@@ -167,9 +167,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `umpire_roles` jsonb (0024); pay tracking (0026); contact columns +
   `official_roles` / `official_availability` / `official_blackouts` /
   `official_certifications` + nullable `role_id` + `toggle_assignment_paid`
-  RPC (0062); `umpires.team_id` coach link + `divisions.priority` (0063).
-  `official_roles` (not `divisions.umpire_roles`) is the source of truth for
-  slot labels — the two diverging once made assigned slots read "Open".
+  RPC (0062); `umpires.team_id` coach link + `divisions.priority` (0063);
+  `official_conflicts` non-coach conflict-of-interest links, UNIQUE(umpire_id,
+  team_id) (0073). `official_roles` (not `divisions.umpire_roles`) is the
+  source of truth for slot labels — the two diverging once made assigned
+  slots read "Open".
 - **Zero availability windows = available anytime** (enforced in
   `src/lib/umpires/eligibility.ts`). Availability is opt-in detail, not a
   requirement — never make windows mandatory or treat their absence as
@@ -179,13 +181,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   save and lets the commissioner override; auto-assign
   (`src/lib/umpires/auto-assign.ts`) hard-blocks coach conflicts, blackouts,
   and double-booking at both tiers — availability windows and weekly caps go
-  soft only in its fallback tier. Keep that asymmetry.
+  soft only in its fallback tier. Keep that asymmetry. `official_conflicts`
+  rows (0073, parent/sibling/family/other) get the identical treatment:
+  warn-with-override on manual, hard-block on auto-assign.
 - **All eligibility date math is client-timezone-only by design** (see the
   `eligibility.ts` header). On a server, "local" is UTC and day/week
   boundaries shift silently — any server-side or DB-side use must add an
   explicit timezone parameter first.
-- **Naming trap:** `blackout_dates` is season-level scheduling blackouts;
-  `official_blackouts` is per-official unavailable dates. Don't mix them up.
+- **Naming traps:** `blackout_dates` is season-level scheduling blackouts;
+  `official_blackouts` is per-official unavailable dates. `official_conflicts`
+  (0073, officials' conflict-of-interest links) is unrelated to
+  `conflict_overrides` (0064, the game-scheduling override audit trail).
+  Don't mix them up.
 - **The `official-profile-sections.tsx` add-forms call `e.stopPropagation()`
   in `handleAdd` — never remove it.** Those sections are reused inside the
   edit-official modal's `<form>`; React submit events bubble through nested

@@ -11,6 +11,7 @@ import {
   type AvailabilityRow,
   type BlackoutRow,
   type CertificationRow,
+  type ConflictRow,
 } from "@/components/umpires/official-profile-sections";
 import { getOfficialTitle } from "@/lib/utils/official-title";
 import { getCurrentOrgId } from "@/lib/orgs/context";
@@ -118,6 +119,7 @@ export default async function UmpireSchedulePage({
     { data: availabilityRaw },
     { data: blackoutsRaw },
     { data: certificationsRaw },
+    { data: conflictsRaw },
   ] = await Promise.all([
     supabase
       .from("official_availability")
@@ -133,10 +135,16 @@ export default async function UmpireSchedulePage({
       .select("id, name, issued_date, expiry_date")
       .eq("umpire_id", umpire.id)
       .order("name"),
+    supabase
+      .from("official_conflicts")
+      .select("id, team_id, relationship, note, team:teams(name, division:divisions(name))")
+      .eq("umpire_id", umpire.id)
+      .order("created_at"),
   ]);
   const availability = (availabilityRaw ?? []) as AvailabilityRow[];
   const blackouts = (blackoutsRaw ?? []) as BlackoutRow[];
   const certifications = (certificationsRaw ?? []) as CertificationRow[];
+  const conflicts = (conflictsRaw ?? []) as unknown as ConflictRow[];
 
   const { data: rawRows } = await supabase
     .from("game_umpires")
@@ -233,8 +241,10 @@ export default async function UmpireSchedulePage({
           (the sections are print:hidden, so printing is unaffected). */}
       <OfficialSchedulingSections
         umpireId={umpire.id}
+        seasonId={umpire.season_id}
         availability={availability}
         blackouts={blackouts}
+        conflicts={conflicts}
       />
 
       <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none">

@@ -10,6 +10,7 @@ const SKIP_REASON_LABELS: Record<SkipReason, string> = {
   conflict: "time conflicts",
   blackout: "blackout dates",
   coach_conflict: "coach conflicts",
+  conflict_of_interest: "conflicts of interest",
 };
 
 function skipSummary(skipped: number, reasons: SkipReason[]): string {

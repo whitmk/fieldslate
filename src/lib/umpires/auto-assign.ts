@@ -17,9 +17,14 @@ import { padRoleLabels } from "@/lib/utils/official-title";
  * Why a slot couldn't be filled. Only the HARD constraints can empty a slot:
  * availability windows and weekly caps are soft (the fallback tier ignores
  * them), so a skip always means every candidate was double-booked, blacked
- * out, or coaching a team in the game.
+ * out, coaching a team in the game, or listed with a conflict of interest
+ * (official_conflicts, 0073) on one of its teams.
  */
-export type SkipReason = "conflict" | "blackout" | "coach_conflict";
+export type SkipReason =
+  | "conflict"
+  | "blackout"
+  | "coach_conflict"
+  | "conflict_of_interest";
 
 export type AutoAssignResult = {
   success: boolean;
@@ -61,6 +66,8 @@ type UmpireRow = {
   name: string;
   max_games_per_week: number | null;
   team_id: string | null;
+  /** Conflict-of-interest links (0073) — hard block, same as the coach link. */
+  conflicts: { team_id: string; relationship: string }[] | null;
 };
 
 function gameDuration(settings: unknown): number {
@@ -195,13 +202,15 @@ export async function autoAssignUmpires(
   // 4. Load every umpire in this season.
   const { data: umpiresRaw, error: umpiresErr } = await supabase
     .from("umpires")
-    .select("id, name, max_games_per_week, team_id")
+    .select(
+      "id, name, max_games_per_week, team_id, conflicts:official_conflicts(team_id, relationship)",
+    )
     .eq("season_id", seasonId)
     .order("name");
   if (umpiresErr) {
     return none(umpiresErr.message);
   }
-  const umpires = (umpiresRaw ?? []) as UmpireRow[];
+  const umpires = (umpiresRaw ?? []) as unknown as UmpireRow[];
 
   if (umpires.length === 0) {
     return none();
@@ -377,6 +386,18 @@ export async function autoAssignUmpires(
               candidate.team_id === g.away_team_id)
           ) {
             slotReasons.add("coach_conflict");
+            continue;
+          }
+          // Conflict of interest (0073): parent/sibling/family/other link to
+          // a team in the game — hard at both tiers, same as the coach link.
+          if (
+            (candidate.conflicts ?? []).some(
+              (c) =>
+                c.team_id === g.home_team_id ||
+                (g.away_team_id != null && c.team_id === g.away_team_id),
+            )
+          ) {
+            slotReasons.add("conflict_of_interest");
             continue;
           }
           if (strict) {

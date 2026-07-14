@@ -1476,6 +1476,48 @@ export type Database = {
           },
         ]
       }
+      official_conflicts: {
+        Row: {
+          created_at: string
+          id: string
+          note: string | null
+          relationship: string
+          team_id: string
+          umpire_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          relationship: string
+          team_id: string
+          umpire_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          relationship?: string
+          team_id?: string
+          umpire_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "official_conflicts_umpire_id_fkey"
+            columns: ["umpire_id"]
+            isOneToOne: false
+            referencedRelation: "umpires"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "official_conflicts_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       venues: {
         Row: {
           address: string | null
