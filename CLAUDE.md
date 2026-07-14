@@ -199,6 +199,17 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   forms, so without it, adding a window/blackout also fires the modal's
   profile save and closes it. Verify event handling any time a component
   with a form is reused inside another form.
+- **Conflict overlap/blackout logic is shared.** `findUmpireConflict`
+  (`src/lib/umpires/conflicts.ts`) is a thin fetch over the exported pure
+  functions `bookingsFromRows` / `findConflictInBookings`, and the picker's
+  pre-click option states (`umpire-slots.tsx`) use the same functions. Never
+  write a parallel implementation — extend the shared ones.
+- **Open question, deliberately consistent in both places:** bookings on
+  cancelled games still count as time conflicts (save-time and pre-click
+  agree). Revisit alongside rainout workflows.
+- **Scale note:** the picker roster feeds (game-detail-modal,
+  division-schedule-panel) embed each official's FULL booking rows per
+  fetch. First suspect if picker-open slows at large-league scale.
 
 ## Open items
 
