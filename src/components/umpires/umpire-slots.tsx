@@ -12,12 +12,15 @@ import {
   type GameTimeInfo,
 } from "@/lib/umpires/conflicts";
 import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
+import { coachTeamLabel } from "@/lib/umpires/team-options";
 
 export type UmpireOption = {
   id: string;
   name: string;
   /** Team this official coaches (0063) — drives the coach-conflict warning. */
   team_id?: string | null;
+  /** Coached team's name + division — display only, marks coaches in the picker. */
+  team?: { name: string; division: { name: string } | null } | null;
 };
 
 export type SlotAssignment = {
@@ -254,7 +257,9 @@ export function UmpireSlots({
                   <option value="">— Unassigned —</option>
                   {umpires.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.name}
+                      {u.team
+                        ? `${u.name} — coaches ${coachTeamLabel(u.team.name, u.team.division?.name)}`
+                        : u.name}
                     </option>
                   ))}
                 </select>

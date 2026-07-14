@@ -7,6 +7,11 @@ import { Pencil, Trash2, X, Loader2, CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { getOfficialTitleLower } from "@/lib/utils/official-title";
+import {
+  coachTeamLabel,
+  fetchCoachTeamOptions,
+  type CoachTeamOption,
+} from "@/lib/umpires/team-options";
 
 export type UmpireRow = {
   id: string;
@@ -20,7 +25,7 @@ export type UmpireRow = {
   notes: string | null;
   team_id: string | null;
   season: { name: string; sport?: string | null } | null;
-  team: { name: string } | null;
+  team: { name: string; division: { name: string } | null } | null;
 };
 
 export type SeasonPaySettings = {
@@ -94,7 +99,7 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Pro
                     <p className="font-medium text-gray-900">{u.name}</p>
                     {u.team?.name && (
                       <p className="mt-0.5 text-xs text-gray-400">
-                        Coaches {u.team.name}
+                        Coaches {coachTeamLabel(u.team.name, u.team.division?.name)}
                       </p>
                     )}
                   </td>
@@ -170,7 +175,7 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Pro
                     <p className="font-semibold text-[#0C1F3F]">{u.name}</p>
                     {u.team?.name && (
                       <p className="mt-0.5 text-xs text-gray-400">
-                        Coaches {u.team.name}
+                        Coaches {coachTeamLabel(u.team.name, u.team.division?.name)}
                       </p>
                     )}
                     {showSeasonColumn && (
@@ -285,7 +290,7 @@ function EditUmpireModal({
   );
   const [notes, setNotes] = useState(umpire.notes ?? "");
   const [teamId, setTeamId] = useState(umpire.team_id ?? "");
-  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
+  const [teams, setTeams] = useState<CoachTeamOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -294,14 +299,9 @@ function EditUmpireModal({
   useEffect(() => {
     let cancelled = false;
     const supabase = createClient();
-    supabase
-      .from("teams")
-      .select("id, name")
-      .eq("league_id", umpire.season_id)
-      .order("name")
-      .then(({ data }) => {
-        if (!cancelled) setTeams((data ?? []) as { id: string; name: string }[]);
-      });
+    fetchCoachTeamOptions(supabase, umpire.season_id).then((options) => {
+      if (!cancelled) setTeams(options);
+    });
     return () => {
       cancelled = true;
     };
@@ -469,7 +469,7 @@ function EditUmpireModal({
                 <option value="">— None —</option>
                 {teams.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name}
+                    {coachTeamLabel(t.name, t.division?.name)}
                   </option>
                 ))}
               </select>

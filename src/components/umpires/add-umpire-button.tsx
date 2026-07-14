@@ -6,10 +6,13 @@ import { Plus, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { getOfficialTitleLower } from "@/lib/utils/official-title";
+import {
+  coachTeamLabel,
+  fetchCoachTeamOptions,
+  type CoachTeamOption,
+} from "@/lib/umpires/team-options";
 
 export type SeasonOption = { id: string; name: string; sport?: string | null };
-
-type TeamOption = { id: string; name: string };
 
 interface Props {
   seasons: SeasonOption[];
@@ -26,7 +29,7 @@ export function AddUmpireButton({ seasons }: Props) {
   const [maxGames, setMaxGames] = useState("");
   const [notes, setNotes] = useState("");
   const [teamId, setTeamId] = useState("");
-  const [teams, setTeams] = useState<TeamOption[]>([]);
+  const [teams, setTeams] = useState<CoachTeamOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -40,16 +43,11 @@ export function AddUmpireButton({ seasons }: Props) {
     }
     let cancelled = false;
     const supabase = createClient();
-    supabase
-      .from("teams")
-      .select("id, name")
-      .eq("league_id", seasonId)
-      .order("name")
-      .then(({ data }) => {
-        if (cancelled) return;
-        setTeams((data ?? []) as TeamOption[]);
-        setTeamId("");
-      });
+    fetchCoachTeamOptions(supabase, seasonId).then((options) => {
+      if (cancelled) return;
+      setTeams(options);
+      setTeamId("");
+    });
     return () => {
       cancelled = true;
     };
@@ -254,7 +252,7 @@ export function AddUmpireButton({ seasons }: Props) {
                     <option value="">— None —</option>
                     {teams.map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.name}
+                        {coachTeamLabel(t.name, t.division?.name)}
                       </option>
                     ))}
                   </select>
