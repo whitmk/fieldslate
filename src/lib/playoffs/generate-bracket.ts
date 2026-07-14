@@ -237,7 +237,9 @@ function buildSingleElimination(
 
 // ─── Double elimination ────────────────────────────────────────────────────────
 
-function buildDoubleElimination(
+// Exported so the advancement mapping in double-elim-advancement.ts can be
+// verified against real generator output (see that file's header).
+export function buildDoubleElimination(
   seeds: SeededTeam[],
   playoffId: string,
   leagueId: string,

@@ -133,6 +133,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   section (what readers see) and the frontmatter `faq` list (what search
   engines see) — so any FAQ edit must update both or they silently drift.
 
+## Playoffs
+
+- **Playoff advancement is client-side by design.** Saving a result
+  (`src/lib/playoffs/enter-result.ts`) writes the completed row and then
+  populates downstream team slots from the browser — no DB trigger, no API
+  route. This assumes a single admin enters results; two admins saving
+  concurrently could race (stale `allGames` → wrong/blocked advancement).
+  Revisit (move into a DB function) if concurrent leagues / multi-admin
+  result entry becomes real. The double-elim mapping lives in
+  `src/lib/playoffs/double-elim-advancement.ts` (pure, testable — see its
+  header for the movement rules and edit semantics).
+
 ## Open items
 
 - **Vercel `STRIPE_INTERLEAGUE_COUPON_ID` still points at the dead
