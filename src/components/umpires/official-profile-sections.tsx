@@ -37,7 +37,7 @@ export type CertificationRow = {
   expiry_date: string | null;
 };
 
-const DAY_OPTIONS: { key: string; full: string }[] = [
+export const DAY_OPTIONS: { key: string; full: string }[] = [
   { key: "Mo", full: "Monday" },
   { key: "Tu", full: "Tuesday" },
   { key: "We", full: "Wednesday" },
@@ -53,11 +53,11 @@ const MONTHS_SHORT = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-function dayFull(key: string): string {
+export function dayFull(key: string): string {
   return DAY_OPTIONS.find((d) => d.key === key)?.full ?? key;
 }
 
-function fmtClock(t: string): string {
+export function fmtClock(t: string): string {
   const [hStr, mStr] = t.split(":");
   const h = parseInt(hStr, 10);
   const m = parseInt(mStr, 10);
@@ -68,7 +68,7 @@ function fmtClock(t: string): string {
 
 // Format "YYYY-MM-DD" from string parts — date-only values must never pass
 // through new Date(iso), which parses as UTC midnight and can shift a day.
-function fmtDateOnly(iso: string): string {
+export function fmtDateOnly(iso: string): string {
   const [y, mo, d] = iso.split("-").map(Number);
   return `${MONTHS_SHORT[(mo ?? 1) - 1]} ${d}, ${y}`;
 }
@@ -100,14 +100,16 @@ function Section({
   icon,
   title,
   count,
+  defaultOpen = false,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
   count: number;
+  defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm print:hidden">
       <button
@@ -273,6 +275,9 @@ function AvailabilitySection({
       icon={<Clock className="h-4 w-4 text-[#22C55E]" />}
       title="Availability"
       count={rows.length}
+      // Open when empty: collapsed-empty sections were never discovered
+      // (zero production rows). Once data exists, collapsed is fine.
+      defaultOpen={rows.length === 0}
     >
       <div className="flex flex-col gap-2">
         {sorted.length === 0 && !adding && (
@@ -414,6 +419,7 @@ function BlackoutsSection({
       icon={<CalendarOff className="h-4 w-4 text-[#22C55E]" />}
       title="Blackout dates"
       count={rows.length}
+      defaultOpen={rows.length === 0}
     >
       <div className="flex flex-col gap-2">
         {rows.length === 0 && !adding && (
@@ -640,24 +646,33 @@ function CertificationsSection({
   );
 }
 
-// ── Combined export ──────────────────────────────────────────────────────────
+// ── Exports ──────────────────────────────────────────────────────────────────
+// Split so the page can place scheduling constraints above the schedule table
+// and certifications below it.
 
-export function OfficialProfileSections({
+export function OfficialSchedulingSections({
   umpireId,
   availability,
   blackouts,
-  certifications,
 }: {
   umpireId: string;
   availability: AvailabilityRow[];
   blackouts: BlackoutRow[];
-  certifications: CertificationRow[];
 }) {
   return (
     <div className="flex flex-col gap-3">
       <AvailabilitySection umpireId={umpireId} rows={availability} />
       <BlackoutsSection umpireId={umpireId} rows={blackouts} />
-      <CertificationsSection umpireId={umpireId} rows={certifications} />
     </div>
   );
+}
+
+export function OfficialCertificationsSection({
+  umpireId,
+  certifications,
+}: {
+  umpireId: string;
+  certifications: CertificationRow[];
+}) {
+  return <CertificationsSection umpireId={umpireId} rows={certifications} />;
 }

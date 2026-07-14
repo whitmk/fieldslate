@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { UmpireScheduleActions } from "@/components/umpires/umpire-schedule-actions";
 import { PaidToggle } from "@/components/umpires/paid-toggle";
 import {
-  OfficialProfileSections,
+  OfficialSchedulingSections,
+  OfficialCertificationsSection,
   type AvailabilityRow,
   type BlackoutRow,
   type CertificationRow,
@@ -228,6 +229,14 @@ export default async function UmpireSchedulePage({
         />
       </div>
 
+      {/* Availability / blackouts above the schedule so they're discoverable
+          (the sections are print:hidden, so printing is unaffected). */}
+      <OfficialSchedulingSections
+        umpireId={umpire.id}
+        availability={availability}
+        blackouts={blackouts}
+      />
+
       <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none">
         {rows.length === 0 ? (
           <div className="px-6 py-12 text-center text-sm text-gray-500">
@@ -309,11 +318,8 @@ export default async function UmpireSchedulePage({
         )}
       </div>
 
-      {/* Availability / blackout / certification profile (migration 0062) */}
-      <OfficialProfileSections
+      <OfficialCertificationsSection
         umpireId={umpire.id}
-        availability={availability}
-        blackouts={blackouts}
         certifications={certifications}
       />
     </div>

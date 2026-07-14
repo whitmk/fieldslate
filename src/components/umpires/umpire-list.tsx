@@ -26,6 +26,9 @@ export type UmpireRow = {
   team_id: string | null;
   season: { name: string; sport?: string | null } | null;
   team: { name: string; division: { name: string } | null } | null;
+  /** Embedded id-only rows — presence only, for the roster availability hint. */
+  official_availability: { id: string }[] | null;
+  official_blackouts: { id: string }[] | null;
 };
 
 export type SeasonPaySettings = {
@@ -43,6 +46,16 @@ interface Props {
 
 function getPaySettings(seasonId: string, settings: SeasonPaySettings[]): SeasonPaySettings | null {
   return settings.find((s) => s.id === seasonId) ?? null;
+}
+
+// Roster-scan hint: who has real scheduling constraints entered without
+// clicking into each official. Zero of both = the eligibility.ts default.
+function availabilityHint(u: UmpireRow): string {
+  const windows = u.official_availability?.length ?? 0;
+  const dates = u.official_blackouts?.length ?? 0;
+  if (windows === 0 && dates === 0) return "Available anytime";
+  if (windows > 0 && dates > 0) return "Availability + blackout dates set";
+  return windows > 0 ? "Availability set" : "Blackout dates set";
 }
 
 export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Props) {
@@ -102,6 +115,9 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Pro
                         Coaches {coachTeamLabel(u.team.name, u.team.division?.name)}
                       </p>
                     )}
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      {availabilityHint(u)}
+                    </p>
                   </td>
                   <td className="py-3">
                     <Badge variant={u.designation === "adult" ? "info" : "success"}>
@@ -178,6 +194,9 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Pro
                         Coaches {coachTeamLabel(u.team.name, u.team.division?.name)}
                       </p>
                     )}
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      {availabilityHint(u)}
+                    </p>
                     {showSeasonColumn && (
                       <p className="mt-0.5 text-xs text-gray-500">
                         {u.season?.name ?? "—"}

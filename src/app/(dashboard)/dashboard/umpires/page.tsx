@@ -69,7 +69,7 @@ export default async function UmpiresPage() {
       ? supabase
           .from("umpires")
           .select(
-            "id, name, designation, season_id, pay_rate, email, phone, max_games_per_week, notes, team_id, season:leagues(name, sport), team:teams(name, division:divisions(name))",
+            "id, name, designation, season_id, pay_rate, email, phone, max_games_per_week, notes, team_id, season:leagues(name, sport), team:teams(name, division:divisions(name)), official_availability(id), official_blackouts(id)",
           )
           .eq("season_id", seasonId)
           .order("name", { ascending: true })
