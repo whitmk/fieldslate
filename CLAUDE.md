@@ -106,6 +106,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   behind it changed. `INTERLEAGUE2` has Stripe `redeem_by` 2027-07-30; the
   `promo_codes.expires_at` is 2027-07-25 (5 days earlier, so we stop
   attaching it before Stripe would reject it).
+- **Both checkout creators honor `pending_promo` — do not re-investigate the
+  "recovery-path promo gap."** `/api/auth/callback` (primary) and
+  `/api/stripe/checkout` (dashboard-CTA/upgrade retry path) each read
+  `pending_promo` and resolve it via `resolvePromoCoupon` with the same
+  fail-soft + retry-without-coupon behavior; the retry path gained this in
+  commit `7389614` (pushed 2026-07-02) and it was re-verified 2026-07-14.
+  These are the ONLY two session creators; all client checkout buttons POST
+  to `/api/stripe/checkout`.
 - **Coupon XOR promotion codes:** `createCheckoutSession` sets
   `discounts: [{ coupon }]` when a coupon was resolved, otherwise
   `allow_promotion_codes: true` (Stripe forbids both on one session). So every
