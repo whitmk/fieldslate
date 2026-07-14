@@ -141,9 +141,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   route. This assumes a single admin enters results; two admins saving
   concurrently could race (stale `allGames` → wrong/blocked advancement).
   Revisit (move into a DB function) if concurrent leagues / multi-admin
-  result entry becomes real. The double-elim mapping lives in
-  `src/lib/playoffs/double-elim-advancement.ts` (pure, testable — see its
-  header for the movement rules and edit semantics).
+  result entry becomes real. The single- and double-elim mappings live in
+  `src/lib/playoffs/advancement.ts` (pure, testable — see its header for
+  the movement rules and edit semantics).
 
 ## Open items
 

@@ -174,7 +174,9 @@ function makeSlotPicker(slotsByDate: Slot[][]) {
 
 // ─── Single elimination ────────────────────────────────────────────────────────
 
-function buildSingleElimination(
+// Exported (like buildDoubleElimination) so the advancement mapping in
+// advancement.ts can be verified against real generator output.
+export function buildSingleElimination(
   seeds: SeededTeam[],
   playoffId: string,
   leagueId: string,
@@ -237,8 +239,8 @@ function buildSingleElimination(
 
 // ─── Double elimination ────────────────────────────────────────────────────────
 
-// Exported so the advancement mapping in double-elim-advancement.ts can be
-// verified against real generator output (see that file's header).
+// Exported so the advancement mapping in advancement.ts can be verified
+// against real generator output (see that file's header).
 export function buildDoubleElimination(
   seeds: SeededTeam[],
   playoffId: string,

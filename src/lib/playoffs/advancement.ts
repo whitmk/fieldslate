@@ -1,9 +1,13 @@
-// Pure double-elimination advancement mapping — no Supabase import, so a
-// plain node script (or future test) can drive it against generated brackets.
+// Pure bracket-advancement mappings (single AND double elimination) — no
+// Supabase import, so a plain node script (or future test) can drive them
+// against generated brackets.
 //
-// The mapping is derived from the bracket buildDoubleElimination emits for
-// bracketSize = 2^m (team counts must be exact powers of two — the generator
-// silently drops bye teams otherwise):
+// Single elimination (buildSingleElimination: R1 → R2… → SF → F) advances the
+// winner positionally: game ⌊i/2⌋ of the next round, slot by i%2; losers are
+// out. The double-elim mapping is derived from the bracket
+// buildDoubleElimination emits for bracketSize = 2^m (for BOTH formats, team
+// counts must be exact powers of two — the generators silently drop bye teams
+// otherwise):
 //
 //   WB-R1 (bracketSize/2 games) … WB-R(m-1), WB-F     — m rounds
 //     (m = 1, a 2-team bracket, has only WB-R1 and no WB-F)
@@ -43,7 +47,7 @@ export type SlotField = "home_team_id" | "away_team_id";
 
 export type SlotWrite = { gameId: string; round: string; field: SlotField; teamId: string | null };
 
-export type DoubleElimAdvancement = { blocked: string } | { writes: SlotWrite[] };
+export type Advancement = { blocked: string } | { writes: SlotWrite[] };
 
 // ─── Round order (shared with enter-result / mirrors bracket-view) ───────────
 
@@ -65,21 +69,56 @@ export function getRoundOrder(round: string): number {
   return parseInt(m[2] || "0");
 }
 
-// ─── Advancement ──────────────────────────────────────────────────────────────
+// ─── Shared helpers ───────────────────────────────────────────────────────────
 
-export function computeDoubleElimAdvancement(
-  game: GameRow,
-  winnerId: string,
-  allGames: GameRow[],
-): DoubleElimAdvancement {
+const byOrder = (a: string, b: string) => getRoundOrder(a) - getRoundOrder(b);
+
+function groupRounds(allGames: GameRow[]): Map<string, GameRow[]> {
   const rounds = new Map<string, GameRow[]>();
   for (const g of allGames) {
     if (!rounds.has(g.round)) rounds.set(g.round, []);
     rounds.get(g.round)!.push(g);
   }
   for (const gs of rounds.values()) gs.sort((a, b) => a.game_number - b.game_number);
+  return rounds;
+}
 
-  const byOrder = (a: string, b: string) => getRoundOrder(a) - getRoundOrder(b);
+// ─── Single elimination ───────────────────────────────────────────────────────
+
+export function computeSingleElimAdvancement(
+  game: GameRow,
+  winnerId: string,
+  allGames: GameRow[],
+): Advancement {
+  const rounds = groupRounds(allGames);
+  const roundOrder = [...rounds.keys()].sort(byOrder);
+  const roundIdx = roundOrder.indexOf(game.round);
+
+  // Championship (or unknown round) — nothing to advance to.
+  if (roundIdx === -1 || roundIdx === roundOrder.length - 1) return { writes: [] };
+
+  const i = rounds.get(game.round)!.findIndex((g) => g.id === game.id);
+  const next = rounds.get(roundOrder[roundIdx + 1])!;
+  const target = next[Math.floor(i / 2)];
+  if (!target) return { writes: [] };
+
+  const writes: SlotWrite[] = [{
+    gameId: target.id,
+    round: target.round,
+    field: i % 2 === 0 ? "home_team_id" : "away_team_id",
+    teamId: winnerId,
+  }];
+  return checkBlocked(writes, rounds) ?? { writes };
+}
+
+// ─── Double elimination ───────────────────────────────────────────────────────
+
+export function computeDoubleElimAdvancement(
+  game: GameRow,
+  winnerId: string,
+  allGames: GameRow[],
+): Advancement {
+  const rounds = groupRounds(allGames);
   const wbRounds = [...rounds.keys()].filter((r) => r.startsWith("WB-")).sort(byOrder);
   const lbRounds = [...rounds.keys()].filter((r) => r.startsWith("LB-")).sort(byOrder);
   const gf = rounds.get("GF")?.[0];
