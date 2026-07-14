@@ -208,13 +208,18 @@ function FormActions({
 }
 
 // ── Availability ─────────────────────────────────────────────────────────────
+// Exported for the edit-official modal, which owns its rows in client state:
+// onChanged fires after any successful mutation so the host can re-fetch
+// (router.refresh() alone only reaches server components).
 
-function AvailabilitySection({
+export function AvailabilitySection({
   umpireId,
   rows,
+  onChanged,
 }: {
   umpireId: string;
   rows: AvailabilityRow[];
+  onChanged?: () => void;
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
@@ -233,6 +238,9 @@ function AvailabilitySection({
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
+    // Rendered inside the edit modal's <form>: without this, the submit
+    // bubbles up and triggers the modal's profile save + close.
+    e.stopPropagation();
     setError(null);
     if (!start || !end) return;
     if (end <= start) {
@@ -253,6 +261,7 @@ function AvailabilitySection({
     }
     setAdding(false);
     router.refresh();
+    onChanged?.();
   }
 
   async function handleDelete(id: string) {
@@ -268,6 +277,7 @@ function AvailabilitySection({
       return;
     }
     router.refresh();
+    onChanged?.();
   }
 
   return (
@@ -356,13 +366,17 @@ function AvailabilitySection({
 }
 
 // ── Blackout dates ───────────────────────────────────────────────────────────
+// Exported for the edit-official modal — same onChanged contract as
+// AvailabilitySection.
 
-function BlackoutsSection({
+export function BlackoutsSection({
   umpireId,
   rows,
+  onChanged,
 }: {
   umpireId: string;
   rows: BlackoutRow[];
+  onChanged?: () => void;
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
@@ -374,6 +388,7 @@ function BlackoutsSection({
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
+    e.stopPropagation();
     setError(null);
     if (!date) return;
     setSaving(true);
@@ -397,6 +412,7 @@ function BlackoutsSection({
     setDate("");
     setNote("");
     router.refresh();
+    onChanged?.();
   }
 
   async function handleDelete(id: string) {
@@ -412,6 +428,7 @@ function BlackoutsSection({
       return;
     }
     router.refresh();
+    onChanged?.();
   }
 
   return (
@@ -502,6 +519,7 @@ function CertificationsSection({
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
+    e.stopPropagation();
     setError(null);
     if (!name.trim()) return;
     setSaving(true);

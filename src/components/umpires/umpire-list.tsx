@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Pencil, Trash2, X, Loader2, CalendarDays } from "lucide-react";
+import { ChevronDown, Pencil, Trash2, X, Loader2, CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { getOfficialTitleLower } from "@/lib/utils/official-title";
@@ -12,6 +12,12 @@ import {
   fetchCoachTeamOptions,
   type CoachTeamOption,
 } from "@/lib/umpires/team-options";
+import {
+  AvailabilitySection,
+  BlackoutsSection,
+  type AvailabilityRow,
+  type BlackoutRow,
+} from "@/components/umpires/official-profile-sections";
 
 export type UmpireRow = {
   id: string;
@@ -313,6 +319,60 @@ function EditUmpireModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Availability/blackout rows live behind the disclosure and are fetched
+  // lazily on first open — an edit session that never opens it does exactly
+  // the reads/writes it did before. null = not fetched yet.
+  const [availOpen, setAvailOpen] = useState(false);
+  const [availRows, setAvailRows] = useState<AvailabilityRow[] | null>(null);
+  const [blackoutRows, setBlackoutRows] = useState<BlackoutRow[] | null>(null);
+  const [rowsError, setRowsError] = useState("");
+
+  async function loadConstraintRows() {
+    setRowsError("");
+    const supabase = createClient();
+    const [availRes, boRes] = await Promise.all([
+      supabase
+        .from("official_availability")
+        .select("id, day_of_week, start_time, end_time")
+        .eq("umpire_id", umpire.id),
+      supabase
+        .from("official_blackouts")
+        .select("id, date, note")
+        .eq("umpire_id", umpire.id)
+        .order("date"),
+    ]);
+    if (availRes.error || boRes.error) {
+      setRowsError(
+        (availRes.error ?? boRes.error)?.message ?? "Failed to load availability.",
+      );
+      return;
+    }
+    setAvailRows((availRes.data ?? []) as AvailabilityRow[]);
+    setBlackoutRows((boRes.data ?? []) as BlackoutRow[]);
+  }
+
+  function toggleAvailability() {
+    const next = !availOpen;
+    setAvailOpen(next);
+    if (next && availRows === null) void loadConstraintRows();
+  }
+
+  // Counts for the at-a-glance label: fetched rows once loaded, otherwise the
+  // id-only embeds the roster query already carries on the row prop.
+  const windowCount = availRows?.length ?? umpire.official_availability?.length ?? 0;
+  const blackoutCount = blackoutRows?.length ?? umpire.official_blackouts?.length ?? 0;
+  const constraintSummary =
+    windowCount === 0 && blackoutCount === 0
+      ? "none set"
+      : [
+          windowCount > 0 ? `${windowCount} window${windowCount === 1 ? "" : "s"}` : null,
+          blackoutCount > 0
+            ? `${blackoutCount} blackout${blackoutCount === 1 ? "" : "s"}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
   // Coached-team options for this official's season (coach conflict link,
   // migration 0063).
   useEffect(() => {
@@ -510,6 +570,56 @@ function EditUmpireModal({
               className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
             />
           </div>
+
+          <div className="rounded-lg border border-gray-200">
+            <button
+              type="button"
+              onClick={toggleAvailability}
+              className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-gray-50/60"
+            >
+              <span className="text-sm font-medium text-gray-700">
+                Availability &amp; blackouts{" "}
+                <span className="font-normal text-gray-400">({constraintSummary})</span>
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 text-gray-400 transition-transform ${
+                  availOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+            {availOpen && (
+              <div className="flex flex-col gap-3 border-t border-gray-100 px-3 py-3">
+                <p className="text-xs text-gray-400">
+                  Changes here save immediately — the fields above save with
+                  “Save changes”.
+                </p>
+                {rowsError ? (
+                  <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">
+                    {rowsError}
+                  </p>
+                ) : availRows === null || blackoutRows === null ? (
+                  <div className="flex items-center gap-2 py-2 text-sm text-gray-400">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading…
+                  </div>
+                ) : (
+                  <>
+                    <AvailabilitySection
+                      umpireId={umpire.id}
+                      rows={availRows}
+                      onChanged={loadConstraintRows}
+                    />
+                    <BlackoutsSection
+                      umpireId={umpire.id}
+                      rows={blackoutRows}
+                      onChanged={loadConstraintRows}
+                    />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
           {error && (
             <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2.5 text-sm text-red-600">
               {error}
