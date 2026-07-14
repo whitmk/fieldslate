@@ -9,6 +9,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Production-only.** Every push to `main` auto-deploys to production via
   Vercel. There is no staging environment. `npx tsc --noEmit` and
   `npx eslint <touched paths>` must pass before every commit.
+- **Check the queue before every push.** Run
+  `git log origin/main..main --oneline` and push only approved commits —
+  held commits from earlier sessions (or worktree/chip sessions) can be
+  sitting on local `main` and would ride along silently (this happened
+  2026-07-14: a held docs commit shipped uninspected alongside an approved
+  one).
 - **Stripe is LIVE.** The keys in Vercel are live-mode keys; real cards get
   charged. There is no test-mode deployment. Any change to checkout, webhook,
   or pricing code ships straight to paying customers on the next push.
@@ -152,6 +158,40 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   result entry becomes real. The single- and double-elim mappings live in
   `src/lib/playoffs/advancement.ts` (pure, testable — see its header for
   the movement rules and edit semantics).
+
+## Officials / umpires
+
+- **Schema map:** `umpires` roster is per-season (0023, `season_id` NOT NULL);
+  per-game assignments in `game_umpires` (0025, UNIQUE(game_id, umpire_id) and
+  UNIQUE(game_id, role)); division requirements `umpires_per_game` +
+  `umpire_roles` jsonb (0024); pay tracking (0026); contact columns +
+  `official_roles` / `official_availability` / `official_blackouts` /
+  `official_certifications` + nullable `role_id` + `toggle_assignment_paid`
+  RPC (0062); `umpires.team_id` coach link + `divisions.priority` (0063).
+  `official_roles` (not `divisions.umpire_roles`) is the source of truth for
+  slot labels — the two diverging once made assigned slots read "Open".
+- **Zero availability windows = available anytime** (enforced in
+  `src/lib/umpires/eligibility.ts`). Availability is opt-in detail, not a
+  requirement — never make windows mandatory or treat their absence as
+  unavailable.
+- **`umpires.team_id` = the team this official coaches** (ON DELETE SET NULL).
+  Conflict philosophy: manual assignment (`umpire-slots.tsx`) WARNS after
+  save and lets the commissioner override; auto-assign
+  (`src/lib/umpires/auto-assign.ts`) hard-blocks coach conflicts, blackouts,
+  and double-booking at both tiers — availability windows and weekly caps go
+  soft only in its fallback tier. Keep that asymmetry.
+- **All eligibility date math is client-timezone-only by design** (see the
+  `eligibility.ts` header). On a server, "local" is UTC and day/week
+  boundaries shift silently — any server-side or DB-side use must add an
+  explicit timezone parameter first.
+- **Naming trap:** `blackout_dates` is season-level scheduling blackouts;
+  `official_blackouts` is per-official unavailable dates. Don't mix them up.
+- **The `official-profile-sections.tsx` add-forms call `e.stopPropagation()`
+  in `handleAdd` — never remove it.** Those sections are reused inside the
+  edit-official modal's `<form>`; React submit events bubble through nested
+  forms, so without it, adding a window/blackout also fires the modal's
+  profile save and closes it. Verify event handling any time a component
+  with a form is reused inside another form.
 
 ## Open items
 
