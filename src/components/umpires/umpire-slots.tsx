@@ -6,14 +6,22 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   DEFAULT_GAME_DURATION_MINS,
+  bookingsFromRows,
+  findConflictInBookings,
   findUmpireBlackout,
   findUmpireConflict,
   formatConflictTime,
   type GameTimeInfo,
+  type UmpireBookingRow,
 } from "@/lib/umpires/conflicts";
+import {
+  isWithinAvailability,
+  localDateKey,
+  type AvailabilityWindow,
+} from "@/lib/umpires/eligibility";
 import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
 import { coachTeamLabel } from "@/lib/umpires/team-options";
-import { coiPhrase, type CoiLink } from "@/lib/umpires/coi";
+import { coiPhrase, coiRelationshipLabel, type CoiLink } from "@/lib/umpires/coi";
 
 export type UmpireOption = {
   id: string;
@@ -25,6 +33,20 @@ export type UmpireOption = {
   /** Conflict-of-interest links (0073) — drive the COI warning, parallel to
    *  the coach conflict. */
   conflicts?: CoiLink[] | null;
+  /** Weekly windows / blackout dates / season-wide assignments (embedded on
+   *  the roster feeds) — drive the pre-click eligibility state per option. */
+  availability?: AvailabilityWindow[] | null;
+  blackouts?: { date: string }[] | null;
+  booking_rows?: UmpireBookingRow[] | null;
+};
+
+/** Pre-click option state, computed against the specific game. rank orders
+ *  the picker: 0 eligible, 1 flagged-but-selectable, 2 disabled. */
+type DecoratedOption = {
+  u: UmpireOption;
+  disabled: boolean;
+  rank: 0 | 1 | 2;
+  suffix: string;
 };
 
 export type SlotAssignment = {
@@ -111,6 +133,66 @@ export function UmpireSlots({
     home_team_name: game.home_team_name,
     away_team_name: game.away_team_name,
   };
+
+  // Pre-click eligibility per option, from feed-embedded data (no per-option
+  // queries). Advisory only for flags; the save-time hard blocks below stay —
+  // a second admin can create a conflict between render and click.
+  const gameStart = new Date(game.scheduled_at);
+  const gameDateKey = localDateKey(gameStart);
+  const decorated: DecoratedOption[] = umpires.map((u) => {
+    const conflict = findConflictInBookings(
+      candidate,
+      bookingsFromRows(u.booking_rows ?? []),
+    );
+    if (conflict) {
+      return {
+        u,
+        disabled: true,
+        rank: 2,
+        suffix: ` — already assigned ${conflict.home_team_name} vs ${conflict.away_team_name}, ${formatConflictTime(conflict.scheduled_at)}`,
+      };
+    }
+    if ((u.blackouts ?? []).some((b) => b.date === gameDateKey)) {
+      return { u, disabled: true, rank: 2, suffix: " — unavailable (blackout)" };
+    }
+
+    // Selectable flags. Zero windows = available anytime (eligibility.ts) —
+    // only officials with listed windows can be "outside" them. The coach
+    // link affects rank only: the base label already reads "coaches {team}".
+    const flags: string[] = [];
+    const windows = u.availability ?? [];
+    if (
+      windows.length > 0 &&
+      !isWithinAvailability(windows, gameStart, candidate.duration_minutes)
+    ) {
+      flags.push("outside listed availability");
+    }
+    const coachesTeamInGame =
+      u.team_id != null &&
+      (u.team_id === game.home_team_id || u.team_id === game.away_team_id);
+    for (const c of u.conflicts ?? []) {
+      const isHome = c.team_id === game.home_team_id;
+      const isAway = game.away_team_id != null && c.team_id === game.away_team_id;
+      if (!isHome && !isAway) continue;
+      flags.push(
+        `${coiRelationshipLabel(c.relationship)}: ${
+          isHome ? game.home_team_name : game.away_team_name
+        }`,
+      );
+    }
+    if (flags.length > 0 || coachesTeamInGame) {
+      return {
+        u,
+        disabled: false,
+        rank: 1,
+        suffix: flags.length > 0 ? ` — ${flags.join("; ")}` : "",
+      };
+    }
+    return { u, disabled: false, rank: 0, suffix: "" };
+  });
+  // Stable sort: eligible, then flagged, then disabled; feed order (name asc)
+  // within each group.
+  const orderedOptions = [...decorated].sort((a, b) => a.rank - b.rank);
 
   async function handleChange(role: string, nextUmpireId: string) {
     setPendingRole(role);
@@ -271,11 +353,12 @@ export function UmpireSlots({
                   className={`${inputHeight} ${inputText} w-full rounded-lg border border-gray-200 bg-white px-2 pr-7 text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20 disabled:opacity-50`}
                 >
                   <option value="">— Unassigned —</option>
-                  {umpires.map((u) => (
-                    <option key={u.id} value={u.id}>
+                  {orderedOptions.map(({ u, disabled: optDisabled, suffix }) => (
+                    <option key={u.id} value={u.id} disabled={optDisabled}>
                       {u.team
                         ? `${u.name} — coaches ${coachTeamLabel(u.team.name, u.team.division?.name)}`
                         : u.name}
+                      {suffix}
                     </option>
                   ))}
                 </select>

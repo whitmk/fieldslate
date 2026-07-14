@@ -221,7 +221,13 @@ export function DivisionSchedulePanel({
       supabase
         .from("umpires")
         .select(
-          "id, name, team_id, team:teams(name, division:divisions(name)), conflicts:official_conflicts(team_id, relationship)",
+          `id, name, team_id, team:teams(name, division:divisions(name)),
+           conflicts:official_conflicts(team_id, relationship),
+           availability:official_availability(day_of_week, start_time, end_time),
+           blackouts:official_blackouts(date),
+           booking_rows:game_umpires(game:games(id, scheduled_at,
+             home_team:teams!home_team_id(name, division:divisions(settings)),
+             away_team:teams!away_team_id(name)))`,
         )
         .eq("season_id", leagueId)
         .order("name"),

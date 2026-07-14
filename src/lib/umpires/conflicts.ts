@@ -25,6 +25,63 @@ export function gamesOverlap(
 }
 
 /**
+ * Raw game_umpires row with the game embed the conflict check needs — the
+ * same shape whether fetched per-umpire (findUmpireConflict) or embedded on
+ * a roster feed (`booking_rows:game_umpires(game:games(...))`).
+ */
+export type UmpireBookingRow = {
+  game:
+    | {
+        id: string;
+        scheduled_at: string;
+        home_team:
+          | { name: string; division: { settings: unknown } | null }
+          | null;
+        away_team: { name: string } | null;
+      }
+    | null;
+};
+
+/** Map raw booking rows to GameTimeInfo, resolving each game's duration from
+ *  its division settings. Single mapping shared by the save-time check and
+ *  the pre-click picker state so the two can't drift. */
+export function bookingsFromRows(rows: UmpireBookingRow[]): GameTimeInfo[] {
+  const out: GameTimeInfo[] = [];
+  for (const r of rows) {
+    const g = r.game;
+    if (!g) continue;
+    const settings = (g.home_team?.division?.settings ?? {}) as {
+      game_duration?: number;
+    };
+    const duration =
+      typeof settings.game_duration === "number"
+        ? settings.game_duration
+        : DEFAULT_GAME_DURATION_MINS;
+    out.push({
+      id: g.id,
+      scheduled_at: g.scheduled_at,
+      duration_minutes: duration,
+      home_team_name: g.home_team?.name ?? "TBD",
+      away_team_name: g.away_team?.name ?? "TBD",
+    });
+  }
+  return out;
+}
+
+/** First booking overlapping the candidate slot, or null. Skips the candidate
+ *  game itself so a same-game reassignment doesn't self-conflict. */
+export function findConflictInBookings(
+  candidate: GameTimeInfo,
+  bookings: GameTimeInfo[],
+): GameTimeInfo | null {
+  for (const b of bookings) {
+    if (b.id === candidate.id) continue;
+    if (gamesOverlap(candidate, b)) return b;
+  }
+  return null;
+}
+
+/**
  * Returns the first existing game that conflicts with the candidate slot for
  * this umpire, or null if there is no conflict.
  *
@@ -36,19 +93,6 @@ export async function findUmpireConflict(
   candidate: GameTimeInfo,
 ): Promise<GameTimeInfo | null> {
   const supabase = createClient();
-
-  type Row = {
-    game:
-      | {
-          id: string;
-          scheduled_at: string;
-          home_team:
-            | { name: string; division: { settings: unknown } | null }
-            | null;
-          away_team: { name: string } | null;
-        }
-      | null;
-  };
 
   const { data } = await supabase
     .from("game_umpires")
@@ -63,27 +107,8 @@ export async function findUmpireConflict(
     .eq("umpire_id", umpireId)
     .neq("game_id", candidate.id);
 
-  const rows = (data as unknown as Row[] | null) ?? [];
-  for (const r of rows) {
-    const g = r.game;
-    if (!g) continue;
-    const settings = (g.home_team?.division?.settings ?? {}) as {
-      game_duration?: number;
-    };
-    const duration =
-      typeof settings.game_duration === "number"
-        ? settings.game_duration
-        : DEFAULT_GAME_DURATION_MINS;
-    const other: GameTimeInfo = {
-      id: g.id,
-      scheduled_at: g.scheduled_at,
-      duration_minutes: duration,
-      home_team_name: g.home_team?.name ?? "TBD",
-      away_team_name: g.away_team?.name ?? "TBD",
-    };
-    if (gamesOverlap(candidate, other)) return other;
-  }
-  return null;
+  const rows = (data as unknown as UmpireBookingRow[] | null) ?? [];
+  return findConflictInBookings(candidate, bookingsFromRows(rows));
 }
 
 export type BlackoutInfo = { date: string; note: string | null };
