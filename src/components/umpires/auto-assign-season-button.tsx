@@ -15,10 +15,13 @@ import {
   type SeasonAutoAssignResult,
   type SeasonDivisionResult,
 } from "@/lib/umpires/auto-assign-season";
-import { skipSummary } from "./auto-assign-button";
+import {
+  ConstraintCopy,
+  FallbackOptInCheckbox,
+  openSlotsSummary,
+} from "./auto-assign-button";
 import {
   getOfficialTitleLower,
-  getOfficialTitlePlural,
   getOfficialTitlePluralLower,
 } from "@/lib/utils/official-title";
 
@@ -36,21 +39,32 @@ interface Props {
  * separate, untouched surface.
  */
 export function AutoAssignSeasonButton({ seasonId, seasonName, sport }: Props) {
+  const officialLower = getOfficialTitleLower(sport);
   const officialsLower = getOfficialTitlePluralLower(sport);
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [running, setRunning] = useState(false);
+  const [allowOutside, setAllowOutside] = useState(false);
   const [result, setResult] = useState<SeasonAutoAssignResult | null>(null);
+
+  function openDialog() {
+    setAllowOutside(false);
+    setResult(null);
+    setOpen(true);
+  }
 
   function close() {
     if (running) return;
     setOpen(false);
     setResult(null);
+    setAllowOutside(false);
   }
 
   async function handleRun() {
     setRunning(true);
-    const res = await autoAssignSeason(seasonId);
+    const res = await autoAssignSeason(seasonId, undefined, {
+      allowOutsideAvailability: allowOutside,
+    });
     setRunning(false);
     setResult(res);
     // Refresh regardless of outcome — a partial run still wrote assignments.
@@ -61,7 +75,7 @@ export function AutoAssignSeasonButton({ seasonId, seasonName, sport }: Props) {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openDialog}
         className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
       >
         <UserCheck className="h-4 w-4" />
@@ -103,13 +117,13 @@ export function AutoAssignSeasonButton({ seasonId, seasonName, sport }: Props) {
                   through divisions in the priority order below — higher
                   divisions get first pick of available {officialsLower}.
                 </p>
-                <p>
-                  Assignments you&apos;ve already made are kept — only empty
-                  slots are filled. {getOfficialTitlePlural(sport)} are never
-                  assigned on their blackout dates, to games that overlap one
-                  they&apos;re already working, or to games involving a team
-                  they coach or have a conflict of interest with.
-                </p>
+                <ConstraintCopy sport={sport} />
+                <FallbackOptInCheckbox
+                  checked={allowOutside}
+                  disabled={running}
+                  onChange={setAllowOutside}
+                  officialLower={officialLower}
+                />
                 <div className="flex justify-end gap-2 pt-1">
                   <button
                     type="button"
@@ -187,8 +201,19 @@ function SeasonResults({
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
             <span>
               {result.totalFallbackFilled} assignment
-              {result.totalFallbackFilled !== 1 ? "s" : ""} ignored availability
-              or weekly limits — review and swap if needed.
+              {result.totalFallbackFilled !== 1 ? "s" : ""} filled outside
+              availability or weekly limits (you opted in) — confirm with
+              those officials.
+            </span>
+          </p>
+        )}
+        {result.totalSkipped > 0 && (
+          <p className="flex items-start gap-1.5 text-amber-700">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <span>
+              {result.totalSkipped} slot{result.totalSkipped !== 1 ? "s" : ""}{" "}
+              left open — each division below lists why, and which{" "}
+              {officialsLower} to ask before assigning manually.
             </span>
           </p>
         )}
@@ -250,9 +275,18 @@ function DivisionResultRow({
           ? "all slots already filled"
           : `${d.filled} slot${d.filled !== 1 ? "s" : ""} filled${
               d.fallbackFilled > 0
-                ? ` · ${d.fallbackFilled} ignored availability or weekly limits`
+                ? ` · ${d.fallbackFilled} outside availability or weekly limits (opted in)`
                 : ""
-            }${d.skipped > 0 ? ` · ${skipSummary(d.skipped, d.skipReasons)}` : ""}`}
+            }${
+              d.skipped > 0
+                ? ` · ${openSlotsSummary(
+                    d.skipped,
+                    d.skipReasons,
+                    d.outsideAvailabilityNames,
+                    d.overWeeklyLimitNames,
+                  )}`
+                : ""
+            }`}
       </span>
     );
   }

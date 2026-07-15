@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   autoAssignUmpires,
   type AutoAssignClient,
+  type AutoAssignOptions,
   type SkipReason,
 } from "./auto-assign";
 
@@ -13,7 +14,8 @@ import {
  * start of every run, so each division automatically sees the assignments the
  * earlier divisions just made — no state is threaded between runs.
  *
- * This function only sequences and aggregates:
+ * This function only sequences and aggregates (options — the fallback-tier
+ * opt-in — pass through to every division's engine run unchanged):
  * - Divisions with umpires_per_game = 0 are skipped (reported, not errored).
  * - A division that errors is recorded and the sequence CONTINUES — one bad
  *   division never silently swallows the rest of the season.
@@ -30,6 +32,8 @@ export type SeasonDivisionResult = {
   fallbackFilled: number;
   skipped: number;
   skipReasons: SkipReason[];
+  outsideAvailabilityNames: string[];
+  overWeeklyLimitNames: string[];
   error?: string;
 };
 
@@ -47,6 +51,7 @@ export type SeasonAutoAssignResult = {
 export async function autoAssignSeason(
   seasonId: string,
   client?: AutoAssignClient,
+  options: AutoAssignOptions = {},
 ): Promise<SeasonAutoAssignResult> {
   const supabase = client ?? createClient();
 
@@ -95,12 +100,14 @@ export async function autoAssignSeason(
         fallbackFilled: 0,
         skipped: 0,
         skipReasons: [],
+        outsideAvailabilityNames: [],
+        overWeeklyLimitNames: [],
       });
       continue;
     }
 
     try {
-      const res = await autoAssignUmpires(d.id, seasonId, supabase);
+      const res = await autoAssignUmpires(d.id, seasonId, supabase, options);
       if (!res.success) {
         results.push({
           ...base,
@@ -109,6 +116,8 @@ export async function autoAssignSeason(
           fallbackFilled: res.fallbackFilled,
           skipped: res.skipped,
           skipReasons: res.skipReasons,
+          outsideAvailabilityNames: res.outsideAvailabilityNames,
+          overWeeklyLimitNames: res.overWeeklyLimitNames,
           error: res.error ?? "Auto-assign failed.",
         });
         continue;
@@ -120,6 +129,8 @@ export async function autoAssignSeason(
         fallbackFilled: res.fallbackFilled,
         skipped: res.skipped,
         skipReasons: res.skipReasons,
+        outsideAvailabilityNames: res.outsideAvailabilityNames,
+        overWeeklyLimitNames: res.overWeeklyLimitNames,
       });
     } catch (e) {
       results.push({
@@ -129,6 +140,8 @@ export async function autoAssignSeason(
         fallbackFilled: 0,
         skipped: 0,
         skipReasons: [],
+        outsideAvailabilityNames: [],
+        overWeeklyLimitNames: [],
         error: e instanceof Error ? e.message : "Auto-assign failed.",
       });
     }
