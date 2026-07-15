@@ -159,6 +159,30 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `src/lib/playoffs/advancement.ts` (pure, testable — see its header for
   the movement rules and edit semantics).
 
+## Venues
+
+- **The venue editor is ONE shared component** (2026-07-14): `VenueEditForm`
+  plus its `VenueEditModal` wrapper in
+  `src/components/venues/venue-edit-form.tsx`. Hosts: the Venues page and
+  its /setup embed render it inline; the Practice tab's weekly grid opens
+  it in the modal via a per-field pencil. Edit venue fields/validation in
+  the shared component, never in a host. The Practice tab holds only
+  `{id, name}` per venue, so the pencil fetches the full `venues` row on
+  click; after save the modal awaits the page's `load()` — in-place
+  refresh, and a venue whose hours were cleared correctly drops off the
+  grid (it only shows availability-configured venues).
+- **The shared editor contains NO `<form>` element — by design.** This is
+  the generalized official-profile-sections lesson: a component built for
+  reuse must not depend on implicit form submission, because React submit
+  events bubble through nested forms and any host `<form>` would capture
+  them. All its buttons are explicit `type="button"`. Keep both properties
+  when extending it, and hold any new reusable form-ish component to the
+  same rule.
+- **The practice surface gets venue EDIT only** — no deletion there, and
+  the mobile day view has no edit affordance (its venue cards are
+  whole-row `<button>` tap targets; nesting an edit button would be
+  invalid HTML). Phone users edit venues on the Venues page.
+
 ## Interleague invites
 
 - **Invite status is STORED, not derived.** `interleague_invites.status`
