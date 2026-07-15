@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CheckCircle } from "lucide-react";
+import { HeroVideo } from "@/components/marketing/hero-video";
 
 const proofPoints = [
   "No credit card required",
@@ -64,6 +65,10 @@ export function Hero() {
             ))}
           </ul>
         </div>
+
+        {/* Promo video — wider than the text column, below the fold-critical
+            CTAs/proof points so nothing above it moves on mobile. */}
+        <HeroVideo />
       </div>
     </section>
   );
