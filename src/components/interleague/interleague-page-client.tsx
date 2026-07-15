@@ -675,6 +675,9 @@ function StatusBadge({ status }: { status: string }) {
     pending: "bg-yellow-50 text-yellow-700",
     accepted: "bg-[#22C55E]/10 text-[#22C55E]",
     declined: "bg-red-50 text-red-600",
+    // Set by accept/decline RPCs (migration 0074) on sibling pending invites
+    // for the same season + partner org once any one of them is answered.
+    superseded: "bg-gray-100 text-gray-500",
   };
   const cls = styles[status] ?? "bg-gray-100 text-gray-500";
   return (
@@ -892,6 +895,24 @@ export function InterleaguePageClient({
 
   useEffect(() => {
     loadAll().then(() => setLoading(false));
+  }, [loadAll]);
+
+  // Refetch when the tab regains focus — invite responses land while the
+  // admin is elsewhere, and a mount-only fetch left stale "pending" badges on
+  // long-lived tabs. Deliberately no polling / realtime; focus is enough.
+  useEffect(() => {
+    const refetch = () => {
+      void loadAll();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refetch();
+    };
+    window.addEventListener("focus", refetch);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", refetch);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [loadAll]);
 
   function openAdd() {

@@ -26,6 +26,7 @@ type AcceptRpcReturn = {
   declined: number;
   sender_email: string | null;
   sender_name: string | null;
+  sender_org_name: string | null;
   org_name: string | null;
   season_name: string | null;
   season_label: string | null;
@@ -171,12 +172,14 @@ function buildAcceptanceEmail(params: {
     )
     .join("");
 
+  // None of these may read as an incoming invite — the sender already knows
+  // they invited this org; the news is the response.
   const subject =
     countered > 0
-      ? `${orgName} responded to your interleague invite — ${countered} counter-proposal${countered === 1 ? "" : "s"}`
+      ? `${orgName} responded — ${countered} counter-proposal${countered === 1 ? "" : "s"} to review`
       : declined > 0 && accepted === 0
         ? `${orgName} declined your interleague games — ${seasonLabelDisplay}`
-        : `${orgName} accepted your interleague invite — ${seasonLabelDisplay}`;
+        : `${orgName} accepted — interleague schedule confirmed for ${seasonLabelDisplay}`;
 
   const html = `<!doctype html>
 <html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;background:#f6f7f9;margin:0;padding:24px;">
@@ -282,7 +285,9 @@ function buildAcceptanceEmail(params: {
 }
 
 function buildRecipientConfirmationEmail(params: {
-  senderName: string;
+  // The sending LEAGUE (profiles.org_name via the RPC, falling back to the
+  // admin's name) — the recipient scheduled games with a league, not a person.
+  senderOrgName: string;
   orgName: string;
   seasonLabelDisplay: string;
   games: ScheduleGame[];
@@ -290,7 +295,7 @@ function buildRecipientConfirmationEmail(params: {
   scheduleUrl: string;
 }): { html: string; text: string; subject: string } {
   const {
-    senderName,
+    senderOrgName,
     orgName,
     seasonLabelDisplay,
     games,
@@ -298,7 +303,7 @@ function buildRecipientConfirmationEmail(params: {
     scheduleUrl,
   } = params;
 
-  const subject = `Your interleague schedule with ${senderName}`;
+  const subject = `Your interleague schedule with ${senderOrgName}`;
 
   const gameRows = games
     .map((g) => {
@@ -324,18 +329,18 @@ function buildRecipientConfirmationEmail(params: {
 
     <div style="padding:28px;">
       <h1 style="margin:0 0 12px;font-size:20px;color:#0C1F3F;">
-        Your interleague schedule with ${escapeHtml(senderName)}
+        Your interleague schedule with ${escapeHtml(senderOrgName)}
       </h1>
       <p style="margin:0 0 18px;color:#4b5563;font-size:14px;line-height:1.55;">
         Thanks for responding! Here are your interleague games against
-        ${escapeHtml(senderName)}&apos;s teams for <strong>${escapeHtml(seasonLabelDisplay)}</strong>.
+        ${escapeHtml(senderOrgName)}&apos;s teams for <strong>${escapeHtml(seasonLabelDisplay)}</strong>.
       </p>
 
       ${
         games.length === 0
           ? `<p style="margin:0 0 16px;color:#6b7280;font-size:14px;">No games are confirmed yet${
               counteredCount > 0
-                ? ` — your counter-proposals are pending ${escapeHtml(senderName)}&apos;s confirmation.`
+                ? ` — your counter-proposals are pending ${escapeHtml(senderOrgName)}&apos;s confirmation.`
                 : "."
             }</p>`
           : `<table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 18px;border:1px solid #eee;border-radius:6px;overflow:hidden;">
@@ -347,7 +352,7 @@ function buildRecipientConfirmationEmail(params: {
         counteredCount > 0
           ? `<p style="margin:0 0 18px;padding:10px 14px;background:#fef3c7;border-left:3px solid #d97706;border-radius:4px;color:#92400e;font-size:13px;">
         ${counteredCount} of your responses suggested a different time —
-        ${escapeHtml(senderName)} will review and confirm those separately.
+        ${escapeHtml(senderOrgName)} will review and confirm those separately.
         You&apos;ll see them on the live schedule once resolved.
       </p>`
           : ""
@@ -376,12 +381,12 @@ function buildRecipientConfirmationEmail(params: {
 </body></html>`;
 
   const text = [
-    `Your interleague schedule with ${senderName} — ${seasonLabelDisplay}`,
+    `Your interleague schedule with ${senderOrgName} — ${seasonLabelDisplay}`,
     "",
     ...(games.length === 0
       ? [
           counteredCount > 0
-            ? `No games are confirmed yet — your counter-proposals are pending ${senderName}'s confirmation.`
+            ? `No games are confirmed yet — your counter-proposals are pending ${senderOrgName}'s confirmation.`
             : "No games are confirmed yet.",
         ]
       : [
@@ -394,7 +399,7 @@ function buildRecipientConfirmationEmail(params: {
         ]),
     "",
     counteredCount > 0
-      ? `${counteredCount} of your responses suggested a different time — ${senderName} will review and confirm those separately.`
+      ? `${counteredCount} of your responses suggested a different time — ${senderOrgName} will review and confirm those separately.`
       : "",
     "",
     `View live schedule: ${scheduleUrl}`,
@@ -498,8 +503,13 @@ export async function POST(
   // schedule link. Only sent when we have both an email and a token — best-effort.
   if (result.recipient_email && result.schedule_token) {
     const scheduleUrl = `${baseOrigin}/schedule/${result.schedule_token}`;
+    // Lead with the sending LEAGUE; fail-soft to the admin's name (then email)
+    // when the profile has no org_name.
     const senderDisplay =
-      result.sender_name?.trim() || result.sender_email || "the FieldSlate admin";
+      result.sender_org_name?.trim() ||
+      result.sender_name?.trim() ||
+      result.sender_email ||
+      "the FieldSlate admin";
 
     // Pull the freshly-confirmed games via the public schedule RPC.
     const { data: scheduleRaw } = await supabase.rpc(
@@ -511,7 +521,7 @@ export async function POST(
     const games: ScheduleGame[] = scheduleData?.games ?? [];
 
     const { html, text, subject } = buildRecipientConfirmationEmail({
-      senderName: senderDisplay,
+      senderOrgName: senderDisplay,
       orgName: result.org_name ?? "your league",
       seasonLabelDisplay,
       games,

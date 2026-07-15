@@ -59,7 +59,7 @@ export async function POST(
       .single(),
     supabase
       .from("profiles")
-      .select("full_name, email")
+      .select("full_name, email, org_name")
       .eq("id", user.id)
       .single(),
   ]);
@@ -74,11 +74,16 @@ export async function POST(
     return NextResponse.json({ error: "Season not found." }, { status: 404 });
   }
 
-  const senderName =
+  // Same identity rule as the initial send: lead with the league, keep the
+  // admin's name as a signature line; fail-soft when org_name is unset.
+  const senderPersonalName =
     (profileRes.data?.full_name && profileRes.data.full_name.trim()) ||
     profileRes.data?.email ||
     user.email ||
     "A FieldSlate admin";
+  const senderOrgName =
+    (profileRes.data?.org_name && profileRes.data.org_name.trim()) ||
+    senderPersonalName;
 
   // Rebuild the games preview from current state. If the schedule has since
   // changed, the resent email reflects what the recipient will actually see
@@ -130,14 +135,15 @@ export async function POST(
 
   const { html, text } = buildInviteEmail({
     inviteUrl,
-    senderName,
+    senderOrgName,
+    senderPersonalName,
     seasonLabel,
     orgName: orgRes.data.name,
     personalNote: inviteRaw.personal_note,
     games,
   });
 
-  const subject = `Interleague invite from ${senderName} — ${seasonLabel}`;
+  const subject = `${senderOrgName} invites ${orgRes.data.name} to interleague play — ${seasonLabel}`;
   const result = await sendEmail(inviteRaw.recipient_email, subject, html, text);
 
   if (!result.ok) {

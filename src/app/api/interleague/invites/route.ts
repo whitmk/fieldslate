@@ -98,17 +98,21 @@ export async function POST(request: Request) {
     );
   }
 
-  // Load sender profile name (fallback to email)
+  // Load sender identity. The email leads with the LEAGUE (org_name); the
+  // admin's personal name is a signature line only. Fail-soft: a profile
+  // without org_name falls back to the personal name, never "null".
   const { data: profileRaw } = await supabase
     .from("profiles")
-    .select("full_name, email")
+    .select("full_name, email, org_name")
     .eq("id", user.id)
     .single();
-  const senderName =
+  const senderPersonalName =
     (profileRaw?.full_name && profileRaw.full_name.trim()) ||
     profileRaw?.email ||
     user.email ||
     "A FieldSlate admin";
+  const senderOrgName =
+    (profileRaw?.org_name && profileRaw.org_name.trim()) || senderPersonalName;
 
   // Block the send if the admin hasn't generated the season schedule yet —
   // the public invite page renders the pre-generated pending_interleague games,
@@ -226,14 +230,15 @@ export async function POST(request: Request) {
 
   const { html, text } = buildInviteEmail({
     inviteUrl,
-    senderName,
+    senderOrgName,
+    senderPersonalName,
     seasonLabel,
     orgName: orgRaw.name,
     personalNote,
     games,
   });
 
-  const subject = `Interleague invite from ${senderName} — ${seasonLabel}`;
+  const subject = `${senderOrgName} invites ${orgRaw.name} to interleague play — ${seasonLabel}`;
   const result = await sendEmail(recipientEmail, subject, html, text);
 
   if (!result.ok) {

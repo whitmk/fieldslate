@@ -16,14 +16,32 @@ export function escapeHtml(s: string): string {
 
 export function buildInviteEmail(params: {
   inviteUrl: string;
-  senderName: string;
+  // The sending LEAGUE (profiles.org_name, falling back to the admin's name
+  // when org_name is unset) — the recipient is choosing whether to play a
+  // league, not a person.
+  senderOrgName: string;
+  // The admin's personal name, shown only as a "Sent by" signature line (and
+  // only when it differs from the org name).
+  senderPersonalName: string | null;
   seasonLabel: string;
   orgName: string;
   personalNote: string | null;
   games: { divisionName: string; gameCount: number }[];
 }): { html: string; text: string } {
-  const { inviteUrl, senderName, seasonLabel, orgName, personalNote, games } =
-    params;
+  const {
+    inviteUrl,
+    senderOrgName,
+    senderPersonalName,
+    seasonLabel,
+    orgName,
+    personalNote,
+    games,
+  } = params;
+
+  const signature =
+    senderPersonalName && senderPersonalName.trim() !== senderOrgName.trim()
+      ? senderPersonalName.trim()
+      : null;
 
   const totalGames = games.reduce((sum, g) => sum + g.gameCount, 0);
 
@@ -46,10 +64,10 @@ export function buildInviteEmail(params: {
 
     <div style="padding:28px;">
       <h1 style="margin:0 0 12px;font-size:20px;color:#0C1F3F;">
-        You've been invited to schedule interleague games with ${escapeHtml(senderName)}
+        You've been invited to schedule interleague games with ${escapeHtml(senderOrgName)}
       </h1>
       <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.55;">
-        ${escapeHtml(senderName)} is using FieldSlate to plan the <strong>${escapeHtml(seasonLabel)}</strong> season and would like to schedule interleague games with <strong>${escapeHtml(orgName)}</strong>.
+        ${escapeHtml(senderOrgName)} is using FieldSlate to plan the <strong>${escapeHtml(seasonLabel)}</strong> season and would like to schedule interleague games with <strong>${escapeHtml(orgName)}</strong>.
       </p>
 
       ${
@@ -88,6 +106,11 @@ export function buildInviteEmail(params: {
         Or paste this link into your browser:<br/>
         <a href="${inviteUrl}" style="color:#22C55E;word-break:break-all;">${escapeHtml(inviteUrl)}</a>
       </p>
+      ${
+        signature
+          ? `<p style="margin:14px 0 0;color:#9ca3af;font-size:12px;">Sent by ${escapeHtml(signature)} for ${escapeHtml(senderOrgName)}.</p>`
+          : ""
+      }
     </div>
 
     <div style="padding:18px 28px;border-top:1px solid #f3f4f6;background:#fafafa;">
@@ -103,9 +126,9 @@ export function buildInviteEmail(params: {
 </body></html>`;
 
   const text = [
-    `You've been invited to schedule interleague games with ${senderName}.`,
+    `You've been invited to schedule interleague games with ${senderOrgName}.`,
     "",
-    `${senderName} is using FieldSlate to plan the ${seasonLabel} season and would like to schedule interleague games with ${orgName}.`,
+    `${senderOrgName} is using FieldSlate to plan the ${seasonLabel} season and would like to schedule interleague games with ${orgName}.`,
     "",
     personalNote ? `Personal note:\n${personalNote}\n` : "",
     "Proposed games:",
@@ -114,6 +137,7 @@ export function buildInviteEmail(params: {
       : games.map((g) => `  • ${g.divisionName}: ${g.gameCount}`)),
     "",
     `View invite: ${inviteUrl}`,
+    signature ? `\nSent by ${signature} for ${senderOrgName}.` : "",
     "",
     "— FieldSlate, a scheduling tool for youth sports leagues.",
     `Curious about FieldSlate for your own league? Try your first season for 20% off: ${SITE_URL}/signup?promo=INTERLEAGUE`,

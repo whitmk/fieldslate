@@ -247,11 +247,11 @@ export function VenuesPageClient({
           />
           <input
             type="number"
-            placeholder="Capacity (optional)"
+            placeholder="Number of fields (optional)"
             value={addCapacity}
             onChange={(e) => setAddCapacity(e.target.value)}
             min="0"
-            className="h-10 w-36 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+            className="h-10 w-48 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
           />
           <button
             onClick={handleAdd}
@@ -271,7 +271,9 @@ export function VenuesPageClient({
             <p className="w-full text-xs text-red-500">{addError}</p>
           )}
           <p className="w-full text-xs text-gray-400">
-            You&rsquo;ll set the venue&rsquo;s open hours next.
+            You&rsquo;ll set the venue&rsquo;s open hours next. Number of
+            fields is informational for now — conflict detection currently
+            treats each venue as one field.
           </p>
         </div>
       )}
@@ -347,7 +349,9 @@ function DisplayCard({ venue, onEdit }: { venue: Venue; onEdit: () => void }) {
           <p className="text-xs text-gray-400">{[venue.city, venue.state].filter(Boolean).join(", ")}</p>
         )}
         {venue.capacity != null && (
-          <p className="text-xs text-gray-400">{venue.capacity.toLocaleString()} capacity</p>
+          <p className="text-xs text-gray-400">
+            {venue.capacity} field{venue.capacity === 1 ? "" : "s"}
+          </p>
         )}
         {venue.availability_configured && openDays.length > 0 && (
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -416,12 +420,16 @@ function EditCard({
         />
         <input
           type="number"
-          placeholder="Capacity (optional)"
+          placeholder="Number of fields (optional)"
           value={capacity}
           onChange={(e) => onCapacityChange(e.target.value)}
           min="0"
           className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
         />
+        <p className="text-xs text-gray-400">
+          Informational for now — conflict detection currently treats each
+          venue as one field.
+        </p>
       </div>
 
       {/* Availability section */}
