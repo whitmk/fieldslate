@@ -35,7 +35,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0073.** The repo files are the record, not the
+  **Latest migration: 0075.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **`service_role` gets NO default grants on new tables in `public`.** This
@@ -159,6 +159,48 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `src/lib/playoffs/advancement.ts` (pure, testable — see its header for
   the movement rules and edit semantics).
 
+## Interleague invites
+
+- **Invite status is STORED, not derived.** `interleague_invites.status`
+  (`pending`/`accepted`/`declined`/`superseded`) is the single source of
+  truth the dashboard badge renders. Every response write happens inside the
+  SECURITY DEFINER RPCs `accept_interleague_invite` /
+  `decline_interleague_invite` (latest: 0074/0075) in one transaction — a
+  response row cannot exist while its invite still reads pending. Do not add
+  status writes or dedup logic in the routes; they validate input, call the
+  RPC, and send emails — that's all.
+- **Supersede asymmetry is deliberate (0074 accept, 0075 decline).**
+  Accepting an invite marks ALL sibling pending invites (same `season_id` +
+  `interleague_org_id`) `superseded` — acceptance resolves the pairing, and
+  any surviving sibling would allow double-scheduling. Declining supersedes
+  only siblings with `created_at` EARLIER than the declined invite — a
+  decline of an old duplicate must never kill a newer corrected invite, and
+  a decline only proves the sends before it are dead. Don't "simplify" the
+  two rules to match; the difference is the point. (Eternally-pending
+  duplicate invites were the root cause of the recurring "still shows
+  pending after they accepted" reports.)
+- **Email sender identity comes from the RPCs.** The responding recipient is
+  anonymous and cannot read `profiles` under RLS, so both RPCs return
+  `sender_org_name` (`profiles.org_name`) alongside `sender_name` — the ONLY
+  path for the acceptance/decline-flow emails to name the sending league.
+  Every email site fails soft: `org_name` → `full_name` → email → literal
+  fallback; a null can never reach a subject. Naming trap: in the RPC
+  returns, `org_name` is the RECIPIENT partner org (`interleague_orgs.name`)
+  and `sender_org_name` is the sending league — don't swap them.
+- The public invite page renders honest status screens for
+  accepted/declined/superseded revisits (fed by `updated_at` +
+  `scheduled_game_count`, added to `get_interleague_invite_by_token` in
+  0074); only genuinely invalid tokens get the not-found screen. The
+  interleague dashboard refetches on tab focus/visibility — deliberately no
+  polling and no realtime.
+- **`venues.capacity` is informational-only** (UI label "Number of fields"
+  since 2026-07-14): nothing in the codebase reads it — conflict detection
+  treats every venue as ONE field regardless of its value. The separate,
+  actually-consumed fields concept is `interleague_orgs.field_count` (the
+  schedule generator caps same-day away games per partner org). If capacity
+  is ever wired into conflict detection, update the helper copy on the
+  venues page in the same change.
+
 ## Officials / umpires
 
 - **Schema map:** `umpires` roster is per-season (0023, `season_id` NOT NULL);
@@ -253,6 +295,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 
 ## Open items
 
+- Run the ghost-invite cleanup by hand: four pre-0074 pending SRA→Westside
+  invites (three from 2026-05-16 to whitking10@gmail.com, one to Westside's
+  Apple private-relay contact) should be marked `superseded` — reviewed SQL
+  is in the 2026-07-14 interleague fix-pass report. Leave the QA-Riverside
+  pending invite alone (legitimately pending).
 - **Vercel `STRIPE_INTERLEAGUE_COUPON_ID` still points at the dead
   `INTERLEAGUE` coupon — update it by hand to `INTERLEAGUE2`** (it is only a
   fallback now, but a fallback to a dead coupon is useless).
