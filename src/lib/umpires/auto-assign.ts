@@ -26,6 +26,14 @@ export type SkipReason =
   | "coach_conflict"
   | "conflict_of_interest";
 
+/**
+ * The Supabase client surface the engine runs against. Production callers
+ * omit the parameter (browser client); the simulation harness
+ * (scripts/sim/auto-assign-season-sim.ts) injects an in-memory fake so the
+ * real selection logic can be exercised against generated fixtures.
+ */
+export type AutoAssignClient = ReturnType<typeof createClient>;
+
 export type AutoAssignResult = {
   success: boolean;
   filled: number;
@@ -106,8 +114,9 @@ function gameDuration(settings: unknown): number {
 export async function autoAssignUmpires(
   divisionId: string,
   seasonId: string,
+  client?: AutoAssignClient,
 ): Promise<AutoAssignResult> {
-  const supabase = createClient();
+  const supabase = client ?? createClient();
   const none = (error?: string): AutoAssignResult => ({
     success: !error,
     filled: 0,

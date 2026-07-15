@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "sim:officials": "TZ=UTC npx tsx scripts/sim/auto-assign-season-sim.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

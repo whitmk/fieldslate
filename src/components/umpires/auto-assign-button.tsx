@@ -6,14 +6,15 @@ import { UserCheck, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { autoAssignUmpires, type SkipReason } from "@/lib/umpires/auto-assign";
 import { getOfficialTitlePluralLower } from "@/lib/utils/official-title";
 
-const SKIP_REASON_LABELS: Record<SkipReason, string> = {
+/** Shared with the season-wide button so skip copy can't drift. */
+export const SKIP_REASON_LABELS: Record<SkipReason, string> = {
   conflict: "time conflicts",
   blackout: "blackout dates",
   coach_conflict: "coach conflicts",
   conflict_of_interest: "conflicts of interest",
 };
 
-function skipSummary(skipped: number, reasons: SkipReason[]): string {
+export function skipSummary(skipped: number, reasons: SkipReason[]): string {
   const base = `${skipped} couldn't be filled`;
   if (reasons.length === 0) return `${base} without a conflict`;
   return `${base} (${reasons.map((r) => SKIP_REASON_LABELS[r]).join(", ")})`;

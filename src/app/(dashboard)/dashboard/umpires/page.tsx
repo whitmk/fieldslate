@@ -14,6 +14,7 @@ import {
   DivisionPriorityCard,
   type PriorityDivision,
 } from "@/components/umpires/division-priority-card";
+import { AutoAssignSeasonButton } from "@/components/umpires/auto-assign-season-button";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
@@ -231,14 +232,23 @@ export default async function UmpiresPage() {
 
       {anyDivisions && (
         <div className="flex flex-col gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-[#0C1F3F]">
-              Division priority
-            </h2>
-            <p className="mt-0.5 text-sm text-gray-500">
-              The order auto-assign works through divisions when officials are
-              shared across them.
-            </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-[#0C1F3F]">
+                Division priority
+              </h2>
+              <p className="mt-0.5 text-sm text-gray-500">
+                The order auto-assign works through divisions when officials are
+                shared across them.
+              </p>
+            </div>
+            {seasons[0] && (
+              <AutoAssignSeasonButton
+                seasonId={seasons[0].id}
+                seasonName={seasons[0].name}
+                sport={seasons[0].sport}
+              />
+            )}
           </div>
           <div className="flex flex-col gap-4">
             {seasons.map((s) => {
