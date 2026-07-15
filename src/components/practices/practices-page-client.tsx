@@ -15,6 +15,7 @@ import {
   Loader2,
   Lock,
   MapPin,
+  Pencil,
   Plus,
   Trash2,
   Users,
@@ -23,6 +24,8 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
+import { VenueEditModal } from "@/components/venues/venue-edit-form";
+import type { Venue as VenueRecord } from "@/types/database";
 import {
   PracticeSlotModal,
   type EditableSlot,
@@ -151,6 +154,10 @@ export function PracticesPageClient({
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [modalState, setModalState] = useState<ModalState | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  // Venue editing straight from the grid. The page only holds {id, name} per
+  // venue, so the pencil fetches the full row before opening the modal.
+  const [venueEdit, setVenueEdit] = useState<VenueRecord | null>(null);
+  const [venueEditLoading, setVenueEditLoading] = useState<string | null>(null);
   const [openPrefDivisions, setOpenPrefDivisions] = useState<Set<string>>(new Set());
   const [openTimeSlotDivisions, setOpenTimeSlotDivisions] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<Toast | null>(null);
@@ -556,6 +563,25 @@ export function PracticesPageClient({
     });
   }
 
+  async function openVenueEdit(venueId: string) {
+    setVenueEditLoading(venueId);
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("venues")
+      .select("*")
+      .eq("id", venueId)
+      .single();
+    setVenueEditLoading(null);
+    if (error || !data) {
+      notify(
+        "error",
+        `Couldn't load venue: ${error?.message ?? "venue not found"}`,
+      );
+      return;
+    }
+    setVenueEdit(data as VenueRecord);
+  }
+
   function openEditSlot(slot: PracticeSlotRow) {
     const team = teamById.get(slot.team_id);
     if (!team) return;
@@ -782,7 +808,7 @@ export function PracticesPageClient({
                 {venueRows.map(({ venue, days }) => (
                   <tr
                     key={venue.id}
-                    className="border-b border-gray-100 align-top"
+                    className="group border-b border-gray-100 align-top"
                   >
                     <td className="border-r border-gray-100 px-3 py-3">
                       <div className="flex items-start gap-1.5">
@@ -790,6 +816,24 @@ export function PracticesPageClient({
                         <span className="font-semibold text-[#0C1F3F]">
                           {venue.name}
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => openVenueEdit(venue.id)}
+                          disabled={venueEditLoading === venue.id}
+                          aria-label={`Edit ${venue.name}`}
+                          title="Edit venue details"
+                          className={`ml-auto flex-shrink-0 rounded p-1 text-gray-300 transition-all hover:bg-gray-100 hover:text-gray-600 ${
+                            venueEditLoading === venue.id
+                              ? "opacity-100"
+                              : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+                          }`}
+                        >
+                          {venueEditLoading === venue.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Pencil className="h-3.5 w-3.5" />
+                          )}
+                        </button>
                       </div>
                     </td>
                     {DAY_OPTIONS.map((d) => {
@@ -879,6 +923,14 @@ export function PracticesPageClient({
           venues={modalState.venues}
           onSaved={load}
           onClose={() => setModalState(null)}
+        />
+      )}
+
+      {venueEdit && (
+        <VenueEditModal
+          venue={venueEdit}
+          onSaved={load}
+          onClose={() => setVenueEdit(null)}
         />
       )}
 
