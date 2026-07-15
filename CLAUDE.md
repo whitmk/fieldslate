@@ -210,6 +210,46 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Scale note:** the picker roster feeds (game-detail-modal,
   division-schedule-panel) embed each official's FULL booking rows per
   fetch. First suspect if picker-open slows at large-league scale.
+- **Season-wide auto-assign is orchestration only.** `autoAssignSeason`
+  (`src/lib/umpires/auto-assign-season.ts`) runs the unchanged per-division
+  engine in ascending `divisions.priority` order (name tiebreak, matching
+  the priority card). No state is threaded between runs — the engine
+  re-reads all `game_umpires` at the start of every run, so each division
+  sees earlier divisions' assignments; anything that turns that refetch
+  into a snapshot breaks the compounding. Zero-slot divisions are reported
+  (`no_slots_required`), a division error is recorded and the sequence
+  continues, and re-running assigns nothing (the engine fills empty slots
+  only). Entry point: "Auto-assign season" on /dashboard/umpires next to
+  the priority card; the per-division button in the division schedule
+  panel is a separate, untouched surface. Runtime is ~7 sequential browser
+  queries per division — fine at current scale; needs progress UI or a
+  server move (which first needs the timezone param) if leagues get much
+  larger.
+- **The engine takes an optional injected client:**
+  `autoAssignUmpires(divisionId, seasonId, client?)`, default
+  `createClient()`. The seam exists ONLY so the simulation harness can
+  drive the real engine against in-memory fixtures — production callers
+  omit it. Don't remove it and don't add other client-construction paths.
+- **Simulation harness:** `scripts/sim/auto-assign-season-sim.ts`, run via
+  `npm run sim:officials`. TZ=UTC is mandatory (the harness exits
+  otherwise) — it pins the engine's client-local date math for Node; never
+  "fix" a harness date issue by adding timezone handling to the engine.
+  It fakes only the Supabase client (the exact query/embed subset the
+  engine issues, enforcing the game_umpires uniques) and asserts the full
+  invariant set — no double-booking / blackout / coach / COI assignments,
+  strict-tier availability + weekly caps, top-priority division fills its
+  alone-run count, idempotent second run, error continuation, skip
+  reasons always reported — over fixed shapes plus seeded-random seasons.
+  Re-run it after ANY change to auto-assign.ts, auto-assign-season.ts,
+  eligibility.ts, or conflicts.ts. If the engine grows a new query shape
+  the fake client throws — extend the fake, don't stub the query.
+- **Harness standard (playoff work, reaffirmed here): a harness isn't
+  proven until deliberately broken code fails it.** After a green run,
+  mutation-test it: disable each protection / invariant-bearing branch one
+  at a time (hard blocks, ordering, error continuation, idempotency
+  guards), confirm the harness fails every mutant, then restore and
+  re-verify green. A first-run-green harness with no mutation pass proves
+  nothing about its own assertions.
 
 ## Open items
 
