@@ -222,10 +222,23 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Conflict philosophy: manual assignment (`umpire-slots.tsx`) WARNS after
   save and lets the commissioner override; auto-assign
   (`src/lib/umpires/auto-assign.ts`) hard-blocks coach conflicts, blackouts,
-  and double-booking at both tiers — availability windows and weekly caps go
-  soft only in its fallback tier. Keep that asymmetry. `official_conflicts`
+  and double-booking at every tier. Keep that asymmetry. `official_conflicts`
   rows (0073, parent/sibling/family/other) get the identical treatment:
   warn-with-override on manual, hard-block on auto-assign.
+- **Auto-assign is STRICT BY DEFAULT (2026-07-14).** An assignment outside an
+  official's stated availability or weekly cap is a commitment they never
+  made, so the fallback tier — which relaxes exactly those two soft
+  constraints and nothing else — runs only behind
+  `allowOutsideAvailability: true`. By default those slots stay OPEN and are
+  reported with `outside_availability` / `over_weekly_limit` skip reasons
+  plus the names of the officials blocked only by them (the "ask them first,
+  then assign manually from the game" list; the picker's
+  outside-listed-availability state is the manual follow-up path). Both
+  entry points — the season button and the per-division button, which now
+  shares the same confirmation dialog — expose the opt-in as an
+  unchecked-by-default checkbox via shared components in
+  `auto-assign-button.tsx` so wording and behavior can't drift. Don't
+  re-promote the fallback tier to default behavior.
 - **All eligibility date math is client-timezone-only by design** (see the
   `eligibility.ts` header). On a server, "local" is UTC and day/week
   boundaries shift silently — any server-side or DB-side use must add an
@@ -263,12 +276,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   continues, and re-running assigns nothing (the engine fills empty slots
   only). Entry point: "Auto-assign season" on /dashboard/umpires next to
   the priority card; the per-division button in the division schedule
-  panel is a separate, untouched surface. Runtime is ~7 sequential browser
+  panel is a separate surface sharing the same confirm dialog + fallback
+  opt-in checkbox. Runtime is ~7 sequential browser
   queries per division — fine at current scale; needs progress UI or a
   server move (which first needs the timezone param) if leagues get much
   larger.
 - **The engine takes an optional injected client:**
-  `autoAssignUmpires(divisionId, seasonId, client?)`, default
+  `autoAssignUmpires(divisionId, seasonId, client?, options?)`, default
   `createClient()`. The seam exists ONLY so the simulation harness can
   drive the real engine against in-memory fixtures — production callers
   omit it. Don't remove it and don't add other client-construction paths.
@@ -277,21 +291,35 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   otherwise) — it pins the engine's client-local date math for Node; never
   "fix" a harness date issue by adding timezone handling to the engine.
   It fakes only the Supabase client (the exact query/embed subset the
-  engine issues, enforcing the game_umpires uniques) and asserts the full
-  invariant set — no double-booking / blackout / coach / COI assignments,
-  strict-tier availability + weekly caps, top-priority division fills its
-  alone-run count, idempotent second run, error continuation, skip
-  reasons always reported — over fixed shapes plus seeded-random seasons.
+  engine issues, enforcing the game_umpires uniques), runs every shape in
+  BOTH modes (default and fallback opt-in) on fresh fixtures, and asserts
+  the full invariant set — no double-booking / blackout / coach / COI
+  assignments ever; default runs make ZERO assignments outside
+  availability windows or weekly caps; opt-in soft violations bounded by
+  fallbackFilled (so opt-in relaxes only those two); opt-in fills ≥ strict
+  fills; top-priority division fills its alone-run count, idempotent
+  second run, error continuation, skip reasons always reported with
+  soft-blocked officials' names — over fixed shapes plus seeded-random
+  seasons.
   Re-run it after ANY change to auto-assign.ts, auto-assign-season.ts,
   eligibility.ts, or conflicts.ts. If the engine grows a new query shape
   the fake client throws — extend the fake, don't stub the query.
-- **Harness standard (playoff work, reaffirmed here): a harness isn't
-  proven until deliberately broken code fails it.** After a green run,
-  mutation-test it: disable each protection / invariant-bearing branch one
-  at a time (hard blocks, ordering, error continuation, idempotency
-  guards), confirm the harness fails every mutant, then restore and
-  re-verify green. A first-run-green harness with no mutation pass proves
-  nothing about its own assertions.
+- **Harness standard (playoff work, extended 2026-07-14) — three parts,
+  all required:**
+  1. **Real code, full playthroughs.** Drive the actual functions under
+     test end-to-end (fake only the environment, never the logic).
+  2. **Mutation-tested.** A harness isn't proven until deliberately broken
+     code fails it: disable each protection / invariant-bearing branch one
+     at a time (hard blocks, tier gating, ordering, error continuation,
+     idempotency guards, result reporting), confirm the harness fails
+     EVERY mutant, then restore and re-verify green.
+  3. **Anti-vacuity counters.** Count how often each guarded scenario
+     actually occurred (e.g. fallback fills across opt-in runs,
+     soft-reason open slots in default runs) and FAIL the run if a counter
+     is zero — a conditional invariant whose condition never fires passes
+     while checking nothing.
+  A first-run-green harness with no mutation pass and no coverage proof
+  proves nothing about its own assertions.
 
 ## Open items
 
