@@ -343,6 +343,13 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     const form = moveForms[gameId];
     const game = allVenueGames.find((g) => g.id === gameId);
     if (!form || !game) return;
+    // A cleared or uncommitted native input reports "" — without this guard
+    // the ISO below becomes a malformed timestamp ("2026-05-01T:00") that
+    // only fails at the DB with a raw Postgres error.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date) || !/^\d{2}:\d{2}$/.test(form.time)) {
+      setError("Pick a date and time before saving the move.");
+      return;
+    }
     setSaving((p) => ({ ...p, [gameId]: true }));
     setError(null);
 
