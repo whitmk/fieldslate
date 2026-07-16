@@ -142,8 +142,18 @@ export function AddGameModal({
   const homeTeam = divisionTeams.find((t) => t.id === homeTeamId);
   const awayTeam = divisionTeams.find((t) => t.id === awayTeamId);
   const venue = venues.find((v) => v.id === venueId);
-  const complete =
-    !!divisionId && !!homeTeamId && !!awayTeamId && !!date && !!time && !!venueId;
+  // "check AM/PM": on iOS/iPadOS Safari a time with an uncommitted AM/PM
+  // segment looks filled but the input's value is still "" — the hint has to
+  // point at the segment or the user can't see what's missing.
+  const missing = [
+    !divisionId && "Division",
+    !homeTeamId && "Home team",
+    !awayTeamId && "Away team",
+    !date && "Date",
+    !time && "Time (check AM/PM)",
+    !venueId && "Venue",
+  ].filter((label): label is string => !!label);
+  const complete = missing.length === 0;
 
   // Any field change invalidates previously detected conflicts (and any
   // in-progress override) — the next save re-checks against the new values.
@@ -529,6 +539,12 @@ export function AddGameModal({
             </div>
           )}
         </div>
+
+        {!complete && (
+          <p className="flex-shrink-0 px-6 pb-3 text-xs text-gray-400">
+            Still needed: {missing.join(", ")}
+          </p>
+        )}
 
         {/* Footer */}
         <div className="flex flex-shrink-0 gap-2 border-t border-gray-100 px-6 py-4">
