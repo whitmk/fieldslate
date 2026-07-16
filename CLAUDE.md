@@ -4,6 +4,16 @@ Operational guidance for working in this repo. [README.md](README.md) covers the
 stack, data model, and code conventions — read it first. This file holds the
 production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 
+## Docs split — where knowledge goes
+
+- **This file (repo CLAUDE.md)** gets anything about how FieldSlate works:
+  schema facts, code conventions, guard patterns, gotchas a future code
+  change must respect.
+- **Local memory notes** (`~/.claude/projects/.../memory/`) get anything
+  about how sessions verify and operate: tooling quirks, harness tricks,
+  environment workarounds.
+- When in doubt, repo — it's the reviewed, versioned, recoverable store.
+
 ## Deployment & environment
 
 - **Production-only.** Every push to `main` auto-deploys to production via
@@ -345,6 +355,24 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   A first-run-green harness with no mutation pass and no coverage proof
   proves nothing about its own assertions.
 
+## Native date/time inputs
+
+- **A native time/date input's `value` is `""` when cleared AND when a
+  segment is uncommitted.** On iOS/iPadOS Safari a time typed without
+  committing the AM/PM segment renders as filled (pale blue) while the DOM
+  value — and therefore React state — is still empty. A field can look
+  filled and be empty; any save gated on it must tell the user which field
+  is missing (the Add Game modal's "Still needed" hint, commit `5393a76`,
+  is the pattern — note its Time label says "check AM/PM").
+- **House guard for any DB write or ISO timestamp built from a native
+  time value:** `/^\d{2}:\d{2}(:\d{2})?$/` (dates: `/^\d{4}-\d{2}-\d{2}$/`).
+  The seconds tolerance is REQUIRED, not decorative — Postgres `time`
+  columns prefill client state as `HH:MM:SS`, and a strict `HH:MM` regex
+  blocks legitimate saves of unedited values. Established in `048a568`
+  (conflict resolver `saveManualMove`) and `66e7256` (practices
+  `TimeSlotRow` start-time blur-save). Never write an unguarded native
+  input value to the DB.
+
 ## Open items
 
 - Run the ghost-invite cleanup by hand: four pre-0074 pending SRA→Westside
@@ -365,3 +393,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   migration (see README data-model notes).
 - Follow-up (separate commit): add metadataBase: new URL(SITE_URL) to the
   root layout so OG URL resolution stops depending on Vercel domain config.
+- Practices `TimeSlotRow` **Duration** field
+  (`practices-page-client.tsx` ~line 1671): clearing it blur-saves
+  `duration_minutes: 0` — `Number("")` is `0` and `min={15}` is UI-only, so
+  the write SUCCEEDS (a persisted zero-minute slot, worse than the rejected
+  start-time write). Needs the same guard class as `66e7256`.
