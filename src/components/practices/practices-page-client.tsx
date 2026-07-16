@@ -1652,6 +1652,10 @@ function TimeSlotRow({
             value={startTime.substring(0, 5)}
             onChange={(e) => setStartTime(e.target.value)}
             onBlur={() =>
+              // A cleared/uncommitted native input reports "" — never save it
+              // (start_time is a NOT NULL time column). Seconds tolerated:
+              // the prefilled DB value is HH:MM:SS.
+              /^\d{2}:\d{2}(:\d{2})?$/.test(startTime) &&
               startTime.substring(0, 5) !== slot.start_time.substring(0, 5) &&
               save({ start_time: startTime })
             }
