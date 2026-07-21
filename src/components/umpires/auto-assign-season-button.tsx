@@ -15,11 +15,7 @@ import {
   type SeasonAutoAssignResult,
   type SeasonDivisionResult,
 } from "@/lib/umpires/auto-assign-season";
-import {
-  ConstraintCopy,
-  FallbackOptInCheckbox,
-  openSlotsSummary,
-} from "./auto-assign-button";
+import { ConstraintCopy, openSlotsSummary } from "./auto-assign-button";
 import {
   getOfficialTitleLower,
   getOfficialTitlePluralLower,
@@ -44,11 +40,9 @@ export function AutoAssignSeasonButton({ seasonId, seasonName, sport }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [running, setRunning] = useState(false);
-  const [allowOutside, setAllowOutside] = useState(false);
   const [result, setResult] = useState<SeasonAutoAssignResult | null>(null);
 
   function openDialog() {
-    setAllowOutside(false);
     setResult(null);
     setOpen(true);
   }
@@ -57,14 +51,11 @@ export function AutoAssignSeasonButton({ seasonId, seasonName, sport }: Props) {
     if (running) return;
     setOpen(false);
     setResult(null);
-    setAllowOutside(false);
   }
 
   async function handleRun() {
     setRunning(true);
-    const res = await autoAssignSeason(seasonId, undefined, {
-      allowOutsideAvailability: allowOutside,
-    });
+    const res = await autoAssignSeason(seasonId);
     setRunning(false);
     setResult(res);
     // Refresh regardless of outcome — a partial run still wrote assignments.
@@ -112,18 +103,12 @@ export function AutoAssignSeasonButton({ seasonId, seasonName, sport }: Props) {
             {!result ? (
               <div className="flex flex-col gap-4 px-6 py-5 text-sm text-gray-700">
                 <p>
-                  This fills every open {getOfficialTitleLower(sport)} slot in{" "}
+                  This fills every open {officialLower} slot in{" "}
                   <span className="font-semibold">{seasonName}</span>, working
                   through divisions in the priority order below — higher
                   divisions get first pick of available {officialsLower}.
                 </p>
                 <ConstraintCopy sport={sport} />
-                <FallbackOptInCheckbox
-                  checked={allowOutside}
-                  disabled={running}
-                  onChange={setAllowOutside}
-                  officialLower={officialLower}
-                />
                 <div className="flex justify-end gap-2 pt-1">
                   <button
                     type="button"

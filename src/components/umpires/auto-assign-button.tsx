@@ -60,42 +60,6 @@ export function openSlotsSummary(
   return `${base}${details.length > 0 ? ` — ${details.join(" · ")}` : ""}.${askTail}`;
 }
 
-/**
- * The fallback-tier opt-in, shared by both entry points so the wording and
- * the unchecked-by-default behavior can't drift. Checking it lets auto-assign
- * fill slots outside availability windows and weekly caps — never blackouts,
- * coach conflicts, conflicts of interest, or double-booking.
- */
-export function FallbackOptInCheckbox({
-  checked,
-  disabled,
-  onChange,
-  officialLower,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (checked: boolean) => void;
-  officialLower: string;
-}) {
-  return (
-    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-amber-300 accent-amber-600"
-      />
-      <span>
-        Fill remaining slots even outside availability or weekly limits{" "}
-        <span className="font-medium">
-          (not recommended — ask the {officialLower} first instead)
-        </span>
-      </span>
-    </label>
-  );
-}
-
 /** Constraint explainer shared by both confirm dialogs. */
 export function ConstraintCopy({ sport }: { sport?: string | null }) {
   return (
@@ -104,9 +68,9 @@ export function ConstraintCopy({ sport }: { sport?: string | null }) {
       filled. {getOfficialTitlePlural(sport)} are never assigned on their
       blackout dates, to games that overlap one they&apos;re already working,
       or to games involving a team they coach or have a conflict of interest
-      with — and, unless you opt in below, only within their listed
-      availability and weekly limits. Slots nobody qualifies for stay open so
-      you can ask first.
+      with — and only within their listed availability and weekly limits.
+      Slots nobody qualifies for stay open so you can ask first, then assign
+      manually from the game.
     </p>
   );
 }
@@ -149,7 +113,6 @@ export function AutoAssignUmpiresButton({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [allowOutside, setAllowOutside] = useState(false);
   const [result, setResult] = useState<
     { kind: "ok"; run: RunResult } | { kind: "err"; message: string } | null
   >(null);
@@ -157,7 +120,6 @@ export function AutoAssignUmpiresButton({
   if (!enabled) return null;
 
   function openDialog() {
-    setAllowOutside(false);
     setResult(null);
     setOpen(true);
   }
@@ -166,14 +128,11 @@ export function AutoAssignUmpiresButton({
     if (busy) return;
     setOpen(false);
     setResult(null);
-    setAllowOutside(false);
   }
 
   async function handleRun() {
     setBusy(true);
-    const res = await autoAssignUmpires(divisionId, seasonId, undefined, {
-      allowOutsideAvailability: allowOutside,
-    });
+    const res = await autoAssignUmpires(divisionId, seasonId);
     setBusy(false);
     if (!res.success) {
       setResult({ kind: "err", message: res.error ?? "Auto-assign failed." });
@@ -239,12 +198,6 @@ export function AutoAssignUmpiresButton({
                   division&apos;s schedule.
                 </p>
                 <ConstraintCopy sport={sport} />
-                <FallbackOptInCheckbox
-                  checked={allowOutside}
-                  disabled={busy}
-                  onChange={setAllowOutside}
-                  officialLower={officialLower}
-                />
                 <div className="flex justify-end gap-2 pt-1">
                   <button
                     type="button"
