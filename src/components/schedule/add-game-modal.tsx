@@ -18,6 +18,13 @@ import {
   insertConflictOverrides,
   type DetectedConflict,
 } from "@/lib/schedule/conflict-overrides";
+import {
+  constraintsFromRows,
+  findConstraintViolation,
+  formatConstraintRule,
+  type TeamConstraintRule,
+  type TeamGameConstraintRow,
+} from "@/lib/schedule/team-constraints";
 
 // Manually add a single game. Inserts directly into games using the same
 // column shape the schedule generator writes (see generate-schedule.ts §9),
@@ -94,6 +101,34 @@ export function AddGameModal({
   const [conflicts, setConflicts] = useState<DetectedConflict[] | null>(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+  // team_game_constraints (0076) rules for the selected team pair. Fetched
+  // when the pair changes (teams aren't known at modal-open, so per-pair is
+  // this modal's version of "once per open"). null = not loaded (or failed) —
+  // checkConflicts falls back to a fresh fetch and fails the check loudly
+  // rather than skipping the block rules.
+  const [teamConstraintRules, setTeamConstraintRules] =
+    useState<Map<string, TeamConstraintRule[]> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTeamConstraintRules(null);
+    if (!homeTeamId || !awayTeamId) return;
+    async function loadRules() {
+      const supabase = createClient();
+      const { data, error: rulesErr } = await supabase
+        .from("team_game_constraints")
+        .select("team_id, day_of_week, start_time, end_time, severity")
+        .in("team_id", [homeTeamId, awayTeamId]);
+      if (cancelled || rulesErr) return; // save path re-fetches and fails loud
+      setTeamConstraintRules(
+        constraintsFromRows((data ?? []) as TeamGameConstraintRow[]),
+      );
+    }
+    void loadRules();
+    return () => {
+      cancelled = true;
+    };
+  }, [homeTeamId, awayTeamId]);
 
   // Venues are org-scoped (owner_id), not season-scoped — resolve the org
   // from the first division's league, then list org venues (same query the
@@ -154,6 +189,31 @@ export function AddGameModal({
     !venueId && "Venue",
   ].filter((label): label is string => !!label);
   const complete = missing.length === 0;
+
+  // House native-input guard (CLAUDE.md): the tolerant form is REQUIRED —
+  // Postgres `time` values prefill state as HH:MM:SS elsewhere, and a strict
+  // regex would block them. Here it also catches the uncommitted-AM/PM case
+  // producing a malformed value. The ISO builder normalizes to HH:MM.
+  const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(date);
+  const timeValid = /^\d{2}:\d{2}(:\d{2})?$/.test(time);
+  const isoCandidate =
+    dateValid && timeValid ? `${date}T${time.slice(0, 5)}:00` : null;
+
+  // Live, non-blocking 'prefer' notices for the chosen slot — visible before
+  // save, never gating it, never recorded in conflict_overrides. Hard blocks
+  // stay in the save-click warn-with-override flow (checkConflicts).
+  const preferNotices: string[] = [];
+  if (isoCandidate && teamConstraintRules) {
+    for (const t of [homeTeam, awayTeam]) {
+      if (!t) continue;
+      const v = findConstraintViolation(teamConstraintRules, t.id, isoCandidate);
+      if (v?.severity === "prefer") {
+        preferNotices.push(
+          `${t.name} would prefer to avoid games starting at this time (${formatConstraintRule(v)}).`,
+        );
+      }
+    }
+  }
 
   // Any field change invalidates previously detected conflicts (and any
   // in-progress override) — the next save re-checks against the new values.
@@ -277,6 +337,37 @@ export function AddGameModal({
         message: `${awayTeam?.name ?? "The away team"} already has a game at this time.`,
       });
     }
+
+    // Team game constraints (0076): severity-'block' hits join the same
+    // warn-with-override flow as the other conflict types (audit type
+    // 'team_constraint', CHECK extended in 0077). This modal only creates
+    // intra-division games (both teams always local), so both sides are
+    // checked; the interleague home-only shape doesn't arise here. Fail
+    // LOUD if rules can't be resolved — silently skipping the check would
+    // let a save through a promised hard block.
+    let rules = teamConstraintRules;
+    if (!rules) {
+      const { data: rulesRaw, error: rulesErr } = await supabase
+        .from("team_game_constraints")
+        .select("team_id, day_of_week, start_time, end_time, severity")
+        .in("team_id", [homeTeamId, awayTeamId]);
+      if (rulesErr) {
+        throw new Error(
+          `Couldn't check team scheduling constraints: ${rulesErr.message}`,
+        );
+      }
+      rules = constraintsFromRows((rulesRaw ?? []) as TeamGameConstraintRow[]);
+    }
+    for (const t of [homeTeam, awayTeam]) {
+      if (!t) continue;
+      const v = findConstraintViolation(rules, t.id, iso);
+      if (v?.severity === "block") {
+        found.push({
+          type: "team_constraint",
+          message: `${t.name} can't play games starting at this time (${formatConstraintRule(v)}).`,
+        });
+      }
+    }
     return found;
   }
 
@@ -286,8 +377,15 @@ export function AddGameModal({
   async function handleSave() {
     if (!complete || saving) return;
     if (isOverriding && !overrideReady) return;
+    // A cleared or uncommitted native input reports "" (or a malformed
+    // value); without this the ISO below is garbage that only fails at the
+    // DB. See the house guard note above `dateValid`.
+    if (!isoCandidate) {
+      setError("Pick a valid date and time before saving (check the AM/PM segment).");
+      return;
+    }
     setError(null);
-    const iso = `${date}T${time}:00`;
+    const iso = isoCandidate;
     setSaving(true);
 
     if (conflicts === null) {
@@ -486,6 +584,25 @@ export function AddGameModal({
               ))}
             </select>
           </div>
+
+          {preferNotices.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {preferNotices.map((n, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2.5"
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+                  <div className="flex flex-col gap-0.5 text-xs">
+                    <p className="font-semibold text-amber-700">Team preference</p>
+                    <p className="text-amber-700">
+                      {n} You can still save — this is a heads-up, not a rule.
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {conflicts && conflicts.length > 0 && (
             <div className="flex flex-col gap-2">

@@ -12,6 +12,12 @@ import {
   type DayKey,
   type VenueAvailability,
 } from "@/lib/venues/availability";
+import {
+  constraintsFromRows,
+  violatesHardConstraint,
+  type TeamConstraintRule,
+  type TeamGameConstraintRow,
+} from "@/lib/schedule/team-constraints";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -82,6 +88,13 @@ function buildAvailableSlots(params: {
   awayTeamTimes: Set<string>;             // isoStrings when away team plays
   homeTeamDayCounts: Map<string, number>; // "YYYY-MM-DD" → count
   awayTeamDayCounts: Map<string, number>; // "YYYY-MM-DD" → count
+  // team_game_constraints (0076) for both teams. This surface is
+  // pick-from-valid by design (no override path), so severity-'block' slots
+  // are simply never offered. Both teams are always local here — the
+  // reschedule action is gated on away_team_id being non-null.
+  homeTeamId: string;
+  awayTeamId: string;
+  constraintRules: Map<string, TeamConstraintRule[]>;
 }): SlotOption[] {
   const {
     startDate, endDate, playingDays, dayWindows,
@@ -89,6 +102,7 @@ function buildAvailableSlots(params: {
     maxPerTeamDay, venueIds, venueNames, venueAvailability, blackoutDates,
     venueBookings, homeTeamTimes, awayTeamTimes,
     homeTeamDayCounts, awayTeamDayCounts,
+    homeTeamId, awayTeamId, constraintRules,
   } = params;
 
   const allowedDays = new Set(playingDays.map((d) => DAY_TO_JS[d]));
@@ -124,6 +138,11 @@ function buildAvailableSlots(params: {
           // Both teams must be free at this exact datetime
           if (homeTeamTimes.has(isoString)) continue;
           if (awayTeamTimes.has(isoString)) continue;
+
+          // Neither team may have a severity-'block' constraint window
+          // covering this start time (0076).
+          if (violatesHardConstraint(constraintRules, homeTeamId, isoString)) continue;
+          if (violatesHardConstraint(constraintRules, awayTeamId, isoString)) continue;
 
           // Each venue: must be open (per venue.availability), within hours,
           // and free of existing bookings at this wall time.
@@ -297,6 +316,22 @@ export function RainoutRescheduleModal({
       venueAvailabilityParsed[vid] = parseAvailability(venueAvailability[vid]);
     }
 
+    // 4c. Team game constraints (0076) for both teams. Fail CLOSED on a read
+    // error — offering slots without the rules could reschedule a game into
+    // a promised hard-block window.
+    const { data: rulesRaw, error: rulesErr } = await supabase
+      .from("team_game_constraints")
+      .select("team_id, day_of_week, start_time, end_time, severity")
+      .in("team_id", [homeTeamId, awayTeamId]);
+    if (rulesErr) {
+      setLoadError("Couldn't load team scheduling constraints. Try again.");
+      setLoading(false);
+      return;
+    }
+    const constraintRules = constraintsFromRows(
+      (rulesRaw ?? []) as TeamGameConstraintRow[],
+    );
+
     const available = buildAvailableSlots({
       startDate: div.start_date,
       endDate: div.end_date,
@@ -316,6 +351,9 @@ export function RainoutRescheduleModal({
       awayTeamTimes,
       homeTeamDayCounts,
       awayTeamDayCounts,
+      homeTeamId,
+      awayTeamId,
+      constraintRules,
     });
 
     setSlots(available);

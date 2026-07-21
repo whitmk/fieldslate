@@ -122,3 +122,31 @@ export function violatesHardConstraint(
 ): boolean {
   return findConstraintViolation(rules, teamId, isoString)?.severity === "block";
 }
+
+// ── Display formatting (shared so every surface words rules identically) ────
+
+const DAY_FULL: Record<DayKey, string> = {
+  Mo: "Monday",
+  Tu: "Tuesday",
+  We: "Wednesday",
+  Th: "Thursday",
+  Fr: "Friday",
+  Sa: "Saturday",
+  Su: "Sunday",
+};
+
+function fmt12(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+/** "Saturdays all day" / "Saturdays 9:00 AM – 12:00 PM". Windows describe
+ *  game START times (half-open [start, end)) — keep any surrounding copy
+ *  saying "start" so admins don't read them as whole-game spans. */
+export function formatConstraintRule(rule: TeamConstraintRule): string {
+  const day = `${DAY_FULL[rule.dayOfWeek]}s`;
+  if (rule.startTime === null || rule.endTime === null) return `${day} all day`;
+  return `${day} ${fmt12(rule.startTime)} – ${fmt12(rule.endTime)}`;
+}

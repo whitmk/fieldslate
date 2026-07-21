@@ -9,7 +9,10 @@ import { createClient } from "@/lib/supabase/client";
 export type ConflictType =
   | "venue_double_book"
   | "venue_hours"
-  | "team_double_book";
+  | "team_double_book"
+  // team_game_constraints (0076) severity-'block' hit — CHECK extended in 0077.
+  // 'prefer' matches are non-blocking notices and never recorded here.
+  | "team_constraint";
 
 export type DetectedConflict = { type: ConflictType; message: string };
 
@@ -17,6 +20,7 @@ export const CONFLICT_TYPE_LABELS: Record<ConflictType, string> = {
   venue_double_book: "Venue double-book",
   venue_hours: "Venue hours",
   team_double_book: "Team double-book",
+  team_constraint: "Team constraint",
 };
 
 /** One conflict_overrides row per distinct conflict type, single reason. */

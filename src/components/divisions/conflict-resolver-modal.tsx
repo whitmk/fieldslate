@@ -22,6 +22,14 @@ import {
   insertConflictOverrides,
   type DetectedConflict,
 } from "@/lib/schedule/conflict-overrides";
+import {
+  constraintsFromRows,
+  findConstraintViolation,
+  formatConstraintRule,
+  violatesHardConstraint,
+  type TeamConstraintRule,
+  type TeamGameConstraintRow,
+} from "@/lib/schedule/team-constraints";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,6 +92,11 @@ function localDateStr(d: Date): string {
  */
 function findFreeSlot(
   excludeGameId: string,
+  // The moving game's LOCAL team ids (away omitted on interleague rows) —
+  // slots inside either team's severity-'block' constraint window (0076) are
+  // never emitted, so auto-resolve can't move a game into a blocked window.
+  movingTeamIds: string[],
+  constraintRules: Map<string, TeamConstraintRule[]>,
   allVenueGames: GameRow[],
   venues: Venue[],
   settings: DivSettings,
@@ -119,11 +132,15 @@ function findFreeSlot(
         const occ = occupied.get(`${v.id}:${date}`) ?? [];
         let t = earliest;
         while (t <= latest) {
+          const iso = `${date}T${hhmmFromMins(t)}:00`;
           if (
             isVenueAvailable(v.availability, dayKey, hhmmFromMins(t), duration) &&
-            occ.every((o) => Math.abs(o - t) >= gap)
+            occ.every((o) => Math.abs(o - t) >= gap) &&
+            !movingTeamIds.some((id) =>
+              violatesHardConstraint(constraintRules, id, iso),
+            )
           ) {
-            return { scheduledAt: `${date}T${hhmmFromMins(t)}:00`, venueId: v.id };
+            return { scheduledAt: iso, venueId: v.id };
           }
           t += gap;
         }
@@ -154,6 +171,12 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
   const [venues, setVenues] = useState<Venue[]>([]);
   const [settings, setSettings] = useState<DivSettings | null>(null);
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
+  // team_game_constraints (0076) rules for every team appearing in
+  // allVenueGames (cross-division rows can be moved too), fetched once per
+  // modal-open in load(). null = load failed — the move/auto-resolve paths
+  // refuse to write rather than skip the block rules.
+  const [constraintRules, setConstraintRules] =
+    useState<Map<string, TeamConstraintRule[]> | null>(null);
 
   // Per-game state
   const [expandedGame, setExpandedGame] = useState<string | null>(null);
@@ -217,6 +240,30 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
 
     const rows = (gamesRes.data ?? []) as unknown as GameRow[];
     setAllVenueGames(rows);
+
+    // Constraint rules for every local team on these games (away is null on
+    // interleague rows — the external org has no constraint rows).
+    const constraintTeamIds = [
+      ...new Set(
+        rows.flatMap((g) => [g.home_team_id, g.away_team_id]).filter(
+          (id): id is string => !!id,
+        ),
+      ),
+    ];
+    if (constraintTeamIds.length === 0) {
+      setConstraintRules(new Map());
+    } else {
+      const { data: rulesRaw, error: rulesErr } = await supabase
+        .from("team_game_constraints")
+        .select("team_id, day_of_week, start_time, end_time, severity")
+        .in("team_id", constraintTeamIds);
+      setConstraintRules(
+        rulesErr
+          ? null
+          : constraintsFromRows((rulesRaw ?? []) as TeamGameConstraintRow[]),
+      );
+    }
+
     setVenues(
       (
         (venueRes.data ?? []) as { id: string; name: string; availability: unknown }[]
@@ -336,7 +383,58 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
       }
     }
 
+    // Team game constraints (0076): severity-'block' hits join the same
+    // warn-with-override flow (audit type 'team_constraint', 0077). Home
+    // team only when away is null (interleague — the external org has no
+    // constraint rows), composing the same shape as the generator. The
+    // caller guarantees constraintRules is non-null (saveManualMove guards).
+    if (constraintRules) {
+      const sides: Array<[string, string]> = [
+        [game.home_team_id, game.home_team?.name ?? "The home team"],
+      ];
+      if (game.away_team_id) {
+        sides.push([game.away_team_id, game.away_team?.name ?? "The away team"]);
+      }
+      for (const [tid, tname] of sides) {
+        const v = findConstraintViolation(constraintRules, tid, iso);
+        if (v?.severity === "block") {
+          found.push({
+            type: "team_constraint",
+            message: `${tname} can't play games starting at this time (${formatConstraintRule(v)}).`,
+          });
+        }
+      }
+    }
+
     return found;
+  }
+
+  /** Live, non-blocking 'prefer' notices for a move form's current slot —
+   *  shown while editing, never gating the save, never recorded. */
+  function preferNoticesFor(gameId: string, form: MoveForm): string[] {
+    if (!constraintRules) return [];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date) || !/^\d{2}:\d{2}$/.test(form.time)) {
+      return [];
+    }
+    const iso = `${form.date}T${form.time}:00`;
+    const row = allVenueGames.find((r) => r.id === gameId);
+    if (!row) return [];
+    const sides: Array<[string, string]> = [
+      [row.home_team_id, row.home_team?.name ?? "The home team"],
+    ];
+    if (row.away_team_id) {
+      sides.push([row.away_team_id, row.away_team?.name ?? "The away team"]);
+    }
+    const out: string[] = [];
+    for (const [tid, tname] of sides) {
+      const v = findConstraintViolation(constraintRules, tid, iso);
+      if (v?.severity === "prefer") {
+        out.push(
+          `${tname} would prefer to avoid games starting at this time (${formatConstraintRule(v)}).`,
+        );
+      }
+    }
+    return out;
   }
 
   async function saveManualMove(gameId: string) {
@@ -348,6 +446,14 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     // only fails at the DB with a raw Postgres error.
     if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date) || !/^\d{2}:\d{2}$/.test(form.time)) {
       setError("Pick a date and time before saving the move.");
+      return;
+    }
+    // Fail LOUD if the constraint rules never loaded — moving without them
+    // could land the game inside a promised hard-block window.
+    if (constraintRules === null) {
+      setError(
+        "Couldn't load team scheduling constraints — close and reopen the resolver, then try again.",
+      );
       return;
     }
     setSaving((p) => ({ ...p, [gameId]: true }));
@@ -407,8 +513,23 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     onResolved();
   }
 
+  /** The moving game's local team ids for findFreeSlot's constraint filter —
+   *  away omitted when null (interleague). Unknown rows (shouldn't happen)
+   *  yield [] and are filtered by venue/booking rules only. */
+  function movingTeamIdsFor(gameId: string): string[] {
+    const row = allVenueGames.find((r) => r.id === gameId);
+    if (!row) return [];
+    return [row.home_team_id, row.away_team_id].filter((id): id is string => !!id);
+  }
+
   async function autoResolveConflict(conflict: ScheduleConflict) {
     if (!settings || !dateRange) return;
+    if (constraintRules === null) {
+      setError(
+        "Couldn't load team scheduling constraints — close and reopen the resolver, then try again.",
+      );
+      return;
+    }
     const key = conflict.venueId + conflict.date;
     setResolving((p) => ({ ...p, [key]: true }));
     setError(null);
@@ -418,7 +539,7 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     let localGames = [...allVenueGames];
 
     for (const g of gamesToMove) {
-      const slot = findFreeSlot(g.id, localGames, venues, settings, dateRange.start, dateRange.end);
+      const slot = findFreeSlot(g.id, movingTeamIdsFor(g.id), constraintRules, localGames, venues, settings, dateRange.start, dateRange.end);
       if (!slot) {
         setError(`No free slot found for ${g.homeTeam} vs ${g.awayTeam}. Try resolving manually.`);
         setResolving((p) => ({ ...p, [key]: false }));
@@ -450,6 +571,12 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
 
   async function autoResolveAll() {
     if (!settings || !dateRange) return;
+    if (constraintRules === null) {
+      setError(
+        "Couldn't load team scheduling constraints — close and reopen the resolver, then try again.",
+      );
+      return;
+    }
     setAutoResolvingAll(true);
     setError(null);
 
@@ -458,7 +585,7 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     for (const conflict of conflicts) {
       const gamesToMove = conflict.games.slice(1);
       for (const g of gamesToMove) {
-        const slot = findFreeSlot(g.id, localGames, venues, settings, dateRange.start, dateRange.end);
+        const slot = findFreeSlot(g.id, movingTeamIdsFor(g.id), constraintRules, localGames, venues, settings, dateRange.start, dateRange.end);
         if (!slot) {
           setError(`No free slot found for ${g.homeTeam} vs ${g.awayTeam}. Remaining conflicts resolved manually.`);
           setAutoResolvingAll(false);
@@ -657,6 +784,26 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
                                     />
                                   </div>
                                 </div>
+
+                                {/* Live team-preference notices — heads-up only, never block */}
+                                {preferNoticesFor(g.id, form).length > 0 && (
+                                  <div className="mt-3 flex flex-col gap-2">
+                                    {preferNoticesFor(g.id, form).map((n, ni) => (
+                                      <div
+                                        key={ni}
+                                        className="flex items-start gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2.5"
+                                      >
+                                        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+                                        <div className="flex flex-col gap-0.5 text-xs">
+                                          <p className="font-semibold text-amber-700">Team preference</p>
+                                          <p className="text-amber-700">
+                                            {n} You can still save — this is a heads-up, not a rule.
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
 
                                 {/* Conflict block + override-reason flow (mirrors Add Game) */}
                                 {(moveConflicts[g.id]?.length ?? 0) > 0 && (
