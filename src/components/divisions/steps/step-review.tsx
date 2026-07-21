@@ -110,6 +110,9 @@ type RegenResult = {
   kind: GenerateKind;
   gamesCreated?: number;
   unscheduledCount?: number;
+  // Subset of unscheduledCount blocked by team_game_constraints (0076).
+  // Undefined on the new-division plan path, which is exempt by design.
+  constraintBlockedCount?: number;
   conflicts: ScheduleConflict[];
   savedDivisionId: string;
 };
@@ -573,6 +576,7 @@ export function StepReview({
       }
       result.gamesCreated = gameRes.gamesCreated;
       result.unscheduledCount = gameRes.unscheduledCount;
+      result.constraintBlockedCount = gameRes.constraintBlockedCount;
       result.conflicts = gameRes.conflicts;
       await logActivity(
         leagueId,
@@ -700,7 +704,9 @@ export function StepReview({
                   {regenResult.unscheduledCount} matchup{regenResult.unscheduledCount !== 1 ? "s" : ""} could not be scheduled
                 </p>
                 <p className="mt-1 text-xs text-amber-700">
-                  Not enough slots. Try extending dates, adding venues, or reducing games per team.
+                  {(regenResult.constraintBlockedCount ?? 0) > 0
+                    ? `${regenResult.constraintBlockedCount} of these were blocked by team scheduling constraints — review those teams' constraint windows or place the games manually. Any others ran out of slots: try extending dates, adding venues, or reducing games per team.`
+                    : "Not enough slots. Try extending dates, adding venues, or reducing games per team."}
                 </p>
               </div>
             </div>

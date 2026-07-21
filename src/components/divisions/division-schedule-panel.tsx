@@ -304,7 +304,10 @@ export function DivisionSchedulePanel({
     setResult(null);
     const res = await generateSchedule(divisionId);
     if (res.success) {
-      setResult({ type: "success", message: `${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled` });
+      const constraintNote = res.constraintBlockedCount > 0
+        ? ` — ${res.constraintBlockedCount} matchup${res.constraintBlockedCount === 1 ? "" : "s"} unscheduled (blocked by team constraints)`
+        : "";
+      setResult({ type: "success", message: `${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled${constraintNote}` });
       console.log("[logActivity] before call: schedule_generated (handleGenerate)");
       const _r1 = await logActivity(leagueId, divisionId, "schedule_generated",
         `${divisionName} schedule generated — ${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled`);
@@ -322,11 +325,14 @@ export function DivisionSchedulePanel({
     setResult(null);
     const res = await finishSchedule(divisionId);
     if (res.success) {
+      const constraintNote = res.constraintBlockedCount > 0
+        ? ` — ${res.constraintBlockedCount} matchup${res.constraintBlockedCount === 1 ? "" : "s"} unscheduled (blocked by team constraints)`
+        : "";
       setResult({
         type: "success",
         message: res.gamesCreated === 0
           ? "Schedule is already complete"
-          : `${res.gamesCreated} missing game${res.gamesCreated === 1 ? "" : "s"} added`,
+          : `${res.gamesCreated} missing game${res.gamesCreated === 1 ? "" : "s"} added${constraintNote}`,
       });
       if (res.gamesCreated > 0) {
         console.log("[logActivity] before call: schedule_generated (handleFinish)");

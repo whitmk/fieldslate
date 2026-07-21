@@ -40,6 +40,8 @@ type RunStatus =
       state: "done";
       gamesCreated: number;
       unscheduledCount: number;
+      // Subset of unscheduledCount blocked by team_game_constraints (0076).
+      constraintBlockedCount: number;
       conflictGameCount: number;
     }
   | { state: "failed"; error: string }
@@ -178,6 +180,7 @@ export function SetupGenerateStep({
           state: "done",
           gamesCreated: res.gamesCreated,
           unscheduledCount: res.unscheduledCount,
+          constraintBlockedCount: res.constraintBlockedCount,
           conflictGameCount: res.conflicts.reduce(
             (n, c) => n + c.games.length,
             0,
@@ -228,7 +231,11 @@ export function SetupGenerateStep({
       if (status.unscheduledCount > 0) {
         lines.push({
           divisionId: d.id,
-          text: `${status.unscheduledCount} game${status.unscheduledCount !== 1 ? "s" : ""} couldn't be scheduled in ${d.name}`,
+          text:
+            `${status.unscheduledCount} game${status.unscheduledCount !== 1 ? "s" : ""} couldn't be scheduled in ${d.name}` +
+            (status.constraintBlockedCount > 0
+              ? ` (${status.constraintBlockedCount} blocked by team constraints)`
+              : ""),
         });
       }
       if (status.conflictGameCount > 0) {
@@ -397,7 +404,10 @@ export function SetupGenerateStep({
                   <p className="ml-7 text-xs text-amber-700">
                     {[
                       status.unscheduledCount > 0
-                        ? `${status.unscheduledCount} game${status.unscheduledCount !== 1 ? "s" : ""} couldn't be scheduled`
+                        ? `${status.unscheduledCount} game${status.unscheduledCount !== 1 ? "s" : ""} couldn't be scheduled` +
+                          (status.constraintBlockedCount > 0
+                            ? ` (${status.constraintBlockedCount} blocked by team constraints)`
+                            : "")
                         : null,
                       status.conflictGameCount > 0
                         ? `${status.conflictGameCount} game${status.conflictGameCount !== 1 ? "s" : ""} have field conflicts`

@@ -9,6 +9,12 @@ import {
   type DayKey,
   type VenueAvailability,
 } from "@/lib/venues/availability";
+import {
+  constraintsFromRows,
+  violatesHardConstraint,
+  type TeamConstraintRule,
+  type TeamGameConstraintRow,
+} from "./team-constraints";
 
 // ─── Public result types ───────────────────────────────────────────────────────
 
@@ -17,6 +23,12 @@ export type ScheduleResult =
       success: true;
       gamesCreated: number;
       unscheduledCount: number;
+      // Subset of unscheduledCount: matchups that had at least one slot which
+      // passed every other filter but was rejected by a severity-'block'
+      // team_game_constraints rule. Reported distinctly so "the season is too
+      // full" and "a team's availability rules made this unplaceable" don't
+      // read as the same problem.
+      constraintBlockedCount: number;
       conflicts: ScheduleConflict[];
     }
   | { success: false; error: string };
@@ -499,6 +511,10 @@ export interface PlanScheduleInput {
 
   // Read-only constraints.
   blocked: Map<string, Set<string>>;
+  // team_game_constraints rules (0076) via constraintsFromRows. Only
+  // severity-'block' rules filter here; 'prefer' rules are carried but
+  // ignored until the preferences chunk lands.
+  constraintRules: Map<string, TeamConstraintRule[]>;
   orgFieldCount: Map<string, number>;
   minVenueGap: number;
   maxPerTeamDay: number;
@@ -519,17 +535,20 @@ export interface PlannedGame {
 export interface PlanScheduleResult {
   games: PlannedGame[];
   unscheduledCount: number;
+  // Subset of unscheduledCount — see ScheduleResult.constraintBlockedCount.
+  constraintBlockedCount: number;
 }
 
 export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
   const {
     leagueId, matchups, slots,
     venueBookings, teamTimes, teamDay, teamWeek, awayByOrgDate,
-    blocked, orgFieldCount, minVenueGap, maxPerTeamDay, maxGamesPerWeek,
+    blocked, constraintRules, orgFieldCount, minVenueGap, maxPerTeamDay, maxGamesPerWeek,
   } = input;
 
   const scheduled: PlannedGame[] = [];
   const unscheduled: Matchup[] = [];
+  let constraintBlockedCount = 0;
 
   // Deduped (date, time) view for away matchups: they don't claim a venue,
   // so iterating venues for the same time is wasted work.
@@ -548,6 +567,7 @@ export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
     const status: "scheduled" | "pending_interleague" =
       interleagueOrgId ? "pending_interleague" : "scheduled";
     let assigned = false;
+    let constraintRejected = false;
 
     const pool = isAway ? dateTimeOnlySlots : slots;
 
@@ -579,6 +599,21 @@ export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
       if (blocked.get(homeId)?.has(slot.isoString)) continue;
       if (awayId && blocked.get(awayId)?.has(slot.isoString)) continue;
 
+      // Team game constraints (0076), hard blocks only. Kept LAST in the
+      // filter chain: rejecting here means the slot passed every other
+      // filter, which is what makes the constraint-blocked attribution on
+      // unscheduled matchups honest. awayId is null for interleague
+      // matchups — the external org has no constraint rows by definition,
+      // so only the home (local) team is checked there.
+      if (violatesHardConstraint(constraintRules, homeId, slot.isoString)) {
+        constraintRejected = true;
+        continue;
+      }
+      if (awayId && violatesHardConstraint(constraintRules, awayId, slot.isoString)) {
+        constraintRejected = true;
+        continue;
+      }
+
       if (!isAway) {
         if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
         venueBookings.get(vKey)!.push(slotMins);
@@ -608,10 +643,13 @@ export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
       break;
     }
 
-    if (!assigned) unscheduled.push({ homeId, awayId, interleagueOrgId, isAway });
+    if (!assigned) {
+      unscheduled.push({ homeId, awayId, interleagueOrgId, isAway });
+      if (constraintRejected) constraintBlockedCount++;
+    }
   }
 
-  return { games: scheduled, unscheduledCount: unscheduled.length };
+  return { games: scheduled, unscheduledCount: unscheduled.length, constraintBlockedCount };
 }
 
 // ─── Main export ───────────────────────────────────────────────────────────────
@@ -761,6 +799,25 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
       }
     }
   }
+
+  // ── 5b. Team game constraints (0076) — hard blocks for the planner ──────────
+  // Fail CLOSED on a read error: generating without the rows could place a
+  // game inside a promised hard-block window, which this feature exists to
+  // make impossible. (Contrast blackout_dates above, which predates that
+  // promise and fails open.)
+  const { data: constraintRaw, error: constraintErr } = await supabase
+    .from("team_game_constraints")
+    .select("team_id, day_of_week, start_time, end_time, severity")
+    .in("team_id", teams.map((t) => t.id));
+  if (constraintErr) {
+    return {
+      success: false,
+      error: `Could not load team scheduling constraints: ${constraintErr.message}`,
+    };
+  }
+  const constraintRules = constraintsFromRows(
+    (constraintRaw ?? []) as TeamGameConstraintRow[],
+  );
 
   // ── 6. Generate matchups ─────────────────────────────────────────────────────
 
@@ -964,6 +1021,7 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
     teamWeek,
     awayByOrgDate,
     blocked,
+    constraintRules,
     orgFieldCount,
     minVenueGap,
     maxPerTeamDay,
@@ -973,8 +1031,14 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
   if (!plan.games.length) {
     return {
       success: false,
+      // Total failure hides the per-run counts, so name the constraint cause
+      // here too — otherwise a fully constraint-starved division reads as a
+      // generic capacity problem.
       error:
         "Could not fit any games into the available slots. " +
+        (plan.constraintBlockedCount > 0
+          ? `${plan.constraintBlockedCount} matchup${plan.constraintBlockedCount === 1 ? " was" : "s were"} blocked by team scheduling constraints. `
+          : "") +
         "Try extending the season dates, adding venues, or reducing games per team.",
     };
   }
@@ -1043,6 +1107,7 @@ export async function generateSchedule(divisionId: string): Promise<ScheduleResu
     success: true,
     gamesCreated: scheduled.length,
     unscheduledCount: plan.unscheduledCount,
+    constraintBlockedCount: plan.constraintBlockedCount,
     conflicts,
   };
 }
@@ -1352,6 +1417,10 @@ export async function planScheduleForNewDivision(
     teamWeek,
     awayByOrgDate,
     blocked,
+    // Team game constraints (0076) don't apply here BY DESIGN: this flow
+    // plans before the division's teams exist in the DB (identifiers are
+    // team names), so no team_game_constraints rows can exist for them yet.
+    constraintRules: new Map(),
     orgFieldCount,
     minVenueGap,
     maxPerTeamDay,
@@ -1502,6 +1571,22 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
     }
   }
 
+  // ── 5b. Team game constraints (0076) — same load + fail-closed rule as
+  // generateSchedule's 5b.
+  const { data: constraintRawFinish, error: constraintErrFinish } = await supabase
+    .from("team_game_constraints")
+    .select("team_id, day_of_week, start_time, end_time, severity")
+    .in("team_id", teams.map((t) => t.id));
+  if (constraintErrFinish) {
+    return {
+      success: false,
+      error: `Could not load team scheduling constraints: ${constraintErrFinish.message}`,
+    };
+  }
+  const constraintRules = constraintsFromRows(
+    (constraintRawFinish ?? []) as TeamGameConstraintRow[],
+  );
+
   // ── 6. Load existing division games + count per team ─────────────────────────
 
   const teamIds = teams.map((t) => t.id);
@@ -1593,7 +1678,7 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
 
   // If nothing is missing, return early
   if (!intraDeficitExists && !interleagueDeficitExists) {
-    return { success: true, gamesCreated: 0, unscheduledCount: 0, conflicts: [] };
+    return { success: true, gamesCreated: 0, unscheduledCount: 0, constraintBlockedCount: 0, conflicts: [] };
   }
 
   // Build intra-division matchups by cycling round-robin rounds:
@@ -1762,6 +1847,7 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
 
   const scheduled: GameInsert[] = [];
   const unscheduled: Matchup[] = [];
+  let constraintBlockedFinish = 0;
 
   // Deduped (date, time) pool for away matchups — they don't claim a venue.
   const dateTimeOnlySlotsFinish: Slot[] = [];
@@ -1779,6 +1865,7 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
     const status: "scheduled" | "pending_interleague" =
       interleagueOrgId ? "pending_interleague" : "scheduled";
     let assigned = false;
+    let constraintRejected = false;
 
     const pool = isAway ? dateTimeOnlySlotsFinish : slots;
 
@@ -1809,6 +1896,19 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
       if (blocked.get(homeId)!.has(slot.isoString)) continue;
       if (awayId && blocked.get(awayId)!.has(slot.isoString)) continue;
 
+      // Team game constraints (0076) — same check, same LAST-in-chain
+      // placement, and same interleague home-only shape as planSchedule.
+      // This loop is a deliberate inline copy of the planner (see the task
+      // history); any change here must be mirrored there and vice versa.
+      if (violatesHardConstraint(constraintRules, homeId, slot.isoString)) {
+        constraintRejected = true;
+        continue;
+      }
+      if (awayId && violatesHardConstraint(constraintRules, awayId, slot.isoString)) {
+        constraintRejected = true;
+        continue;
+      }
+
       if (!isAway) {
         if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
         venueBookings.get(vKey)!.push(slotMins);
@@ -1837,13 +1937,22 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
       break;
     }
 
-    if (!assigned) unscheduled.push({ homeId, awayId, interleagueOrgId, isAway });
+    if (!assigned) {
+      unscheduled.push({ homeId, awayId, interleagueOrgId, isAway });
+      if (constraintRejected) constraintBlockedFinish++;
+    }
   }
 
   if (!scheduled.length) {
     return {
       success: false,
-      error: "Could not fit the remaining games into available slots. Try extending the season dates, adding venues, or reducing games per team.",
+      // Same constraint-cause naming as generateSchedule's total-failure path.
+      error:
+        "Could not fit the remaining games into available slots. " +
+        (constraintBlockedFinish > 0
+          ? `${constraintBlockedFinish} matchup${constraintBlockedFinish === 1 ? " was" : "s were"} blocked by team scheduling constraints. `
+          : "") +
+        "Try extending the season dates, adding venues, or reducing games per team.",
     };
   }
 
@@ -1887,6 +1996,7 @@ export async function finishSchedule(divisionId: string): Promise<ScheduleResult
     success: true,
     gamesCreated: scheduled.length,
     unscheduledCount: unscheduled.length,
+    constraintBlockedCount: constraintBlockedFinish,
     conflicts,
   };
 }
