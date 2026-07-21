@@ -33,6 +33,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   that exists at one scope and not the other has caused confusion before.
   Values in the Vercel dashboard cannot be verified from this repo; say so
   rather than assuming.
+- **Deploy watching:** verify the watch mechanism with one successful poll
+  BEFORE announcing a watch is armed, and poll deploy status no faster than
+  every 60s — deploys take 60–90s, faster polling only burns the API quota.
+  Status source:
+  `curl https://api.github.com/repos/whitmk/fieldslate/commits/<sha>/status`
+  (no `gh` installed).
 - **Canonical domain is `https://www.thefieldslate.com` (with www).** The bare
   domain 307-redirects to www; Stripe webhooks and Supabase auth callbacks are
   configured against www only, so links that land users (or mail-client image
@@ -45,7 +51,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0076.** The repo files are the record, not the
+  **Latest migration: 0077.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **`service_role` gets NO default grants on new tables in `public`.** This
@@ -363,9 +369,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `[start, end)` on the game's START time), and deliberately a SEPARATE
   table: practices and games are decoupled surfaces, and a scope column on
   the practices table would couple its auto-assign engine to game
-  semantics. Two severities: `block` (hard, enforced) and `prefer` (stored
-  since 0076 but NOT yet enforced — the preferences chunk comes later; do
-  not "finish" it casually, the generator loop needs a scoring pass first).
+  semantics. Two severities: `block` (hard, enforced everywhere) and
+  `prefer` (ENTRY exists since chunk 2a and manual paths show it as a
+  non-blocking heads-up notice, but the GENERATOR does not enforce it yet —
+  the preferences chunk comes later; do not "finish" it casually, the
+  generator loop needs a scoring pass first). Windows are half-open
+  `[start, end)` on the game's START time — all user-facing copy says
+  "start times" on purpose.
 - **Every constraint check goes through
   `src/lib/schedule/team-constraints.ts`** (`constraintsFromRows` /
   `findConstraintViolation` / `violatesHardConstraint`) — same
@@ -382,6 +392,24 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   every surface that shows them, including both total-failure error
   messages. `planScheduleForNewDivision` is exempt BY DESIGN: it plans
   before teams exist in the DB, so no constraint rows can exist for them.
+- **Manual-path coverage map (chunk 2a):** Add Game modal and the conflict
+  resolver's manual move run `block` hits through the existing
+  warn-with-override flow, recorded in `conflict_overrides` as type
+  `team_constraint` (CHECK extended in 0077); the rainout reschedule modal
+  and the resolver's auto-move `findFreeSlot` are pick-from-valid surfaces,
+  so blocked slots are FILTERED out with no override path — keep that
+  asymmetry. `prefer` hits render live amber notices on Add Game and the
+  resolver move form and are deliberately recorded NOWHERE. Message wording
+  comes from the shared `formatConstraintRule` — don't hand-write rule
+  descriptions. Rules fetch: once per modal-open in the resolver (all teams
+  on loaded games — cross-division moves included) and the rainout modal;
+  per team-pair in Add Game (teams aren't known at open). Every path fails
+  LOUD/CLOSED if the rules read errors — never silently skip the check.
+- **Entry UI:** "Team scheduling constraints" section on the Schedule page
+  (`team-constraints-section.tsx`), per-division per-team cards cloning the
+  practices UnavailabilitySection pattern. Elite-gated in the server page
+  via `getOrgPlan` + `!isElite` + `FeatureLockedCard` — the gate wraps the
+  ENTRY UI only.
 - **Interleague scope is home-team-only** (interleague matchups have
   `awayId: null` — the external org has no constraint rows by definition).
   The interleague reschedule server routes (resolve / respond / the
