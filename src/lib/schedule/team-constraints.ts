@@ -123,6 +123,18 @@ export function violatesHardConstraint(
   return findConstraintViolation(rules, teamId, isoString)?.severity === "block";
 }
 
+/** True when a severity-'prefer' rule covers the candidate start time (and
+ *  no 'block' rule does — block wins when both match, see constraintsFromRows).
+ *  Prefer = prefer to AVOID the window (decided 2026-07-21). This is the
+ *  generator's pass-1 soft filter; it must NEVER be used as a hard reject. */
+export function prefersToAvoid(
+  rules: Map<string, TeamConstraintRule[]>,
+  teamId: string,
+  isoString: string,
+): boolean {
+  return findConstraintViolation(rules, teamId, isoString)?.severity === "prefer";
+}
+
 // ── Display formatting (shared so every surface words rules identically) ────
 
 const DAY_FULL: Record<DayKey, string> = {

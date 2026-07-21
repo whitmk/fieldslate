@@ -11,6 +11,7 @@ import {
 } from "@/lib/venues/availability";
 import {
   constraintsFromRows,
+  prefersToAvoid,
   violatesHardConstraint,
   type TeamConstraintRule,
   type TeamGameConstraintRow,
@@ -29,6 +30,10 @@ export type ScheduleResult =
       // full" and "a team's availability rules made this unplaceable" don't
       // read as the same problem.
       constraintBlockedCount: number;
+      // Games that could only be placed inside a severity-'prefer' window
+      // (pass 2 of the two-pass walk). Informational, not a failure —
+      // preferences are best-effort by design.
+      preferMissCount: number;
       conflicts: ScheduleConflict[];
     }
   | { success: false; error: string };
@@ -537,6 +542,8 @@ export interface PlanScheduleResult {
   unscheduledCount: number;
   // Subset of unscheduledCount — see ScheduleResult.constraintBlockedCount.
   constraintBlockedCount: number;
+  // See ScheduleResult.preferMissCount.
+  preferMissCount: number;
 }
 
 export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
@@ -549,6 +556,7 @@ export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
   const scheduled: PlannedGame[] = [];
   const unscheduled: Matchup[] = [];
   let constraintBlockedCount = 0;
+  let preferMissCount = 0;
 
   // Deduped (date, time) view for away matchups: they don't claim a venue,
   // so iterating venues for the same time is wasted work.
@@ -571,76 +579,102 @@ export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
 
     const pool = isAway ? dateTimeOnlySlots : slots;
 
-    for (const slot of pool) {
-      const vKey = `${slot.venueId}:${slot.date}`;
-      const slotMins = timeToMinutes(slot.isoString.substring(11, 16));
-      if (!isAway) {
-        const bookedMins = venueBookings.get(vKey) ?? [];
-        if (bookedMins.some((t) => Math.abs(t - slotMins) < minVenueGap)) continue;
-      } else if (interleagueOrgId) {
-        const cap = orgFieldCount.get(interleagueOrgId) ?? 1;
-        const used = awayByOrgDate.get(`${interleagueOrgId}|${slot.date}`) ?? 0;
-        if (used >= cap) continue;
+    // Two-pass walk (chunk 2b): pass 1 additionally skips slots either
+    // local team PREFERS to avoid (severity 'prefer', 0076); pass 2 runs
+    // only when pass 1 assigned nothing and ignores preferences — hard
+    // filters only, identical to pre-preferences behavior, so a prefer
+    // rule can never starve a matchup. Rejected walks are read-only; only
+    // the assigning iteration mutates the booking maps.
+    for (let pass = 0; pass < 2 && !assigned; pass++) {
+      const skipPreferred = pass === 0;
+
+      for (const slot of pool) {
+        const vKey = `${slot.venueId}:${slot.date}`;
+        const slotMins = timeToMinutes(slot.isoString.substring(11, 16));
+        if (!isAway) {
+          const bookedMins = venueBookings.get(vKey) ?? [];
+          if (bookedMins.some((t) => Math.abs(t - slotMins) < minVenueGap)) continue;
+        } else if (interleagueOrgId) {
+          const cap = orgFieldCount.get(interleagueOrgId) ?? 1;
+          const used = awayByOrgDate.get(`${interleagueOrgId}|${slot.date}`) ?? 0;
+          if (used >= cap) continue;
+        }
+
+        if (teamTimes.get(homeId)!.has(slot.isoString)) continue;
+        if (awayId && teamTimes.get(awayId)!.has(slot.isoString)) continue;
+
+        const hdk = `${homeId}|${slot.date}`;
+        const adk = awayId ? `${awayId}|${slot.date}` : null;
+        if ((teamDay.get(hdk) ?? 0) >= maxPerTeamDay) continue;
+        if (adk && (teamDay.get(adk) ?? 0) >= maxPerTeamDay) continue;
+
+        const hwk = `${homeId}|${slot.weekKey}`;
+        const awk = awayId ? `${awayId}|${slot.weekKey}` : null;
+        if ((teamWeek.get(hwk) ?? 0) >= maxGamesPerWeek) continue;
+        if (awk && (teamWeek.get(awk) ?? 0) >= maxGamesPerWeek) continue;
+
+        if (blocked.get(homeId)?.has(slot.isoString)) continue;
+        if (awayId && blocked.get(awayId)?.has(slot.isoString)) continue;
+
+        // Team game constraints (0076), hard blocks. Kept LAST among the
+        // hard filters: rejecting here means the slot passed every other
+        // hard filter, which is what makes the constraint-blocked
+        // attribution on unscheduled matchups honest. awayId is null for
+        // interleague matchups — the external org has no constraint rows
+        // by definition, so only the home (local) team is checked there.
+        if (violatesHardConstraint(constraintRules, homeId, slot.isoString)) {
+          constraintRejected = true;
+          continue;
+        }
+        if (awayId && violatesHardConstraint(constraintRules, awayId, slot.isoString)) {
+          constraintRejected = true;
+          continue;
+        }
+
+        // Pass-1-only soft filter — prefer NEVER blocks (pass 2 ignores it).
+        if (skipPreferred) {
+          if (prefersToAvoid(constraintRules, homeId, slot.isoString)) continue;
+          if (awayId && prefersToAvoid(constraintRules, awayId, slot.isoString)) continue;
+        }
+
+        if (!isAway) {
+          if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
+          venueBookings.get(vKey)!.push(slotMins);
+        } else if (interleagueOrgId) {
+          const key = `${interleagueOrgId}|${slot.date}`;
+          awayByOrgDate.set(key, (awayByOrgDate.get(key) ?? 0) + 1);
+        }
+        teamTimes.get(homeId)!.add(slot.isoString);
+        if (awayId) teamTimes.get(awayId)!.add(slot.isoString);
+        teamDay.set(hdk, (teamDay.get(hdk) ?? 0) + 1);
+        if (adk) teamDay.set(adk, (teamDay.get(adk) ?? 0) + 1);
+        teamWeek.set(hwk, (teamWeek.get(hwk) ?? 0) + 1);
+        if (awk) teamWeek.set(awk, (teamWeek.get(awk) ?? 0) + 1);
+
+        scheduled.push({
+          league_id: leagueId,
+          home_team_identifier: homeId,
+          away_team_identifier: awayId,
+          interleague_org_id: interleagueOrgId,
+          venue_id: isAway ? null : slot.venueId,
+          scheduled_at: slot.isoString,
+          status,
+          is_away: isAway,
+        });
+
+        // A pass-2 placement inside someone's prefer window is a "miss" —
+        // reported as information, never as failure.
+        if (
+          !skipPreferred &&
+          (prefersToAvoid(constraintRules, homeId, slot.isoString) ||
+            (awayId !== null && prefersToAvoid(constraintRules, awayId, slot.isoString)))
+        ) {
+          preferMissCount++;
+        }
+
+        assigned = true;
+        break;
       }
-
-      if (teamTimes.get(homeId)!.has(slot.isoString)) continue;
-      if (awayId && teamTimes.get(awayId)!.has(slot.isoString)) continue;
-
-      const hdk = `${homeId}|${slot.date}`;
-      const adk = awayId ? `${awayId}|${slot.date}` : null;
-      if ((teamDay.get(hdk) ?? 0) >= maxPerTeamDay) continue;
-      if (adk && (teamDay.get(adk) ?? 0) >= maxPerTeamDay) continue;
-
-      const hwk = `${homeId}|${slot.weekKey}`;
-      const awk = awayId ? `${awayId}|${slot.weekKey}` : null;
-      if ((teamWeek.get(hwk) ?? 0) >= maxGamesPerWeek) continue;
-      if (awk && (teamWeek.get(awk) ?? 0) >= maxGamesPerWeek) continue;
-
-      if (blocked.get(homeId)?.has(slot.isoString)) continue;
-      if (awayId && blocked.get(awayId)?.has(slot.isoString)) continue;
-
-      // Team game constraints (0076), hard blocks only. Kept LAST in the
-      // filter chain: rejecting here means the slot passed every other
-      // filter, which is what makes the constraint-blocked attribution on
-      // unscheduled matchups honest. awayId is null for interleague
-      // matchups — the external org has no constraint rows by definition,
-      // so only the home (local) team is checked there.
-      if (violatesHardConstraint(constraintRules, homeId, slot.isoString)) {
-        constraintRejected = true;
-        continue;
-      }
-      if (awayId && violatesHardConstraint(constraintRules, awayId, slot.isoString)) {
-        constraintRejected = true;
-        continue;
-      }
-
-      if (!isAway) {
-        if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
-        venueBookings.get(vKey)!.push(slotMins);
-      } else if (interleagueOrgId) {
-        const key = `${interleagueOrgId}|${slot.date}`;
-        awayByOrgDate.set(key, (awayByOrgDate.get(key) ?? 0) + 1);
-      }
-      teamTimes.get(homeId)!.add(slot.isoString);
-      if (awayId) teamTimes.get(awayId)!.add(slot.isoString);
-      teamDay.set(hdk, (teamDay.get(hdk) ?? 0) + 1);
-      if (adk) teamDay.set(adk, (teamDay.get(adk) ?? 0) + 1);
-      teamWeek.set(hwk, (teamWeek.get(hwk) ?? 0) + 1);
-      if (awk) teamWeek.set(awk, (teamWeek.get(awk) ?? 0) + 1);
-
-      scheduled.push({
-        league_id: leagueId,
-        home_team_identifier: homeId,
-        away_team_identifier: awayId,
-        interleague_org_id: interleagueOrgId,
-        venue_id: isAway ? null : slot.venueId,
-        scheduled_at: slot.isoString,
-        status,
-        is_away: isAway,
-      });
-
-      assigned = true;
-      break;
     }
 
     if (!assigned) {
@@ -649,7 +683,12 @@ export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
     }
   }
 
-  return { games: scheduled, unscheduledCount: unscheduled.length, constraintBlockedCount };
+  return {
+    games: scheduled,
+    unscheduledCount: unscheduled.length,
+    constraintBlockedCount,
+    preferMissCount,
+  };
 }
 
 // ─── Main export ───────────────────────────────────────────────────────────────
@@ -1118,6 +1157,7 @@ export async function generateSchedule(
     gamesCreated: scheduled.length,
     unscheduledCount: plan.unscheduledCount,
     constraintBlockedCount: plan.constraintBlockedCount,
+    preferMissCount: plan.preferMissCount,
     conflicts,
   };
 }
@@ -1691,7 +1731,7 @@ export async function finishSchedule(
 
   // If nothing is missing, return early
   if (!intraDeficitExists && !interleagueDeficitExists) {
-    return { success: true, gamesCreated: 0, unscheduledCount: 0, constraintBlockedCount: 0, conflicts: [] };
+    return { success: true, gamesCreated: 0, unscheduledCount: 0, constraintBlockedCount: 0, preferMissCount: 0, conflicts: [] };
   }
 
   // Build intra-division matchups by cycling round-robin rounds:
@@ -1861,6 +1901,7 @@ export async function finishSchedule(
   const scheduled: GameInsert[] = [];
   const unscheduled: Matchup[] = [];
   let constraintBlockedFinish = 0;
+  let preferMissFinish = 0;
 
   // Deduped (date, time) pool for away matchups — they don't claim a venue.
   const dateTimeOnlySlotsFinish: Slot[] = [];
@@ -1882,72 +1923,94 @@ export async function finishSchedule(
 
     const pool = isAway ? dateTimeOnlySlotsFinish : slots;
 
-    for (const slot of pool) {
-      const vKey = `${slot.venueId}:${slot.date}`;
-      const slotMins = timeToMinutes(slot.isoString.substring(11, 16));
-      if (!isAway) {
-        const bookedMins = venueBookings.get(vKey) ?? [];
-        if (bookedMins.some((t) => Math.abs(t - slotMins) < minVenueGap)) continue;
-      } else if (interleagueOrgId) {
-        const cap = orgFieldCountFinish.get(interleagueOrgId) ?? 1;
-        const used = awayByOrgDateFinish.get(`${interleagueOrgId}|${slot.date}`) ?? 0;
-        if (used >= cap) continue;
+    // Two-pass walk — same design, same pass semantics as planSchedule
+    // (pass 1 skips prefer-avoid slots, pass 2 hard-filters only). This
+    // loop is a deliberate inline copy of the planner (see the task
+    // history); any change here must be mirrored there and vice versa.
+    for (let pass = 0; pass < 2 && !assigned; pass++) {
+      const skipPreferred = pass === 0;
+
+      for (const slot of pool) {
+        const vKey = `${slot.venueId}:${slot.date}`;
+        const slotMins = timeToMinutes(slot.isoString.substring(11, 16));
+        if (!isAway) {
+          const bookedMins = venueBookings.get(vKey) ?? [];
+          if (bookedMins.some((t) => Math.abs(t - slotMins) < minVenueGap)) continue;
+        } else if (interleagueOrgId) {
+          const cap = orgFieldCountFinish.get(interleagueOrgId) ?? 1;
+          const used = awayByOrgDateFinish.get(`${interleagueOrgId}|${slot.date}`) ?? 0;
+          if (used >= cap) continue;
+        }
+        if (teamTimes.get(homeId)!.has(slot.isoString)) continue;
+        if (awayId && teamTimes.get(awayId)!.has(slot.isoString)) continue;
+
+        // max_games_per_team_per_day cap
+        const hdk = `${homeId}|${slot.date}`;
+        const adk = awayId ? `${awayId}|${slot.date}` : null;
+        if ((teamDay.get(hdk) ?? 0) >= maxPerTeamDay) continue;
+        if (adk && (teamDay.get(adk) ?? 0) >= maxPerTeamDay) continue;
+
+        const hwk = `${homeId}|${slot.weekKey}`;
+        const awk = awayId ? `${awayId}|${slot.weekKey}` : null;
+        if ((teamWeek.get(hwk) ?? 0) >= Number(settings.max_games_per_week)) continue;
+        if (awk && (teamWeek.get(awk) ?? 0) >= Number(settings.max_games_per_week)) continue;
+        if (blocked.get(homeId)!.has(slot.isoString)) continue;
+        if (awayId && blocked.get(awayId)!.has(slot.isoString)) continue;
+
+        // Team game constraints (0076) — same hard check, same
+        // last-among-hard-filters placement, and same interleague
+        // home-only shape as planSchedule.
+        if (violatesHardConstraint(constraintRules, homeId, slot.isoString)) {
+          constraintRejected = true;
+          continue;
+        }
+        if (awayId && violatesHardConstraint(constraintRules, awayId, slot.isoString)) {
+          constraintRejected = true;
+          continue;
+        }
+
+        // Pass-1-only soft filter — prefer NEVER blocks.
+        if (skipPreferred) {
+          if (prefersToAvoid(constraintRules, homeId, slot.isoString)) continue;
+          if (awayId && prefersToAvoid(constraintRules, awayId, slot.isoString)) continue;
+        }
+
+        if (!isAway) {
+          if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
+          venueBookings.get(vKey)!.push(slotMins);
+        } else if (interleagueOrgId) {
+          const key = `${interleagueOrgId}|${slot.date}`;
+          awayByOrgDateFinish.set(key, (awayByOrgDateFinish.get(key) ?? 0) + 1);
+        }
+        teamTimes.get(homeId)!.add(slot.isoString);
+        if (awayId) teamTimes.get(awayId)!.add(slot.isoString);
+        teamDay.set(hdk, (teamDay.get(hdk) ?? 0) + 1);
+        if (adk) teamDay.set(adk, (teamDay.get(adk) ?? 0) + 1);
+        teamWeek.set(hwk, (teamWeek.get(hwk) ?? 0) + 1);
+        if (awk) teamWeek.set(awk, (teamWeek.get(awk) ?? 0) + 1);
+
+        scheduled.push({
+          league_id: div.league_id,
+          home_team_id: homeId,
+          away_team_id: awayId,
+          interleague_org_id: interleagueOrgId,
+          venue_id: isAway ? null : slot.venueId,
+          scheduled_at: slot.isoString,
+          status,
+          is_away: isAway,
+        });
+
+        if (
+          !skipPreferred &&
+          (prefersToAvoid(constraintRules, homeId, slot.isoString) ||
+            (awayId !== null && prefersToAvoid(constraintRules, awayId, slot.isoString)))
+        ) {
+          preferMissFinish++;
+        }
+
+        assigned = true;
+        break;
       }
-      if (teamTimes.get(homeId)!.has(slot.isoString)) continue;
-      if (awayId && teamTimes.get(awayId)!.has(slot.isoString)) continue;
-
-      // max_games_per_team_per_day cap
-      const hdk = `${homeId}|${slot.date}`;
-      const adk = awayId ? `${awayId}|${slot.date}` : null;
-      if ((teamDay.get(hdk) ?? 0) >= maxPerTeamDay) continue;
-      if (adk && (teamDay.get(adk) ?? 0) >= maxPerTeamDay) continue;
-
-      const hwk = `${homeId}|${slot.weekKey}`;
-      const awk = awayId ? `${awayId}|${slot.weekKey}` : null;
-      if ((teamWeek.get(hwk) ?? 0) >= Number(settings.max_games_per_week)) continue;
-      if (awk && (teamWeek.get(awk) ?? 0) >= Number(settings.max_games_per_week)) continue;
-      if (blocked.get(homeId)!.has(slot.isoString)) continue;
-      if (awayId && blocked.get(awayId)!.has(slot.isoString)) continue;
-
-      // Team game constraints (0076) — same check, same LAST-in-chain
-      // placement, and same interleague home-only shape as planSchedule.
-      // This loop is a deliberate inline copy of the planner (see the task
-      // history); any change here must be mirrored there and vice versa.
-      if (violatesHardConstraint(constraintRules, homeId, slot.isoString)) {
-        constraintRejected = true;
-        continue;
-      }
-      if (awayId && violatesHardConstraint(constraintRules, awayId, slot.isoString)) {
-        constraintRejected = true;
-        continue;
-      }
-
-      if (!isAway) {
-        if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
-        venueBookings.get(vKey)!.push(slotMins);
-      } else if (interleagueOrgId) {
-        const key = `${interleagueOrgId}|${slot.date}`;
-        awayByOrgDateFinish.set(key, (awayByOrgDateFinish.get(key) ?? 0) + 1);
-      }
-      teamTimes.get(homeId)!.add(slot.isoString);
-      if (awayId) teamTimes.get(awayId)!.add(slot.isoString);
-      teamDay.set(hdk, (teamDay.get(hdk) ?? 0) + 1);
-      if (adk) teamDay.set(adk, (teamDay.get(adk) ?? 0) + 1);
-      teamWeek.set(hwk, (teamWeek.get(hwk) ?? 0) + 1);
-      if (awk) teamWeek.set(awk, (teamWeek.get(awk) ?? 0) + 1);
-
-      scheduled.push({
-        league_id: div.league_id,
-        home_team_id: homeId,
-        away_team_id: awayId,
-        interleague_org_id: interleagueOrgId,
-        venue_id: isAway ? null : slot.venueId,
-        scheduled_at: slot.isoString,
-        status,
-        is_away: isAway,
-      });
-      assigned = true;
-      break;
     }
 
     if (!assigned) {
@@ -2010,6 +2073,7 @@ export async function finishSchedule(
     gamesCreated: scheduled.length,
     unscheduledCount: unscheduled.length,
     constraintBlockedCount: constraintBlockedFinish,
+    preferMissCount: preferMissFinish,
     conflicts,
   };
 }
