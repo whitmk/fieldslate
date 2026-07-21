@@ -45,7 +45,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0075.** The repo files are the record, not the
+  **Latest migration: 0076.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **`service_role` gets NO default grants on new tables in `public`.** This
@@ -354,6 +354,54 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
      while checking nothing.
   A first-run-green harness with no mutation pass and no coverage proof
   proves nothing about its own assertions.
+
+## Team game constraints
+
+- **`team_game_constraints` (0076) is the games-side sibling of
+  `team_availability_blocks` (0042)** — same 2-char day codes, same
+  time-window shape (`time` columns, both-null = whole day, half-open
+  `[start, end)` on the game's START time), and deliberately a SEPARATE
+  table: practices and games are decoupled surfaces, and a scope column on
+  the practices table would couple its auto-assign engine to game
+  semantics. Two severities: `block` (hard, enforced) and `prefer` (stored
+  since 0076 but NOT yet enforced — the preferences chunk comes later; do
+  not "finish" it casually, the generator loop needs a scoring pass first).
+- **Every constraint check goes through
+  `src/lib/schedule/team-constraints.ts`** (`constraintsFromRows` /
+  `findConstraintViolation` / `violatesHardConstraint`) — same
+  shared-pure-function rule as the umpires conflict helpers; never write a
+  parallel matcher. Client-timezone-only, same stance as `eligibility.ts`:
+  any server-side reuse must add an explicit timezone parameter first.
+- **The generator enforces `block` rules in BOTH loop copies** —
+  `planSchedule` AND `finishSchedule`'s deliberate inline copy. The check
+  sits LAST in the filter chain (that's what makes the constraint-blocked
+  attribution honest — a rejection there means the slot passed everything
+  else) and the constraints read fails CLOSED before any delete/insert.
+  Constraint-caused unscheduled matchups are reported distinctly
+  (`constraintBlockedCount`, a subset of `unscheduledCount`) in results and
+  every surface that shows them, including both total-failure error
+  messages. `planScheduleForNewDivision` is exempt BY DESIGN: it plans
+  before teams exist in the DB, so no constraint rows can exist for them.
+- **Interleague scope is home-team-only** (interleague matchups have
+  `awayId: null` — the external org has no constraint rows by definition).
+  The interleague reschedule server routes (resolve / respond / the
+  token RPC) do NOT run constraint checks — deliberately out of scope;
+  constraint checks do not cover the interleague reschedule routes; revisit
+  if a real partner league reports a constraint violation via reschedule.
+- **Tier-blind data layer, Elite-gated UI.** The constraint-entry UI (not
+  yet built) will be Elite-gated like the officials pages; the generator
+  honors whatever rows exist regardless of plan, so constraints stay live
+  after a downgrade — deliberate, same pattern as officials data. RLS is
+  the 0049 `is_org_member` form; grant to `authenticated` only, NO
+  service_role grant (client-side consumers only).
+- **Harness:** `npm run sim:game-constraints`
+  (`scripts/sim/team-game-constraints-sim.ts`, TZ=UTC mandatory — same
+  three-part standard as the officials sim). Re-run after ANY change to
+  generate-schedule.ts or team-constraints.ts. If the engine grows a new
+  query shape the fake client throws — extend the fake, don't stub the
+  query. Mutation procedure: disable the constraint check in each loop copy
+  one at a time; the harness must fail both times (its per-path deflection
+  counters guarantee both copies stay exercised).
 
 ## Native date/time inputs
 
