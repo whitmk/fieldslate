@@ -370,12 +370,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   table: practices and games are decoupled surfaces, and a scope column on
   the practices table would couple its auto-assign engine to game
   semantics. Two severities: `block` (hard, enforced everywhere) and
-  `prefer` (ENTRY exists since chunk 2a and manual paths show it as a
-  non-blocking heads-up notice, but the GENERATOR does not enforce it yet —
-  the preferences chunk comes later; do not "finish" it casually, the
-  generator loop needs a scoring pass first). Windows are half-open
-  `[start, end)` on the game's START time — all user-facing copy says
-  "start times" on purpose.
+  `prefer` (soft, ENFORCED as of chunk 2b — the generator's two-pass walk
+  below — plus non-blocking heads-up notices on the manual paths).
+  **`prefer` = prefer to AVOID the window, decided 2026-07-21 — do not
+  reinterpret as positive "prefers to play here" windows.** Windows are
+  half-open `[start, end)` on the game's START time — all user-facing copy
+  says "start times" on purpose.
 - **Every constraint check goes through
   `src/lib/schedule/team-constraints.ts`** (`constraintsFromRows` /
   `findConstraintViolation` / `violatesHardConstraint`) — same
@@ -392,7 +392,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   every surface that shows them, including both total-failure error
   messages. `planScheduleForNewDivision` is exempt BY DESIGN: it plans
   before teams exist in the DB, so no constraint rows can exist for them.
-- **Manual-path coverage map (chunk 2a):** Add Game modal and the conflict
+- **Preferences are a TWO-PASS walk (chunk 2b), in BOTH loop copies.** For
+  each matchup, pass 1 applies every hard filter plus skips slots either
+  local team prefers to avoid; pass 2 runs only when pass 1 assigned
+  nothing and ignores preferences entirely (hard filters only) — so a
+  prefer rule can NEVER starve a matchup or block anything. Rejected walks
+  are read-only; only the assigning iteration mutates the booking maps.
+  `preferMissCount` (pass-2 placements inside a prefer window) rides
+  `PlanScheduleResult`/`ScheduleResult` and surfaces as NEUTRAL notes —
+  never warnings — on the schedule panel, the wizard result screen, and
+  the setup step. Don't collapse the two passes into a scoring pass
+  without re-running the full mutation suite (4 mutants: each copy's
+  hard-block check and pass-1 skip). Add Game modal and the conflict
   resolver's manual move run `block` hits through the existing
   warn-with-override flow, recorded in `conflict_overrides` as type
   `team_constraint` (CHECK extended in 0077); the rainout reschedule modal

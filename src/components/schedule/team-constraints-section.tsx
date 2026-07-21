@@ -122,9 +122,9 @@ export function TeamConstraintsSection({
         11:00&nbsp;AM on. <span className="font-semibold">Block</span>: the
         schedule generator will never place a game here, and manual moves warn
         before overriding. <span className="font-semibold">Prefer</span>: the
-        generator will try to honor this (takes effect in an upcoming update —
-        entered preferences are saved now and shown as heads-up notices on
-        manual scheduling).
+        generator will try to honor this — best-effort, so a tight schedule
+        may still use these times, and manual scheduling shows a heads-up
+        notice.
       </p>
 
       {loadError && (
