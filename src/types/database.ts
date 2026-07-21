@@ -1096,6 +1096,50 @@ export type Database = {
           },
         ]
       }
+      team_game_constraints: {
+        Row: {
+          id: string
+          team_id: string
+          day_of_week: string
+          start_time: string | null
+          end_time: string | null
+          severity: string
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          team_id: string
+          day_of_week: string
+          start_time?: string | null
+          end_time?: string | null
+          severity: string
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          team_id?: string
+          day_of_week?: string
+          start_time?: string | null
+          end_time?: string | null
+          severity?: string
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_game_constraints_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       snack_shack_settings: {
         Row: {
           created_at: string
@@ -1733,6 +1777,7 @@ export type OfficialCertification = Database["public"]["Tables"]["official_certi
 export type SnackShackSettings = Database["public"]["Tables"]["snack_shack_settings"]["Row"];
 export type SnackShackBlock    = Database["public"]["Tables"]["snack_shack_blocks"]["Row"];
 export type PracticeSlot   = Database["public"]["Tables"]["practice_slots"]["Row"];
+export type TeamGameConstraint = Database["public"]["Tables"]["team_game_constraints"]["Row"];
 export type InterleagueOrg = Database["public"]["Tables"]["interleague_orgs"]["Row"];
 export type DivisionInterleagueGame = Database["public"]["Tables"]["division_interleague_games"]["Row"];
 export type InterleagueInvite = Database["public"]["Tables"]["interleague_invites"]["Row"];
