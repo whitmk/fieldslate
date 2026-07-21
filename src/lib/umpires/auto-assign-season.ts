@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/client";
 import {
   autoAssignUmpires,
   type AutoAssignClient,
-  type AutoAssignOptions,
   type SkipReason,
 } from "./auto-assign";
 
@@ -14,8 +13,7 @@ import {
  * start of every run, so each division automatically sees the assignments the
  * earlier divisions just made — no state is threaded between runs.
  *
- * This function only sequences and aggregates (options — the fallback-tier
- * opt-in — pass through to every division's engine run unchanged):
+ * This function only sequences and aggregates:
  * - Divisions with umpires_per_game = 0 are skipped (reported, not errored).
  * - A division that errors is recorded and the sequence CONTINUES — one bad
  *   division never silently swallows the rest of the season.
@@ -29,7 +27,6 @@ export type SeasonDivisionResult = {
   priority: number;
   status: "assigned" | "no_slots_required" | "error";
   filled: number;
-  fallbackFilled: number;
   skipped: number;
   skipReasons: SkipReason[];
   outsideAvailabilityNames: string[];
@@ -43,7 +40,6 @@ export type SeasonAutoAssignResult = {
   success: boolean;
   divisions: SeasonDivisionResult[];
   totalFilled: number;
-  totalFallbackFilled: number;
   totalSkipped: number;
   error?: string;
 };
@@ -51,7 +47,6 @@ export type SeasonAutoAssignResult = {
 export async function autoAssignSeason(
   seasonId: string,
   client?: AutoAssignClient,
-  options: AutoAssignOptions = {},
 ): Promise<SeasonAutoAssignResult> {
   const supabase = client ?? createClient();
 
@@ -66,7 +61,6 @@ export async function autoAssignSeason(
       success: false,
       divisions: [],
       totalFilled: 0,
-      totalFallbackFilled: 0,
       totalSkipped: 0,
       error: divisionsErr.message,
     };
@@ -97,7 +91,6 @@ export async function autoAssignSeason(
         ...base,
         status: "no_slots_required",
         filled: 0,
-        fallbackFilled: 0,
         skipped: 0,
         skipReasons: [],
         outsideAvailabilityNames: [],
@@ -107,13 +100,12 @@ export async function autoAssignSeason(
     }
 
     try {
-      const res = await autoAssignUmpires(d.id, seasonId, supabase, options);
+      const res = await autoAssignUmpires(d.id, seasonId, supabase);
       if (!res.success) {
         results.push({
           ...base,
           status: "error",
           filled: res.filled,
-          fallbackFilled: res.fallbackFilled,
           skipped: res.skipped,
           skipReasons: res.skipReasons,
           outsideAvailabilityNames: res.outsideAvailabilityNames,
@@ -126,7 +118,6 @@ export async function autoAssignSeason(
         ...base,
         status: "assigned",
         filled: res.filled,
-        fallbackFilled: res.fallbackFilled,
         skipped: res.skipped,
         skipReasons: res.skipReasons,
         outsideAvailabilityNames: res.outsideAvailabilityNames,
@@ -137,7 +128,6 @@ export async function autoAssignSeason(
         ...base,
         status: "error",
         filled: 0,
-        fallbackFilled: 0,
         skipped: 0,
         skipReasons: [],
         outsideAvailabilityNames: [],
@@ -151,7 +141,6 @@ export async function autoAssignSeason(
     success: true,
     divisions: results,
     totalFilled: results.reduce((n, r) => n + r.filled, 0),
-    totalFallbackFilled: results.reduce((n, r) => n + r.fallbackFilled, 0),
     totalSkipped: results.reduce((n, r) => n + r.skipped, 0),
   };
 }

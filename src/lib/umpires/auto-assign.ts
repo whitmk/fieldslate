@@ -14,14 +14,15 @@ import { ensureSeasonRoleIds } from "./roles";
 import { padRoleLabels } from "@/lib/utils/official-title";
 
 /**
- * Why a slot couldn't be filled. The hard constraints — double-booked,
- * blacked out, coaching a team in the game, or a listed conflict of interest
- * (official_conflicts, 0073) — can always empty a slot. By default,
- * availability windows and weekly caps block a slot too (an assignment
- * outside an official's stated availability is a commitment they never
- * made), so "outside_availability" and "over_weekly_limit" are reported
- * whenever they were what kept a slot empty. Only an explicit
- * allowOutsideAvailability opt-in relaxes those two — and nothing else.
+ * Why a slot couldn't be filled. Double-booked, blacked out, coaching a
+ * team in the game, or a listed conflict of interest (official_conflicts,
+ * 0073) are hard constraints; availability windows and weekly caps block a
+ * slot just as absolutely — an assignment outside an official's stated
+ * availability is a commitment they never made, and the engine NEVER makes
+ * one (there is no opt-out; removed 2026-07-21). Slots blocked only by
+ * "outside_availability" / "over_weekly_limit" stay open and are reported
+ * with the officials' names so the admin can ask them first, then assign
+ * manually from the game.
  */
 export type SkipReason =
   | "conflict"
@@ -39,24 +40,9 @@ export type SkipReason =
  */
 export type AutoAssignClient = ReturnType<typeof createClient>;
 
-export type AutoAssignOptions = {
-  /**
-   * Explicit opt-in for the fallback tier: when true, a slot the strict tier
-   * can't fill may be filled ignoring availability windows and weekly caps.
-   * Defaults to false — by default those slots stay open and are reported so
-   * the admin can ask the official before committing them. Blackouts, coach
-   * conflicts, conflicts of interest, and double-booking are hard at every
-   * tier regardless of this flag.
-   */
-  allowOutsideAvailability?: boolean;
-};
-
 export type AutoAssignResult = {
   success: boolean;
   filled: number;
-  /** Subset of filled that ignored availability/weekly caps — always 0
-   *  unless the caller passed allowOutsideAvailability: true. */
-  fallbackFilled: number;
   skipped: number; // slots that couldn't be filled
   skipReasons: SkipReason[]; // distinct reasons encountered across skipped slots
   /** Distinct officials who, on at least one skipped slot, were blocked ONLY
@@ -118,20 +104,15 @@ function gameDuration(settings: unknown): number {
  * umpires_per_game), padded with sport-aware fallbacks — the same derivation
  * the slot UIs use.
  *
- * Best-effort selection per empty slot (least-loaded first):
- *   Strict tier (the default, and the ONLY tier unless the caller opts in):
- *           not on this game, no time overlap, no blackout, not coaching a
- *           team in the game, inside an availability window (no windows =
- *           always available), and under max_games_per_week for the game's
- *           Mon–Sun week. A slot nobody qualifies for stays OPEN — an
- *           assignment outside stated availability is a commitment the
- *           official never made, so the admin asks them first and assigns
- *           manually (the picker's "outside listed availability" state).
- *   Fallback tier (options.allowOutsideAvailability only): availability
- *           windows and weekly caps go soft. Blackouts, coach conflicts,
- *           conflicts of interest, double-booking, and time overlap stay
- *           HARD: an official who marked a date unavailable or coaches a
- *           team in the game is never assigned, opt-in or not.
+ * Best-effort selection per empty slot (least-loaded first): not on this
+ * game, no time overlap, no blackout, not coaching a team in the game, no
+ * conflict of interest, inside an availability window (no windows = always
+ * available), and under max_games_per_week for the game's Mon–Sun week.
+ * A slot nobody qualifies for stays OPEN — there is no relaxation tier and
+ * no opt-out (removed 2026-07-21): an assignment outside stated
+ * availability or over a weekly cap is a commitment the official never
+ * made, so the admin asks them first and assigns manually (the picker's
+ * "outside listed availability" state).
  * Slots that can't be filled are counted as skipped (not an error), with
  * the distinct blocking reasons — and the names of officials excluded only
  * by availability/caps — reported back for the UI.
@@ -143,14 +124,11 @@ export async function autoAssignUmpires(
   divisionId: string,
   seasonId: string,
   client?: AutoAssignClient,
-  options: AutoAssignOptions = {},
 ): Promise<AutoAssignResult> {
   const supabase = client ?? createClient();
-  const allowOutsideAvailability = options.allowOutsideAvailability === true;
   const none = (error?: string): AutoAssignResult => ({
     success: !error,
     filled: 0,
-    fallbackFilled: 0,
     skipped: 0,
     skipReasons: [],
     outsideAvailabilityNames: [],
@@ -377,7 +355,6 @@ export async function autoAssignUmpires(
     role_id: string | null;
   }[] = [];
   let skipped = 0;
-  let fallbackFilled = 0;
   const allSkipReasons = new Set<SkipReason>();
   const outsideAvailabilityNames = new Set<string>();
   const overWeeklyLimitNames = new Set<string>();
@@ -410,12 +387,12 @@ export async function autoAssignUmpires(
       const slotOutsideNames = new Set<string>();
       const slotOverCapNames = new Set<string>();
 
-      // Least-loaded umpire who passes the hard constraints (always) and the
-      // soft ones (strict tier only). Blockers are recorded as they're hit —
-      // if the slot ends up empty, they're the reasons why. Hard checks run
-      // before the soft ones so an official recorded as soft-blocked (the
-      // "ask them first" list) genuinely had nothing else in the way.
-      const pick = (strict: boolean): UmpireRow | null => {
+      // Least-loaded umpire who passes every constraint. Blockers are
+      // recorded as they're hit — if the slot ends up empty, they're the
+      // reasons why. Hard checks run before the availability/cap ones so an
+      // official recorded as soft-blocked (the "ask them first" list)
+      // genuinely had nothing else in the way.
+      const pick = (): UmpireRow | null => {
         for (const candidate of sorted) {
           if (occupiedUmpires.has(candidate.id)) {
             slotReasons.add("conflict");
@@ -452,42 +429,33 @@ export async function autoAssignUmpires(
             slotReasons.add("conflict");
             continue;
           }
-          if (strict) {
-            if (
-              !isWithinAvailability(
-                availabilityByUmpire.get(candidate.id) ?? [],
-                gameStart,
-                divisionDuration,
-              )
-            ) {
-              slotReasons.add("outside_availability");
-              slotOutsideNames.add(candidate.name);
-              continue;
-            }
-            const cap = candidate.max_games_per_week;
-            if (
-              cap != null &&
-              cap > 0 &&
-              (weeklyLoad.get(candidate.id)?.get(gameWeek) ?? 0) >= cap
-            ) {
-              slotReasons.add("over_weekly_limit");
-              slotOverCapNames.add(candidate.name);
-              continue;
-            }
+          if (
+            !isWithinAvailability(
+              availabilityByUmpire.get(candidate.id) ?? [],
+              gameStart,
+              divisionDuration,
+            )
+          ) {
+            slotReasons.add("outside_availability");
+            slotOutsideNames.add(candidate.name);
+            continue;
+          }
+          const cap = candidate.max_games_per_week;
+          if (
+            cap != null &&
+            cap > 0 &&
+            (weeklyLoad.get(candidate.id)?.get(gameWeek) ?? 0) >= cap
+          ) {
+            slotReasons.add("over_weekly_limit");
+            slotOverCapNames.add(candidate.name);
+            continue;
           }
           return candidate;
         }
         return null;
       };
 
-      let chosen = pick(true);
-      // The fallback tier runs ONLY behind the explicit opt-in — by default
-      // a slot nobody strictly qualifies for stays open for the admin to
-      // resolve by asking the official first.
-      if (!chosen && allowOutsideAvailability) {
-        chosen = pick(false);
-        if (chosen) fallbackFilled++;
-      }
+      const chosen = pick();
 
       if (!chosen) {
         skipped++;
@@ -521,7 +489,6 @@ export async function autoAssignUmpires(
       return {
         success: false,
         filled: 0,
-        fallbackFilled: 0,
         skipped,
         skipReasons: Array.from(allSkipReasons),
         outsideAvailabilityNames: Array.from(outsideAvailabilityNames),
@@ -534,7 +501,6 @@ export async function autoAssignUmpires(
   return {
     success: true,
     filled: inserts.length,
-    fallbackFilled,
     skipped,
     skipReasons: Array.from(allSkipReasons),
     outsideAvailabilityNames: Array.from(outsideAvailabilityNames),

@@ -89,7 +89,6 @@ interface Props {
 
 type RunResult = {
   filled: number;
-  fallbackFilled: number;
   skipped: number;
   skipReasons: SkipReason[];
   outsideAvailabilityNames: string[];
@@ -142,7 +141,6 @@ export function AutoAssignUmpiresButton({
       kind: "ok",
       run: {
         filled: res.filled,
-        fallbackFilled: res.fallbackFilled,
         skipped: res.skipped,
         skipReasons: res.skipReasons,
         outsideAvailabilityNames: res.outsideAvailabilityNames,
@@ -254,7 +252,7 @@ export function AutoAssignUmpiresButton({
 
 function DivisionRunSummary({ run }: { run: RunResult }) {
   const totalSlots = run.filled + run.skipped;
-  const clean = run.skipped === 0 && run.fallbackFilled === 0;
+  const clean = run.skipped === 0;
   return (
     <>
       <p className="flex items-start gap-1.5 font-semibold text-[#0C1F3F]">
@@ -269,13 +267,6 @@ function DivisionRunSummary({ run }: { run: RunResult }) {
             : `${run.filled} of ${totalSlots} open slot${totalSlots !== 1 ? "s" : ""} filled.`}
         </span>
       </p>
-      {run.fallbackFilled > 0 && (
-        <p className="text-amber-700">
-          {run.fallbackFilled} assignment
-          {run.fallbackFilled !== 1 ? "s" : ""} filled outside availability or
-          weekly limits (you opted in) — confirm with those officials.
-        </p>
-      )}
       {run.skipped > 0 && (
         <p className="text-amber-700">
           {openSlotsSummary(

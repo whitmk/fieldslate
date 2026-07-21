@@ -15,14 +15,17 @@
  * date math (see src/lib/umpires/eligibility.ts) so day/week boundaries are
  * unambiguous in Node; the harness refuses to run in any other zone.
  *
- * Every shape runs TWICE on fresh fixtures: once with default options
- * (strict-only) and once with the explicit fallback opt-in
- * (allowOutsideAvailability: true).
+ * The engine is strict-only — the fallback opt-in was removed 2026-07-21,
+ * so there is exactly one mode and its guarantees are unconditional.
  *
- * Invariants asserted on every playthrough, both modes:
+ * Invariants asserted on every playthrough:
  *  - no official double-booked across ANY division in the run
  *  - no assignment on an official's blackout date
  *  - no coach or conflict-of-interest assignment, ever
+ *  - NO assignment outside an official's availability windows, under any
+ *    input — an official with zero windows is available anytime, but a
+ *    listed window is absolute
+ *  - weekly caps hold for every (official, week) that gained an assignment
  *  - highest-priority division fills exactly what it would running alone;
  *    lower-priority divisions never fill MORE than they would alone
  *  - a second identical run changes zero assignments and fills 0
@@ -32,16 +35,9 @@
  *  - umpires_per_game = 0 divisions are reported as such and gain no rows
  *  - an injected division error doesn't halt the rest of the sequence
  *
- * Default-mode only (the strict-by-default guarantee):
- *  - fallbackFilled is 0 everywhere — the fallback tier NEVER runs
- *  - every new assignment sits inside the official's availability windows
- *  - weekly caps hold for every (official, week) that gained an assignment
- *
- * Opt-in mode only:
- *  - relaxation is bounded: new rows outside availability ≤ fallbackFilled,
- *    and per-week cap overage ≤ fallbackFilled (only the two soft
- *    constraints relax — the hard invariants above still apply verbatim)
- *  - the opt-in run fills at least as many slots as the strict run
+ * Anti-vacuity: the run FAILS unless at least one playthrough left a slot
+ * open for availability/cap reasons — the never-outside-availability
+ * invariant must be exercised, not just never triggered.
  */
 
 process.env.TZ = "UTC";
@@ -75,7 +71,6 @@ if (new Date("2026-06-13T00:00:00Z").getTimezoneOffset() !== 0) {
 
 let assertions = 0;
 let playthroughs = 0;
-let optInFallbackFills = 0;
 let strictSoftSkipDivisions = 0;
 const failures: string[] = [];
 
@@ -555,7 +550,6 @@ function checkInvariants(
   result: SeasonAutoAssignResult,
   beforeIds: Set<string>,
   preAssignedIds: string[],
-  allowOutside: boolean,
 ): void {
   const db = fake.db;
   const gameById = new Map(db.games.map((g) => [g.id as string, g]));
@@ -663,12 +657,9 @@ function checkInvariants(
     }
   }
 
-  // Soft-constraint guarantees. Default mode: the fallback tier must NEVER
-  // run — zero fallback fills, zero new assignments outside availability,
-  // zero weekly-cap overage. Opt-in mode: relaxation is bounded by
-  // fallbackFilled, so the strict tier can't have leaked violations of its
-  // own — only slots it proved unfillable may relax, and only these two
-  // constraints (the hard invariants above already ran unconditionally).
+  // The strict guarantee, unconditional since the opt-in's removal
+  // (2026-07-21): zero new assignments outside availability windows and
+  // zero weekly-cap overage — under ANY input, on EVERY playthrough.
   {
     const availByUmp = new Map<string, AvailabilityWindow[]>();
     for (const a of db.official_availability) {
@@ -710,38 +701,19 @@ function checkInvariants(
         capOverage += Math.max(0, (weekCount.get(key) ?? 0) - allowed);
       }
     }
-    if (!allowOutside) {
-      assert(
-        result.totalFallbackFilled === 0,
-        ctx(`default run reported ${result.totalFallbackFilled} fallback fills`),
-      );
-      assert(
-        availViolations === 0,
-        ctx(
-          `default run made ${availViolations} assignments outside availability` +
-            (availViolatingRows[0]
-              ? ` (e.g. ${availViolatingRows[0].umpire_id} on ${availViolatingRows[0].game_id})`
-              : ""),
-        ),
-      );
-      assert(
-        capOverage === 0,
-        ctx(`default run exceeded weekly caps by ${capOverage} assignments`),
-      );
-    } else {
-      assert(
-        availViolations <= result.totalFallbackFilled,
-        ctx(
-          `opt-in run: ${availViolations} availability violations exceed ${result.totalFallbackFilled} fallback fills`,
-        ),
-      );
-      assert(
-        capOverage <= result.totalFallbackFilled,
-        ctx(
-          `opt-in run: weekly-cap overage ${capOverage} exceeds ${result.totalFallbackFilled} fallback fills`,
-        ),
-      );
-    }
+    assert(
+      availViolations === 0,
+      ctx(
+        `run made ${availViolations} assignments outside availability` +
+          (availViolatingRows[0]
+            ? ` (e.g. ${availViolatingRows[0].umpire_id} on ${availViolatingRows[0].game_id})`
+            : ""),
+      ),
+    );
+    assert(
+      capOverage === 0,
+      ctx(`run exceeded weekly caps by ${capOverage} assignments`),
+    );
   }
 
   // result bookkeeping: reported fills match rows actually written; every
@@ -816,18 +788,16 @@ function assignmentKeySet(db: Db): Set<string> {
 async function runSeasonPlaythrough(
   label: string,
   spec: SeasonSpec,
-  opts: { failDivIdxs?: number[]; allowOutside?: boolean } = {},
+  opts: { failDivIdxs?: number[] } = {},
 ): Promise<SeasonAutoAssignResult> {
-  const allowOutside = opts.allowOutside === true;
-  const engineOptions = { allowOutsideAvailability: allowOutside };
   const { fake, preAssignedIds } = buildDb(spec);
   for (const di of opts.failDivIdxs ?? []) fake.failDivisionIds.add(`div-${di}`);
   const beforeIds = new Set(fake.db.game_umpires.map((r) => r.id as string));
 
   playthroughs++;
-  const result = await autoAssignSeason(SEASON_ID, fake.asClient(), engineOptions);
+  const result = await autoAssignSeason(SEASON_ID, fake.asClient());
   assert(result.success, `[${label}] season run failed outright: ${result.error}`);
-  checkInvariants(label, spec, fake, result, beforeIds, preAssignedIds, allowOutside);
+  checkInvariants(label, spec, fake, result, beforeIds, preAssignedIds);
 
   // division order in results must be ascending priority (name tiebreak)
   const priorities = result.divisions.map((d) => d.priority);
@@ -877,7 +847,6 @@ async function runSeasonPlaythrough(
       `div-${di}`,
       SEASON_ID,
       aloneFake.asClient(),
-      engineOptions,
     );
     assert(alone.success, `[${label}] alone-run for div-${di} failed: ${alone.error}`);
     if (isFirstActive) {
@@ -897,7 +866,7 @@ async function runSeasonPlaythrough(
   const snapshot = assignmentKeySet(fake.db);
   const rowCount = fake.db.game_umpires.length;
   playthroughs++;
-  const second = await autoAssignSeason(SEASON_ID, fake.asClient(), engineOptions);
+  const second = await autoAssignSeason(SEASON_ID, fake.asClient());
   assert(second.success, `[${label}] second run failed: ${second.error}`);
   assert(
     second.totalFilled === 0,
@@ -917,29 +886,19 @@ async function runSeasonPlaythrough(
 }
 
 /**
- * Every shape runs in both modes on fresh fixtures: default (strict-only)
- * and explicit fallback opt-in. The opt-in run can only ADD fills on top of
- * what the strict tier managed — never fewer.
+ * One strict playthrough per shape — the engine's only mode since the
+ * opt-in's removal (2026-07-21).
  */
 async function runShape(
   label: string,
   spec: SeasonSpec,
   opts: { failDivIdxs?: number[] } = {},
 ): Promise<void> {
-  const strict = await runSeasonPlaythrough(`${label} strict`, spec, opts);
-  const relaxed = await runSeasonPlaythrough(`${label} opt-in`, spec, {
-    ...opts,
-    allowOutside: true,
-  });
-  assert(
-    relaxed.totalFilled >= strict.totalFilled,
-    `[${label}] opt-in filled ${relaxed.totalFilled}, fewer than strict ${strict.totalFilled}`,
-  );
-  // Coverage counters — asserted non-zero at the end of the run so the
-  // strict/opt-in invariants can never pass vacuously (i.e. because no shape
-  // ever put the soft constraints in play).
-  optInFallbackFills += relaxed.totalFallbackFilled;
-  strictSoftSkipDivisions += strict.divisions.filter(
+  const result = await runSeasonPlaythrough(label, spec, opts);
+  // Coverage counter — asserted non-zero at the end of the run so the
+  // never-outside-availability invariant can never pass vacuously (i.e.
+  // because no shape ever put the soft constraints in play).
+  strictSoftSkipDivisions += result.divisions.filter(
     (d) =>
       d.skipReasons.includes("outside_availability") ||
       d.skipReasons.includes("over_weekly_limit"),
@@ -962,7 +921,7 @@ const officials = (n: number, extra: Partial<OfficialSpec> = {}): OfficialSpec[]
   Array.from({ length: n }, (_, i) => ({ name: `Official ${i}`, ...extra }));
 
 async function fixedShapes(): Promise<void> {
-  // A. Two divisions, ample pool — everything fills, no fallback.
+  // A. Two divisions, ample pool — everything fills.
   await runShape("A ample 2-div", {
     name: "A",
     divisions: [
@@ -1122,20 +1081,15 @@ async function main(): Promise<void> {
   }
 
   assert(
-    optInFallbackFills > 0,
-    "no opt-in playthrough ever used the fallback tier — its invariants ran vacuously",
-  );
-  assert(
     strictSoftSkipDivisions > 0,
-    "no default playthrough ever left a slot open for soft reasons — strictness invariants ran vacuously",
+    "no playthrough ever left a slot open for soft reasons — strictness invariants ran vacuously",
   );
 
   console.log(
     `auto-assign-season sim: ${playthroughs} playthroughs, ${assertions} assertions, ${failures.length} failures`,
   );
   console.log(
-    `  coverage: ${optInFallbackFills} fallback fills across opt-in runs; ` +
-      `${strictSoftSkipDivisions} division results in default runs left slots open for availability/cap reasons`,
+    `  coverage: ${strictSoftSkipDivisions} division results left slots open for availability/cap reasons`,
   );
   if (failures.length > 0) {
     for (const f of failures.slice(0, 40)) console.error("FAIL:", f);

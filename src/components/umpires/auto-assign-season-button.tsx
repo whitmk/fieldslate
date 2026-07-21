@@ -181,17 +181,6 @@ function SeasonResults({
             ? "Nothing to assign — every slot is already filled."
             : `${result.totalFilled} of ${totalSlots} open slot${totalSlots !== 1 ? "s" : ""} filled.`}
         </p>
-        {result.totalFallbackFilled > 0 && (
-          <p className="flex items-start gap-1.5 text-amber-700">
-            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            <span>
-              {result.totalFallbackFilled} assignment
-              {result.totalFallbackFilled !== 1 ? "s" : ""} filled outside
-              availability or weekly limits (you opted in) — confirm with
-              those officials.
-            </span>
-          </p>
-        )}
         {result.totalSkipped > 0 && (
           <p className="flex items-start gap-1.5 text-amber-700">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
@@ -248,7 +237,7 @@ function DivisionResultRow({
     icon = <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" />;
     detail = <span className="text-red-600">{d.error}</span>;
   } else {
-    const clean = d.skipped === 0 && d.fallbackFilled === 0;
+    const clean = d.skipped === 0;
     icon = clean ? (
       <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#22C55E]" />
     ) : (
@@ -259,10 +248,6 @@ function DivisionResultRow({
         {d.filled === 0 && d.skipped === 0
           ? "all slots already filled"
           : `${d.filled} slot${d.filled !== 1 ? "s" : ""} filled${
-              d.fallbackFilled > 0
-                ? ` · ${d.fallbackFilled} outside availability or weekly limits (opted in)`
-                : ""
-            }${
               d.skipped > 0
                 ? ` · ${openSlotsSummary(
                     d.skipped,
