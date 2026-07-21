@@ -307,7 +307,11 @@ export function DivisionSchedulePanel({
       const constraintNote = res.constraintBlockedCount > 0
         ? ` — ${res.constraintBlockedCount} matchup${res.constraintBlockedCount === 1 ? "" : "s"} unscheduled (blocked by team constraints)`
         : "";
-      setResult({ type: "success", message: `${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled${constraintNote}` });
+      // Informational, not a warning — preferences are best-effort by design.
+      const preferNote = res.preferMissCount > 0
+        ? ` · ${res.preferMissCount} game${res.preferMissCount === 1 ? "" : "s"} placed outside team preferences`
+        : "";
+      setResult({ type: "success", message: `${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled${constraintNote}${preferNote}` });
       console.log("[logActivity] before call: schedule_generated (handleGenerate)");
       const _r1 = await logActivity(leagueId, divisionId, "schedule_generated",
         `${divisionName} schedule generated — ${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled`);
@@ -328,11 +332,14 @@ export function DivisionSchedulePanel({
       const constraintNote = res.constraintBlockedCount > 0
         ? ` — ${res.constraintBlockedCount} matchup${res.constraintBlockedCount === 1 ? "" : "s"} unscheduled (blocked by team constraints)`
         : "";
+      const preferNote = res.preferMissCount > 0
+        ? ` · ${res.preferMissCount} game${res.preferMissCount === 1 ? "" : "s"} placed outside team preferences`
+        : "";
       setResult({
         type: "success",
         message: res.gamesCreated === 0
           ? "Schedule is already complete"
-          : `${res.gamesCreated} missing game${res.gamesCreated === 1 ? "" : "s"} added${constraintNote}`,
+          : `${res.gamesCreated} missing game${res.gamesCreated === 1 ? "" : "s"} added${constraintNote}${preferNote}`,
       });
       if (res.gamesCreated > 0) {
         console.log("[logActivity] before call: schedule_generated (handleFinish)");

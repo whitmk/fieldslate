@@ -42,6 +42,8 @@ type RunStatus =
       unscheduledCount: number;
       // Subset of unscheduledCount blocked by team_game_constraints (0076).
       constraintBlockedCount: number;
+      // Games placed outside team preferences (pass 2). Informational only.
+      preferMissCount: number;
       conflictGameCount: number;
     }
   | { state: "failed"; error: string }
@@ -181,6 +183,7 @@ export function SetupGenerateStep({
           gamesCreated: res.gamesCreated,
           unscheduledCount: res.unscheduledCount,
           constraintBlockedCount: res.constraintBlockedCount,
+          preferMissCount: res.preferMissCount,
           conflictGameCount: res.conflicts.reduce(
             (n, c) => n + c.games.length,
             0,
@@ -246,6 +249,16 @@ export function SetupGenerateStep({
       }
       return lines;
     });
+    // Neutral notes, deliberately separate from the amber warnings —
+    // preferences are best-effort by design and this must not read as a
+    // failure.
+    const sessionNotes = divisions.flatMap((d) => {
+      const status = runStatuses[d.id];
+      if (status?.state !== "done" || status.preferMissCount === 0) return [];
+      return [
+        `${status.preferMissCount} game${status.preferMissCount !== 1 ? "s" : ""} in ${d.name} placed outside team preferences`,
+      ];
+    });
     const sessionClean =
       sessionRan &&
       sessionWarnings.length === 0 &&
@@ -288,6 +301,19 @@ export function SetupGenerateStep({
                   review them on your schedule page
                 </Link>
                 .
+              </p>
+            ))}
+          </div>
+        )}
+
+        {sessionNotes.length > 0 && (
+          <div className="flex w-full max-w-md flex-col gap-2">
+            {sessionNotes.map((n, i) => (
+              <p
+                key={i}
+                className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs text-gray-500"
+              >
+                {n} — preferences are best-effort; every hard rule was honored.
               </p>
             ))}
           </div>
@@ -424,6 +450,12 @@ export function SetupGenerateStep({
                     </Link>
                   </p>
                 )}
+              {/* Neutral tone on purpose — preferences are best-effort. */}
+              {status?.state === "done" && status.preferMissCount > 0 && (
+                <p className="ml-7 text-xs text-gray-400">
+                  {status.preferMissCount} game{status.preferMissCount !== 1 ? "s" : ""} placed outside team preferences
+                </p>
+              )}
               {status?.state === "skipped" && (
                 <p className="ml-7 text-xs text-gray-500">
                   Already had a schedule — left untouched.

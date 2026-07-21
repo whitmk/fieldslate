@@ -113,6 +113,8 @@ type RegenResult = {
   // Subset of unscheduledCount blocked by team_game_constraints (0076).
   // Undefined on the new-division plan path, which is exempt by design.
   constraintBlockedCount?: number;
+  // Games placed outside team preferences (pass 2). Informational only.
+  preferMissCount?: number;
   conflicts: ScheduleConflict[];
   savedDivisionId: string;
 };
@@ -577,6 +579,7 @@ export function StepReview({
       result.gamesCreated = gameRes.gamesCreated;
       result.unscheduledCount = gameRes.unscheduledCount;
       result.constraintBlockedCount = gameRes.constraintBlockedCount;
+      result.preferMissCount = gameRes.preferMissCount;
       result.conflicts = gameRes.conflicts;
       await logActivity(
         leagueId,
@@ -692,6 +695,14 @@ export function StepReview({
                 </>
               )}
             </p>
+            {/* Informational, not a warning — preferences are best-effort. */}
+            {(regenResult.preferMissCount ?? 0) > 0 && (
+              <p className="mt-1 text-xs text-gray-500">
+                {regenResult.preferMissCount} game{regenResult.preferMissCount !== 1 ? "s" : ""} placed
+                outside team preferences — the schedule was too tight to avoid
+                those windows, and every hard rule was still honored.
+              </p>
+            )}
           </div>
         </div>
 
