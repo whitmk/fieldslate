@@ -654,8 +654,18 @@ export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
 
 // ─── Main export ───────────────────────────────────────────────────────────────
 
-export async function generateSchedule(divisionId: string): Promise<ScheduleResult> {
-  const supabase = createClient();
+// The optional injected client exists ONLY so the simulation harness
+// (scripts/sim/team-game-constraints-sim.ts, `npm run sim:game-constraints`)
+// can drive the real engine against in-memory fixtures — production callers
+// omit it. Same seam shape as autoAssignUmpires (src/lib/umpires/auto-assign.ts).
+// Don't remove it and don't add other client-construction paths.
+export type GenerateScheduleClient = ReturnType<typeof createClient>;
+
+export async function generateSchedule(
+  divisionId: string,
+  client?: GenerateScheduleClient,
+): Promise<ScheduleResult> {
+  const supabase = client ?? createClient();
 
   // ── 1. Load division ─────────────────────────────────────────────────────────
 
@@ -1461,8 +1471,11 @@ export async function planScheduleForNewDivision(
 
 // ─── Finish scheduling (fills in missing games without deleting existing ones) ──
 
-export async function finishSchedule(divisionId: string): Promise<ScheduleResult> {
-  const supabase = createClient();
+export async function finishSchedule(
+  divisionId: string,
+  client?: GenerateScheduleClient, // harness-only seam — see generateSchedule
+): Promise<ScheduleResult> {
+  const supabase = client ?? createClient();
 
   // ── 1. Load division ─────────────────────────────────────────────────────────
 
