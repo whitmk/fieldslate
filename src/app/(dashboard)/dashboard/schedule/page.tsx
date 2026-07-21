@@ -15,10 +15,12 @@ import {
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
 import { SchedulePrintButton } from "@/components/schedule/schedule-print-button";
 import { SchedulePrintRegion } from "@/components/schedule/schedule-print-region";
+import { TeamConstraintsSection } from "@/components/schedule/team-constraints-section";
+import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
-import { isProPlus } from "@/lib/plan/limits";
+import { isElite, isProPlus } from "@/lib/plan/limits";
 import { isSetupIncomplete } from "@/lib/setup/derive-step";
 
 function parseMode(raw: string | undefined): ViewMode {
@@ -313,6 +315,34 @@ export default async function SchedulePage({
           )}
         </CardContent>
       </Card>
+
+      {/* Team scheduling constraints (0076) — Elite-gated ENTRY UI only; the
+          generator honors existing rows tier-blind, so a downgrade hides this
+          section but the constraints stay live (deliberate — the officials
+          pattern; see CLAUDE.md "Team game constraints"). */}
+      {seasonId && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Team scheduling constraints</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isElite(plan) ? (
+              <TeamConstraintsSection
+                divisions={divisions}
+                teams={teams.filter(
+                  (t): t is { id: string; name: string; division_id: string } =>
+                    !!t.division_id,
+                )}
+              />
+            ) : (
+              <FeatureLockedCard
+                feature="Team scheduling constraints"
+                tier="Elite"
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Print-only region — hidden on screen, revealed by the global
           @media print rules. Renders in both list and calendar modes since a
