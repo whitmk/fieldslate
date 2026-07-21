@@ -24,6 +24,13 @@
  *  - interleague rows check the home (local) team only: away_team_id null,
  *    pending status, away games venue-less, per-org daily field_count held
  *  - 'prefer' rows never block: games still land inside prefer windows
+ *  - prefer honored when possible (chunk 2b two-pass): with ample non-prefer
+ *    slots a prefer team's games land OUTSIDE its windows and
+ *    preferMissCount is 0; when ALL legal slots sit inside a prefer window
+ *    the matchups still schedule (pass-2 fallback) and preferMissCount
+ *    matches an independent per-shape recount; shapes with no prefer rules
+ *    always report preferMissCount 0, and preferMissCount never exceeds the
+ *    independently-recounted number of placements inside prefer windows
  *  - pre-existing rows survive finishSchedule untouched — including a seeded
  *    game deliberately inside a block window (manual placements are not the
  *    generator's to move)
@@ -44,12 +51,19 @@
  *  - constraintBlockedReports: distinct constraint-blocked matchups reported
  *  - preferInWindowGames: games scheduled inside 'prefer' windows — proof
  *    the prefer-never-blocks invariant isn't running vacuously
+ *  - preferMissTotal: pass-2 placements reported across runs — proof the
+ *    pass-2 fallback actually fires (and that disabling pass-1's skip is
+ *    detectable: with the skip gone, first-fit lands in-window and the
+ *    prefer-honored shapes fail their hard assertions)
+ *  - planPreferDeflections / finishPreferDeflections: games of prefer teams
+ *    placed OUTSIDE their windows where an earlier same-day candidate sat
+ *    inside one — proof each loop copy's pass-1 skip actually deflected
  *
- * Mutation-test procedure (manual, per the harness standard): disable the
- * violatesHardConstraint checks in planSchedule, run — must FAIL; restore;
- * disable them in finishSchedule's inline copy, run — must FAIL; restore,
- * re-verify green. The deflection counters above guarantee both mutants
- * are exercised by the fixtures.
+ * Mutation-test procedure (manual, per the harness standard): one at a
+ * time, disable in each loop copy (a) the violatesHardConstraint checks and
+ * (b) pass-1's prefersToAvoid skip; the harness must FAIL for every mutant;
+ * restore and re-verify green after each. The deflection counters above
+ * guarantee all four mutants are exercised by the fixtures.
  */
 
 process.env.TZ = "UTC";
@@ -77,6 +91,9 @@ let planDeflections = 0;
 let finishDeflections = 0;
 let constraintBlockedReports = 0;
 let preferInWindowGames = 0;
+let preferMissTotal = 0;
+let planPreferDeflections = 0;
+let finishPreferDeflections = 0;
 const failures: string[] = [];
 
 function assert(cond: boolean, msg: string): void {
@@ -628,6 +645,31 @@ function checkPlaythrough(
   );
   constraintBlockedReports += res.constraintBlockedCount;
 
+  // preferMissCount accounting (chunk 2b), independently recounted: every
+  // pass-2 placement lands inside someone's prefer window, so the reported
+  // count can never exceed the recount; a shape with no prefer rules can
+  // never report a miss.
+  const insertedInPreferWindow = inserted.filter((g) =>
+    [g.home_team_id, g.away_team_id].some(
+      (side) =>
+        side != null &&
+        (prefersByTeam.get(side) ?? []).some((c) => ruleCovers(c, g.scheduled_at)),
+    ),
+  ).length;
+  assert(
+    res.preferMissCount <= insertedInPreferWindow,
+    ctx(
+      `preferMissCount ${res.preferMissCount} exceeds independent in-window recount ${insertedInPreferWindow}`,
+    ),
+  );
+  if (prefersByTeam.size === 0) {
+    assert(
+      res.preferMissCount === 0,
+      ctx(`no prefer rules exist but preferMissCount is ${res.preferMissCount}`),
+    );
+  }
+  preferMissTotal += res.preferMissCount;
+
   const grid = gridTimes(spec);
 
   for (const g of inserted) {
@@ -683,6 +725,31 @@ function checkPlaythrough(
       if (side == null) continue;
       if ((prefersByTeam.get(side) ?? []).some((c) => ruleCovers(c, g.scheduled_at))) {
         preferInWindowGames++;
+      }
+    }
+
+    // prefer-honored deflections (chunk 2b): a prefer team's game placed
+    // OUTSIDE its windows while an earlier same-day candidate (not hard-
+    // blocked for that team) sat inside one — pass-1's skip must have
+    // rejected it. Split per path so BOTH loop copies' pass-1 skips are
+    // proven load-bearing.
+    for (const side of [g.home_team_id, g.away_team_id]) {
+      if (side == null) continue;
+      const prefers = prefersByTeam.get(side) ?? [];
+      if (prefers.length === 0) continue;
+      if (prefers.some((c) => ruleCovers(c, g.scheduled_at))) continue; // in-window: no deflection
+      const blocks = blocksByTeam.get(side) ?? [];
+      const deflected = grid.some((t) => {
+        if (t >= wall) return false;
+        const candidate = `${date}T${t}:00`;
+        return (
+          prefers.some((c) => ruleCovers(c, candidate)) &&
+          !blocks.some((c) => ruleCovers(c, candidate))
+        );
+      });
+      if (deflected) {
+        if (path === "plan") planPreferDeflections++;
+        else finishPreferDeflections++;
       }
     }
   }
@@ -1056,6 +1123,138 @@ async function fixedShapes(): Promise<void> {
     );
   }
 
+  // P1. Prefer honored when possible (plan path) — team 0 prefers to avoid
+  // Saturday mornings, which cover the EARLIEST slots (first-fit would land
+  // there without pass-1's skip: this is the planSchedule prefer-mutation
+  // detector). Ample slots exist outside the window, so every team-0 game
+  // must avoid it and no miss may be reported.
+  {
+    const spec: ShapeSpec = {
+      name: "P1 prefer honored",
+      teamCount: 4,
+      constraints: {
+        0: [{ day: "Sa", start: "09:00", end: "12:00", severity: "prefer" }],
+      },
+      gamesPerTeam: 3,
+      playingDays: ["Sa", "Su"],
+      window: WINDOW,
+      venueCount: 2,
+    };
+    const { fake, res } = await runGenerate("P1", spec);
+    if (res.success) {
+      const t0InWindow = (fake.db.games as unknown as GameRow[]).filter(
+        (g) =>
+          (g.home_team_id === teamId(0) || g.away_team_id === teamId(0)) &&
+          dayCodeOf(g.scheduled_at.substring(0, 10)) === "Sa" &&
+          g.scheduled_at.substring(11, 16) >= "09:00" &&
+          g.scheduled_at.substring(11, 16) < "12:00",
+      );
+      assert(
+        t0InWindow.length === 0,
+        `[P1] ${t0InWindow.length} team-0 games landed inside the prefer window despite ample alternatives`,
+      );
+      assert(res.preferMissCount === 0, `[P1] preferMissCount ${res.preferMissCount} with ample alternatives`);
+      assert(res.unscheduledCount === 0, `[P1] ample shape left ${res.unscheduledCount} unscheduled`);
+    }
+  }
+
+  // P2. Prefer never starves (plan path) — team 0 prefers to avoid ALL of
+  // the only playing day. Its games must still schedule (pass-2 fallback)
+  // and preferMissCount must equal its game count exactly (every one of its
+  // matchups needed pass 2; no other team has rules).
+  {
+    const spec: ShapeSpec = {
+      name: "P2 prefer never starves",
+      teamCount: 4,
+      constraints: { 0: [{ day: "Sa", severity: "prefer" }] },
+      gamesPerTeam: 2,
+      playingDays: ["Sa"],
+      window: WINDOW,
+      venueCount: 2,
+    };
+    const { fake, res } = await runGenerate("P2", spec);
+    if (res.success) {
+      const t0Games = (fake.db.games as unknown as GameRow[]).filter(
+        (g) => g.home_team_id === teamId(0) || g.away_team_id === teamId(0),
+      );
+      assert(t0Games.length > 0, "[P2] all-prefer team was starved — prefer acted like a block");
+      assert(
+        res.preferMissCount === t0Games.length,
+        `[P2] preferMissCount ${res.preferMissCount} != team-0 game count ${t0Games.length}`,
+      );
+      assert(res.unscheduledCount === 0, `[P2] starvation shape left ${res.unscheduledCount} unscheduled`);
+    }
+  }
+
+  // PF. Prefer honored on the finish path — seeded deficit, team 0 prefers
+  // to avoid Saturday mornings (earliest slots — the finishSchedule
+  // prefer-mutation detector), ample alternatives. New fills must avoid the
+  // window with zero misses.
+  {
+    const spec: ShapeSpec = {
+      name: "PF finish prefer honored",
+      teamCount: 4,
+      constraints: {
+        0: [{ day: "Sa", start: "09:00", end: "12:00", severity: "prefer" }],
+      },
+      gamesPerTeam: 4,
+      playingDays: ["Sa", "Su"],
+      window: WINDOW,
+      venueCount: 2,
+      seedGames: [
+        { homeIdx: 2, awayIdx: 3, iso: "2026-09-05T12:00:00", venueIdx: 0 },
+      ],
+    };
+    const { fake, res } = await runFinish("PF", spec);
+    if (res.success) {
+      assert(res.gamesCreated > 0, "[PF] finish filled nothing — deficit shape is broken");
+      const t0NewInWindow = (fake.db.games as unknown as GameRow[]).filter(
+        (g) =>
+          g.id !== "seed-0" &&
+          (g.home_team_id === teamId(0) || g.away_team_id === teamId(0)) &&
+          dayCodeOf(g.scheduled_at.substring(0, 10)) === "Sa" &&
+          g.scheduled_at.substring(11, 16) >= "09:00" &&
+          g.scheduled_at.substring(11, 16) < "12:00",
+      );
+      assert(
+        t0NewInWindow.length === 0,
+        `[PF] finish placed ${t0NewInWindow.length} team-0 games inside the prefer window despite alternatives`,
+      );
+      assert(res.preferMissCount === 0, `[PF] preferMissCount ${res.preferMissCount} with ample alternatives`);
+    }
+  }
+
+  // PF2. Prefer never starves on the finish path — all-day prefer on the
+  // only playing day, seeded deficit: finish must still fill via pass 2 and
+  // report the misses.
+  {
+    const spec: ShapeSpec = {
+      name: "PF2 finish prefer starvation",
+      teamCount: 4,
+      constraints: { 0: [{ day: "Sa", severity: "prefer" }] },
+      gamesPerTeam: 3,
+      playingDays: ["Sa"],
+      window: WINDOW,
+      venueCount: 2,
+      seedGames: [
+        { homeIdx: 2, awayIdx: 3, iso: "2026-09-05T09:00:00", venueIdx: 0 },
+      ],
+    };
+    const { fake, res } = await runFinish("PF2", spec);
+    if (res.success) {
+      const t0New = (fake.db.games as unknown as GameRow[]).filter(
+        (g) =>
+          g.id !== "seed-0" &&
+          (g.home_team_id === teamId(0) || g.away_team_id === teamId(0)),
+      );
+      assert(t0New.length > 0, "[PF2] finish starved the all-prefer team");
+      assert(
+        res.preferMissCount >= t0New.length,
+        `[PF2] preferMissCount ${res.preferMissCount} < team-0 new games ${t0New.length}`,
+      );
+    }
+  }
+
   // K. Total-failure attribution — a 2-team division where team 0 is fully
   // blocked schedules nothing; the error must name the constraint cause.
   {
@@ -1194,6 +1393,18 @@ async function main(): Promise<void> {
     preferInWindowGames > 0,
     "no game ever landed inside a 'prefer' window — the prefer-never-blocks invariant ran vacuously",
   );
+  assert(
+    preferMissTotal > 0,
+    "no playthrough ever reported a pass-2 prefer miss — the fallback-pass invariants ran vacuously",
+  );
+  assert(
+    planPreferDeflections > 0,
+    "no playthrough ever deflected a preferred-avoid candidate in planSchedule — pass-1's skip ran vacuously for that loop copy",
+  );
+  assert(
+    finishPreferDeflections > 0,
+    "no playthrough ever deflected a preferred-avoid candidate in finishSchedule's inline copy — pass-1's skip ran vacuously for that loop copy",
+  );
 
   console.log(
     `team-game-constraints sim: ${playthroughs} playthroughs, ${assertions} assertions, ${failures.length} failures`,
@@ -1201,6 +1412,10 @@ async function main(): Promise<void> {
   console.log(
     `  coverage: ${planDeflections} plan-loop deflections, ${finishDeflections} finish-loop deflections, ` +
       `${constraintBlockedReports} constraint-blocked reports, ${preferInWindowGames} games inside prefer windows`,
+  );
+  console.log(
+    `  prefer coverage: ${preferMissTotal} pass-2 misses, ${planPreferDeflections} plan prefer-deflections, ` +
+      `${finishPreferDeflections} finish prefer-deflections`,
   );
   if (failures.length > 0) {
     for (const f of failures.slice(0, 40)) console.error("FAIL:", f);
