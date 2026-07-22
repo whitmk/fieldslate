@@ -36,7 +36,12 @@ const JS_TO_DAY: Record<number, DayKey> = {
   6: "Sa",
 };
 
-export type DayWindow = { start: string; end: string };
+// `practice` marks the day as admin-set practice-usable. It is OPTIONAL and
+// defaults to true when absent, so pre-existing venues (whose jsonb has no
+// `practice` key) stay practice-usable exactly as before — no migration and no
+// behavior change until an admin unchecks a day. Only the venue path reads or
+// writes it; the game generator and interleague gate read start/end only.
+export type DayWindow = { start: string; end: string; practice?: boolean };
 export type VenueAvailability = Partial<Record<DayKey, DayWindow>>;
 
 // Permissive: any unknown jsonb shape coerces to a clean availability map.
@@ -56,7 +61,10 @@ export function parseAvailability(raw: unknown): VenueAvailability {
     if (!start || !end) continue;
     if (!isValidHHMM(start) || !isValidHHMM(end)) continue;
     if (parseHHMM(start) >= parseHHMM(end)) continue;
-    out[key] = { start, end };
+    // Absent/non-boolean `practice` defaults to true — pre-existing venues have
+    // no key and must stay practice-usable (backward compatible, no migration).
+    const practice = typeof wr.practice === "boolean" ? wr.practice : true;
+    out[key] = { start, end, practice };
   }
   return out;
 }
@@ -112,6 +120,15 @@ export function isVenueAvailable(
   const winStart = parseHHMM(w.start);
   const winEnd = parseHHMM(w.end);
   return startMin >= winStart && endMin <= winEnd;
+}
+
+// Admin-set: may practices be scheduled on this day? A day defaults to
+// practice-usable (see DayWindow.practice) and a closed day (no window) is not
+// usable for anything. This is ONE half of practice-eligibility — the generator
+// also excludes derived game days (see lib/venues/game-days.ts); both must hold.
+export function isPracticeUsable(av: VenueAvailability, day: DayKey): boolean {
+  const w = av[day];
+  return !!w && w.practice !== false;
 }
 
 // Validate a user-edited availability map (returned from the venue form).
