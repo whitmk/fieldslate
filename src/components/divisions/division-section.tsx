@@ -14,6 +14,7 @@ import { DivisionSchedulePanel } from "./division-schedule-panel";
 import { ConflictResolverModal } from "./conflict-resolver-modal";
 import { LogRainoutModal } from "./log-rainout-modal";
 import { ExportPickerModal, type PrintMode } from "./export-picker-modal";
+import { GenerateAllModal } from "./generate-all-modal";
 import type { Division } from "@/types/database";
 import type { DivisionStat } from "@/app/(dashboard)/dashboard/leagues/[id]/page";
 import {
@@ -157,8 +158,8 @@ function getDivisionStatus(stat: DivisionStat): {
 const QUICK_ACTIONS = [
   {
     icon: Zap,
-    label: "Generate schedule",
-    description: "Expand a division below",
+    label: "Generate all divisions",
+    description: "Schedule every division at once",
     available: true,
     iconBg: "bg-[#0C1F3F]/[0.07]",
     iconColor: "text-[#0C1F3F]/60",
@@ -222,6 +223,7 @@ export function DivisionSection({
   const [printMode, setPrintMode] = useState<PrintMode>("games");
   const [showExportPicker, setShowExportPicker] = useState(false);
   const [showLogRainout, setShowLogRainout] = useState(false);
+  const [showGenerateAll, setShowGenerateAll] = useState(false);
 
   // Delete-division state
   const [deletingDivision, setDeletingDivision] = useState<Division | null>(null);
@@ -660,22 +662,27 @@ export function DivisionSection({
             const isExport = label === "Export PDF / CSV";
             const isRainout = label === "Log a rainout";
             const isInterleague = label === "Schedule interleague";
-            const isActive = isExport || isRainout ? divisions.length > 0 : available;
+            const isGenerateAll = label === "Generate all divisions";
+            const isActive =
+              isExport || isRainout || isGenerateAll
+                ? divisions.length > 0
+                : available;
             const onClick = isExport
               ? handleExportClick
               : isRainout
               ? () => setShowLogRainout(true)
+              : isGenerateAll
+              ? () => setShowGenerateAll(true)
               : isInterleague
               ? () =>
                   router.push(
                     `/dashboard/interleague?season=${encodeURIComponent(leagueId)}`,
                   )
               : undefined;
-            const subtitle = isExport && divisions.length === 0
-              ? "Add a division first"
-              : isRainout && divisions.length === 0
-              ? "Add a division first"
-              : description;
+            const subtitle =
+              (isExport || isRainout || isGenerateAll) && divisions.length === 0
+                ? "Add a division first"
+                : description;
             return (
               <button
                 key={label}
@@ -768,6 +775,20 @@ export function DivisionSection({
           onClose={() => setShowLogRainout(false)}
           onRainedOut={() => {
             router.refresh();
+            onDivisionSaved?.();
+          }}
+        />
+      )}
+
+      {/* ── Generate all divisions ───────────────────────────────────────── */}
+      {showGenerateAll && (
+        <GenerateAllModal
+          leagueId={leagueId}
+          divisions={divisions}
+          onClose={() => setShowGenerateAll(false)}
+          onGenerated={() => {
+            router.refresh();
+            fetchDivisions();
             onDivisionSaved?.();
           }}
         />

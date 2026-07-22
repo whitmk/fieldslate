@@ -330,7 +330,7 @@ function closedPlayingDayMessage(
  * slot through the per-venue availability map so we never propose a time
  * the venue isn't open.
  */
-function buildSlots(
+export function buildSlots(
   startDate: string,
   endDate: string,
   s: DivisionSettings,

@@ -9,7 +9,8 @@
     "lint": "next lint",
     "sim:officials": "TZ=UTC npx tsx scripts/sim/auto-assign-season-sim.ts",
     "sim:game-constraints": "TZ=UTC npx tsx scripts/sim/team-game-constraints-sim.ts",
-    "sim:practice-days": "TZ=UTC npx tsx scripts/sim/practice-game-days-sim.ts"
+    "sim:practice-days": "TZ=UTC npx tsx scripts/sim/practice-game-days-sim.ts",
+    "sim:scarcity": "TZ=UTC npx tsx scripts/sim/scarcity-order-sim.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
