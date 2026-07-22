@@ -5,6 +5,7 @@ import {
   MapPin,
   Plus,
   Pencil,
+  Trash2,
   Loader2,
   Clock,
   AlertTriangle,
@@ -49,6 +50,12 @@ export function VenuesPageClient({
   // Inline edit — all field/draft state lives in the shared VenueEditForm;
   // this page only tracks WHICH venue is in edit mode.
   const [editId, setEditId] = useState<string | null>(null);
+
+  // Delete — the venue queued for the confirm dialog. Deletion goes through
+  // the delete_venue_if_unreferenced RPC (0078), which is the guard: it
+  // re-checks every live reference server-side and refuses if any exist. The
+  // dialog owns the RPC call and busy/error/blocked state.
+  const [deleteTarget, setDeleteTarget] = useState<Venue | null>(null);
 
   async function loadVenues() {
     const supabase = createClient();
@@ -200,10 +207,23 @@ export function VenuesPageClient({
                 key={venue.id}
                 venue={venue}
                 onEdit={() => setEditId(venue.id)}
+                onDelete={() => setDeleteTarget(venue)}
               />
             )
           )}
         </div>
+      )}
+
+      {deleteTarget && (
+        <DeleteVenueDialog
+          venue={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={async () => {
+            await loadVenues();
+            setDeleteTarget(null);
+            onChanged?.();
+          }}
+        />
       )}
     </div>
   );
@@ -211,7 +231,15 @@ export function VenuesPageClient({
 
 // ── Display card ───────────────────────────────────────────────────────────
 
-function DisplayCard({ venue, onEdit }: { venue: Venue; onEdit: () => void }) {
+function DisplayCard({
+  venue,
+  onEdit,
+  onDelete,
+}: {
+  venue: Venue;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const availability = parseAvailability(venue.availability);
   const openDays = DAY_KEYS.filter((k) => availability[k]);
 
@@ -254,13 +282,188 @@ function DisplayCard({ venue, onEdit }: { venue: Venue; onEdit: () => void }) {
           </div>
         )}
       </div>
-      <button
-        onClick={onEdit}
-        className="ml-2 flex-shrink-0 rounded-lg p-1.5 text-gray-300 opacity-0 transition-all group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600"
-        aria-label="Edit venue"
-      >
-        <Pencil className="h-3.5 w-3.5" />
-      </button>
+      <div className="ml-2 flex flex-shrink-0 items-center gap-0.5 opacity-0 transition-all group-hover:opacity-100">
+        <button
+          onClick={onEdit}
+          className="rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-600"
+          aria-label="Edit venue"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={onDelete}
+          className="rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500"
+          aria-label="Delete venue"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Delete dialog ────────────────────────────────────────────────────────────
+
+// Counts returned by delete_venue_if_unreferenced (0078) when it blocks. Keys
+// mirror the RPC's jsonb exactly. Every one names a live, user-clearable thing;
+// practices_legacy is deliberately absent from the RPC, so it can never appear
+// here.
+interface BlockCounts {
+  games: number;
+  playoff_games: number;
+  practices: number;
+  division_venues: number;
+  division_default: number;
+  team_preferred: number;
+  snack_shack: number;
+}
+
+type DeleteRpcResult =
+  | { deleted: true; name: string }
+  | { blocked: true; name: string; counts: BlockCounts };
+
+// Turn the block counts into plain-English phrases naming only things an admin
+// can find and clear in the app. Games (regular + playoff) read as one bucket.
+function describeBlockReasons(c: BlockCounts): string[] {
+  const parts: string[] = [];
+  const games = c.games + c.playoff_games;
+  const plural = (n: number, one: string, many: string) =>
+    `${n} ${n === 1 ? one : many}`;
+  if (games > 0) parts.push(plural(games, "game", "games"));
+  if (c.practices > 0) parts.push(plural(c.practices, "practice", "practices"));
+  if (c.division_venues > 0)
+    parts.push(
+      `assigned to ${plural(c.division_venues, "division", "divisions")}`,
+    );
+  if (c.division_default > 0)
+    parts.push(
+      `the default practice venue for ${plural(c.division_default, "division", "divisions")}`,
+    );
+  if (c.team_preferred > 0)
+    parts.push(
+      `the preferred field for ${plural(c.team_preferred, "team", "teams")}`,
+    );
+  if (c.snack_shack > 0)
+    parts.push(`in ${plural(c.snack_shack, "snack shack setup", "snack shack setups")}`);
+  return parts;
+}
+
+function DeleteVenueDialog({
+  venue,
+  onClose,
+  onDeleted,
+}: {
+  venue: Venue;
+  onClose: () => void;
+  onDeleted: () => Promise<void> | void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<BlockCounts | null>(null);
+
+  async function handleDelete() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setBlocked(null);
+    const supabase = createClient();
+    // The RPC is the guard — it re-checks every reference server-side and
+    // deletes only when there are none. A returned { blocked } means it
+    // refused; nothing was deleted.
+    const { data, error: rpcErr } = await supabase.rpc(
+      "delete_venue_if_unreferenced" as never,
+      { p_venue_id: venue.id } as never,
+    );
+    if (rpcErr) {
+      setError(rpcErr.message ?? "Could not delete this venue.");
+      setBusy(false);
+      return;
+    }
+    const result = data as unknown as DeleteRpcResult;
+    if ("blocked" in result) {
+      setBlocked(result.counts);
+      setBusy(false);
+      return;
+    }
+    await onDeleted();
+  }
+
+  const reasons = blocked ? describeBlockReasons(blocked) : [];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => e.target === e.currentTarget && !busy && onClose()}
+    >
+      <div className="flex w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center gap-2 border-b border-gray-100 px-6 py-4">
+          <Trash2 className="h-4 w-4 text-red-500" />
+          <h2 className="text-base font-semibold text-[#0C1F3F]">Delete venue</h2>
+        </div>
+        <div className="flex flex-col gap-3 px-6 py-4">
+          {blocked ? (
+            <>
+              <p className="text-sm text-gray-700">
+                <span className="font-semibold">{venue.name}</span> can&rsquo;t be
+                deleted yet — it&rsquo;s still in use:
+              </p>
+              <ul className="flex flex-col gap-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {reasons.map((r) => (
+                  <li key={r} className="flex items-start gap-2">
+                    <span aria-hidden className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-amber-500" />
+                    <span>{r}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-sm text-gray-500">
+                Reassign or remove these first, then delete the venue.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-gray-700">
+              Delete <span className="font-semibold">{venue.name}</span>? This
+              can&rsquo;t be undone. It will only be removed if nothing is
+              scheduled at or set to use this venue.
+            </p>
+          )}
+          {error && (
+            <p className="rounded-md border border-red-100 bg-red-50 px-2.5 py-1.5 text-xs text-red-600">
+              {error}
+            </p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
+          {blocked ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg bg-[#0C1F3F] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80"
+            >
+              Got it
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={busy}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:opacity-50"
+              >
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                {busy ? "Deleting…" : "Delete venue"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
