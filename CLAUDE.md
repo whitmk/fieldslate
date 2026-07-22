@@ -193,6 +193,15 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   venue are consistent with each other by design for now; if reconciliation
   is ever added, apply it to BOTH uniformly, not one.
 
+## Generate-all ordering
+
+- **`npm run sim:scarcity` proves the "generate all divisions" run-order**
+  (season-page control): divisions schedule most-constrained-first, sort key
+  `slack = supply − demand` with tiebreak `supply → created_at → id`. Re-run
+  it after ANY change to `src/lib/schedule/scarcity-order.ts` or to
+  `buildSlots` in `generate-schedule.ts` — the scarcity supply is computed
+  from the REAL `buildSlots`, so a change there can silently shift ordering.
+
 ## Venues
 
 - **The venue editor is ONE shared component** (2026-07-14): `VenueEditForm`
