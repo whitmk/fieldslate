@@ -23,11 +23,24 @@ export type GameDayInput = {
   status: string;
 };
 
-// Statuses that must NOT count toward "this venue hosts games on day D":
+// Statuses that must NOT count as a real, scheduled game:
 //   cancelled           — the game was called off.
 //   pending_interleague — an unconfirmed interleague proposal, not a real game.
 // Everything else (scheduled, completed, …) counts.
-const NON_COUNTING_STATUSES = new Set(["cancelled", "pending_interleague"]);
+//
+// Exported so any other games-derived view (e.g. the Reports venues×divisions
+// matrix) shares the exact same exclusion set — the two must never drift.
+export const NON_COUNTING_STATUSES = new Set([
+  "cancelled",
+  "pending_interleague",
+]);
+
+/** True when a game row counts as a real, scheduled game (not cancelled or a
+ *  pending interleague proposal). The single predicate every games-derived
+ *  view should filter on. */
+export function countsAsScheduledGame(status: string): boolean {
+  return !NON_COUNTING_STATUSES.has(status);
+}
 
 // A day-of-week only becomes a recurring "game day" once games land on it in at
 // least this many DISTINCT calendar weeks at the venue. This suppresses a

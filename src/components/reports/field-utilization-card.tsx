@@ -56,6 +56,10 @@ interface Props {
   weeksLabel: string;       // pre-formatted ("10 weeks in season" or "season dates not set")
   outsideHoursGames: OutsideHoursGame[];
   outsideHoursTruncated: boolean;
+  // When true, render without the outer card + title header — the host
+  // (a CollapsiblePanel) supplies both. All interactive behavior (row expand,
+  // out-of-hours modal) is identical either way.
+  embedded?: boolean;
 }
 
 // ── Card ─────────────────────────────────────────────────────────────────────
@@ -65,21 +69,15 @@ export function FieldUtilizationCard({
   weeksLabel,
   outsideHoursGames,
   outsideHoursTruncated,
+  embedded = false,
 }: Props) {
   const [expandedVenueId, setExpandedVenueId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
   const outsideHoursCount = outsideHoursGames.length;
 
-  return (
-    <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-6 py-4">
-        <h3 className="font-semibold text-[#0b1c39]">Field utilization</h3>
-        <p className="text-xs text-gray-400">
-          % of game capacity in use · {weeksLabel}
-        </p>
-      </div>
-
+  const body = (
+    <>
       {/* Out-of-hours warning row */}
       {outsideHoursCount > 0 && (
         <div className="flex items-start gap-2.5 border-b border-amber-100 bg-amber-50/70 px-6 py-3">
@@ -148,6 +146,21 @@ export function FieldUtilizationCard({
           onClose={() => setModalOpen(false)}
         />
       )}
+    </>
+  );
+
+  // Embedded: the CollapsiblePanel host owns the card chrome + title.
+  if (embedded) return body;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-6 py-4">
+        <h3 className="font-semibold text-[#0b1c39]">Field utilization</h3>
+        <p className="text-xs text-gray-400">
+          % of game capacity in use · {weeksLabel}
+        </p>
+      </div>
+      {body}
     </div>
   );
 }
