@@ -61,6 +61,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   this is exactly what caused the comp-guard 42501/503 outage fixed by
   migration 0070 (every checkout returned 503 until the grant landed).
   service_role bypasses RLS but NOT table-level privileges.
+- **PostgREST silently caps every query at 1000 rows.** No error is raised —
+  partial results are indistinguishable from complete ones. Season-scoped
+  queries (`.eq("league_id", …)`) are safe at current scale; the exposure is
+  any query NOT scoped to a single season (org-wide / all-time sweeps). The
+  Schedule venue-options query and the calendar query both inherit this cap
+  deliberately — fine now. Before onboarding a customer with large historical
+  data, audit cross-season queries and add pagination or a hit-the-cap guard
+  as one uniform pass.
 
 ## Billing — read this whole section before touching Stripe code
 
@@ -174,6 +182,16 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   result entry becomes real. The single- and double-elim mappings live in
   `src/lib/playoffs/advancement.ts` (pure, testable — see its header for
   the movement rules and edit semantics).
+
+## Schedule filters
+
+- **Stale filter URL params don't reconcile (except team).** The Schedule
+  page's `?division=` and `?venue=` params survive a switch to a division
+  that makes the selection invalid — the DB `.eq` still filters (→ "No games
+  found") while the dropdown visually falls back to "All …". Only the team
+  filter reconciles (`effectiveTeamId` in the server page). Division and
+  venue are consistent with each other by design for now; if reconciliation
+  is ever added, apply it to BOTH uniformly, not one.
 
 ## Venues
 
