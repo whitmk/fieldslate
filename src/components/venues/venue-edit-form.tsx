@@ -276,7 +276,13 @@ export function VenueEditForm({
                     >
                       <input
                         type="checkbox"
-                        checked={d.practice}
+                        // Practice-usable is only meaningful on an OPEN day. A
+                        // closed day renders unchecked (and disabled, below) so
+                        // it can't read as a false "practice-usable" — the
+                        // underlying draft flag is inert: draftToAvailability
+                        // never writes a closed day, and the generator's
+                        // open-day check gates practice regardless.
+                        checked={d.open && d.practice}
                         disabled={!d.open}
                         onChange={() => togglePractice(k)}
                         className="h-4 w-4 cursor-pointer rounded border-gray-300 text-[#22C55E] focus:ring-[#22C55E]/30 disabled:cursor-default"
