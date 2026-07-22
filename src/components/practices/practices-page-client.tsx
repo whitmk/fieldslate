@@ -27,6 +27,13 @@ import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { VenueEditModal } from "@/components/venues/venue-edit-form";
 import type { Venue as VenueRecord } from "@/types/database";
 import {
+  deriveVenueGameDays,
+  gameDaysForVenue,
+  venuesWithAnyGame,
+  type GameDayInput,
+  type VenueGameDays,
+} from "@/lib/venues/game-days";
+import {
   PracticeSlotModal,
   type EditableSlot,
   type SlotTeam,
@@ -158,6 +165,10 @@ export function PracticesPageClient({
   // venue, so the pencil fetches the full row before opening the modal.
   const [venueEdit, setVenueEdit] = useState<VenueRecord | null>(null);
   const [venueEditLoading, setVenueEditLoading] = useState<string | null>(null);
+  // Derived game days for the venue currently open in the edit modal (read-only
+  // indicator). Fetched on modal open — one venue at a time, not per card.
+  const [venueEditGameDays, setVenueEditGameDays] = useState<VenueGameDays>(new Map());
+  const [venueEditHasGames, setVenueEditHasGames] = useState(false);
   const [openPrefDivisions, setOpenPrefDivisions] = useState<Set<string>>(new Set());
   const [openTimeSlotDivisions, setOpenTimeSlotDivisions] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<Toast | null>(null);
@@ -571,14 +582,23 @@ export function PracticesPageClient({
       .select("*")
       .eq("id", venueId)
       .single();
-    setVenueEditLoading(null);
     if (error || !data) {
+      setVenueEditLoading(null);
       notify(
         "error",
         `Couldn't load venue: ${error?.message ?? "venue not found"}`,
       );
       return;
     }
+    // Derived game days for this one venue (read-only indicator on the card).
+    const { data: games } = await supabase
+      .from("games")
+      .select("venue_id, scheduled_at, status")
+      .eq("venue_id", venueId);
+    const rows = (games ?? []) as GameDayInput[];
+    setVenueEditGameDays(gameDaysForVenue(deriveVenueGameDays(rows), venueId));
+    setVenueEditHasGames(venuesWithAnyGame(rows).has(venueId));
+    setVenueEditLoading(null);
     setVenueEdit(data as VenueRecord);
   }
 
@@ -929,6 +949,8 @@ export function PracticesPageClient({
       {venueEdit && (
         <VenueEditModal
           venue={venueEdit}
+          gameDays={venueEditGameDays}
+          venueHasGames={venueEditHasGames}
           onSaved={load}
           onClose={() => setVenueEdit(null)}
         />

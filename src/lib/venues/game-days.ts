@@ -92,6 +92,19 @@ export function deriveVenueGameDays(
   return out;
 }
 
+/** Venue ids with at least one COUNTING game (any weekday, any week). Drives
+ *  the card's "no schedule yet" empty state — distinct from deriveVenueGameDays,
+ *  which needs the >=2-week threshold. */
+export function venuesWithAnyGame(games: GameDayInput[]): Set<string> {
+  const out = new Set<string>();
+  for (const g of games) {
+    if (!g.venue_id) continue;
+    if (NON_COUNTING_STATUSES.has(g.status)) continue;
+    out.add(g.venue_id);
+  }
+  return out;
+}
+
 /** Derived game days for one venue — empty map when the venue has none. */
 export function gameDaysForVenue(
   all: Map<string, VenueGameDays>,

@@ -19,6 +19,12 @@ import {
   DAY_LABELS,
   parseAvailability,
 } from "@/lib/venues/availability";
+import {
+  deriveVenueGameDays,
+  venuesWithAnyGame,
+  type GameDayInput,
+  type VenueGameDays,
+} from "@/lib/venues/game-days";
 
 interface Props {
   currentOrgId: string;
@@ -39,6 +45,11 @@ export function VenuesPageClient({
 }: Props) {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Derived game days per venue (read-only) + which venues have any schedule.
+  // Fetched once per load, not per card — the card only reads its slice.
+  const [gameDaysByVenue, setGameDaysByVenue] = useState<Map<string, VenueGameDays>>(new Map());
+  const [venuesWithGames, setVenuesWithGames] = useState<Set<string>>(new Set());
 
   // Add form (basics only — admin sets hours after creating)
   const [showAdd, setShowAdd] = useState(false);
@@ -64,7 +75,23 @@ export function VenuesPageClient({
       .select("*")
       .eq("owner_id", currentOrgId)
       .order("name");
-    setVenues((data as Venue[]) ?? []);
+    const venueRows = (data as Venue[]) ?? [];
+    setVenues(venueRows);
+
+    // One grouped games read for all this org's venues → derived game days.
+    const ids = venueRows.map((v) => v.id);
+    if (ids.length > 0) {
+      const { data: games } = await supabase
+        .from("games")
+        .select("venue_id, scheduled_at, status")
+        .in("venue_id", ids);
+      const rows = (games ?? []) as GameDayInput[];
+      setGameDaysByVenue(deriveVenueGameDays(rows));
+      setVenuesWithGames(venuesWithAnyGame(rows));
+    } else {
+      setGameDaysByVenue(new Map());
+      setVenuesWithGames(new Set());
+    }
   }
 
   useEffect(() => {
@@ -194,6 +221,8 @@ export function VenuesPageClient({
               <VenueEditForm
                 key={venue.id}
                 venue={venue}
+                gameDays={gameDaysByVenue.get(venue.id)}
+                venueHasGames={venuesWithGames.has(venue.id)}
                 className="rounded-xl border border-[#22C55E]/40 bg-white p-4 shadow-sm"
                 onSaved={async () => {
                   await loadVenues();
