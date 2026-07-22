@@ -202,6 +202,30 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `buildSlots` in `generate-schedule.ts` — the scarcity supply is computed
   from the REAL `buildSlots`, so a change there can silently shift ordering.
 
+## Coach conflicts in schedule generation
+
+- **Same-division shared-coach double-booking is a KNOWN, deliberately
+  deferred gap — do not build on the "handled automatically" assumption.**
+  The generator prevents a shared coach's teams from overlapping
+  *cross-division* via the coach-block map (seeded from the linked team's
+  already-persisted games). It does NOT prevent one coach's two teams in the
+  SAME division from being placed at the same start time on different fields.
+  The same-division skip (`if (sameDiv) continue;` at
+  ~`generate-schedule.ts:818`, mirrored in `finishSchedule` ~1607 and
+  `planScheduleForNewDivision` ~1303) rests on the comment "handled
+  automatically since both teams always play different opponents" — that
+  comment is FALSE and verified so: the two teams play each other only
+  once/twice a season; their games against other opponents are independent
+  and can collide. Exposure concentrates in tight/small divisions where slots
+  force overlap. Deferred (wait-and-see) because no current league assigns one
+  coach to two teams in one division.
+- **Fix path when triggered:** live in-walk coupling — block the coach's other
+  same-division team at each placed start time — applied in BOTH placement
+  copies (`planSchedule` and `finishSchedule`'s inline copy), with the
+  three-part harness standard. **Build trigger:** the first league with a
+  same-division double-coach, or any report of an intra-division coach
+  double-booking.
+
 ## Venues
 
 - **The venue editor is ONE shared component** (2026-07-14): `VenueEditForm`
