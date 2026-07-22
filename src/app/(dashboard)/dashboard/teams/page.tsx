@@ -3,6 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users } from "lucide-react";
 import { AddTeamButton } from "@/components/teams/add-team-button";
 import { TeamSnackShackButton } from "@/components/teams/team-snack-shack-button";
+import { TeamConstraintsCollapsible } from "@/components/teams/team-constraints-collapsible";
+import { TeamConstraintsSection } from "@/components/schedule/team-constraints-section";
+import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
 import type { Team } from "@/types/database";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
@@ -94,6 +97,38 @@ export default async function TeamsPage() {
           />
         </div>
       </div>
+
+      {/* Team scheduling constraints (0076) — relocated here from the Schedule
+          page and tucked behind a default-closed disclosure, placed ABOVE the
+          team list so a large roster can't bury it (the same burial that
+          motivated moving it off the bottom of the Schedule page). Collapsed by
+          default, so it costs only the header bar's height. Elite-gated ENTRY
+          UI only; the generator honors existing rows tier-blind, so a downgrade
+          hides this section but the constraints stay live (deliberate — the
+          officials pattern; see CLAUDE.md "Team game constraints"). The gate
+          stays server-side: the collapsible header shows for everyone, and
+          expanding reveals the section for Elite or the locked card otherwise. */}
+      {seasonId && (
+        <TeamConstraintsCollapsible>
+          {isElite(plan) ? (
+            <TeamConstraintsSection
+              divisions={divisions}
+              teams={teams
+                .filter((t) => !!t.division_id)
+                .map((t) => ({
+                  id: t.id,
+                  name: t.name,
+                  division_id: t.division_id as string,
+                }))}
+            />
+          ) : (
+            <FeatureLockedCard
+              feature="Team scheduling constraints"
+              tier="Elite"
+            />
+          )}
+        </TeamConstraintsCollapsible>
+      )}
 
       <Card>
         <CardHeader>
