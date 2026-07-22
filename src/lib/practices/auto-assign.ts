@@ -2,11 +2,18 @@
 
 import { createClient } from "@/lib/supabase/client";
 import {
+  isPracticeUsable,
   isVenueAvailable,
   parseAvailability,
   type DayKey,
   type VenueAvailability,
 } from "@/lib/venues/availability";
+import {
+  deriveVenueGameDays,
+  gameDaysForVenue,
+  type GameDayInput,
+  type VenueGameDays,
+} from "@/lib/venues/game-days";
 
 export type AutoAssignResult =
   | {
@@ -111,6 +118,7 @@ function chooseDays(
   field: Venue,
   taken: Set<string>,
   blocks: AvailabilityBlock[],
+  gameDays: VenueGameDays,
 ): string[] | null {
   const chosen: string[] = [];
 
@@ -122,6 +130,13 @@ function chooseDays(
       if (isBlocked(blocks, day, startTime)) continue;
       // Venue must be open on this day at this time for the full duration.
       if (!isVenueAvailable(field.availability, day as DayKey, startTime, durationMin)) continue;
+      // Admin-set practice-usable AND not a derived game day. Both compose with
+      // the division's allow_practices filter (applied when `venues` is built):
+      // a practice may land here only if the division allows practices, the
+      // admin left the day practice-usable, and no recurring games occupy it.
+      // Game days win over practices, matching the house rule elsewhere.
+      if (!isPracticeUsable(field.availability, day as DayKey)) continue;
+      if (gameDays.has(day as DayKey)) continue;
       const key = `${day}|${startTime}|${field.id}`;
       if (taken.has(key)) continue;
       if (requireSpacing && !spacedFromAll(chosen, day)) continue;
@@ -147,8 +162,12 @@ function reorderByPreference<T extends { id: string }>(
 
 export async function autoAssignPractices(
   divisionId: string,
+  // Optional injected client — the seam exists ONLY so the simulation harness
+  // can drive the real engine against in-memory fixtures. Production callers
+  // omit it (mirrors autoAssignUmpires). Don't add other construction paths.
+  client?: ReturnType<typeof createClient>,
 ): Promise<AutoAssignResult> {
-  const supabase = createClient();
+  const supabase = client ?? createClient();
 
   // 1. Time slots for this division
   const { data: slotRows, error: slotErr } = await supabase
@@ -237,6 +256,24 @@ export async function autoAssignPractices(
   //    a field this division can use blocks that (day, time, field) for us,
   //    no matter which division owns it.
   const eligibleFieldIds = venues.map((v) => v.id);
+
+  // 4a. Derived game days per venue — days a venue recurringly hosts games are
+  //     not practice-eligible (game days win over practices). Fetch all games
+  //     at eligible venues; deriveVenueGameDays owns the status filter
+  //     (excludes cancelled / pending_interleague) and the >=2-distinct-weeks
+  //     threshold. Fails closed: a read error aborts rather than silently
+  //     scheduling practices onto real game days.
+  const { data: gameRows, error: gameErr } = eligibleFieldIds.length
+    ? await supabase
+        .from("games")
+        .select("venue_id, scheduled_at, status")
+        .in("venue_id", eligibleFieldIds)
+    : { data: [], error: null };
+  if (gameErr) return { success: false, error: gameErr.message };
+  const gameDaysByVenue = deriveVenueGameDays(
+    (gameRows ?? []) as GameDayInput[],
+  );
+
   const { data: existingRows } = eligibleFieldIds.length
     ? await supabase
         .from("practice_slots")
@@ -388,6 +425,7 @@ export async function autoAssignPractices(
           field,
           taken,
           teamBlocks,
+          gameDaysForVenue(gameDaysByVenue, field.id),
         );
         if (chosen) {
           chosen.forEach((d) => taken.add(`${d}|${slotStart}|${field.id}`));
