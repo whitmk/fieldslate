@@ -3,7 +3,17 @@ import {
   BarChart3,
   CalendarDays,
   CheckCircle2,
+  Gauge,
+  LayoutGrid,
+  ListChecks,
 } from "lucide-react";
+import { countsAsScheduledGame } from "@/lib/venues/game-days";
+import { CollapsiblePanel } from "./collapsible-panel";
+import {
+  VenueDivisionMatrix,
+  type MatrixColumn,
+  type MatrixRow,
+} from "./venue-division-matrix";
 import {
   DAY_LABELS,
   dayKeyFromIsoDate,
@@ -60,6 +70,11 @@ type VenueRow = {
   availability: unknown;
   availability_configured: boolean;
 };
+type DivisionVenueRow = {
+  division_id: string;
+  venue_id: string;
+  allow_games: boolean;
+};
 
 type DivisionSettings = {
   game_duration?: number;
@@ -97,6 +112,7 @@ export async function OverviewReports({ leagueId }: Props) {
     gamesRes,
     practiceSlotsRes,
     venuesRes,
+    divisionVenuesRes,
   ] = await Promise.all([
     supabase
       .from("divisions")
@@ -121,6 +137,15 @@ export async function OverviewReports({ leagueId }: Props) {
           .select("id, name, availability, availability_configured")
           .eq("owner_id", leagueOwnerId)
       : Promise.resolve({ data: [] as unknown[] }),
+    // Game-eligible venue columns for the venues×divisions matrix. Same
+    // divisions!inner league-scope filter shape the practice_slots read uses;
+    // selecting rows (not head+count), so the PostgREST embedded-count caveat
+    // doesn't apply.
+    supabase
+      .from("division_venues")
+      .select("division_id, venue_id, allow_games, division:divisions!inner(league_id)")
+      .eq("division.league_id", leagueId)
+      .eq("allow_games", true),
   ]);
 
   const league = (leagueRow ?? null) as LeagueRow | null;
@@ -129,6 +154,8 @@ export async function OverviewReports({ leagueId }: Props) {
   const games = (gamesRes.data ?? []) as GameRow[];
   const practices = (practiceSlotsRes.data ?? []) as unknown as PracticeRow[];
   const venues = (venuesRes.data ?? []) as VenueRow[];
+  const divisionVenues =
+    (divisionVenuesRes.data ?? []) as unknown as DivisionVenueRow[];
 
   const hasSeasonDates = !!league?.start_date && !!league?.end_date;
   const weeksInSeason = computeWeeksInSeason(
@@ -348,6 +375,42 @@ export async function OverviewReports({ leagueId }: Props) {
       : a.name.localeCompare(b.name);
   });
 
+  // ── Venues × divisions game matrix ────────────────────────────────────────
+  // Columns: game-eligible venues this season (division_venues.allow_games), so
+  // an eligible-but-unused field shows as an empty column (a wanted signal) —
+  // NOT all org venues, NOT only venues-with-games. Unioned defensively with any
+  // venue that actually has a counted game, so a game can never be hidden by a
+  // since-changed eligibility flag (on current data the two sets coincide).
+  // Rows: divisions. Cell: count of real scheduled games (home team's division ×
+  // venue), using the shared countsAsScheduledGame exclusion set.
+  const matrixCounts = new Map<string, number>(); // `${divId}|${venueId}` → count
+  const venueIdsWithGames = new Set<string>();
+  for (const g of games) {
+    if (!g.venue_id) continue;
+    if (!countsAsScheduledGame(g.status)) continue;
+    const divisionId = teamDivisionById.get(g.home_team_id);
+    if (!divisionId) continue;
+    venueIdsWithGames.add(g.venue_id);
+    const key = `${divisionId}|${g.venue_id}`;
+    matrixCounts.set(key, (matrixCounts.get(key) ?? 0) + 1);
+  }
+
+  const columnVenueIds = new Set<string>();
+  for (const dv of divisionVenues) columnVenueIds.add(dv.venue_id);
+  for (const vid of venueIdsWithGames) columnVenueIds.add(vid);
+
+  const matrixColumns: MatrixColumn[] = [...columnVenueIds]
+    .map((id) => ({ id, name: venueById.get(id)?.name ?? "Unknown field" }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const matrixRows: MatrixRow[] = divisions
+    .map((d) => ({
+      id: d.id,
+      name: d.name,
+      counts: matrixColumns.map((c) => matrixCounts.get(`${d.id}|${c.id}`) ?? 0),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   return (
     <section
       id="reports"
@@ -378,15 +441,40 @@ export async function OverviewReports({ leagueId }: Props) {
       />
 
       {divisionRows.length > 0 && (
-        <DivisionProgressTable rows={divisionRows} />
+        <CollapsiblePanel
+          title="Progress by division"
+          icon={<ListChecks className="h-4 w-4 flex-shrink-0 text-gray-400" />}
+          defaultOpen={false}
+        >
+          <DivisionProgressTable rows={divisionRows} />
+        </CollapsiblePanel>
       )}
 
-      <FieldUtilizationCard
-        rows={utilizationRows}
-        weeksLabel={weeksLabel}
-        outsideHoursGames={outsideHoursGames}
-        outsideHoursTruncated={outsideHoursTruncated}
-      />
+      <CollapsiblePanel
+        title="Field utilization"
+        subtitle={`% of game capacity in use · ${weeksLabel}`}
+        icon={<Gauge className="h-4 w-4 flex-shrink-0 text-gray-400" />}
+        defaultOpen={false}
+      >
+        <FieldUtilizationCard
+          rows={utilizationRows}
+          weeksLabel={weeksLabel}
+          outsideHoursGames={outsideHoursGames}
+          outsideHoursTruncated={outsideHoursTruncated}
+          embedded
+        />
+      </CollapsiblePanel>
+
+      {divisions.length > 0 && (
+        <CollapsiblePanel
+          title="Games by field & division"
+          subtitle="actual scheduled games"
+          icon={<LayoutGrid className="h-4 w-4 flex-shrink-0 text-gray-400" />}
+          defaultOpen
+        >
+          <VenueDivisionMatrix columns={matrixColumns} rows={matrixRows} />
+        </CollapsiblePanel>
+      )}
     </section>
   );
 }
@@ -466,42 +554,40 @@ interface DivisionProgressRow {
   pct: number;
 }
 
+// Renders bare (no outer card / title header) — always hosted inside a
+// CollapsiblePanel, which supplies the card chrome and the "Progress by
+// division" title.
 function DivisionProgressTable({ rows }: { rows: DivisionProgressRow[] }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-      <div className="border-b border-gray-100 px-6 py-4">
-        <h3 className="font-semibold text-[#0b1c39]">Progress by division</h3>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
-              <th className="px-6 py-3">Division</th>
-              <th className="px-6 py-3 text-right">Played</th>
-              <th className="px-6 py-3 text-right">Total</th>
-              <th className="px-6 py-3 w-[40%]">Progress</th>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
+            <th className="px-6 py-3">Division</th>
+            <th className="px-6 py-3 text-right">Played</th>
+            <th className="px-6 py-3 text-right">Total</th>
+            <th className="px-6 py-3 w-[40%]">Progress</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {rows.map((row) => (
+            <tr key={row.id} className="hover:bg-gray-50/40">
+              <td className="px-6 py-3.5 font-medium text-[#0b1c39]">
+                {row.name}
+              </td>
+              <td className="px-6 py-3.5 text-right tabular-nums text-gray-700">
+                {row.played}
+              </td>
+              <td className="px-6 py-3.5 text-right tabular-nums text-gray-700">
+                {row.total}
+              </td>
+              <td className="px-6 py-3.5">
+                <CompletionProgressBar pct={row.pct} />
+              </td>
             </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {rows.map((row) => (
-              <tr key={row.id} className="hover:bg-gray-50/40">
-                <td className="px-6 py-3.5 font-medium text-[#0b1c39]">
-                  {row.name}
-                </td>
-                <td className="px-6 py-3.5 text-right tabular-nums text-gray-700">
-                  {row.played}
-                </td>
-                <td className="px-6 py-3.5 text-right tabular-nums text-gray-700">
-                  {row.total}
-                </td>
-                <td className="px-6 py-3.5">
-                  <CompletionProgressBar pct={row.pct} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
