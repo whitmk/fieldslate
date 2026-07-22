@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddGameButton } from "@/components/schedule/add-game-modal";
 import { DivisionFilter } from "@/components/schedule/division-filter";
 import { TeamFilter } from "@/components/schedule/team-filter";
+import { VenueFilter } from "@/components/schedule/venue-filter";
 import { HidePastToggle } from "@/components/schedule/hide-past-toggle";
 import {
   ViewModeToggle,
@@ -73,6 +74,7 @@ export default async function SchedulePage({
   searchParams: {
     division?: string;
     team?: string;
+    venue?: string;
     past?: string;
     mode?: string;
     month?: string;
@@ -88,6 +90,7 @@ export default async function SchedulePage({
   const plan = await getOrgPlan(currentOrgId);
   const selectedDivisionId = searchParams.division ?? "";
   const selectedTeamId = searchParams.team ?? "";
+  const selectedVenueId = searchParams.venue ?? "";
   const mode = parseMode(searchParams.mode);
   const month = parseMonth(searchParams.month);
   // Default ON; the URL only carries `past=1` when the user has switched it OFF.
@@ -154,6 +157,36 @@ export default async function SchedulePage({
     division_id: string | null;
   }[];
 
+  // Venue filter options. `venues` is org-scoped (no league_id), so an
+  // owner-scoped fetch would list venues with no games this season (dead
+  // options). Instead derive the option set from venues that actually appear
+  // in THIS season's games — deduped, season-stable, and independent of the
+  // active division/team/past filters (matching how divisions/teams options
+  // don't shrink as other filters narrow). Interleague away games carry a
+  // null venue_id and are excluded here by design.
+  const { data: venueData } = seasonId
+    ? await supabase
+        .from("games")
+        .select("venue_id, venue:venues(name)")
+        .eq("league_id", seasonId)
+        .not("venue_id", "is", null)
+    : { data: [] as { venue_id: string; venue: { name: string } | null }[] };
+  const venues = (() => {
+    const rows = (venueData ?? []) as unknown as {
+      venue_id: string;
+      venue: { name: string } | null;
+    }[];
+    const byId = new Map<string, string>();
+    for (const r of rows) {
+      if (r.venue_id && r.venue?.name && !byId.has(r.venue_id)) {
+        byId.set(r.venue_id, r.venue.name);
+      }
+    }
+    return Array.from(byId, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  })();
+
   const effectiveTeamId = (() => {
     if (!selectedTeamId) return "";
     const team = teams.find((t) => t.id === selectedTeamId);
@@ -208,6 +241,13 @@ export default async function SchedulePage({
       } else {
         gamesQuery = gamesQuery.in("home_team_id", teamIdScope);
       }
+    }
+
+    // Venue filter composes as AND with the division/team scope above.
+    // Interleague away games (venue_id null) fall out under a specific venue
+    // by design — they're only reachable under "All venues".
+    if (selectedVenueId) {
+      gamesQuery = gamesQuery.eq("venue_id", selectedVenueId);
     }
 
     if (gridRange) {
@@ -290,6 +330,9 @@ export default async function SchedulePage({
                   selectedId={effectiveTeamId}
                   selectedDivisionId={selectedDivisionId}
                 />
+              )}
+              {venues.length > 0 && (
+                <VenueFilter venues={venues} selectedId={selectedVenueId} />
               )}
             </div>
           </div>
