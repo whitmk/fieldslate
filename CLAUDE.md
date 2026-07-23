@@ -298,6 +298,70 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `buildSlots` in `generate-schedule.ts` — the scarcity supply is computed
   from the REAL `buildSlots`, so a change there can silently shift ordering.
 
+## Matchup placement order (round-order fix, 2026-07-23)
+
+- **Intra-division matchups are placed ROUND BY ROUND — never re-shuffle
+  across rounds.** `buildMatchups` emits pass-groups where each group is a
+  (possibly partial, near the end) perfect matching;
+  `orderMatchupsForPlacement` is the ONLY sanctioned flattener. The old
+  cross-list `shuffle(...)` interleaved pairs from different rounds; under
+  the live Saturday-league shape (games_per_team == playing weeks ×
+  max_games_per_week — ZERO weekly slack) the greedy placer then stranded
+  matchups behind exhausted weekly caps and reported "not enough slots" on
+  divisions with ample fields (eight consecutive live regenerations of
+  50/70 scored 23–30 of 30 on identical data). Round order makes the
+  exactly-tight shape place 100% by construction: round r fills date r.
+- **Within a round: shuffle for slot variety, then stable-sort
+  constrained-first** — pairs involving a team with any
+  `team_game_constraints` rows (block or prefer) go ahead of the rest; the
+  set comes from the constraint-rules map already loaded, no extra query.
+  This is load-bearing where a constraint shrinks a team to scarce slots
+  (50/70's Expos: 09:00-only, two 09:00 slots per Saturday — the division
+  only reaches 100% placement if that pair picks first). Mutation-proven;
+  don't demote it to cosmetics. It is still an ORDERING PREFERENCE, not a
+  scheduling guarantee.
+- **There is deliberately NO coach tier in the ordering, and must not be.**
+  A coach tier was written and REMOVED before ship (2026-07-23) on exactly
+  this reasoning: under greedy earliest-first placement, giving a shared
+  coach's two pairs first pick lands them at the SAME earliest start on
+  different fields — it manufactures the very double-booking it reads like
+  it prevents. Same-division coach overlap is not prevented anywhere in
+  this engine (see Coach conflicts below — Chunk 2 still deferred). Do not
+  add an ordering knob that implies otherwise; the round-order sim's
+  COACH12 fixture and unit group-2 assertion both fail if a coach tier
+  comes back.
+- **Both shuffling call sites got the fix** (`generateSchedule` and
+  `planScheduleForNewDivision`; the wizard path passes an empty constrained
+  set BY DESIGN — its teams don't exist in the DB yet, so round order
+  applies but the priority sort has nothing to act on). `finishSchedule`
+  needs NO ordering change: its deficit pair-builder already cycles rounds
+  deterministically with no shuffle. Its blind pairing (pairs deficits
+  without checking common free weeks, increments planned counts on build
+  not placement) is a KNOWN separate gap — out of scope, do not conflate.
+  Interleague matchups keep their own shuffle (per-team repetitions, not
+  round-structured); generate still orders intra → home-IL → away-IL.
+- **finishSchedule excludes cancelled games from team totals and caps**
+  (`.neq("status", "cancelled")` on the existing-games fetch) — a cancelled
+  game is not a game played, so finish now creates its makeup;
+  `pending_interleague` rows still count (recreating them would duplicate
+  invites). Venue bookings still count cancelled rows in BOTH copies —
+  deliberately consistent with the umpires open question (revisit alongside
+  rainout workflows).
+- **Harness:** `npm run sim:round-order` (`scripts/sim/round-order-sim.ts`,
+  TZ=UTC mandatory) — full playthroughs of the real generator at the live
+  shapes (6/12/16 teams, 10 games, cap 1/week, 10 Saturdays) asserting 100%
+  placement + round-robin balance on exactly-tight fixtures, plus the
+  constrained-first, no-coach-tier, cancelled-filter, odd-bye, and
+  orderMatchupsForPlacement unit checks. Mutation-tested 2026-07-23
+  (4 mutants: restored cross-round shuffle, removed constrained-first sort,
+  removed within-round shuffle, removed cancelled filter — ALL killed,
+  re-verified after the coach tier was dropped), with
+  anti-vacuity counters proving the week-exact and venue-exact scenarios
+  actually ran. Re-run it AND `sim:game-constraints` after ANY change to
+  generate-schedule.ts. The in-memory fake Supabase client is shared at
+  `scripts/sim/fake-supabase.ts` — when the engine grows a new query shape,
+  extend THAT fake (it throws on unknown shapes; never stub in a sim).
+
 ## Coach conflicts in schedule generation
 
 - **Same-division shared-coach double-booking is a KNOWN, deliberately
@@ -314,7 +378,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   once/twice a season; their games against other opponents are independent
   and can collide. Exposure concentrates in tight/small divisions where slots
   force overlap. Deferred (wait-and-see) because no current league assigns one
-  coach to two teams in one division.
+  coach to two teams in one division. (The 2026-07-23 round-order fix left
+  this gap untouched — it deliberately ships with NO coach-aware ordering;
+  see "no coach tier" under Matchup placement order above.)
 - **Fix path when triggered:** live in-walk coupling — block the coach's other
   same-division team at each placed start time — applied in BOTH placement
   copies (`planSchedule` and `finishSchedule`'s inline copy), with the

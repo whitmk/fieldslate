@@ -9,6 +9,7 @@
     "lint": "next lint",
     "sim:officials": "TZ=UTC npx tsx scripts/sim/auto-assign-season-sim.ts",
     "sim:game-constraints": "TZ=UTC npx tsx scripts/sim/team-game-constraints-sim.ts",
+    "sim:round-order": "TZ=UTC npx tsx scripts/sim/round-order-sim.ts",
     "sim:practice-days": "TZ=UTC npx tsx scripts/sim/practice-game-days-sim.ts",
     "sim:scarcity": "TZ=UTC npx tsx scripts/sim/scarcity-order-sim.ts",
     "sim:coach-conflicts": "TZ=UTC npx tsx scripts/sim/coach-conflict-sim.ts",

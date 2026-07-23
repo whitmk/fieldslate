@@ -181,12 +181,22 @@ function roundRobinRounds(ids: string[]): [string, string][][] {
  * sits out; to let every team reach the minimum, some teams may play one extra
  * game (gamesPerTeam + 1). That is expected and correct — the termination
  * condition is "every team ≥ gamesPerTeam", not "every team = gamesPerTeam".
+ *
+ * Returns one group per PASS, in pass order. Each group is a (possibly
+ * partial, near the end) perfect matching — no team appears twice within a
+ * group. That structure is load-bearing: the greedy placer walks matchups in
+ * list order against a chronological slot pool, so when the weekly cap is
+ * tight (games_per_team == playing weeks × max_games_per_week, the live
+ * Saturday-league shape), each group naturally fills one playing date and
+ * every game places. Flattening these groups in any cross-group order
+ * destroys that property — see orderMatchupsForPlacement, the ONLY sanctioned
+ * flattener.
  */
 function buildMatchups(
   teamIds: string[],
   gamesPerTeam: number,
   autoRotate: boolean,
-): Matchup[] {
+): Matchup[][] {
   if (teamIds.length < 2) return [];
 
   const rounds = roundRobinRounds(teamIds);
@@ -199,7 +209,7 @@ function buildMatchups(
   const gameCount: Record<string, number> = {};
   teamIds.forEach((id) => { homeCount[id] = 0; gameCount[id] = 0; });
 
-  const matchups: Matchup[] = [];
+  const passes: Matchup[][] = [];
   let pass = 0;
   const maxPasses = rounds.length * (gamesPerTeam + 2);
 
@@ -208,6 +218,7 @@ function buildMatchups(
     const pairs: [string, string][] =
       pass % 2 === 0 ? round : round.map(([a, b]) => [b, a]);
 
+    const emitted: Matchup[] = [];
     for (const [a, b] of pairs) {
       if ((gameCount[a] ?? 0) >= maxPerTeam) continue;
       if ((gameCount[b] ?? 0) >= maxPerTeam) continue;
@@ -217,18 +228,69 @@ function buildMatchups(
         homeId = b; awayId = a;
       }
 
-      matchups.push({ homeId, awayId, interleagueOrgId: null, isAway: false });
+      emitted.push({ homeId, awayId, interleagueOrgId: null, isAway: false });
       homeCount[homeId] = (homeCount[homeId] ?? 0) + 1;
       gameCount[a] = (gameCount[a] ?? 0) + 1;
       gameCount[b] = (gameCount[b] ?? 0) + 1;
     }
+    if (emitted.length > 0) passes.push(emitted);
 
     pass++;
     // Done when every team has reached the minimum — some may be at min+1.
     if (teamIds.every((id) => (gameCount[id] ?? 0) >= gamesPerTeam)) break;
   }
 
-  return matchups;
+  return passes;
+}
+
+/**
+ * Flatten buildMatchups' pass groups into the placement order, preserving
+ * group boundaries. Cross-group order is NEVER randomized: each group is a
+ * perfect matching, and placing whole matchings in sequence is what lets an
+ * exactly-tight division (weekly cap × playing weeks == games per team) fill
+ * every date completely. The old cross-list shuffle interleaved pairs from
+ * different matchings into the same week and stranded later matchups behind
+ * exhausted weekly caps — the "not enough venues" reports on divisions with
+ * ample fields (fixed 2026-07-23).
+ *
+ * Within a group the pairs share no teams, so their relative order cannot
+ * change who plays whom — only which pair is offered the earliest field/time
+ * first. We shuffle within the group for slot variety, then stable-sort
+ * pairs involving a team with team_game_constraints rows to the front: they
+ * have fewer legal windows than an unconstrained team, so letting them pick
+ * first is what makes a tight constrained division place at all (the live
+ * 50/70 shape: one team legal only at 09:00, two 09:00 slots per Saturday).
+ *
+ * This is an ORDERING PREFERENCE, not a scheduling guarantee — it improves
+ * the odds a scarce-window team finds a slot; it promises nothing.
+ *
+ * There is deliberately NO coach tier. Giving a shared coach's two pairs
+ * first pick under greedy earliest-first placement lands them at the SAME
+ * earliest start on different fields — i.e. it manufactures the very overlap
+ * a coach tier reads like it prevents. Same-division coach overlap is not
+ * prevented anywhere in this engine (deferred — see CLAUDE.md "Coach
+ * conflicts in schedule generation"); do not add an ordering knob that
+ * implies otherwise.
+ */
+export function orderMatchupsForPlacement<
+  M extends { homeId: string; awayId: string | null },
+>(
+  groups: M[][],
+  constrainedTeams: ReadonlySet<string>,
+): M[] {
+  const priority = (m: M): number => {
+    const sides = m.awayId === null ? [m.homeId] : [m.homeId, m.awayId];
+    return sides.some((id) => constrainedTeams.has(id)) ? 1 : 0;
+  };
+  const out: M[] = [];
+  for (const group of groups) {
+    const ordered = shuffle(group);
+    // Array.prototype.sort is stable, so equal-priority pairs keep the
+    // shuffled variety while constrained pairs move to the front.
+    ordered.sort((a, b) => priority(b) - priority(a));
+    out.push(...ordered);
+  }
+  return out;
 }
 
 /**
@@ -871,8 +933,19 @@ export async function generateSchedule(
   // ── 6. Generate matchups ─────────────────────────────────────────────────────
 
   const teamIds = teams.map((t) => t.id);
-  const intraMatchups = shuffle(
+
+  // Placement-priority set for orderMatchupsForPlacement — computed from the
+  // constraint rules already loaded above, no extra query. Any team with
+  // team_game_constraints rows counts (block or prefer — both shrink its
+  // pass-1 slot pool).
+  const constrainedTeams = new Set<string>();
+  for (const [tid, rules] of constraintRules) {
+    if (rules.length > 0) constrainedTeams.add(tid);
+  }
+
+  const intraMatchups = orderMatchupsForPlacement(
     buildMatchups(teamIds, intraDivisionGamesPerTeam, settings.auto_rotate),
+    constrainedTeams,
   );
 
   // Pull interleague game counts per org for this division (if any)
@@ -1394,12 +1467,19 @@ export async function planScheduleForNewDivision(
   const teamWeek = new Map<string, number>();
 
   // ── Build matchups + slots ────────────────────────────────────────────────
-  const intraMatchups = shuffle(
+
+  // Same round-order placement as generateSchedule. The constrained set is
+  // empty BY DESIGN — this flow plans before the teams exist in the DB, so
+  // no team_game_constraints rows can exist for them (matches the empty
+  // constraintRules passed to planSchedule below). Round order still
+  // applies; only the within-round priority sort has nothing to act on.
+  const intraMatchups = orderMatchupsForPlacement(
     buildMatchups(
       identifiers,
       input.intraDivisionGamesPerTeam,
       input.settings.auto_rotate,
     ),
+    new Set<string>(),
   );
 
   const interleagueConfig = input.interleagueGames.filter(
@@ -1644,10 +1724,17 @@ export async function finishSchedule(
 
   const teamIds = teams.map((t) => t.id);
 
+  // Cancelled games are NOT games played: they must not count toward a
+  // team's total (the deficit math would under-fill) and must not consume
+  // its weekly/daily caps or same-time set. generateSchedule reaches the
+  // same end state by deleting non-accepted games outright before planning.
+  // (pending_interleague rows DO count — they're real matchups awaiting
+  // acceptance, and re-creating them would duplicate the invite.)
   const { data: existingRaw } = await supabase
     .from("games")
     .select("id, home_team_id, away_team_id, interleague_org_id, is_away, venue_id, scheduled_at")
-    .in("home_team_id", teamIds);
+    .in("home_team_id", teamIds)
+    .neq("status", "cancelled");
 
   type ExistingGame = {
     id: string;
