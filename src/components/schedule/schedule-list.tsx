@@ -10,6 +10,7 @@ import {
   Loader2,
   UserCheck,
   Repeat,
+  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -130,6 +131,13 @@ export function ScheduleList({
   const [rescheduleGame, setRescheduleGame] = useState<ScheduleGame | null>(null);
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
   const [requestRescheduleGame, setRequestRescheduleGame] = useState<ScheduleGame | null>(null);
+  // Delete — the game queued for the confirm dialog. Deletion goes through the
+  // delete_game_if_unblocked RPC (0079), which is the guard: it re-checks the
+  // block conditions (accepted interleague, recorded result) server-side,
+  // atomically with the delete. A returned { blocked } means it refused and
+  // nothing was deleted. The dialog owns the RPC call and busy/error/blocked
+  // state, mirroring the venue delete dialog.
+  const [deleteGame, setDeleteGame] = useState<ScheduleGame | null>(null);
   const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -241,6 +249,10 @@ export function ScheduleList({
                 setOpenMenuId(null);
                 setDetailGame(g);
               }}
+              onDelete={() => {
+                setOpenMenuId(null);
+                setDeleteGame(g);
+              }}
               rainoutLoading={rainoutId === g.id}
               seasonRoleNames={seasonRoleNames}
               sport={sport}
@@ -282,6 +294,23 @@ export function ScheduleList({
 
       {detailGame && (
         <GameDetailModal game={detailGame} onClose={() => setDetailGame(null)} />
+      )}
+
+      {deleteGame && (
+        <DeleteGameDialog
+          game={deleteGame}
+          onClose={() => setDeleteGame(null)}
+          onDeleted={async () => {
+            await logActivity(
+              deleteGame.league_id,
+              deleteGame.home_team?.division_id ?? null,
+              "game_deleted",
+              `${matchupLabel(deleteGame)} on ${fmtGameDate(deleteGame.scheduled_at)} deleted`,
+            );
+            setDeleteGame(null);
+            router.refresh();
+          }}
+        />
       )}
 
       {requestRescheduleGame && (
@@ -371,6 +400,7 @@ interface GameRowProps {
   onRequestReschedule: () => void;
   canReschedule: boolean;
   onViewDetails: () => void;
+  onDelete: () => void;
   rainoutLoading: boolean;
   seasonRoleNames: string[];
   sport: string | null;
@@ -385,6 +415,7 @@ function GameRowCells({
   onRequestReschedule,
   canReschedule,
   onViewDetails,
+  onDelete,
   rainoutLoading,
   seasonRoleNames,
   sport,
@@ -500,9 +531,166 @@ function GameRowCells({
               <Eye className="h-3.5 w-3.5 text-gray-400" />
               View details
             </button>
+            {/* Always enabled — click-then-block. The RPC decides; blocked
+                games get the explanation dialog, not a disabled item. */}
+            <button
+              onClick={onDelete}
+              className="flex w-full items-center gap-2.5 border-t border-gray-100 px-3.5 py-2.5 text-sm text-red-600 transition-colors hover:bg-red-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete game
+            </button>
           </div>
         )}
       </td>
     </tr>
+  );
+}
+
+// ── Delete dialog ────────────────────────────────────────────────────────────
+
+// Block reasons returned by delete_game_if_unblocked (0079). Strings mirror
+// the RPC's jsonb exactly. Both are checked server-side; a blocked response
+// lists every reason that applies.
+type DeleteGameBlockReason = "interleague_accepted" | "result_recorded";
+
+type DeleteGameRpcResult =
+  | {
+      deleted: true;
+      cascaded: {
+        umpire_assignments: number;
+        override_history: number;
+        reschedule_requests: number;
+      };
+    }
+  | { blocked: true; reasons: DeleteGameBlockReason[] };
+
+function describeBlockReason(
+  reason: DeleteGameBlockReason,
+  game: ScheduleGame,
+): string {
+  if (reason === "interleague_accepted") {
+    const org = game.interleague_org?.name ?? "a partner league";
+    return `It's a confirmed interleague game with ${org}. The partner league sees this game on their own schedule, and deleting it would remove it from their view without any notice. Cancel or reschedule it through the interleague flow instead.`;
+  }
+  return "It has a recorded result, so it's part of the season's history.";
+}
+
+function DeleteGameDialog({
+  game,
+  onClose,
+  onDeleted,
+}: {
+  game: ScheduleGame;
+  onClose: () => void;
+  onDeleted: () => Promise<void> | void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<DeleteGameBlockReason[] | null>(null);
+
+  async function handleDelete() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    const supabase = createClient();
+    // The RPC is the guard — it re-checks both block conditions server-side,
+    // atomically with the delete. A returned { blocked } means it refused;
+    // nothing was deleted.
+    const { data, error: rpcErr } = await supabase.rpc(
+      "delete_game_if_unblocked" as never,
+      { p_game_id: game.id } as never,
+    );
+    if (rpcErr) {
+      setError(rpcErr.message ?? "Could not delete this game.");
+      setBusy(false);
+      return;
+    }
+    const result = data as unknown as DeleteGameRpcResult;
+    if ("blocked" in result) {
+      setBlocked(result.reasons);
+      setBusy(false);
+      return;
+    }
+    await onDeleted();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => e.target === e.currentTarget && !busy && onClose()}
+    >
+      <div className="flex w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center gap-2 border-b border-gray-100 px-6 py-4">
+          <Trash2 className="h-4 w-4 text-red-500" />
+          <h2 className="text-base font-semibold text-[#0C1F3F]">Delete game</h2>
+        </div>
+        <div className="flex flex-col gap-3 px-6 py-4">
+          {blocked ? (
+            <>
+              <p className="text-sm text-gray-700">
+                <span className="font-semibold">{matchupLabel(game)}</span>{" "}
+                can&rsquo;t be deleted:
+              </p>
+              <ul className="flex flex-col gap-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {blocked.map((r) => (
+                  <li key={r} className="flex items-start gap-2">
+                    <span
+                      aria-hidden
+                      className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-amber-500"
+                    />
+                    <span>{describeBlockReason(r, game)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="text-sm text-gray-700">
+              Delete{" "}
+              <span className="font-semibold">{matchupLabel(game)}</span> —{" "}
+              {fmtGameDate(game.scheduled_at)}, {fmtGameTime(game.scheduled_at)}?
+              This can&rsquo;t be undone. Any official assignments and conflict
+              history for this game will be removed with it.
+            </p>
+          )}
+          {error && (
+            <p className="rounded-md border border-red-100 bg-red-50 px-2.5 py-1.5 text-xs text-red-600">
+              {error}
+            </p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
+          {blocked ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg bg-[#0C1F3F] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80"
+            >
+              Got it
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={busy}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:opacity-50"
+              >
+                {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Delete game
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
