@@ -84,6 +84,27 @@ assert(lines[6] === "6,3,Westside Wolves,Our Team,11/14/2026,10:00,11:30,Cat Par
 // Home game with proposed_venue_name but no venue → fallback gated off, blank
 assert(lines[7] === "7,3,Home,Away,11/14/2026,12:00,13:30,,", `row7 fallback gated on is_away (got: ${lines[7]})`);
 
+// Long-season round ordering: week keys are zero-padded ISO dates of each
+// week's Monday, so lexicographic sort is chronological — proven here past
+// week 9 (round 10 must follow round 9, not round 1). Eleven consecutive
+// Saturdays, 2026-03-07 .. 2026-05-16.
+const saturdays = [
+  "2026-03-07", "2026-03-14", "2026-03-21", "2026-03-28", "2026-04-04",
+  "2026-04-11", "2026-04-18", "2026-04-25", "2026-05-02", "2026-05-09",
+  "2026-05-16",
+];
+const longRes = buildSportsConnectCsv(
+  saturdays.map((d, i) => g({ id: `w${i}`, scheduled_at: `${d}T09:00:00+00:00` })),
+  90,
+  "Long",
+);
+if (!longRes.ok) throw new Error("longRes not ok");
+const longRounds = longRes.csv.split("\r\n").slice(1, 12).map((l) => l.split(",")[1]);
+assert(
+  longRounds.join(",") === "1,2,3,4,5,6,7,8,9,10,11",
+  `11-week season rounds in order (got: ${longRounds.join(",")})`,
+);
+
 // No-leading-zero date: 2026-09-05 → 9/5/2026
 const res2 = buildSportsConnectCsv([g({ id: "z", scheduled_at: "2026-09-05T09:00:00+00:00" })], 60, "X");
 if (!res2.ok) throw new Error("res2 not ok");

@@ -36,7 +36,9 @@
 // - Location for is_away games falls back to proposed_venue_name (the
 //   partner's field — venue_id is NULL on every away row). Gated on is_away
 //   to match the schedule panel's display rule, so a stale counter-proposal
-//   venue can never surface on a home game.
+//   venue can never surface on a home game. Blank/whitespace names fall
+//   through the same as blank partner names (venues.name is NOT NULL but
+//   has no non-blank CHECK).
 
 import { countsAsScheduledGame, weekKeyFromIsoDate } from "@/lib/venues/game-days";
 
@@ -129,7 +131,7 @@ export function buildSportsConnectCsv(
       fmtMatchDate(g.scheduled_at),
       fmtHHMM(start),
       fmtHHMM(start + duration),
-      g.venue?.name ?? (g.is_away ? g.proposed_venue_name?.trim() ?? "" : ""),
+      g.venue?.name?.trim() || (g.is_away ? g.proposed_venue_name?.trim() ?? "" : ""),
       "", // Field — blank by design, see header comment
     ]
       .map(csvField)
