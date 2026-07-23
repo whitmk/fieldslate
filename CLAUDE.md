@@ -531,7 +531,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   **`prefer` = prefer to AVOID the window, decided 2026-07-21 — do not
   reinterpret as positive "prefers to play here" windows.** Windows are
   half-open `[start, end)` on the game's START time — all user-facing copy
-  says "start times" on purpose.
+  says "start times" on purpose. Start-time-only is a PRODUCT choice, not a
+  technical limitation: nothing blocks an upgrade to overlap semantics
+  (`divisions.settings.game_duration` is populated and positive on every
+  live division, verified 2026-07-23). Any claim that a "duration-0 bug"
+  blocks that upgrade is false — no such dependency exists in code or docs.
 - **Every constraint check goes through
   `src/lib/schedule/team-constraints.ts`** (`constraintsFromRows` /
   `findConstraintViolation` / `violatesHardConstraint`) — same
@@ -637,7 +641,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - Follow-up (separate commit): add metadataBase: new URL(SITE_URL) to the
   root layout so OG URL resolution stops depending on Vercel domain config.
 - Practices `TimeSlotRow` **Duration** field
-  (`practices-page-client.tsx` ~line 1671): clearing it blur-saves
-  `duration_minutes: 0` — `Number("")` is `0` and `min={15}` is UI-only, so
-  the write SUCCEEDS (a persisted zero-minute slot, worse than the rejected
-  start-time write). Needs the same guard class as `66e7256`.
+  (`practices-page-client.tsx` ~line 1697): clearing it blur-saves
+  `duration_minutes: 0` (`Number("")` is `0`, `min={15}` is UI-only) — but
+  the write is REJECTED by the live `CHECK (duration_minutes > 0)` on
+  `practice_time_slots` (verified against the live catalog 2026-07-23; zero
+  zero-duration rows exist). The defect is UX only: the admin sees a raw
+  constraint-violation message instead of a friendly guard. Wants the
+  `66e7256` guard class as polish, not as a data-integrity fix.
