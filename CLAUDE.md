@@ -228,12 +228,22 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 
 ## Team names — two copies, one rename path
 
-- **A team's name lives in TWO places: the `teams` row (identity) and,
-  redundantly, `divisions.settings.teams[]` jsonb (name + coach-conflict
-  metadata, including name-keyed `conflict_team` back-references).** Keeping
-  them in sync on rename is the whole game — historically the two rename
-  surfaces each did half the job and corrupted SRALL Fall 2026 T-Ball (one real
-  team appearing as two rows, games split across both).
+- **Name-keyed-reference drift is a bug FAMILY, not one bug.** Team identity
+  is stored redundantly: the `teams` table (id-keyed, authoritative) and
+  `divisions.settings.teams[]` jsonb (name-keyed copy, including name-keyed
+  `conflict_team` back-references). ANY operation that changes or removes a
+  team must update BOTH or they silently diverge. Rename is fixed (`1296df9`,
+  below); the panel's `handleDeleteTeam` still leaves the jsonb stale on
+  delete — same family, different trigger, still open. **Rule: never add a
+  second code path that writes a team name or removes a team — route through
+  `src/lib/divisions/reconcile-teams.ts`.**
+- **Historical damage:** a wizard rename on SRALL Fall 2026 T-Ball created a
+  duplicate `teams` row (the wizard reconciled by name and only inserted
+  net-new names), splitting one real team across two identities and
+  corrupting the schedule. Cleaned up manually 2026-07-22 (uuid-scoped
+  deletes, verified table == jsonb after). Two benign known drifts remain
+  by choice: the archived SRALL "A" division's `Jackets` orphan row, and
+  trailing-whitespace-only jsonb names in Rookies (the generator trims).
 - **`src/lib/divisions/reconcile-teams.ts` is the SINGLE rename path.** Both
   surfaces route through it: the wizard save (`reconcileTeamsOnSave`, called
   from `step-review.tsx`) and the inline schedule-panel pencil
@@ -267,9 +277,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   rewritten in both scopes, collision aborts with no writes. Mutation-tested
   (detection mutants + in-source guard disables all caught) with anti-vacuity
   counters. Re-run after ANY change to `reconcile-teams.ts` or the two call
-  sites. **Out of scope of the fix (still open):** repairing SRALL's existing
-  duplicate rows (a separate careful job), and the panel's `handleDeleteTeam`
-  still leaves the jsonb stale on delete (delete path, not rename).
+  sites. **Still open in this family:** the panel's `handleDeleteTeam` leaves
+  the jsonb stale on delete (delete path, not rename). SRALL's duplicate rows
+  were repaired 2026-07-22 — see Historical damage above.
 
 ## Venues
 
