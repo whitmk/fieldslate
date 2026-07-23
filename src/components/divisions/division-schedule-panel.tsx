@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Zap, Loader2, CheckCircle2, AlertTriangle, CalendarDays,
   RefreshCw, Plus, PlusCircle, Printer, CloudRain, CalendarClock,
-  Pencil, Trash2, Check, Users, ListChecks,
+  Pencil, Trash2, Check, Users, ListChecks, Lock, LockOpen, Send,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { renameTeamInline } from "@/lib/divisions/reconcile-teams";
@@ -25,6 +25,12 @@ import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
 import { AddGameModal } from "@/components/schedule/add-game-modal";
 import { logActivity } from "@/lib/activity-log";
+import {
+  setDivisionLock,
+  setDivisionPosted,
+  lockedReason,
+  isDivisionLockError,
+} from "@/lib/schedule/division-lock";
 import { AutoAssignUmpiresButton } from "@/components/umpires/auto-assign-button";
 import {
   UmpireSlots,
@@ -113,6 +119,13 @@ export function DivisionSchedulePanel({
   const [rescheduleGame, setRescheduleGame] = useState<GameRow | null>(null);
   const [addGameOpen, setAddGameOpen] = useState(false);
 
+  // Schedule lock + posted. The trigger (0082) is the guard; these drive the
+  // pre-click UI so a locked division never looks clickable.
+  const [locked, setLocked] = useState(false);
+  const [posted, setPosted] = useState(false);
+  const [lockBusy, setLockBusy] = useState(false);
+  const [postedBusy, setPostedBusy] = useState(false);
+
   // Team inline-edit state
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -166,7 +179,7 @@ export function DivisionSchedulePanel({
     const [{ data: divDataRaw }, { data: seasonRolesRaw }] = await Promise.all([
       supabase
         .from("divisions")
-        .select("settings, umpires_per_game, intra_division_games_per_team")
+        .select("settings, umpires_per_game, intra_division_games_per_team, locked, posted")
         .eq("id", divisionId)
         .single(),
       supabase
@@ -180,7 +193,11 @@ export function DivisionSchedulePanel({
       settings: Record<string, unknown>;
       umpires_per_game: number | null;
       intra_division_games_per_team: number | null;
+      locked: boolean | null;
+      posted: boolean | null;
     } | null;
+    setLocked(!!divData?.locked);
+    setPosted(!!divData?.posted);
     const settings = (divData?.settings ?? {}) as {
       game_duration?: number;
       buffer_minutes?: number;
@@ -313,7 +330,44 @@ export function DivisionSchedulePanel({
     }
   }, [triggerPrint, loadingGames, onPrintDone]);
 
+  async function handleToggleLock() {
+    setLockBusy(true);
+    setResult(null);
+    const { data: { user } } = await createClient().auth.getUser();
+    const res = await setDivisionLock(divisionId, !locked, user?.id ?? null);
+    if (!res.ok) {
+      setResult({ type: "error", message: `Couldn't ${locked ? "unlock" : "lock"} the schedule: ${res.error}` });
+    } else {
+      setLocked(!locked);
+      await logActivity(
+        leagueId,
+        divisionId,
+        "schedule_generated",
+        `${divisionName} schedule ${locked ? "unlocked" : "locked"}`,
+      );
+    }
+    setLockBusy(false);
+  }
+
+  async function handleTogglePosted() {
+    setPostedBusy(true);
+    const next = !posted;
+    const res = await setDivisionPosted(divisionId, next);
+    if (!res.ok) {
+      setResult({ type: "error", message: `Couldn't update the posted flag: ${res.error}` });
+    } else {
+      setPosted(next);
+    }
+    setPostedBusy(false);
+  }
+
   function requestGenerate() {
+    // Client-side guard for the MESSAGE only — the 0082 trigger is the actual
+    // refusal, and it still fires if this state is stale.
+    if (locked) {
+      setResult({ type: "error", message: lockedReason(divisionName, "generate") });
+      return;
+    }
     if (games.length > 0) {
       setConfirmRegenOpen(true);
     } else {
@@ -348,6 +402,10 @@ export function DivisionSchedulePanel({
   }
 
   async function handleFinish() {
+    if (locked) {
+      setResult({ type: "error", message: lockedReason(divisionName, "finish") });
+      return;
+    }
     setFinishing(true);
     setResult(null);
     const res = await finishSchedule(divisionId);
@@ -423,11 +481,32 @@ export function DivisionSchedulePanel({
     setDeleteLoading(true);
     const supabase = createClient();
 
-    // Delete games where the team is home or away (no cascade on those FKs)
-    await supabase.from("games").delete().eq("home_team_id", team.id);
-    await supabase.from("games").delete().eq("away_team_id", team.id);
+    // Delete games where the team is home or away (no cascade on those FKs).
+    // A locked division refuses these at the trigger; surface that as the lock
+    // message rather than raw SQL, and STOP — deleting the team while its
+    // games survive would strand orphan rows.
+    const homeDel = await supabase.from("games").delete().eq("home_team_id", team.id);
+    const awayDel = await supabase.from("games").delete().eq("away_team_id", team.id);
+    const delErr = homeDel.error ?? awayDel.error;
+    if (delErr) {
+      setDeleteLoading(false);
+      setDeleteTarget(null);
+      setResult({
+        type: "error",
+        message: isDivisionLockError(delErr.message)
+          ? lockedReason(divisionName, "deleteTeam")
+          : `Couldn't delete the team's games: ${delErr.message}`,
+      });
+      return;
+    }
 
-    await supabase.from("teams").delete().eq("id", team.id);
+    const { error: teamErr } = await supabase.from("teams").delete().eq("id", team.id);
+    if (teamErr) {
+      setDeleteLoading(false);
+      setDeleteTarget(null);
+      setResult({ type: "error", message: `Couldn't delete the team: ${teamErr.message}` });
+      return;
+    }
 
     setDeleteTarget(null);
     setDeleteLoading(false);
@@ -655,13 +734,71 @@ export function DivisionSchedulePanel({
         </div>
       )}
 
+      {/* ── Schedule lock + posted ───────────────────────────────────────────
+          Lock protects this division against destructive re-derivation;
+          rainouts and reschedules keep working. Posted is a plain "I sent this
+          out" marker that AUTO-CLEARS on any change to this division's games
+          (0082 triggers) — nothing branches on it. */}
+      <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 ${
+        locked ? "border-amber-200 bg-amber-50" : "border-gray-100 bg-gray-50/60"
+      }`}>
+        <div className="flex items-start gap-2.5">
+          {locked
+            ? <Lock className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+            : <LockOpen className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" />}
+          <div>
+            <p className={`text-sm font-semibold ${locked ? "text-amber-900" : "text-[#0C1F3F]"}`}>
+              {locked ? "Schedule locked" : "Schedule unlocked"}
+            </p>
+            <p className={`text-xs ${locked ? "text-amber-700" : "text-gray-500"}`}>
+              {locked
+                ? "Rainouts and reschedules still work. Everything else needs an unlock."
+                : "Lock this division once the schedule is settled."}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={posted}
+              disabled={postedBusy}
+              onChange={handleTogglePosted}
+              className="h-4 w-4 cursor-pointer rounded border-gray-300 text-[#22C55E] focus:ring-[#22C55E]"
+            />
+            <span className="inline-flex items-center gap-1.5">
+              <Send className="h-3.5 w-3.5 text-gray-400" />
+              Schedule sent out
+            </span>
+          </label>
+
+          <button
+            type="button"
+            onClick={handleToggleLock}
+            disabled={lockBusy}
+            className={
+              locked
+                ? "inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                : "inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-[#0C1F3F] transition-colors hover:border-gray-300 disabled:opacity-50"
+            }
+          >
+            {lockBusy
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : locked ? <LockOpen className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+            {lockBusy ? "Saving…" : locked ? "Unlock schedule" : "Lock schedule"}
+          </button>
+        </div>
+      </div>
+
       {/* ── Action buttons ── */}
       <div className="flex flex-wrap items-center gap-3">
         {isIncomplete ? (
           <>
             <button
               onClick={handleFinish}
-              disabled={finishing || generating}
+              title={locked ? lockedReason(divisionName, "finish") : undefined}
+              disabled={finishing || generating || locked}
               className="inline-flex items-center gap-2 rounded-lg bg-[#0C1F3F] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {finishing
@@ -670,7 +807,8 @@ export function DivisionSchedulePanel({
             </button>
             <button
               onClick={requestGenerate}
-              disabled={finishing || generating}
+              title={locked ? lockedReason(divisionName, "generate") : undefined}
+              disabled={finishing || generating || locked}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:border-red-200 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {generating
@@ -681,7 +819,8 @@ export function DivisionSchedulePanel({
         ) : (
           <button
             onClick={requestGenerate}
-            disabled={generating}
+            title={locked ? lockedReason(divisionName, "generate") : undefined}
+            disabled={generating || locked}
             className="inline-flex items-center gap-2 rounded-lg bg-[#0C1F3F] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {generating
@@ -1027,9 +1166,11 @@ export function DivisionSchedulePanel({
       <div className="mt-3 print:hidden">
         <button
           onClick={() => setAddGameOpen(true)}
-          disabled={teams.length < 2}
+          disabled={teams.length < 2 || locked}
           title={
-            teams.length < 2
+            locked
+              ? lockedReason(divisionName, "add")
+              : teams.length < 2
               ? "Add at least two teams before scheduling a game"
               : "Manually add a single game to this division"
           }

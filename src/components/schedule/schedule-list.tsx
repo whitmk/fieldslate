@@ -549,10 +549,13 @@ function GameRowCells({
 
 // ── Delete dialog ────────────────────────────────────────────────────────────
 
-// Block reasons returned by delete_game_if_unblocked (0079). Strings mirror
-// the RPC's jsonb exactly. Both are checked server-side; a blocked response
-// lists every reason that applies.
-type DeleteGameBlockReason = "interleague_accepted" | "result_recorded";
+// Block reasons returned by delete_game_if_unblocked (0079, extended 0083).
+// Strings mirror the RPC's jsonb exactly. All THREE are checked server-side;
+// a blocked response lists every reason that applies.
+type DeleteGameBlockReason =
+  | "interleague_accepted"
+  | "result_recorded"
+  | "division_locked";
 
 type DeleteGameRpcResult =
   | {
@@ -572,6 +575,10 @@ function describeBlockReason(
   if (reason === "interleague_accepted") {
     const org = game.interleague_org?.name ?? "a partner league";
     return `It's a confirmed interleague game with ${org}. The partner league sees this game on their own schedule, and deleting it would remove it from their view without any notice. Cancel or reschedule it through the interleague flow instead.`;
+  }
+  if (reason === "division_locked") {
+    const div = game.home_team?.division?.name ?? "This game's division";
+    return `${div} is locked. Unlock it on the division's schedule panel to delete games. Rainouts and reschedules still work while it's locked.`;
   }
   return "It has a recorded result, so it's part of the season's history.";
 }

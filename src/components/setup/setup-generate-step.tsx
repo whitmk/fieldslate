@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { generateSchedule } from "@/lib/schedule/generate-schedule";
+import { fetchDivisionLocks } from "@/lib/schedule/division-lock";
 import { getDivisionGameCounts } from "@/lib/schedule/division-game-counts";
 import {
   detectSeasonCoachConflicts,
@@ -55,7 +56,9 @@ type RunStatus =
   // A live re-count just before generating found this division already has
   // games (another tab/session scheduled it after load). Skipped rather than
   // regenerated, since generateSchedule deletes + recreates.
-  | { state: "skipped" };
+  | { state: "skipped" }
+  // Division is locked — skipped and NAMED, distinct from "already scheduled".
+  | { state: "skipped_locked" };
 
 interface Props {
   currentOrgId: string;
@@ -200,6 +203,13 @@ export function SetupGenerateStep({
       ]);
       if ((liveCounts.get(division.id) ?? 0) > 0) {
         setStatus(division.id, { state: "skipped" });
+        return;
+      }
+      // Same skip for a locked division — generate must never regenerate one,
+      // and must never refuse the whole run because one is locked.
+      const locks = await fetchDivisionLocks(createClient(), [division.id]);
+      if (locks.get(division.id)?.locked) {
+        setStatus(division.id, { state: "skipped_locked" });
         return;
       }
       const res = await generateSchedule(division.id);
@@ -406,7 +416,7 @@ export function SetupGenerateStep({
                   <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-[#22C55E]" />
                 ) : status?.state === "failed" ? (
                   <AlertTriangle className="h-4 w-4 flex-shrink-0 text-red-500" />
-                ) : status?.state === "skipped" || count > 0 ? (
+                ) : status?.state === "skipped" || status?.state === "skipped_locked" || count > 0 ? (
                   <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-[#22C55E]" />
                 ) : (
                   <span className="h-2 w-2 flex-shrink-0 rounded-full border border-gray-300 bg-gray-100" />
@@ -435,6 +445,8 @@ export function SetupGenerateStep({
                   </p>
                 ) : status?.state === "skipped" ? (
                   <p className="text-xs text-gray-500">Already scheduled</p>
+                ) : status?.state === "skipped_locked" ? (
+                  <p className="text-xs text-amber-700">Locked</p>
                 ) : (
                   <p className="text-xs text-gray-400">
                     {isQueued ? "Waiting…" : "Not scheduled yet"}
@@ -493,6 +505,12 @@ export function SetupGenerateStep({
               {status?.state === "skipped" && (
                 <p className="ml-7 text-xs text-gray-500">
                   Already had a schedule — left untouched.
+                </p>
+              )}
+              {status?.state === "skipped_locked" && (
+                <p className="ml-7 text-xs text-amber-700">
+                  Locked — skipped, not regenerated. Unlock it on the division&apos;s
+                  schedule panel to include it.
                 </p>
               )}
             </div>

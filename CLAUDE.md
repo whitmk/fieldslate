@@ -347,11 +347,41 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   escape hatch is AFTER STATEMENT with transition tables (raise from there
   and the statement still rolls back) — one set-based check instead of N.
   A locked-division abort costs 0.6ms: it refuses at row 1 and never scans.
-- Chunks 1-3 are landed (columns, division-delete RPC, both triggers, the
-  bypass, and the RPC's third reason). **The UI is NOT built** — no lock
-  toggle, no posted checkbox, no locked state on any surface, and
-  generate-all does not yet skip-and-name locked divisions. Nothing can be
-  locked from the product today; `locked` is only settable by raw SQL.
+- **All client lock reads and writes go through
+  `src/lib/schedule/division-lock.ts`** — `fetchDivisionLocks` /
+  `fetchSeasonDivisionLocks` / `setDivisionLock` / `setDivisionPosted` plus
+  `lockedReason` for the wording and `isDivisionLockError` /
+  `formatLockError` for translating the trigger's refusal. Same
+  shared-pure-function rule as the umpires conflict helpers: never write a
+  parallel lock check, and never hand-write the locked sentence.
+- **The lock reads FAIL LOUD.** `fetchDivisionLocks` throws on a read error
+  rather than returning unlocked defaults — an unreadable lock rendering as
+  "unlocked" would put the admin straight back into click-then-refuse.
+  Every consumer surfaces that error visibly.
+- **Surfaces carrying lock state** (chunk 5): division schedule panel (the
+  lock toggle + posted checkbox live here, plus gating on generate,
+  finish, add game, delete team), season-page division cards (Locked/Sent
+  badges), generate-all modal (pre-run "will be skipped" notice, amber
+  rows, `skipped_locked` status), setup generate step (same skip), Add
+  game modal, conflict resolver, and the All Games delete dialog's
+  `division_locked` reason.
+- **The two division-ambiguous surfaces get PER-OPTION / PER-ROW state, never
+  a disabled button.** Add game picks its division INSIDE the modal, so
+  options are annotated "— locked" and stay SELECTABLE (an admin must be
+  able to see why, not find it mysteriously unpickable) with the reason
+  inline once chosen. The conflict resolver spans divisions and can hold a
+  mix in one list, so each row carries its own badge, its own disabled move
+  button, and a reason naming THAT row's division — auto-move filters locked
+  games out rather than attempting and failing, matching the pick-from-valid
+  asymmetry used for rainout reschedule.
+- **Both save paths translate a stale-lock refusal.** A division can be
+  locked between render and click; Add game's insert and the resolver's
+  patch run their error through `isDivisionLockError`, show the friendly
+  reason, and mark the division/row locked so the UI catches up instead of
+  re-offering the action.
+- Chunks 1-3, 5, and 6 are landed. **Not built:** lock state on the wizard's
+  save-and-regenerate (it relies on the generator's own refusal message) and
+  on the interleague resolve surface.
 - **Harness: `scripts/sim/schedule-lock-sim.sql`** — 12 assertions, 12
   anti-vacuity counters, 9 mutants all killed (2026-07-23). Read its header
   before touching any of this; it is SQL, not `npm run`, for the reasons in
@@ -379,10 +409,19 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   inside the same always-raising DO pattern so it can never commit, and
   ALWAYS re-verify `md5(prosrc)` against the repo migration bodies
   afterward. A surviving mutant in production is far worse than a failing
-  test. Same rule for `alter table ... disable trigger` in a benchmark: it
-  takes an ACCESS EXCLUSIVE lock on `games` for the transaction's duration
-  (briefly blocking the live app), so keep those transactions short and
-  confirm `tgenabled = 'O'` on every trigger when finished.
+  test.
+- **NEVER run `alter table ... disable trigger` on a production table
+  without flagging the ACCESS EXCLUSIVE lock first and getting an explicit
+  go-ahead.** This is a standing rule, not a preference. Disabling a trigger
+  takes an ACCESS EXCLUSIVE lock on the table for the WHOLE transaction —
+  every read and write from the live app blocks behind it until the
+  transaction ends, even though the statement itself looks instant and even
+  though the change rolls back. It was done unannounced on `games` during
+  the 2026-07-23 trigger benchmark while an admin was actively regenerating
+  schedules; it rolled back cleanly and no harm resulted, but the risk was
+  taken without asking. Say what the lock will block and for roughly how
+  long, get agreement, keep the transaction as short as possible, and
+  confirm `tgenabled = 'O'` on every trigger afterward.
 - **A mutation result is "killed" ONLY if the BASELINE ASSERTION fails** —
   not merely if the mutant behaves differently. Mixing those two criteria in
   one script produces mutants that look like survivors when they were caught

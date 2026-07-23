@@ -400,8 +400,13 @@ export type Database = {
           id: string
           intra_division_games_per_team: number | null
           league_id: string
+          locked: boolean
+          locked_at: string | null
+          locked_by: string | null
           name: string
           plays_interleague: boolean
+          posted: boolean
+          posted_at: string | null
           practice_season_end: string | null
           practice_season_start: string | null
           practice_venue_id: string | null
@@ -421,8 +426,13 @@ export type Database = {
           id?: string
           intra_division_games_per_team?: number | null
           league_id: string
+          locked?: boolean
+          locked_at?: string | null
+          locked_by?: string | null
           name: string
           plays_interleague?: boolean
+          posted?: boolean
+          posted_at?: string | null
           practice_season_end?: string | null
           practice_season_start?: string | null
           practice_venue_id?: string | null
@@ -442,8 +452,13 @@ export type Database = {
           id?: string
           intra_division_games_per_team?: number | null
           league_id?: string
+          locked?: boolean
+          locked_at?: string | null
+          locked_by?: string | null
           name?: string
           plays_interleague?: boolean
+          posted?: boolean
+          posted_at?: string | null
           practice_season_end?: string | null
           practice_season_start?: string | null
           practice_venue_id?: string | null

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Plus, CalendarDays, ChevronDown, Pencil, Trash2,
   Zap, CloudRain, ArrowLeftRight, FileDown, Users,
-  X, Loader2, AlertTriangle, CheckCircle2,
+  X, Loader2, AlertTriangle, CheckCircle2, Lock,
 } from "lucide-react";
 import { DivisionBallIcon } from "./division-ball-icon";
 import { createClient } from "@/lib/supabase/client";
@@ -607,7 +607,29 @@ export function DivisionSection({
                     >
                       <DivisionBallIcon sport={leagueSport} index={idx} />
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-[#0C1F3F]">{div.name}</p>
+                        <p className="flex items-center gap-1.5 text-sm font-semibold text-[#0C1F3F]">
+                          {div.name}
+                          {/* Locked state must be visible BEFORE opening the
+                              panel — the season page is where generate-all and
+                              delete-division live. */}
+                          {div.locked && (
+                            <span
+                              title="Schedule locked — rainouts and reschedules still work."
+                              className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800"
+                            >
+                              <Lock className="h-2.5 w-2.5" />
+                              Locked
+                            </span>
+                          )}
+                          {div.posted && !div.locked && (
+                            <span
+                              title="Marked as sent out. Clears automatically if this division's games change."
+                              className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600"
+                            >
+                              Sent
+                            </span>
+                          )}
+                        </p>
                         {div.start_date && div.end_date && (
                           <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-400">
                             <CalendarDays className="h-3 w-3" />

@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  X, CalendarDays, Loader2, CheckCircle2, AlertTriangle, PartyPopper,
+  X, CalendarDays, Loader2, CheckCircle2, AlertTriangle, PartyPopper, Lock,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { generateSchedule } from "@/lib/schedule/generate-schedule";
+import { fetchDivisionLocks } from "@/lib/schedule/division-lock";
 import {
   detectSeasonCoachConflicts,
   type CoachConflict,
@@ -53,6 +54,11 @@ type PlannedDivision = {
   slack: number;
   // Games already in the DB at plan time — >0 means it'll be skipped.
   existingGames: number;
+  // Schedule lock (0080/0082). A locked division is skipped and NAMED in the
+  // summary — generate-all is a season-level action and must never refuse the
+  // whole run because one division is locked, nor silently regenerate a
+  // locked one.
+  locked: boolean;
 };
 
 type RunStatus =
@@ -67,7 +73,11 @@ type RunStatus =
     }
   | { state: "failed"; error: string }
   // Live re-count found games since planning — left untouched, not regenerated.
-  | { state: "skipped" };
+  | { state: "skipped" }
+  // Division is locked. Distinct from "skipped" on purpose: "already
+  // scheduled" and "you locked this" are different facts and the admin needs
+  // to know which one applied.
+  | { state: "skipped_locked" };
 
 export function GenerateAllModal({
   leagueId,
@@ -214,6 +224,13 @@ export function GenerateAllModal({
       });
 
       const nameById = new Map(divisions.map((d) => [d.id, d.name]));
+      // Lock state for the plan table. Throws on a read error, which the
+      // catch below turns into planError — a lock we can't read must not
+      // render as unlocked and get regenerated.
+      const locks = await fetchDivisionLocks(
+        createClient(),
+        divisions.map((d) => d.id),
+      );
       const ordered = orderByScarcity(inputs.map(scarcityKey));
       setPlan(
         ordered.map((k) => ({
@@ -223,6 +240,7 @@ export function GenerateAllModal({
           demand: k.demand,
           slack: k.slack,
           existingGames: counts.get(k.divisionId) ?? 0,
+          locked: !!locks.get(k.divisionId)?.locked,
         })),
       );
     } catch (err) {
@@ -238,8 +256,10 @@ export function GenerateAllModal({
     void buildPlan();
   }, [buildPlan]);
 
-  // Divisions that will actually be generated (zero games at plan time).
-  const targets = plan.filter((p) => p.existingGames === 0);
+  // Divisions that will actually be generated: zero games at plan time AND
+  // not locked. Locked ones are reported below rather than attempted.
+  const targets = plan.filter((p) => p.existingGames === 0 && !p.locked);
+  const lockedSkipped = plan.filter((p) => p.locked);
 
   // ── Fresh sequential loop — the three reproduced behaviors ────────────────
   async function generateOne(divId: string) {
@@ -251,6 +271,13 @@ export function GenerateAllModal({
       const live = await getDivisionGameCounts(createClient(), leagueId, [divId]);
       if ((live.get(divId) ?? 0) > 0) {
         setStatuses((prev) => ({ ...prev, [divId]: { state: "skipped" } }));
+        return;
+      }
+      // Live re-read of the lock too, same race as the game count: another
+      // admin may have locked this division since the plan was built.
+      const liveLocks = await fetchDivisionLocks(createClient(), [divId]);
+      if (liveLocks.get(divId)?.locked) {
+        setStatuses((prev) => ({ ...prev, [divId]: { state: "skipped_locked" } }));
         return;
       }
       const res = await generateSchedule(divId);
@@ -323,6 +350,9 @@ export function GenerateAllModal({
     if (!s || s.state === "running") return { tone: "note", text: `${p.name}: …` };
     if (s.state === "skipped") {
       return { tone: "note", text: `${p.name}: already scheduled — left untouched.` };
+    }
+    if (s.state === "skipped_locked") {
+      return { tone: "note", text: `${p.name}: locked — skipped, not regenerated.` };
     }
     if (s.state === "failed") {
       return { tone: "warn", text: `${p.name}: couldn't generate — ${s.error}` };
@@ -401,6 +431,20 @@ export function GenerateAllModal({
             </p>
           ) : (
             <>
+              {lockedSkipped.length > 0 && (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                  <Lock className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+                  <p className="text-sm text-amber-800">
+                    <span className="font-semibold">
+                      {lockedSkipped.length} locked division
+                      {lockedSkipped.length === 1 ? "" : "s"} will be skipped:
+                    </span>{" "}
+                    {lockedSkipped.map((p) => p.name).join(", ")}. The rest still
+                    generate — unlock a division to include it.
+                  </p>
+                </div>
+              )}
+
               {/* Ordered division list (run order = display order) */}
               <ol className="flex flex-col gap-1.5">
                 {plan.map((p, i) => {
@@ -409,7 +453,9 @@ export function GenerateAllModal({
                   return (
                     <li
                       key={p.id}
-                      className="flex items-center gap-3 rounded-xl border border-gray-100 px-3 py-2.5"
+                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${
+                        p.locked ? "border-amber-200 bg-amber-50/60" : "border-gray-100"
+                      }`}
                     >
                       <span className="w-5 flex-shrink-0 text-center text-xs font-semibold text-gray-300">
                         {i + 1}
@@ -421,6 +467,8 @@ export function GenerateAllModal({
                           <AlertTriangle className="h-4 w-4 text-red-500" />
                         ) : s?.state === "done" || s?.state === "skipped" ? (
                           <CheckCircle2 className="h-4 w-4 text-[#22C55E]" />
+                        ) : p.locked || s?.state === "skipped_locked" ? (
+                          <Lock className="h-4 w-4 text-amber-600" />
                         ) : (
                           <span className="block h-2 w-2 rounded-full border border-gray-300 bg-gray-100" />
                         )}
@@ -428,9 +476,11 @@ export function GenerateAllModal({
                       <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
                         {p.name}
                       </span>
-                      <span className="flex-shrink-0 text-xs text-gray-400">
+                      <span className={`flex-shrink-0 text-xs ${p.locked ? "text-amber-700" : "text-gray-400"}`}>
                         {s?.state === "running"
                           ? "Scheduling…"
+                          : p.locked
+                          ? "Locked — will skip"
                           : willSkip && !s
                           ? "Already scheduled"
                           : `${p.supply} slots · needs ${p.demand}`}

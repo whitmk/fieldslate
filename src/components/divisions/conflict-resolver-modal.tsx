@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  X, AlertTriangle, Loader2, CheckCircle2, ChevronDown, Zap, MapPin, Clock,
+  X, AlertTriangle, Loader2, CheckCircle2, ChevronDown, Zap, MapPin, Clock, Lock,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { detectScheduleConflicts, type ScheduleConflict } from "@/lib/schedule/generate-schedule";
@@ -14,6 +14,11 @@ import {
 import { CoachConflictNotice } from "@/components/schedule/coach-conflict-notice";
 import { fmtGameDate } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
+import {
+  fetchDivisionLocks,
+  lockedReason,
+  isDivisionLockError,
+} from "@/lib/schedule/division-lock";
 import {
   DAY_LABELS,
   dayKeyFromIsoDate,
@@ -45,7 +50,7 @@ type GameRow = {
   venue_id: string | null;
   home_team_id: string;
   away_team_id: string | null;
-  home_team: { name: string } | null;
+  home_team: { name: string; division_id: string | null } | null;
   away_team: { name: string } | null;
   venue: { id: string; name: string } | null;
 };
@@ -171,6 +176,10 @@ interface Props {
 type MoveForm = { venueId: string; date: string; time: string };
 
 export function ConflictResolverModal({ leagueId, divisionId, divisionName, onClose, onResolved }: Props) {
+  // Per-game schedule-lock state — see the comment where these are populated.
+  const [lockedGameIds, setLockedGameIds] = useState<Set<string>>(new Set());
+  const [lockedGameDivisionNames, setLockedGameDivisionNames] = useState<Map<string, string>>(new Map());
+  const [lockReadError, setLockReadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
   const [coachConflicts, setCoachConflicts] = useState<CoachConflict[]>([]);
@@ -237,7 +246,7 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
         .from("games")
         .select(`
           id, scheduled_at, venue_id, home_team_id, away_team_id,
-          home_team:teams!home_team_id(name),
+          home_team:teams!home_team_id(name, division_id),
           away_team:teams!away_team_id(name),
           venue:venues(id, name)
         `)
@@ -247,6 +256,47 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
 
     const rows = (gamesRes.data ?? []) as unknown as GameRow[];
     setAllVenueGames(rows);
+
+    // Per-GAME lock state. This modal spans divisions (it loads every game at
+    // the division's venues), so one conflict list can hold a mix of locked
+    // and unlocked games — a single disabled button would be wrong. Each row
+    // carries its own state and its own inline reason.
+    // Fails LOUD: an unreadable lock must never render as unlocked.
+    try {
+      const divIdsForLock = [
+        ...new Set(
+          rows
+            .map((g) => g.home_team?.division_id)
+            .filter((id): id is string => !!id),
+        ),
+      ];
+      const locks = await fetchDivisionLocks(supabase, divIdsForLock);
+      // Names for the inline reason — this list can show other divisions'
+      // games, so "This division is locked" would name the wrong one.
+      const { data: nameRows } = await supabase
+        .from("divisions")
+        .select("id, name")
+        .in("id", divIdsForLock);
+      const nameById = new Map(
+        ((nameRows ?? []) as { id: string; name: string }[]).map((d) => [d.id, d.name]),
+      );
+      const lockedIds = new Set<string>();
+      const lockedNames = new Map<string, string>();
+      for (const g of rows) {
+        const divId = g.home_team?.division_id;
+        if (divId && locks.get(divId)?.locked) {
+          lockedIds.add(g.id);
+          lockedNames.set(g.id, nameById.get(divId) ?? "That division");
+        }
+      }
+      setLockedGameIds(lockedIds);
+      setLockedGameDivisionNames(lockedNames);
+      setLockReadError(null);
+    } catch (e) {
+      setLockedGameIds(new Set());
+      setLockedGameDivisionNames(new Map());
+      setLockReadError(e instanceof Error ? e.message : "Couldn't read schedule lock state.");
+    }
 
     // Constraint rules for every local team on these games (away is null on
     // interleague rows — the external org has no constraint rows).
@@ -462,6 +512,11 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     const form = moveForms[gameId];
     const game = allVenueGames.find((g) => g.id === gameId);
     if (!form || !game) return;
+    // Client guard for the MESSAGE — the 0082 trigger is the real refusal.
+    if (lockedGameIds.has(gameId)) {
+      setError(lockedReason(lockedGameDivisionNames.get(gameId) ?? "That division", "move"));
+      return;
+    }
     // A cleared or uncommitted native input reports "" — without this guard
     // the ISO below becomes a malformed timestamp ("2026-05-01T:00") that
     // only fails at the DB with a raw Postgres error.
@@ -502,7 +557,16 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
 
     if (err) {
       setSaving((p) => ({ ...p, [gameId]: false }));
-      setError(err.message);
+      // Stale lock state (another admin locked it since this list loaded):
+      // the trigger refuses, so translate it and mark the row locked so the
+      // rest of the list stops offering the move.
+      if (isDivisionLockError(err.message)) {
+        const name = lockedGameDivisionNames.get(gameId) ?? "That division";
+        setError(lockedReason(name, "move"));
+        setLockedGameIds((prev) => new Set(prev).add(gameId));
+      } else {
+        setError(err.message);
+      }
       return;
     }
 
@@ -555,8 +619,12 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     setResolving((p) => ({ ...p, [key]: true }));
     setError(null);
 
-    // Keep the first game; move the rest (prefer moving non-division games last)
-    const gamesToMove = conflict.games.slice(1);
+    // Keep the first game; move the rest (prefer moving non-division games last).
+    // Locked games are EXCLUDED from auto-move: this is a pick-from-valid
+    // surface, so an unmovable game is filtered out rather than attempted and
+    // refused. If every candidate is locked the conflict simply can't be
+    // auto-resolved, and the row's inline reason already says why.
+    const gamesToMove = conflict.games.slice(1).filter((g) => !lockedGameIds.has(g.id));
     let localGames = [...allVenueGames];
 
     for (const g of gamesToMove) {
@@ -604,7 +672,7 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     let localGames = [...allVenueGames];
 
     for (const conflict of conflicts) {
-      const gamesToMove = conflict.games.slice(1);
+      const gamesToMove = conflict.games.slice(1).filter((g) => !lockedGameIds.has(g.id));
       for (const g of gamesToMove) {
         const slot = findFreeSlot(g.id, movingTeamIdsFor(g.id), constraintRules, localGames, venues, settings, dateRange.start, dateRange.end);
         if (!slot) {
@@ -720,6 +788,8 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
                         const isExpanded = expandedGame === g.id;
                         const form = moveForms[g.id];
                         const isSavingGame = saving[g.id];
+                        const rowLocked = lockedGameIds.has(g.id);
+                        const rowLockedDivision = lockedGameDivisionNames.get(g.id) ?? "That division";
                         return (
                           <div key={g.id}>
                             {/* Game row */}
@@ -742,6 +812,12 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
                                 </p>
                                 {g.divisionName && (
                                   <p className="mt-0.5 text-xs text-gray-400">{g.divisionName}</p>
+                                )}
+                                {rowLocked && (
+                                  <p className="mt-1 inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">
+                                    <Lock className="h-3 w-3 flex-shrink-0" />
+                                    {lockedReason(rowLockedDivision, "move")}
+                                  </p>
                                 )}
                               </div>
 
@@ -888,8 +964,10 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
                                 <div className="mt-3 flex items-center gap-2">
                                   <button
                                     onClick={() => saveManualMove(g.id)}
+                                    title={rowLocked ? lockedReason(rowLockedDivision, "move") : undefined}
                                     disabled={
                                       isSavingGame ||
+                                      rowLocked ||
                                       ((moveConflicts[g.id]?.length ?? 0) > 0 &&
                                         !(moveReasons[g.id] ?? "").trim())
                                     }
@@ -941,6 +1019,16 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
               })}
 
               {/* Error message */}
+              {lockReadError && (
+                <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <span>
+                    {lockReadError} Locked games can&apos;t be identified, so moves
+                    may be refused when you save.
+                  </span>
+                </div>
+              )}
+
               {error && (
                 <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
                   {error}

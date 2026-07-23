@@ -2,8 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Loader2, Plus, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Lock, Plus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  fetchSeasonDivisionLocks,
+  lockedReason,
+  isDivisionLockError,
+  type DivisionLockState,
+} from "@/lib/schedule/division-lock";
 import { Button } from "@/components/ui/button";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import {
@@ -91,6 +97,14 @@ export function AddGameModal({
   const [time, setTime] = useState("");
   const [venueId, setVenueId] = useState("");
 
+  // Schedule-lock state per division (NOT `lockedDivisionId`, which pins this
+  // modal to one division). This modal picks its division INTERNALLY, so the
+  // Add game button can't simply be disabled — some divisions in the same
+  // season may be locked and others not. Each option carries its own state and
+  // the reason renders inline once a locked one is selected.
+  const [scheduleLocks, setScheduleLocks] = useState<Map<string, DivisionLockState>>(new Map());
+  const [lockReadError, setLockReadError] = useState<string | null>(null);
+
   const [venues, setVenues] = useState<VenueOption[]>([]);
   const [venuesLoading, setVenuesLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -172,7 +186,34 @@ export function AddGameModal({
   }, [firstLeagueId]);
 
   const showSeasonField = !lockedDivisionId && seasons.length > 1;
+  // Lock state for every division in the selected season, refetched when the
+  // season changes. Fails LOUD — an unreadable lock must not render as
+  // "unlocked", which would put the admin back in click-then-refuse.
+  useEffect(() => {
+    if (!seasonId) {
+      setScheduleLocks(new Map());
+      setLockReadError(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const locks = await fetchSeasonDivisionLocks(createClient(), seasonId);
+        if (!cancelled) { setScheduleLocks(locks); setLockReadError(null); }
+      } catch (e) {
+        if (!cancelled) {
+          setScheduleLocks(new Map());
+          setLockReadError(e instanceof Error ? e.message : "Couldn't read schedule lock state.");
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [seasonId]);
+
   const seasonDivisions = divisions.filter((d) => d.league_id === seasonId);
+  const selectedDivisionLocked = !!divisionId && !!scheduleLocks.get(divisionId)?.locked;
+  const selectedDivisionName =
+    divisions.find((d) => d.id === divisionId)?.name ?? "This division";
   const divisionTeams = teams.filter((t) => t.division_id === divisionId);
   const homeTeam = divisionTeams.find((t) => t.id === homeTeamId);
   const awayTeam = divisionTeams.find((t) => t.id === awayTeamId);
@@ -376,6 +417,12 @@ export function AddGameModal({
 
   async function handleSave() {
     if (!complete || saving) return;
+    // Client guard for the MESSAGE — the 0082 trigger is the real refusal and
+    // still fires if this state went stale between render and click.
+    if (selectedDivisionLocked) {
+      setError(lockedReason(selectedDivisionName, "add"));
+      return;
+    }
     if (isOverriding && !overrideReady) return;
     // A cleared or uncommitted native input reports "" (or a malformed
     // value); without this the ISO below is garbage that only fails at the
@@ -422,7 +469,19 @@ export function AddGameModal({
       .select("id")
       .single();
     if (insertErr) {
-      setError(insertErr.message);
+      // A lock can land between render and click (another admin, another tab).
+      // The trigger is what actually refuses; translate it rather than showing
+      // raw SQL, and refresh local lock state so the UI catches up.
+      if (isDivisionLockError(insertErr.message)) {
+        setError(lockedReason(selectedDivisionName, "add"));
+        setScheduleLocks((prev) => {
+          const next = new Map(prev);
+          next.set(divisionId, { divisionId, locked: true, posted: false });
+          return next;
+        });
+      } else {
+        setError(insertErr.message);
+      }
       setSaving(false);
       return;
     }
@@ -502,11 +561,29 @@ export function AddGameModal({
             >
               <option value="">Select a division…</option>
               {seasonDivisions.map((d) => (
+                // Deliberately SELECTABLE, not disabled: the admin should be
+                // able to see why a division refuses rather than find it
+                // mysteriously unpickable. The reason renders below on select.
                 <option key={d.id} value={d.id}>
                   {d.name}
+                  {scheduleLocks.get(d.id)?.locked ? " — locked" : ""}
                 </option>
               ))}
             </select>
+
+            {lockReadError && (
+              <p className="flex items-start gap-1.5 text-xs text-red-600">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                {lockReadError}
+              </p>
+            )}
+
+            {selectedDivisionLocked && (
+              <p className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+                <Lock className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-600" />
+                {lockedReason(selectedDivisionName, "add")}
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
