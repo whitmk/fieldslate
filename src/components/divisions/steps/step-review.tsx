@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CheckCircle2, AlertTriangle, Edit2, Zap, Loader2,
   ExternalLink, X, Save, CalendarDays,
@@ -16,6 +16,12 @@ import {
   type NewDivisionPlannedGame,
   type ScheduleConflict,
 } from "@/lib/schedule/generate-schedule";
+import {
+  detectSeasonCoachConflicts,
+  coachConflictTouchesDivision,
+  type CoachConflict,
+} from "@/lib/schedule/detect-coach-conflicts";
+import { CoachConflictNotice } from "@/components/schedule/coach-conflict-notice";
 import { getOfficialTitlePlural } from "@/lib/utils/official-title";
 import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
 import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
@@ -137,6 +143,34 @@ export function StepReview({
   const [confirmingKind, setConfirmingKind] = useState<GenerateKind | null>(null);
   const [error, setError] = useState("");
   const [regenResult, setRegenResult] = useState<RegenResult | null>(null);
+  const [coachConflicts, setCoachConflicts] = useState<CoachConflict[]>([]);
+
+  // After a regen/plan persists games, sweep the whole season for shared-coach
+  // conflicts touching this division (they can only be judged season-wide).
+  // Read-only, additive, fails soft.
+  useEffect(() => {
+    if (!regenResult) {
+      setCoachConflicts([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const all = await detectSeasonCoachConflicts(createClient(), leagueId);
+        if (!cancelled) {
+          setCoachConflicts(
+            all.filter((c) => coachConflictTouchesDivision(c, regenResult.savedDivisionId)),
+          );
+        }
+      } catch (err) {
+        console.error("coach-conflict detection failed", err);
+        if (!cancelled) setCoachConflicts([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [regenResult, leagueId]);
   const [saveOnlyResult, setSaveOnlyResult] = useState<SaveOnlyResult | null>(null);
   const [capHit, setCapHit] = useState<
     | { cap: CapName; limit: number; plan: Plan }
@@ -760,6 +794,9 @@ export function StepReview({
             </div>
           </div>
         )}
+
+        {/* Shared-coach conflicts — distinct read-only category */}
+        <CoachConflictNotice conflicts={coachConflicts} className="" />
 
         <button
           type="button"

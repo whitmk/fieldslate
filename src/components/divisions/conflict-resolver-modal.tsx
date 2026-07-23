@@ -6,6 +6,12 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { detectScheduleConflicts, type ScheduleConflict } from "@/lib/schedule/generate-schedule";
+import {
+  detectSeasonCoachConflicts,
+  coachConflictTouchesDivision,
+  type CoachConflict,
+} from "@/lib/schedule/detect-coach-conflicts";
+import { CoachConflictNotice } from "@/components/schedule/coach-conflict-notice";
 import { fmtGameDate } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
 import {
@@ -167,6 +173,7 @@ type MoveForm = { venueId: string; date: string; time: string };
 export function ConflictResolverModal({ leagueId, divisionId, divisionName, onClose, onResolved }: Props) {
   const [loading, setLoading] = useState(true);
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
+  const [coachConflicts, setCoachConflicts] = useState<CoachConflict[]>([]);
   const [allVenueGames, setAllVenueGames] = useState<GameRow[]>([]);
   const [venues, setVenues] = useState<Venue[]>([]);
   const [settings, setSettings] = useState<DivSettings | null>(null);
@@ -290,8 +297,22 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     const divIds = new Set(rows.filter((g) => divTeamIds.has(g.home_team_id)).map((g) => g.id));
     const divConflicts = all.filter((c) => c.games.some((g) => divIds.has(g.id)));
     setConflicts(divConflicts);
+
+    // Shared-coach conflicts (season-wide, own category) — DISPLAY-ONLY here:
+    // shown read-only with a "move to a different time" remedy, no move/override
+    // flow (Chunk 3, Option 1). Fails soft so it can't break the resolver.
+    try {
+      const allCoach = await detectSeasonCoachConflicts(supabase, leagueId);
+      setCoachConflicts(
+        allCoach.filter((c) => coachConflictTouchesDivision(c, divisionId)),
+      );
+    } catch (err) {
+      console.error("coach-conflict detection failed", err);
+      setCoachConflicts([]);
+    }
+
     setLoading(false);
-  }, [divisionId]);
+  }, [divisionId, leagueId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -645,13 +666,21 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
               <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
             </div>
           ) : conflicts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <CheckCircle2 className="h-10 w-10 text-[#22C55E]" />
-              <p className="mt-3 font-semibold text-[#0C1F3F]">No conflicts</p>
-              <p className="mt-1 text-sm text-gray-400">This division&apos;s schedule looks clean.</p>
-            </div>
+            coachConflicts.length > 0 ? (
+              // No field conflicts, but shared-coach conflicts exist — show them
+              // read-only (no move flow here, per Option 1).
+              <CoachConflictNotice conflicts={coachConflicts} className="" />
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <CheckCircle2 className="h-10 w-10 text-[#22C55E]" />
+                <p className="mt-3 font-semibold text-[#0C1F3F]">No conflicts</p>
+                <p className="mt-1 text-sm text-gray-400">This division&apos;s schedule looks clean.</p>
+              </div>
+            )
           ) : (
             <div className="flex flex-col gap-5">
+              {/* Shared-coach conflicts — distinct read-only category, no move flow */}
+              <CoachConflictNotice conflicts={coachConflicts} className="" />
               <p className="text-sm text-gray-500">
                 <span className="font-semibold text-red-600">{conflicts.length} conflict{conflicts.length !== 1 ? "s" : ""}</span>
                 {" "}found — two or more games are double-booked on the same field. Review each one and resolve it manually or let the scheduler find a free slot.

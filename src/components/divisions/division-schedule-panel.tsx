@@ -14,6 +14,12 @@ import {
   detectScheduleConflicts,
 } from "@/lib/schedule/generate-schedule";
 import type { ScheduleConflict } from "@/lib/schedule/generate-schedule";
+import {
+  detectSeasonCoachConflicts,
+  coachConflictTouchesDivision,
+  type CoachConflict,
+} from "@/lib/schedule/detect-coach-conflicts";
+import { CoachConflictNotice } from "@/components/schedule/coach-conflict-notice";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
 import { AddGameModal } from "@/components/schedule/add-game-modal";
@@ -101,6 +107,7 @@ export function DivisionSchedulePanel({
   const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [confirmRegenOpen, setConfirmRegenOpen] = useState(false);
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
+  const [coachConflicts, setCoachConflicts] = useState<CoachConflict[]>([]);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<GameRow | null>(null);
   const [addGameOpen, setAddGameOpen] = useState(false);
@@ -277,6 +284,21 @@ export function DivisionSchedulePanel({
     setConflicts(
       detectScheduleConflicts(flat, settings.game_duration ?? 0, settings.buffer_minutes ?? 0),
     );
+
+    // Shared-coach conflicts are season-wide (a coach can span divisions), so
+    // this reads the whole league and keeps only conflicts touching THIS
+    // division. Read-only, additive — a failure here must not break the games
+    // view, so it fails soft to an empty list (unlike the generator's own
+    // fail-closed constraint reads).
+    try {
+      const allCoach = await detectSeasonCoachConflicts(supabase, leagueId);
+      setCoachConflicts(
+        allCoach.filter((c) => coachConflictTouchesDivision(c, divisionId)),
+      );
+    } catch (err) {
+      console.error("coach-conflict detection failed", err);
+      setCoachConflicts([]);
+    }
 
     setLoadingGames(false);
   }, [divisionId, leagueId, leagueSport]);
@@ -768,6 +790,9 @@ export function DivisionSchedulePanel({
           </div>
         </div>
       )}
+
+      {/* ── Coach conflict warning (distinct category, read-only) ── */}
+      <CoachConflictNotice conflicts={coachConflicts} />
 
       {/* ── Schedule list ── */}
       {loadingGames ? (

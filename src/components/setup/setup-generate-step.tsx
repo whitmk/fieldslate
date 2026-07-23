@@ -15,6 +15,11 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { generateSchedule } from "@/lib/schedule/generate-schedule";
 import { getDivisionGameCounts } from "@/lib/schedule/division-game-counts";
+import {
+  detectSeasonCoachConflicts,
+  type CoachConflict,
+} from "@/lib/schedule/detect-coach-conflicts";
+import { CoachConflictNotice } from "@/components/schedule/coach-conflict-notice";
 
 // Setup step 4 — adaptive generate step. Like every other step, its state is
 // data-derived: divisions with zero games are "unscheduled"; when none are
@@ -83,6 +88,7 @@ export function SetupGenerateStep({
   // owner — the done screen only makes came-back-clean claims about runs it
   // actually watched.
   const [sessionRan, setSessionRan] = useState(false);
+  const [coachConflicts, setCoachConflicts] = useState<CoachConflict[]>([]);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -153,6 +159,26 @@ export function SetupGenerateStep({
   useEffect(() => {
     if (!initialLoading && allScheduled) onAllScheduled();
   }, [initialLoading, allScheduled, onAllScheduled]);
+
+  // Once every division is scheduled, sweep the whole season for shared-coach
+  // conflicts (a coach can span divisions, so this can only be judged with the
+  // full schedule in place). Read-only, additive, fails soft.
+  useEffect(() => {
+    if (initialLoading || !allScheduled || running) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const all = await detectSeasonCoachConflicts(createClient(), seasonId);
+        if (!cancelled) setCoachConflicts(all);
+      } catch (err) {
+        console.error("coach-conflict detection failed", err);
+        if (!cancelled) setCoachConflicts([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialLoading, allScheduled, running, seasonId]);
 
   function setStatus(divisionId: string, status: RunStatus) {
     setRunStatuses((prev) => ({ ...prev, [divisionId]: status }));
@@ -262,6 +288,7 @@ export function SetupGenerateStep({
     const sessionClean =
       sessionRan &&
       sessionWarnings.length === 0 &&
+      coachConflicts.length === 0 &&
       Object.values(runStatuses).every((s) => s.state === "done");
 
     return (
@@ -303,6 +330,13 @@ export function SetupGenerateStep({
                 .
               </p>
             ))}
+          </div>
+        )}
+
+        {/* Shared-coach conflicts — distinct read-only category */}
+        {coachConflicts.length > 0 && (
+          <div className="w-full max-w-md">
+            <CoachConflictNotice conflicts={coachConflicts} className="" />
           </div>
         )}
 

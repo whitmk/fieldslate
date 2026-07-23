@@ -6,6 +6,11 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { generateSchedule } from "@/lib/schedule/generate-schedule";
+import {
+  detectSeasonCoachConflicts,
+  type CoachConflict,
+} from "@/lib/schedule/detect-coach-conflicts";
+import { CoachConflictNotice } from "@/components/schedule/coach-conflict-notice";
 import { getDivisionGameCounts } from "@/lib/schedule/division-game-counts";
 import { parseAvailability, type VenueAvailability } from "@/lib/venues/availability";
 import {
@@ -76,6 +81,10 @@ export function GenerateAllModal({
   const [statuses, setStatuses] = useState<Record<string, RunStatus>>({});
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
+  // Season-wide shared-coach conflicts, detected once after the whole batch
+  // finishes (a coach can span divisions, so this can only be judged with every
+  // division generated). Distinct from the per-division venue conflicts above.
+  const [coachConflicts, setCoachConflicts] = useState<CoachConflict[]>([]);
 
   // ── Plan: score every division up front, order by scarcity ────────────────
   const buildPlan = useCallback(async () => {
@@ -289,6 +298,15 @@ export function GenerateAllModal({
       for (const p of targets) {
         await generateOne(p.id);
       }
+      // One season-wide shared-coach sweep now that every division is placed.
+      // Read-only and additive — a failure must not mask a successful batch, so
+      // it fails soft to an empty list.
+      try {
+        setCoachConflicts(await detectSeasonCoachConflicts(createClient(), leagueId));
+      } catch (err) {
+        console.error("coach-conflict detection failed", err);
+        setCoachConflicts([]);
+      }
     } finally {
       setRunning(false);
       setFinished(true);
@@ -336,6 +354,7 @@ export function GenerateAllModal({
   const allClean =
     finished &&
     targets.length > 0 &&
+    coachConflicts.length === 0 &&
     targets.every((p) => {
       const s = statuses[p.id];
       return s?.state === "done" && s.unscheduledCount === 0;
@@ -449,6 +468,8 @@ export function GenerateAllModal({
                       );
                     })}
                   </ul>
+                  {/* Season-wide shared-coach conflicts — own distinct category */}
+                  <CoachConflictNotice conflicts={coachConflicts} className="mt-3" />
                 </div>
               )}
             </>
