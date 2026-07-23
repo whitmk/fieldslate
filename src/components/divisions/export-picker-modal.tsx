@@ -1,10 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { X, Printer, Download, CalendarDays } from "lucide-react";
+import { X, Printer, Download, CalendarDays, FileUp } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Division } from "@/types/database";
 import type { DivisionStat } from "@/app/(dashboard)/dashboard/leagues/[id]/page";
+import {
+  buildSportsConnectCsv,
+  type SportsConnectGame,
+} from "@/lib/schedule/sports-connect-export";
 
 export type PrintMode = "games";
 
@@ -38,12 +42,7 @@ function slugify(s: string) {
   return s.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-type GameRow = {
-  scheduled_at: string;
-  home_team: { name: string } | null;
-  away_team: { name: string } | null;
-  venue: { name: string } | null;
-};
+type GameRow = SportsConnectGame;
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -55,6 +54,7 @@ export function ExportPickerModal({
   );
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [doneAction, setDoneAction] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const selectedDivision = divisions.find((d) => d.id === selectedDivisionId);
 
@@ -66,7 +66,7 @@ export function ExportPickerModal({
     if (teamIds.length === 0) return [];
     const { data } = await supabase
       .from("games")
-      .select(`scheduled_at,
+      .select(`id, scheduled_at, status, is_away, external_team_name,
         home_team:teams!home_team_id(name),
         away_team:teams!away_team_id(name),
         venue:venues(name)`)
@@ -76,8 +76,9 @@ export function ExportPickerModal({
     return (data ?? []) as unknown as GameRow[];
   }
 
-  function triggerDownload(csv: string, filename: string) {
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  // BOM helps Excel; the Sports Connect file feeds an importer, so it skips it.
+  function triggerDownload(csv: string, filename: string, bom = true) {
+    const blob = new Blob([bom ? "﻿" + csv : csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -110,6 +111,38 @@ export function ExportPickerModal({
       setTimeout(() => setDoneAction(null), 3000);
     } catch (err) {
       console.error("[ExportPickerModal] CSV export failed:", err);
+    }
+
+    setLoadingAction(null);
+  }
+
+  async function handleSportsConnectCsv() {
+    if (!selectedDivision) return;
+    const key = "sportsconnect-csv";
+    setLoadingAction(key);
+    setExportError(null);
+
+    const today = new Date().toISOString().substring(0, 10).replace(/-/g, "");
+    const base = `FieldSlate-${slugify(leagueName)}-${slugify(selectedDivision.name)}`;
+
+    try {
+      const games = await fetchGames(selectedDivisionId);
+      const settings = (selectedDivision.settings ?? {}) as { game_duration?: number };
+      const result = buildSportsConnectCsv(
+        games,
+        settings.game_duration,
+        selectedDivision.name,
+      );
+      if (!result.ok) {
+        setExportError(result.error);
+      } else {
+        triggerDownload(result.csv, `${base}-sportsconnect-${today}.csv`, false);
+        setDoneAction(key);
+        setTimeout(() => setDoneAction(null), 3000);
+      }
+    } catch (err) {
+      console.error("[ExportPickerModal] Sports Connect export failed:", err);
+      setExportError("Export failed — check your connection and try again.");
     }
 
     setLoadingAction(null);
@@ -157,7 +190,7 @@ export function ExportPickerModal({
               <select
                 className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
                 value={selectedDivisionId}
-                onChange={(e) => setSelectedDivisionId(e.target.value)}
+                onChange={(e) => { setSelectedDivisionId(e.target.value); setExportError(null); }}
               >
                 <option value="">Select a division…</option>
                 {divisions.map((d) => {
@@ -215,6 +248,46 @@ export function ExportPickerModal({
                 </button>
               </div>
             </div>
+
+            {/* Sports Connect import CSV */}
+            <div
+              className={`flex items-center gap-4 rounded-xl border border-gray-100 px-4 py-3 ${!canAct ? "opacity-50" : ""}`}
+            >
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-50">
+                <FileUp className="h-4 w-4 text-emerald-500" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-[#0C1F3F]">Sports Connect</p>
+                <p className="text-xs text-gray-400">Import-ready CSV with rounds and end times</p>
+              </div>
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <button
+                  disabled={!canAct || !!loadingAction}
+                  onClick={handleSportsConnectCsv}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    doneAction === "sportsconnect-csv"
+                      ? "border-[#22C55E] bg-[#22C55E]/5 text-[#22C55E]"
+                      : "border-gray-200 text-gray-600 hover:border-emerald-400 hover:text-emerald-600"
+                  }`}
+                >
+                  {loadingAction === "sportsconnect-csv" ? (
+                    <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <Download className="h-3 w-3" />
+                  )}
+                  {doneAction === "sportsconnect-csv" ? "Downloaded!" : "CSV"}
+                </button>
+              </div>
+            </div>
+
+            {exportError && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
+                {exportError}
+              </p>
+            )}
           </div>
         </div>
       </div>

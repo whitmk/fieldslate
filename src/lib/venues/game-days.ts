@@ -54,8 +54,9 @@ export type VenueGameDays = Map<DayKey, number>;
 
 /** Monday-of-week local date key for the date portion of an ISO wall-clock.
  *  Same substring/local-midnight convention as dayKeyFromIsoDate — never parses
- *  the instant, so it cannot roll across a timezone boundary. */
-function weekKeyFromIsoDate(iso: string): string {
+ *  the instant, so it cannot roll across a timezone boundary. Exported so the
+ *  Sports Connect export's RoundNo shares the exact same week bucketing. */
+export function weekKeyFromIsoDate(iso: string): string {
   const d = new Date(iso.substring(0, 10) + "T00:00:00");
   const monday = new Date(d);
   monday.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Mon=0 … Sun=6 back to Monday

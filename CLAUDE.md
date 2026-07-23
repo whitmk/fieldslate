@@ -231,6 +231,40 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   after a delete — accepted, unwarned, BY DESIGN.** Do not add a warning or
   store deletion intent; schedule-lock (the next feature) addresses it.
 
+## Schedule export (Sports Connect)
+
+- **The CSV builder is a pure function** —
+  `buildSportsConnectCsv` in `src/lib/schedule/sports-connect-export.ts`;
+  the export-picker modal is only a host (fetch + download). Template
+  columns, in order:
+  `SortOrder,RoundNo,HomeTeam,AwayTeam,MatchDate,StartTime,EndTime,Location,Field`
+  — CRLF endings, quote-only-when-needed, NO BOM (the file feeds Sports
+  Connect's importer, not Excel; the older generic games CSV keeps its BOM).
+- **EndTime = start + `divisions.settings.game_duration` ONLY** — never add
+  `buffer_minutes` (between-game spacing, not play length). The builder
+  FAILS LOUD (refuses the whole export, naming the division) on a missing or
+  non-positive duration — an EndTime equal to StartTime is silently wrong
+  data landing in a customer's system.
+- **RoundNo = Monday-start calendar weeks** via the shared
+  `weekKeyFromIsoDate` (exported from `game-days.ts` for exactly this).
+  First game-bearing week = round 1; gap weeks are skipped, not counted.
+  **Known limitation: a rainout makeup carries the round of the week it was
+  MOVED TO** — the original date is unrecoverable (rainout reschedule
+  overwrites `scheduled_at` in place, the activity log is prose,
+  `interleague_reschedule_requests` stores only the proposed new time). Do
+  not promise original-round makeups without first adding storage.
+- **Field is BLANK on every row by design.** FieldSlate has no per-field
+  concept (conflict detection treats each venue as one field;
+  `venues.capacity` is informational-only). Do not stub a value.
+- Rows are filtered by the shared `countsAsScheduledGame` (no cancelled, no
+  pending-interleague — same exclusion set as the Reports matrix); `is_away`
+  interleague games SWAP columns (partner = HomeTeam) because `games` always
+  stores our team as `home_team_id` with `is_away` flagging the true host.
+- **Harness:** `npm run sim:sc-export` — exact-row assertions over the real
+  builder (rounds, tiebreaks, quoting, midnight wrap, refusal shapes);
+  mutation-checked (status-filter and duration-guard mutants both fail it).
+  Re-run after ANY change to the builder or `weekKeyFromIsoDate`.
+
 ## Schedule filters
 
 - **Stale filter URL params don't reconcile (except team).** The Schedule
