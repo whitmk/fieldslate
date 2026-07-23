@@ -31,6 +31,36 @@ import {
   type LiveTeam,
 } from "@/lib/divisions/reconcile-teams";
 
+/** Return shape of the delete_division_permanently RPC (0081). Either the
+ *  division was removed (with disclosure counts) or it was refused with named
+ *  reasons and nothing was touched — never both. */
+type DeleteDivisionRpcResult =
+  | {
+      deleted: true;
+      name: string;
+      teams: number;
+      games: number;
+      side_effects: {
+        interleague_accepted_games: number;
+        playoff_slots_cleared: number;
+        official_coach_links_cleared: number;
+        snack_shack_assignments_cleared: number;
+      };
+    }
+  | { blocked: true; reasons: string[]; cross_division_playoffs: number };
+
+/** The RPC's block reasons, in plain English. Unknown codes fall through to
+ *  the raw code rather than being swallowed — a refusal we can't explain is
+ *  still a refusal the admin needs to see. */
+function deleteDivisionBlockLabel(reason: string): string {
+  switch (reason) {
+    case "cross_division_playoff_opponent":
+      return "Another division's playoff bracket lists this division as its cross-division opponent. Clear that opponent link first, then delete.";
+    default:
+      return reason;
+  }
+}
+
 function divisionToWizardData(
   div: Division,
   venueAssignments: VenueAssignment[],
@@ -244,8 +274,16 @@ export function DivisionSection({
   // Delete-division state
   const [deletingDivision, setDeletingDivision] = useState<Division | null>(null);
   const [deleteInterleagueCount, setDeleteInterleagueCount] = useState(0);
+  // Pre-flight disclosure counts shown in the confirm dialog. These are for
+  // DISPLAY — the authoritative counts come back from the RPC, which takes
+  // them inside the same transaction as the delete. A pre-flight count can go
+  // stale between render and confirm; the RPC's cannot.
+  const [deleteTeamCount, setDeleteTeamCount] = useState(0);
+  const [deleteGameCount, setDeleteGameCount] = useState(0);
+  const [deleteCountsFailed, setDeleteCountsFailed] = useState(false);
   const [loadingDeleteContext, setLoadingDeleteContext] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteBlockedReasons, setDeleteBlockedReasons] = useState<string[] | null>(null);
 
   // Toast
   type Toast = { kind: "error" | "success"; message: string; id: number };
@@ -356,24 +394,57 @@ export function DivisionSection({
     e.stopPropagation();
     setDeletingDivision(div);
     setDeleteInterleagueCount(0);
+    setDeleteTeamCount(0);
+    setDeleteGameCount(0);
+    setDeleteCountsFailed(false);
+    setDeleteBlockedReasons(null);
     setLoadingDeleteContext(true);
 
     const supabase = createClient();
-    // Count accepted interleague games for this division (status='scheduled'
-    // and interleague_org_id is set). We look at the home team's division.
-    const { data: teamRows } = await supabase
+    const { data: teamRows, error: teamErr } = await supabase
       .from("teams")
       .select("id")
       .eq("division_id", div.id);
+
+    if (teamErr) {
+      // Never let a failed count read like "nothing to delete" — a silent 0
+      // on a destructive confirm is the worst possible failure mode. Say the
+      // count is unknown and let the RPC report the truth after the fact.
+      setDeleteCountsFailed(true);
+      setLoadingDeleteContext(false);
+      return;
+    }
+
     const teamIds = ((teamRows ?? []) as { id: string }[]).map((t) => t.id);
+    setDeleteTeamCount(teamIds.length);
+
     if (teamIds.length > 0) {
-      const { count } = await supabase
-        .from("games")
-        .select("id", { count: "exact", head: true })
-        .in("home_team_id", teamIds)
-        .eq("status", "scheduled")
-        .not("interleague_org_id", "is", null);
-      setDeleteInterleagueCount(count ?? 0);
+      // Total games about to go — both team columns, matching what the RPC
+      // deletes. PostgREST has no `.or` with `.in` shorthand here, so this is
+      // the same or-filter string the RPC's WHERE clause mirrors.
+      const orFilter = `home_team_id.in.(${teamIds.join(",")}),away_team_id.in.(${teamIds.join(",")})`;
+      const [{ count: gameCount, error: gameErr }, { count: ilCount, error: ilErr }] =
+        await Promise.all([
+          supabase
+            .from("games")
+            .select("id", { count: "exact", head: true })
+            .or(orFilter),
+          // Accepted interleague games — the partner org is NOT notified, so
+          // this stays its own louder warning rather than folding into the total.
+          supabase
+            .from("games")
+            .select("id", { count: "exact", head: true })
+            .in("home_team_id", teamIds)
+            .eq("status", "scheduled")
+            .not("interleague_org_id", "is", null),
+        ]);
+
+      if (gameErr || ilErr) {
+        setDeleteCountsFailed(true);
+      } else {
+        setDeleteGameCount(gameCount ?? 0);
+        setDeleteInterleagueCount(ilCount ?? 0);
+      }
     }
     setLoadingDeleteContext(false);
   }
@@ -382,66 +453,45 @@ export function DivisionSection({
     if (!deletingDivision) return;
     const div = deletingDivision;
     setDeleteLoading(true);
+    setDeleteBlockedReasons(null);
     const supabase = createClient();
 
-    // teams.division_id is ON DELETE SET NULL, and games reference teams
-    // directly. To remove all of the division's data we must explicitly:
-    //   1. delete games for those teams
-    //   2. delete the teams (cascades practice_slots,
-    //      team_availability_blocks, team_practice_slots)
-    //   3. delete the division (cascades practice_time_slots,
-    //      division_interleague_games, playoff rows, etc.)
-    const { data: teamRows, error: teamFetchErr } = await supabase
-      .from("teams")
-      .select("id")
-      .eq("division_id", div.id);
+    // ONE RPC, one transaction. The previous three-statement client sequence
+    // (delete games -> delete teams -> delete division) had no server-side
+    // gate and no atomicity: a failure after the games delete left a division
+    // with its schedule gone and its teams intact. delete_division_permanently
+    // (0081) holds the membership check, the block conditions, and the
+    // FK-safe delete order server-side, and returns what it removed.
+    const { data, error: rpcErr } = await supabase.rpc(
+      "delete_division_permanently" as never,
+      { p_division_id: div.id } as never,
+    );
 
-    if (teamFetchErr) {
+    if (rpcErr) {
       setDeleteLoading(false);
-      notify("error", `Couldn't load division teams: ${teamFetchErr.message}`);
+      notify("error", `Couldn't delete division: ${rpcErr.message}`);
       return;
     }
-    const teamIds = ((teamRows ?? []) as { id: string }[]).map((t) => t.id);
 
-    if (teamIds.length > 0) {
-      const { error: gameDelErr } = await supabase
-        .from("games")
-        .delete()
-        .or(
-          `home_team_id.in.(${teamIds.join(",")}),away_team_id.in.(${teamIds.join(",")})`,
-        );
-      if (gameDelErr) {
-        setDeleteLoading(false);
-        notify("error", `Couldn't delete division games: ${gameDelErr.message}`);
-        return;
-      }
-
-      const { error: teamDelErr } = await supabase
-        .from("teams")
-        .delete()
-        .in("id", teamIds);
-      if (teamDelErr) {
-        setDeleteLoading(false);
-        notify("error", `Couldn't delete division teams: ${teamDelErr.message}`);
-        return;
-      }
+    const result = data as unknown as DeleteDivisionRpcResult;
+    if ("blocked" in result) {
+      setDeleteBlockedReasons(result.reasons);
+      setDeleteLoading(false);
+      return;
     }
-
-    const { error: divDelErr } = await supabase
-      .from("divisions")
-      .delete()
-      .eq("id", div.id);
 
     setDeleteLoading(false);
-    if (divDelErr) {
-      notify("error", `Couldn't delete division: ${divDelErr.message}`);
-      return;
-    }
 
     setDivisions((prev) => prev.filter((d) => d.id !== div.id));
     if (expandedId === div.id) setExpandedId(null);
     setDeletingDivision(null);
-    notify("success", `Division "${div.name}" deleted`);
+    // Report the RPC's counts, not the pre-flight ones — these were taken
+    // inside the delete's own transaction, so they are what actually went.
+    notify(
+      "success",
+      `Division "${result.name}" deleted — ${result.teams} team${result.teams === 1 ? "" : "s"}, ` +
+        `${result.games} game${result.games === 1 ? "" : "s"}`,
+    );
     onDivisionSaved?.();
   }
 
@@ -825,6 +875,10 @@ export function DivisionSection({
         <DeleteDivisionDialog
           division={deletingDivision}
           interleagueGameCount={deleteInterleagueCount}
+          teamCount={deleteTeamCount}
+          gameCount={deleteGameCount}
+          countsFailed={deleteCountsFailed}
+          blockedReasons={deleteBlockedReasons}
           loadingContext={loadingDeleteContext}
           deleting={deleteLoading}
           onCancel={() => !deleteLoading && setDeletingDivision(null)}
@@ -863,12 +917,20 @@ function DeleteDivisionDialog({
   division,
   interleagueGameCount,
   loadingContext,
+  teamCount,
+  gameCount,
+  countsFailed,
+  blockedReasons,
   deleting,
   onCancel,
   onConfirm,
 }: {
   division: Division;
   interleagueGameCount: number;
+  teamCount: number;
+  gameCount: number;
+  countsFailed: boolean;
+  blockedReasons: string[] | null;
   loadingContext: boolean;
   deleting: boolean;
   onCancel: () => void;
@@ -911,6 +973,22 @@ function DeleteDivisionDialog({
             <p className="text-xs font-semibold uppercase tracking-wider text-red-700">
               What gets deleted
             </p>
+            {loadingContext ? (
+              <div className="mt-2 flex items-center gap-2 text-sm text-red-700">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Counting…
+              </div>
+            ) : countsFailed ? (
+              <p className="mt-2 text-sm text-red-700">
+                Couldn&apos;t count what&apos;s in this division. Everything below still
+                gets deleted — reload and try again if you want the numbers first.
+              </p>
+            ) : (
+              <p className="mt-2 text-sm font-semibold text-red-700">
+                {teamCount} team{teamCount === 1 ? "" : "s"} and {gameCount} game
+                {gameCount === 1 ? "" : "s"}
+              </p>
+            )}
             <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-red-700">
               <li>All teams in this division</li>
               <li>All scheduled and rained-out games for those teams</li>
@@ -918,15 +996,31 @@ function DeleteDivisionDialog({
               <li>Practice time slot presets</li>
               <li>Team practice preferences</li>
               <li>Team availability blocks</li>
+              <li>Team scheduling constraints</li>
             </ul>
           </div>
 
-          {loadingContext ? (
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Checking for accepted interleague games…
+          {blockedReasons && blockedReasons.length > 0 && (
+            <div className="rounded-lg border border-red-300 bg-white px-3 py-2.5">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />
+                <div className="text-sm text-red-800">
+                  <p className="font-semibold">
+                    Nothing was deleted — this division is still in use.
+                  </p>
+                  <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-red-700">
+                    {blockedReasons.map((r) => (
+                      <li key={r}>{deleteDivisionBlockLabel(r)}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </div>
-          ) : interleagueGameCount > 0 ? (
+          )}
+
+          {/* Interleague keeps its own louder warning — the counts box above
+              already covers the loading state for both. */}
+          {!loadingContext && interleagueGameCount > 0 ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />

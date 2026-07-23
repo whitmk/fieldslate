@@ -51,7 +51,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0079.** The repo files are the record, not the
+  **Latest migration: 0081.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -230,6 +230,95 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Finish-schedule gap-fill will re-add a game for the two affected teams
   after a delete — accepted, unwarned, BY DESIGN.** Do not add a warning or
   store deletion intent; schedule-lock (the next feature) addresses it.
+
+## Division deletion
+
+- **`delete_division_permanently` (0081) is THE division hard-delete path** —
+  a SECURITY DEFINER RPC in the 0065/0078/0079 family (row lock →
+  `is_org_member` gate → block conditions → `{blocked, reasons}` or atomic
+  delete + disclosure counts). Entry point: the trash icon on a division row
+  in `division-section.tsx`. It REPLACED a bare three-statement client
+  sequence (delete games → delete teams → delete division) that had no
+  server-side gate, no atomicity (a failure after the games delete left a
+  division with its schedule gone and its teams intact), and no disclosure.
+  Do not reintroduce client-side division deletion.
+- **Deletion order is load-bearing:** games → teams → division. `games`→`teams`
+  FKs are NO ACTION and `teams.division_id` is SET NULL, so deleting the
+  division alone ORPHANS its teams rather than removing them.
+- **Exactly one block condition:** `playoffs.cross_division_opponent_id` →
+  `divisions` is NO ACTION, so a division named as ANOTHER division's
+  cross-division playoff opponent would raise a raw FK error. It is counted
+  explicitly and blocks with a named reason (house rule from 0078: a guard
+  never leans on an FK error). It is also right on the merits — everything
+  else the RPC removes belongs TO the division; a cross-division playoff
+  reference is someone else's configuration.
+- **Accepted interleague games do NOT block here** (they DO in 0079's
+  single-game delete). Deleting a whole division is an explicit acknowledged
+  act; blocking would strand the division behind games only the partner flow
+  can remove one at a time. The count is returned so the confirm dialog can
+  warn that the partner org is not notified.
+- **SET NULL side effects are DISCLOSED, not blocked** — returned in
+  `side_effects` so the UI can name them: cross-division `playoff_games`
+  team/winner slots (blanked, not deleted), `umpires.team_id` coach links,
+  `snack_shack_blocks.assigned_team_id`. `activity_log.division_id` also
+  SET NULLs — deliberate, the log is the record that the delete happened.
+- The confirm dialog shows PRE-FLIGHT counts (teams + games) before the
+  click; the success toast reports the RPC's counts, which were taken inside
+  the delete's own transaction. A failed pre-flight count renders "couldn't
+  count", never a silent 0 — a 0 on a destructive confirm is the worst
+  possible failure mode.
+
+## Schedule lock + posted flag
+
+- **The rule, and the reason both flags exist:** `locked` protects a division
+  against your OWN destructive re-derivation; `posted` tracks staleness from
+  ANY source. Every scoping question this feature raises resolves against
+  that sentence — including why an anonymous partner league's interleague
+  accept/decline is ALLOWED under a lock (it isn't our admin re-deriving, and
+  blocking it strands someone who cannot act on the error) while our side of
+  interleague — resolve, counter, reschedule request — stays locked.
+- **Storage is COLUMNS on `divisions` (0080), never `settings` jsonb.** Three
+  reasons, the third decisive: settings has no CHECK and this is state not
+  config; the enforcement trigger reads `locked` per mutated row; and the
+  wizard save writes `settings` WHOLESALE (`step-review.tsx` builds it from
+  form state rather than merging the stored row), so a lock kept there would
+  be silently cleared by any wizard save.
+- **`posted` auto-clears on ANY change to the division's games** — not just
+  rainouts. Document it as auto-clearing on schedule change; it is not a
+  decorative checkbox. Nothing branches on it and nothing warns off it.
+- **`games` has NO `division_id`.** Every per-division check derives it via
+  `home_team_id` → `teams.division_id`. Verified against live data: zero
+  games whose home team lacks a division, zero cross-division games. A null
+  division means NO division, therefore no lock — allowed, not fail-closed;
+  failing closed there would make orphan rows permanently immutable.
+- **Enforcement belongs in a trigger on `games`, not in client checks.** RLS
+  (0049) lets any org member insert/update/delete games straight from the
+  browser, so client-side and API-route checks are for the error MESSAGE, not
+  the guard. Five of the eight DB functions that mutate `games` are granted
+  to `anon` (token-bearing partner leagues) — enumerate with a `pg_proc`
+  scan on `prosrc` before assuming a path is admin-only.
+- Chunks 1 and 2 (columns, division-delete RPC) are landed. The enforcement
+  trigger, the bypass GUC, `delete_game_if_unblocked`'s `division_locked`
+  reason, and the UI are NOT yet built.
+
+## Harness standard — SQL-level exceptions
+
+- **SQL-level enforcement in this repo CANNOT be proven by the `npm run
+  sim:*` standard, and widening production grants to make a test run would
+  be the wrong trade.** Two hard reasons: `service_role` has NO
+  SELECT/INSERT/UPDATE/DELETE on `games`, `divisions`, `teams`, or `leagues`
+  (verified 2026-07-23 — only REFERENCES/TRIGGER/TRUNCATE), so a
+  service-role-driven tsx harness 42501s on its first write; and
+  `scripts/sim/fake-supabase.ts` is an in-memory fake that cannot simulate a
+  Postgres trigger, CHECK, or FK at all.
+- **The standard for this class of work instead:** a transactional SQL
+  harness — setup, assertions, and a terminal `raise exception` that carries
+  the results out AND guarantees the whole thing rolls back — plus a
+  mutation pass over every carve-out. Run it via the Supabase MCP against
+  the live DB; always follow with a leak check that the scratch rows are
+  gone. It is NOT `npm run`-able and does NOT run in CI. That is a real gap
+  versus the officials/round-order sims; say so rather than letting it pass
+  as equivalent.
 
 ## Schedule export (Sports Connect)
 
