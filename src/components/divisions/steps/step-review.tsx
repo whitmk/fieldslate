@@ -205,7 +205,10 @@ export function StepReview({
     // Backward-compat fields — schedule generator uses day_windows when present
     earliest_start: firstWin.start,
     latest_start: firstWin.end,
-    game_duration: data.game_duration,
+    // Clamped to the wizard input's own bounds (30–180): the jsonb has no
+    // CHECK, and a stored 0 silently disables venue-window checks downstream
+    // (some readers fall back to 0, others to 90). Non-numeric → default 90.
+    game_duration: Math.min(180, Math.max(30, Math.round(Number(data.game_duration) || 90))),
     buffer_minutes: data.buffer_minutes,
     max_games_per_field_per_day: data.max_games_per_field_per_day,
     bye_weeks: data.bye_weeks,

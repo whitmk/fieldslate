@@ -41,6 +41,16 @@ function fmtMins12(mins: number): string {
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
+// A native number input's min/max constrain only the spinner — TYPED values
+// bypass them, so committed state must clamp too. A typed "0" here once
+// persisted game_duration: 0 into division settings (jsonb, no CHECK), which
+// downstream code treats as "skip venue-window checks".
+function clampNum(n: number, min?: number, max?: number): number {
+  if (min !== undefined && n < min) return min;
+  if (max !== undefined && n > max) return max;
+  return n;
+}
+
 function NumField({
   label, value, min, max, hint, onChange,
 }: {
@@ -57,7 +67,7 @@ function NumField({
         onChange={(e) => {
           setDisplay(e.target.value);
           const n = parseInt(e.target.value, 10);
-          if (!isNaN(n)) onChange(n);
+          if (!isNaN(n)) onChange(clampNum(n, min, max));
         }}
         onBlur={() => setDisplay(String(value))}
         className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
