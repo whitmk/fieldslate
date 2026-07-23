@@ -54,6 +54,15 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   **Latest migration: 0079.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
+- **Apply migrations VERBATIM from the repo file, comments included.** The
+  apply tool runs exactly what it's given, so a paraphrased or
+  comment-trimmed copy makes the live catalog silently diverge from the
+  repo: comments INSIDE a function body (`$$…$$`) are stored in
+  `pg_proc.prosrc` and are part of the live definition. (File-header
+  comments before `create or replace` are never stored by Postgres — that
+  part can't diverge.) After applying a function migration, verify
+  `md5(prosrc)` against the repo file's body. Established 2026-07-23 after
+  0079 was first applied from a trimmed copy and had to be re-applied.
 - **`service_role` gets NO default grants on new tables in `public`.** This
   project's Postgres does not grant service_role DML on newly created tables,
   so any table the admin client (`src/lib/supabase/admin.ts`) reads or writes
@@ -208,7 +217,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   2. *Recorded result*: `home_score IS NOT NULL OR away_score IS NOT NULL
      OR status = 'completed'`. Nothing in the product writes scores or
      `completed` to `games` today (results exist only on `playoff_games`) —
-     this guards raw-SQL history and any future results feature.
+     this guards raw-SQL history and any future results feature. A
+     scoreless `completed` game counts as a recorded result on purpose
+     (approved 2026-07-23) — completion is history even when the score
+     wasn't captured.
 - **All three FK references to `games.id` cascade** (`game_umpires` 0025,
   `conflict_overrides` 0064, `interleague_reschedule_requests` 0039) — by
   design, they die with the game. The `conflict_overrides` cascade
