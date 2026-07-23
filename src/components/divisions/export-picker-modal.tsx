@@ -66,7 +66,7 @@ export function ExportPickerModal({
     if (teamIds.length === 0) return [];
     const { data } = await supabase
       .from("games")
-      .select(`id, scheduled_at, status, is_away, external_team_name,
+      .select(`id, scheduled_at, status, is_away, external_team_name, proposed_venue_name,
         home_team:teams!home_team_id(name),
         away_team:teams!away_team_id(name),
         venue:venues(name)`)

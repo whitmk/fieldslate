@@ -23,6 +23,7 @@ function g(p: Partial<SportsConnectGame> & { id: string; scheduled_at: string })
     status: "scheduled",
     is_away: false,
     external_team_name: null,
+    proposed_venue_name: null,
     home_team: { name: "Home" },
     away_team: { name: "Away" },
     venue: { name: "Park" },
@@ -44,6 +45,13 @@ const games: SportsConnectGame[] = [
     id: "i", scheduled_at: "2026-11-14T10:00:00+00:00", is_away: true,
     external_team_name: "Westside Wolves", away_team: null,
     home_team: { name: "Our Team" },
+    venue: null, proposed_venue_name: "Cat Park",
+  }),
+  // Home game with a stale counter-proposal venue — the fallback is gated on
+  // is_away, so Location must stay blank here.
+  g({
+    id: "j", scheduled_at: "2026-11-14T12:00:00+00:00",
+    venue: null, proposed_venue_name: "Should Not Appear",
   }),
 ];
 
@@ -58,8 +66,8 @@ console.log("------------------");
 assert(lines[0] === SPORTS_CONNECT_HEADER, "header exact");
 assert(res.csv.endsWith("\r\n"), "trailing CRLF");
 assert(!res.csv.includes("\n") || res.csv.split("\n").every((l, i, arr) => i === arr.length - 1 || l.endsWith("\r")), "CRLF only");
-assert(res.rowCount === 6, `6 counting rows (got ${res.rowCount})`);
-assert(lines.length === 8, "header + 6 rows + trailing empty");
+assert(res.rowCount === 7, `7 counting rows (got ${res.rowCount})`);
+assert(lines.length === 9, "header + 7 rows + trailing empty");
 
 // Row 1: same-time tiebreak by home name → Cubs before Reds; SortOrder 1..N
 assert(lines[1] === "1,1,Cubs,Mets,10/24/2026,09:00,10:30,Park,", `row1 (got: ${lines[1]})`);
@@ -70,8 +78,11 @@ assert(lines[3] === '3,1,"Reds, The",Cubs,10/25/2026,13:05,14:35,Park,', `row3 q
 assert(lines[4] === "4,2,Home,Away,10/31/2026,23:00,00:30,Park,", `row4 midnight wrap (got: ${lines[4]})`);
 // Gap week skipped → 11/14 is round 3, not 4. Date has no leading zeros (11/14 has none; row3 tests M/D via 10/25... use row5 8am)
 assert(lines[5] === "5,3,Home,Away,11/14/2026,08:00,09:30,Park,", `row5 gap week → round 3 (got: ${lines[5]})`);
-// is_away interleague swap: partner is HomeTeam, our team AwayTeam
-assert(lines[6] === "6,3,Westside Wolves,Our Team,11/14/2026,10:00,11:30,Park,", `row6 is_away swap (got: ${lines[6]})`);
+// is_away interleague: partner is HomeTeam, our team AwayTeam, and Location
+// falls back to proposed_venue_name (venue_id is NULL on away rows)
+assert(lines[6] === "6,3,Westside Wolves,Our Team,11/14/2026,10:00,11:30,Cat Park,", `row6 is_away swap + venue fallback (got: ${lines[6]})`);
+// Home game with proposed_venue_name but no venue → fallback gated off, blank
+assert(lines[7] === "7,3,Home,Away,11/14/2026,12:00,13:30,,", `row7 fallback gated on is_away (got: ${lines[7]})`);
 
 // No-leading-zero date: 2026-09-05 → 9/5/2026
 const res2 = buildSportsConnectCsv([g({ id: "z", scheduled_at: "2026-09-05T09:00:00+00:00" })], 60, "X");
@@ -85,7 +96,7 @@ for (const bad of [0, -5, undefined, null, "abc"]) {
 }
 
 // Field always empty — every data row ends with the trailing comma
-for (const line of lines.slice(1, 7)) {
+for (const line of lines.slice(1, 8)) {
   assert(line.endsWith(","), `Field column blank: ${line}`);
 }
 

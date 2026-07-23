@@ -28,9 +28,15 @@
 //   future feature.
 // - is_away interleague games swap columns (partner org's team is HomeTeam):
 //   the games table always stores OUR team as home_team_id and flags the
-//   true home side with is_away, but a Home/Away CSV must report the real
-//   host. Accepted interleague games always carry external_team_name (the
-//   accept RPC writes it); pending proposals never reach the export.
+//   true home side with is_away (verified against live rows 2026-07-23), but
+//   a Home/Away CSV must report the real host. Accepted interleague games
+//   carry external_team_name (the accept RPC requires it); the null-name
+//   "TBD" fallback covers legacy pre-invite-flow rows and the rainout
+//   status-flip path — both real in production, rendered as the panel does.
+// - Location for is_away games falls back to proposed_venue_name (the
+//   partner's field — venue_id is NULL on every away row). Gated on is_away
+//   to match the schedule panel's display rule, so a stale counter-proposal
+//   venue can never surface on a home game.
 
 import { countsAsScheduledGame, weekKeyFromIsoDate } from "@/lib/venues/game-days";
 
@@ -40,6 +46,7 @@ export type SportsConnectGame = {
   status: string;
   is_away: boolean | null;
   external_team_name: string | null;
+  proposed_venue_name: string | null;
   home_team: { name: string } | null;
   away_team: { name: string } | null;
   venue: { name: string } | null;
@@ -122,7 +129,7 @@ export function buildSportsConnectCsv(
       fmtMatchDate(g.scheduled_at),
       fmtHHMM(start),
       fmtHHMM(start + duration),
-      g.venue?.name ?? "",
+      g.venue?.name ?? (g.is_away ? g.proposed_venue_name?.trim() ?? "" : ""),
       "", // Field — blank by design, see header comment
     ]
       .map(csvField)

@@ -259,7 +259,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - Rows are filtered by the shared `countsAsScheduledGame` (no cancelled, no
   pending-interleague — same exclusion set as the Reports matrix); `is_away`
   interleague games SWAP columns (partner = HomeTeam) because `games` always
-  stores our team as `home_team_id` with `is_away` flagging the true host.
+  stores our team as `home_team_id` with `is_away` flagging the true host
+  (verified against live rows 2026-07-23 — every away row's home_team_id is
+  our team, venue_id NULL, partner field in `proposed_venue_name`). Location
+  falls back to `proposed_venue_name` for is_away games only (the schedule
+  panel's display rule); a null `external_team_name` renders as "TBD" — a
+  reachable state (legacy pre-invite rows + the rainout status-flip path),
+  not just theory.
 - **Harness:** `npm run sim:sc-export` — exact-row assertions over the real
   builder (rounds, tiebreaks, quoting, midnight wrap, refusal shapes);
   mutation-checked (status-filter and duration-guard mutants both fail it).
