@@ -25,11 +25,17 @@ import {
 import { UpgradeModal } from "@/components/plan/upgrade-cta";
 import { planLabel } from "@/lib/plan/labels";
 import { isProPlus } from "@/lib/plan/limits";
+import {
+  mergeLiveTeamsWithJsonb,
+  detectTeamJsonbDrift,
+  type LiveTeam,
+} from "@/lib/divisions/reconcile-teams";
 
 function divisionToWizardData(
   div: Division,
   venueAssignments: VenueAssignment[],
   interleagueGames: InterleagueGameEntry[] = [],
+  liveTeams: LiveTeam[] = [],
 ): WizardData {
   const s = (div.settings ?? {}) as Record<string, unknown>;
   const asNum = (v: unknown, fb: number) => (typeof v === "number" ? v : fb);
@@ -67,9 +73,16 @@ function divisionToWizardData(
       ? (s.practice_day_windows as DayWindowMap)
       : DEFAULT_WIZARD_DATA.practice_day_windows;
 
+  // Identity comes from the live `teams` rows (id + name authoritative), not
+  // the jsonb — so a rename can UPDATE in place and a drifted division shows
+  // its real rows. team_count follows the live count so the wizard's
+  // length-sync effect doesn't truncate a duplicate back out of view.
+  const jsonbTeams: TeamEntry[] = Array.isArray(s.teams) ? (s.teams as TeamEntry[]) : [];
+  const mergedTeams = mergeLiveTeamsWithJsonb(liveTeams, jsonbTeams);
+
   return {
     name: div.name,
-    team_count: div.team_count,
+    team_count: liveTeams.length > 0 ? mergedTeams.length : div.team_count,
     start_date: div.start_date ?? "",
     end_date: div.end_date ?? "",
     games_per_team: asNum(s.games_per_team, DEFAULT_WIZARD_DATA.games_per_team),
@@ -97,7 +110,7 @@ function divisionToWizardData(
     auto_rotate: asBool(s.auto_rotate, DEFAULT_WIZARD_DATA.auto_rotate),
     plays_interleague: div.plays_interleague ?? false,
     interleague_games: interleagueGames,
-    teams: Array.isArray(s.teams) ? (s.teams as TeamEntry[]) : [],
+    teams: liveTeams.length > 0 ? mergedTeams : jsonbTeams,
   };
 }
 
@@ -213,6 +226,9 @@ export function DivisionSection({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingDiv, setEditingDiv] = useState<Division | null>(null);
   const [editInitialData, setEditInitialData] = useState<WizardData | null>(null);
+  // Non-blocking notice when the edited division's live teams disagree with its
+  // saved jsonb list (read-only detection — no auto-repair).
+  const [editDriftWarning, setEditDriftWarning] = useState<string | null>(null);
   // Live team count for the division being edited — feeds StepBasics' cap
   // headroom math (existing teams stay, so they add back to available room).
   const [editExistingTeamCount, setEditExistingTeamCount] = useState(0);
@@ -313,9 +329,16 @@ export function DivisionSection({
     // the wizard's names. But we still need the live row count for the cap
     // headroom calc in StepBasics: those rows stay after save, so they add
     // back to the org-wide team headroom.
-    setEditExistingTeamCount((teamRows ?? []).length);
+    const liveTeams = ((teamRows ?? []) as LiveTeam[]).map((t) => ({ id: t.id, name: t.name }));
+    setEditExistingTeamCount(liveTeams.length);
+    // Read-only blast-radius detection: flag (never repair) a division whose
+    // live teams disagree with its saved jsonb list.
+    const jsonbTeams = Array.isArray((div.settings as { teams?: unknown })?.teams)
+      ? ((div.settings as { teams: { name: string }[] }).teams)
+      : [];
+    setEditDriftWarning(detectTeamJsonbDrift(liveTeams, jsonbTeams));
     setEditInitialData(
-      divisionToWizardData(div, venueAssignments, interleagueGames),
+      divisionToWizardData(div, venueAssignments, interleagueGames, liveTeams),
     );
     setEditingDiv(div);
   }
@@ -324,6 +347,7 @@ export function DivisionSection({
     setOpen(false);
     setEditingDiv(null);
     setEditInitialData(null);
+    setEditDriftWarning(null);
     fetchDivisions();
     onDivisionSaved?.();
   }
@@ -734,7 +758,8 @@ export function DivisionSection({
           teamLimit={teamLimit}
           plan={plan}
           existingTeamCountInDivision={editExistingTeamCount}
-          onClose={() => { setEditingDiv(null); setEditInitialData(null); }}
+          driftWarning={editDriftWarning}
+          onClose={() => { setEditingDiv(null); setEditInitialData(null); setEditDriftWarning(null); }}
           onComplete={handleComplete}
           editDivision={editingDiv}
           initialData={editInitialData}

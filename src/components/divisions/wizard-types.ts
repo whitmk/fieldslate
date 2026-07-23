@@ -37,6 +37,13 @@ export type InterleagueGameEntry = {
 };
 
 export type TeamEntry = {
+  /** Live `teams.id` when this entry maps to an existing row. Threaded in at
+   *  edit-load (division-section) so the wizard save can tell a RENAME (id
+   *  present, name changed → UPDATE in place) from a genuine ADD (no id →
+   *  INSERT). Absent for new rows and never persisted into the
+   *  `divisions.settings.teams[]` jsonb, which stays name+metadata only —
+   *  identity lives on the `teams` row. See src/lib/divisions/reconcile-teams.ts. */
+  id?: string;
   name: string;
   has_coach_conflict: boolean;
   conflict_division: string;

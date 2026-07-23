@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import { StepBasics } from "./steps/step-basics";
 import { StepPlayingSchedule } from "./steps/step-playing-schedule";
 import { StepFields } from "./steps/step-fields";
@@ -33,6 +33,10 @@ interface Props {
    *  table). Those teams stay after save, so they add back to the input's
    *  available headroom. New mode passes 0. */
   existingTeamCountInDivision?: number;
+  /** Read-only blast-radius notice: set when the division's live teams
+   *  disagree with its saved jsonb list. Rendered as a non-blocking banner;
+   *  no auto-repair. */
+  driftWarning?: string | null;
   onClose: () => void;
   /** Forwarded from the review step's result panels with the saved
    *  division's id — optional arg, so existing no-arg handlers (the
@@ -42,7 +46,7 @@ interface Props {
   initialData?: WizardData;
 }
 
-export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartDate, leagueEndDate, currentOrgId, teamCount, teamLimit, plan, existingTeamCountInDivision = 0, onClose, onComplete, editDivision, initialData }: Props) {
+export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartDate, leagueEndDate, currentOrgId, teamCount, teamLimit, plan, existingTeamCountInDivision = 0, driftWarning, onClose, onComplete, editDivision, initialData }: Props) {
   const officialsPlural = getOfficialTitlePlural(leagueSport);
 
   // Step order puts the tier-gated steps (Umpires = Elite, Interleague = Pro+)
@@ -276,6 +280,16 @@ export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartD
             </div>
           ))}
         </div>
+
+        {/* Read-only blast-radius notice — the division's live teams disagree
+            with its saved list (e.g. a duplicate from an earlier rename). No
+            auto-repair; the admin reviews the team names before saving. */}
+        {isEditMode && driftWarning && (
+          <div className="mx-6 mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <span>{driftWarning}</span>
+          </div>
+        )}
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-6 py-6">{stepContent[step]}</div>

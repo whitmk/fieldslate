@@ -8,6 +8,7 @@ import {
   Pencil, Trash2, Check, Users, ListChecks,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { renameTeamInline } from "@/lib/divisions/reconcile-teams";
 import {
   generateSchedule,
   finishSchedule,
@@ -396,21 +397,20 @@ export function DivisionSchedulePanel({
       setEditError("Name cannot be blank.");
       return;
     }
-    const duplicate = teams.some(
-      (t) => t.id !== teamId && t.name.toLowerCase() === trimmed.toLowerCase(),
-    );
-    if (duplicate) {
-      setEditError("Another team in this division already has that name.");
-      return;
-    }
     setSavingTeamId(teamId);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("teams")
-      .update({ name: trimmed } as never)
-      .eq("id", teamId);
-    if (error) {
-      setEditError(error.message);
+    // Single shared rename path: updates the teams row AND keeps this
+    // division's jsonb entry + every division's name-keyed conflict_team
+    // references in sync. No bare teams.update() here — see
+    // src/lib/divisions/reconcile-teams.ts.
+    const res = await renameTeamInline({
+      leagueId,
+      divisionId,
+      teamId,
+      newName: trimmed,
+      siblingTeams: teams.map((t) => ({ id: t.id, name: t.name })),
+    });
+    if (!res.ok) {
+      setEditError(res.error);
     } else {
       cancelEdit();
       await fetchGames();

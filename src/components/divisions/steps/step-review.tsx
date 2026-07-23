@@ -26,6 +26,7 @@ import { getOfficialTitlePlural } from "@/lib/utils/official-title";
 import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
 import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
 import type { Plan } from "@/lib/plan/limits";
+import { reconcileTeamsOnSave, type RemovedTeam } from "@/lib/divisions/reconcile-teams";
 
 type GenerateKind = "games";
 
@@ -227,7 +228,7 @@ export function StepReview({
   // fails — including schedule planning being infeasible — nothing persists.
 
   type SaveResult =
-    | { divId: string }
+    | { divId: string; removedTeams?: RemovedTeam[] }
     | { error: string }
     | { capHit: { cap: CapName; limit: number; plan: Plan } };
 
@@ -239,19 +240,26 @@ export function StepReview({
     // isEditMode is true, which guarantees divisionId is set.
     const divId = divisionId as string;
 
-    // Upfront team-cap check — net-new teams only (existing names dedupe).
-    if (teamLimit !== -1 && nonBlankTeams.length > 0) {
-      const { data: existing } = await supabase
-        .from("teams").select("name").eq("division_id", divId);
-      const existingNames = new Set(
-        (existing ?? []).map((t: { name: string }) => t.name.toLowerCase().trim())
-      );
-      const newTeamCount = nonBlankTeams.filter(
-        (t) => !existingNames.has(t.name.toLowerCase().trim())
-      ).length;
-      if (teamCount + newTeamCount > teamLimit) {
-        return { capHit: { cap: "teamsPerOrg", limit: teamLimit, plan } };
-      }
+    // Reconcile the team list against the live `teams` rows FIRST: rename in
+    // place (never a duplicate row), insert genuine adds, and keep this
+    // division's jsonb + every division's name-keyed conflict_team refs in
+    // sync. Removals are report-only — omitted teams are kept, re-appended to
+    // the jsonb, and returned for a non-blocking notice, never deleted.
+    // See src/lib/divisions/reconcile-teams.ts.
+    const reconcile = await reconcileTeamsOnSave(
+      {
+        leagueId,
+        divisionId: divId,
+        submitted: data.teams,
+        teamCount,
+        teamLimit,
+        plan,
+      },
+      supabase,
+    );
+    if (!reconcile.ok) {
+      if ("capHit" in reconcile) return { capHit: reconcile.capHit };
+      return { error: reconcile.error };
     }
 
     const { error: updateError } = await supabase
@@ -261,7 +269,8 @@ export function StepReview({
         team_count: data.team_count,
         start_date: data.start_date || null,
         end_date: data.end_date || null,
-        settings: settingsPayload,
+        // reconcile owns the teams[] copy (rename-aware, kept-removals appended).
+        settings: { ...settingsPayload, teams: reconcile.teamsForJsonb },
         umpires_per_game: data.umpires_per_game,
         umpire_roles: data.umpire_roles,
         plays_interleague: data.plays_interleague,
@@ -282,36 +291,7 @@ export function StepReview({
         })) as never[]);
     }
 
-    // Insert net-new teams via the per-team RPC (server-side cap check).
-    if (nonBlankTeams.length > 0) {
-      const { data: existing } = await supabase
-        .from("teams").select("name").eq("division_id", divId);
-      const existingNames = new Set(
-        (existing ?? []).map((t: { name: string }) => t.name.toLowerCase().trim())
-      );
-      const teamsToCreate = nonBlankTeams.filter(
-        (t) => !existingNames.has(t.name.toLowerCase().trim())
-      );
-      for (const t of teamsToCreate) {
-        const { data: teamRpc, error: teamErr } = await supabase.rpc(
-          "create_team" as never,
-          { p_league_id: leagueId, p_division_id: divId, p_name: t.name.trim() } as never,
-        );
-        if (teamErr) return { error: teamErr.message };
-        const teamPayload = teamRpc as
-          | { row: { id: string } }
-          | { error: "cap_reached"; cap: CapName; limit: number; plan: Plan };
-        if ("error" in teamPayload && teamPayload.error === "cap_reached") {
-          return {
-            capHit: {
-              cap: teamPayload.cap,
-              limit: teamPayload.limit,
-              plan: teamPayload.plan,
-            },
-          };
-        }
-      }
-    }
+    // (Team renames/inserts already applied by reconcileTeamsOnSave above.)
 
     if (data.use_league_schedule) {
       await supabase
@@ -347,7 +327,7 @@ export function StepReview({
     // writes re-resolve ids anyway, so this must never fail the save.
     await ensureSeasonRoleIds(supabase, leagueId, data.umpire_roles);
 
-    return { divId };
+    return { divId, removedTeams: reconcile.removed };
   }
 
   async function createNewDivisionAtomic(
@@ -451,6 +431,18 @@ export function StepReview({
     // Load existing games and analyze against new params
     const supabase = createClient();
     const warnings: string[] = [];
+
+    // Report-only removals: teams dropped from the list are KEPT (deleting one
+    // could cascade-destroy a coach's practice slots / constraints), and
+    // surfaced here so the admin can remove them intentionally from the
+    // schedule panel.
+    for (const rt of saved.removedTeams ?? []) {
+      warnings.push(
+        rt.gameCount > 0
+          ? `"${rt.name}" was removed from the list but has ${rt.gameCount} game${rt.gameCount !== 1 ? "s" : ""} — it was kept, not deleted. Remove it from the schedule panel if that was intended.`
+          : `"${rt.name}" was removed from the list — it was kept (not deleted) to protect any linked data. Remove it from the schedule panel if that was intended.`,
+      );
+    }
 
     const { data: teamRows } = await supabase
       .from("teams").select("id").eq("division_id", divId);

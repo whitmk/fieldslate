@@ -226,6 +226,51 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   same-division double-coach, or any report of an intra-division coach
   double-booking.
 
+## Team names — two copies, one rename path
+
+- **A team's name lives in TWO places: the `teams` row (identity) and,
+  redundantly, `divisions.settings.teams[]` jsonb (name + coach-conflict
+  metadata, including name-keyed `conflict_team` back-references).** Keeping
+  them in sync on rename is the whole game — historically the two rename
+  surfaces each did half the job and corrupted SRALL Fall 2026 T-Ball (one real
+  team appearing as two rows, games split across both).
+- **`src/lib/divisions/reconcile-teams.ts` is the SINGLE rename path.** Both
+  surfaces route through it: the wizard save (`reconcileTeamsOnSave`, called
+  from `step-review.tsx`) and the inline schedule-panel pencil
+  (`renameTeamInline`, called from `division-schedule-panel.tsx` — it has NO
+  bare `teams.update({name})` anymore; do not reintroduce one). A rename
+  UPDATEs the row in place, rewrites this division's jsonb entry, AND rewrites
+  every division's `conflict_team` references (in-division and cross-division,
+  matched by the ref's `conflict_division`).
+- **Identity is the threaded `TeamEntry.id`.** At edit-load
+  (`division-section.tsx` → `mergeLiveTeamsWithJsonb`) the wizard's
+  `data.teams` is rebuilt from the LIVE `teams` rows (id + name authoritative),
+  layered with jsonb coach metadata by name. `team_count` follows the live
+  count so the length-sync effect can't truncate a duplicate out of view. An
+  entry with an `id` whose name changed = RENAME (UPDATE in place, never a new
+  row); an entry with no `id` = genuine ADD (insert). `id` is NEVER persisted
+  into the jsonb (`toJsonbEntries` strips it) — identity stays on the row.
+- **Removals are report-only — never delete a team here.** `teams` has CASCADE
+  children (`practice_slots`, `team_availability_blocks`,
+  `team_game_constraints`, `official_conflicts`), so deleting a "games-empty"
+  team could silently destroy a coach's entered data. An omitted team is KEPT,
+  re-appended to the jsonb (so the two copies still agree), and surfaced as a
+  non-blocking notice. Deletion is a separate, explicit action on the schedule
+  panel — out of this path.
+- **Read-only blast-radius banner:** `detectTeamJsonbDrift` runs at edit-load
+  and shows a non-blocking notice when a division's live teams disagree with
+  its jsonb list (the corruption shape). Detection only — no auto-repair.
+- **Harness:** `npm run sim:team-reconcile`
+  (`scripts/sim/team-reconcile-sim.ts`) — drives the real functions against a
+  fake client; asserts rename→zero new rows, add→insert, team-with-games never
+  destroyed and reported, teams/jsonb agree after every op, `conflict_team`
+  rewritten in both scopes, collision aborts with no writes. Mutation-tested
+  (detection mutants + in-source guard disables all caught) with anti-vacuity
+  counters. Re-run after ANY change to `reconcile-teams.ts` or the two call
+  sites. **Out of scope of the fix (still open):** repairing SRALL's existing
+  duplicate rows (a separate careful job), and the panel's `handleDeleteTeam`
+  still leaves the jsonb stale on delete (delete path, not rename).
+
 ## Venues
 
 - **The venue editor is ONE shared component** (2026-07-14): `VenueEditForm`
