@@ -680,6 +680,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   migration (see README data-model notes).
 - Follow-up (separate commit): add metadataBase: new URL(SITE_URL) to the
   root layout so OG URL resolution stops depending on Vercel domain config.
+- The generic per-division games CSV export (`export-picker-modal.tsx`,
+  `handleCsv`) leaves the Away column blank on interleague games —
+  `away_team_id` is null on those rows and the handler reads only
+  `away_team?.name` (no `external_team_name` fallback, no is_away swap).
+  Pre-existing, not a Sports Connect-branch regression; the Sports Connect
+  export handles both. Fix by reusing its name resolution if the generic
+  CSV ever matters for interleague seasons.
 - Practices `TimeSlotRow` **Duration** field
   (`practices-page-client.tsx` ~line 1697): clearing it blur-saves
   `duration_minutes: 0` (`Number("")` is `0`, `min={15}` is UI-only) — but
