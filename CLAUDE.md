@@ -51,7 +51,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0077.** The repo files are the record, not the
+  **Latest migration: 0079.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **`service_role` gets NO default grants on new tables in `public`.** This
@@ -182,6 +182,42 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   result entry becomes real. The single- and double-elim mappings live in
   `src/lib/playoffs/advancement.ts` (pure, testable — see its header for
   the movement rules and edit semantics).
+
+## Game deletion (single game)
+
+- **`delete_game_if_unblocked` (0079) is THE single-game hard-delete path** —
+  a SECURITY DEFINER RPC in the 0078/0065 family (row lock → `is_org_member`
+  gate → block conditions → `{blocked, reasons}` or atomic delete). Entry
+  point: "Delete game" in the All Games list's row `…` menu
+  (`schedule-list.tsx`), click-then-block — the item is always enabled and
+  the server decides; do NOT add client-side pre-disabling. The mobile game
+  cards deliberately have no delete (they have no `…` menu).
+- **Honest scope:** RLS (0049) already lets org members delete games
+  client-side — the panel's team-delete does bulk deletes today. The RPC
+  exists so the BLOCK CONDITIONS are server-authoritative, not to add a
+  missing permission gate.
+- **Exactly two block conditions — do not add more without a decision:**
+  1. *Accepted interleague*: `interleague_org_id IS NOT NULL AND status <>
+     'pending_interleague'`. Partner leagues read our `games` rows LIVE via
+     the token RPCs (0037/0074), so deleting an accepted game silently drops
+     it from their view. Includes `reschedule_pending` and rained-out
+     accepted games — acceptance is the point of no return; the interleague
+     resolve flow (which emails the partner) is the delete path for those.
+     `pending_interleague` games stay deletable so a dead invite can't
+     strand a row.
+  2. *Recorded result*: `home_score IS NOT NULL OR away_score IS NOT NULL
+     OR status = 'completed'`. Nothing in the product writes scores or
+     `completed` to `games` today (results exist only on `playoff_games`) —
+     this guards raw-SQL history and any future results feature.
+- **All three FK references to `games.id` cascade** (`game_umpires` 0025,
+  `conflict_overrides` 0064, `interleague_reschedule_requests` 0039) — by
+  design, they die with the game. The `conflict_overrides` cascade
+  deliberately erases that game's override audit trail. The RPC returns the
+  cascaded counts as disclosure. `playoff_games` never references `games`
+  (parallel table), so no playoff condition exists.
+- **Finish-schedule gap-fill will re-add a game for the two affected teams
+  after a delete — accepted, unwarned, BY DESIGN.** Do not add a warning or
+  store deletion intent; schedule-lock (the next feature) addresses it.
 
 ## Schedule filters
 
