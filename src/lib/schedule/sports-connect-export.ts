@@ -41,6 +41,7 @@
 //   has no non-blank CHECK).
 
 import { countsAsScheduledGame, weekKeyFromIsoDate } from "@/lib/venues/game-days";
+import type { createClient } from "@/lib/supabase/client";
 
 export type SportsConnectGame = {
   id: string;
@@ -57,6 +58,37 @@ export type SportsConnectGame = {
 export type SportsConnectResult =
   | { ok: true; csv: string; rowCount: number }
   | { ok: false; error: string };
+
+export type SportsConnectFetchClient = ReturnType<typeof createClient>;
+
+/** The SINGLE games fetch both export surfaces use (the league-page picker
+ *  modal and the /dashboard/export page). Shared so the column list can't
+ *  drift between surfaces — a divergent select would change names/locations
+ *  even with one builder. No status filter here: the builder applies the
+ *  shared countsAsScheduledGame predicate. */
+export async function fetchSportsConnectGames(
+  supabase: SportsConnectFetchClient,
+  divisionId: string,
+): Promise<{ ok: true; games: SportsConnectGame[] } | { ok: false; error: string }> {
+  const { data: teamData, error: teamErr } = await supabase
+    .from("teams")
+    .select("id")
+    .eq("division_id", divisionId);
+  if (teamErr) return { ok: false, error: teamErr.message };
+  const teamIds = ((teamData ?? []) as { id: string }[]).map((t) => t.id);
+  if (teamIds.length === 0) return { ok: true, games: [] };
+
+  const { data, error } = await supabase
+    .from("games")
+    .select(`id, scheduled_at, status, is_away, external_team_name, proposed_venue_name,
+      home_team:teams!home_team_id(name),
+      away_team:teams!away_team_id(name),
+      venue:venues(name)`)
+    .in("home_team_id", teamIds)
+    .order("scheduled_at", { ascending: true });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, games: (data ?? []) as unknown as SportsConnectGame[] };
+}
 
 export const SPORTS_CONNECT_HEADER =
   "SortOrder,RoundNo,HomeTeam,AwayTeam,MatchDate,StartTime,EndTime,Location,Field";

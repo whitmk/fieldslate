@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { X, Printer, Download, CalendarDays, FileUp } from "lucide-react";
+import { X, Printer, Download, CalendarDays, FileUp, Lock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Division } from "@/types/database";
 import type { DivisionStat } from "@/app/(dashboard)/dashboard/leagues/[id]/page";
 import {
   buildSportsConnectCsv,
+  fetchSportsConnectGames,
   type SportsConnectGame,
 } from "@/lib/schedule/sports-connect-export";
 
@@ -16,6 +17,9 @@ interface Props {
   divisions: Division[];
   divisionStats: DivisionStat[];
   leagueName: string;
+  /** Sports Connect row is Pro-gated, matching /dashboard/export's server
+   *  gate — the generic CSV/print row stays Free. */
+  isPro: boolean;
   onClose: () => void;
   onPrint: (divisionId: string, mode: PrintMode) => void;
 }
@@ -47,7 +51,7 @@ type GameRow = SportsConnectGame;
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function ExportPickerModal({
-  divisions, divisionStats, leagueName, onClose, onPrint,
+  divisions, divisionStats, leagueName, isPro, onClose, onPrint,
 }: Props) {
   const [selectedDivisionId, setSelectedDivisionId] = useState(
     divisions.length === 1 ? divisions[0].id : "",
@@ -126,10 +130,15 @@ export function ExportPickerModal({
     const base = `FieldSlate-${slugify(leagueName)}-${slugify(selectedDivision.name)}`;
 
     try {
-      const games = await fetchGames(selectedDivisionId);
+      const fetched = await fetchSportsConnectGames(createClient(), selectedDivisionId);
+      if (!fetched.ok) {
+        setExportError("Export failed — check your connection and try again.");
+        setLoadingAction(null);
+        return;
+      }
       const settings = (selectedDivision.settings ?? {}) as { game_duration?: number };
       const result = buildSportsConnectCsv(
-        games,
+        fetched.games,
         settings.game_duration,
         selectedDivision.name,
       );
@@ -261,25 +270,32 @@ export function ExportPickerModal({
                 <p className="text-xs text-gray-400">Import-ready CSV with rounds and end times</p>
               </div>
               <div className="flex flex-shrink-0 items-center gap-2">
-                <button
-                  disabled={!canAct || !!loadingAction}
-                  onClick={handleSportsConnectCsv}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    doneAction === "sportsconnect-csv"
-                      ? "border-[#22C55E] bg-[#22C55E]/5 text-[#22C55E]"
-                      : "border-gray-200 text-gray-600 hover:border-emerald-400 hover:text-emerald-600"
-                  }`}
-                >
-                  {loadingAction === "sportsconnect-csv" ? (
-                    <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  ) : (
-                    <Download className="h-3 w-3" />
-                  )}
-                  {doneAction === "sportsconnect-csv" ? "Downloaded!" : "CSV"}
-                </button>
+                {isPro ? (
+                  <button
+                    disabled={!canAct || !!loadingAction}
+                    onClick={handleSportsConnectCsv}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      doneAction === "sportsconnect-csv"
+                        ? "border-[#22C55E] bg-[#22C55E]/5 text-[#22C55E]"
+                        : "border-gray-200 text-gray-600 hover:border-emerald-400 hover:text-emerald-600"
+                    }`}
+                  >
+                    {loadingAction === "sportsconnect-csv" ? (
+                      <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                    ) : (
+                      <Download className="h-3 w-3" />
+                    )}
+                    {doneAction === "sportsconnect-csv" ? "Downloaded!" : "CSV"}
+                  </button>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-400">
+                    <Lock className="h-3 w-3" />
+                    Pro plan
+                  </span>
+                )}
               </div>
             </div>
 

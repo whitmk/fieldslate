@@ -1,11 +1,30 @@
 "use client";
 
+// The /dashboard/export surface for the Sports Connect import CSV.
+//
+// ALL format logic lives in src/lib/schedule/sports-connect-export.ts —
+// this component (like the league-page export picker modal) only picks a
+// division, calls the shared fetch + builder, and downloads the result.
+// Never add CSV formatting here; the two surfaces must stay byte-identical.
+// What this page adds over the modal: an org-wide season picker that
+// includes ARCHIVED seasons (exporting past seasons is a primary use case).
+
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { FileDown, CheckCircle2, Info, AlertCircle } from "lucide-react";
+import {
+  buildSportsConnectCsv,
+  fetchSportsConnectGames,
+} from "@/lib/schedule/sports-connect-export";
 
-type Division = { id: string; name: string };
+type Division = {
+  id: string;
+  name: string;
+  /** Raw divisions.settings.game_duration — validated by the builder, which
+   *  refuses the export (naming the division) when missing/non-positive. */
+  gameDuration: unknown;
+};
 export type LeagueOption = {
   id: string;
   name: string;
@@ -16,32 +35,9 @@ export type LeagueOption = {
   divisions: Division[];
 };
 
-// ── CSV helpers ──────────────────────────────────────────────────────────────
-
-function csvEscape(val: string): string {
-  return `"${val.replace(/"/g, '""')}"`;
-}
-
-// Times are stored as wall-clock UTC — read directly from the ISO string,
-// same approach as fmtGameDate/fmtGameTime in game-time.ts.
-function fmtCsvDate(iso: string): string {
-  const [year, month, day] = iso.substring(0, 10).split("-");
-  return `${month}/${day}/${year}`;
-}
-
-function fmtCsvTime(iso: string): string {
-  const [hourStr, minStr] = iso.substring(11, 16).split(":");
-  const hour = parseInt(hourStr, 10);
-  const period = hour >= 12 ? "PM" : "AM";
-  const h12 = hour % 12 || 12;
-  return `${h12.toString().padStart(2, "0")}:${minStr} ${period}`;
-}
-
 function slugify(name: string): string {
   return name.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
-
-// ── Component ────────────────────────────────────────────────────────────────
 
 type Status = "idle" | "loading" | "done" | "empty" | "error";
 
@@ -51,6 +47,7 @@ export function SportsConnectExporter({ leagues }: { leagues: LeagueOption[] }) 
   );
   const [selectedDivisionId, setSelectedDivisionId] = useState("");
   const [status, setStatus] = useState<Status>("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const selectedLeague = leagues.find((l) => l.id === selectedLeagueId);
   const selectedDivision = selectedLeague?.divisions.find(
@@ -67,6 +64,7 @@ export function SportsConnectExporter({ leagues }: { leagues: LeagueOption[] }) 
       selectedLeague.divisions.length === 1 ? selectedLeague.divisions[0].id : ""
     );
     setStatus("idle");
+    setErrorMsg(null);
   }, [selectedLeague]);
 
   const canExport = !!selectedLeague && !!selectedDivision;
@@ -74,83 +72,38 @@ export function SportsConnectExporter({ leagues }: { leagues: LeagueOption[] }) 
   async function handleExport() {
     if (!selectedLeague || !selectedDivision) return;
     setStatus("loading");
+    setErrorMsg(null);
 
-    const supabase = createClient();
-
-    // Resolve team IDs for this division first.
-    const { data: teamData, error: teamErr } = await supabase
-      .from("teams")
-      .select("id")
-      .eq("division_id", selectedDivisionId);
-
-    if (teamErr) {
-      setStatus("error");
-      return;
-    }
-
-    const teamIds = (teamData ?? []).map((t: { id: string }) => t.id);
-    if (teamIds.length === 0) {
-      setStatus("empty");
-      return;
-    }
-
-    type GameRow = {
-      scheduled_at: string;
-      home_team: { name: string } | null;
-      away_team: { name: string } | null;
-      venue: { name: string } | null;
-    };
-
-    const { data: gamesData, error: gamesErr } = await supabase
-      .from("games")
-      .select(`
-        scheduled_at,
-        home_team:teams!home_team_id(name),
-        away_team:teams!away_team_id(name),
-        venue:venues(name)
-      `)
-      .in("home_team_id", teamIds)
-      .order("scheduled_at", { ascending: true });
-
-    if (gamesErr) {
-      setStatus("error");
-      return;
-    }
-
-    const games = (gamesData ?? []) as unknown as GameRow[];
-    if (games.length === 0) {
-      setStatus("empty");
-      return;
-    }
-
-    const COLUMNS = [
-      "Home Team",
-      "Away Team",
-      "Date",
-      "Start Time",
-      "Location/Field Name",
-      "Division Name",
-    ];
-
-    const header = COLUMNS.map(csvEscape).join(",");
-    const rows = games.map((g) =>
-      [
-        csvEscape(g.home_team?.name ?? ""),
-        csvEscape(g.away_team?.name ?? ""),
-        csvEscape(fmtCsvDate(g.scheduled_at)),
-        csvEscape(fmtCsvTime(g.scheduled_at)),
-        csvEscape(g.venue?.name ?? ""),
-        csvEscape(selectedDivision.name),
-      ].join(",")
+    const fetched = await fetchSportsConnectGames(
+      createClient(),
+      selectedDivision.id
     );
+    if (!fetched.ok) {
+      setStatus("error");
+      setErrorMsg(null); // generic message — a fetch error isn't actionable copy
+      return;
+    }
 
-    // UTF-8 BOM ensures Excel and SportsConnect read accented chars correctly.
-    const csv = "﻿" + [header, ...rows].join("\r\n");
+    const result = buildSportsConnectCsv(
+      fetched.games,
+      selectedDivision.gameDuration,
+      selectedDivision.name
+    );
+    if (!result.ok) {
+      setStatus("error");
+      setErrorMsg(result.error);
+      return;
+    }
+    if (result.rowCount === 0) {
+      setStatus("empty");
+      return;
+    }
 
+    // No BOM — this file feeds Sports Connect's importer, not Excel. Same
+    // download shape as the modal so the two surfaces stay byte-identical.
     const today = new Date().toISOString().substring(0, 10).replace(/-/g, "");
-    const filename = `FieldSlate-${slugify(selectedLeague.name)}-${slugify(selectedDivision.name)}-${today}.csv`;
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const filename = `FieldSlate-${slugify(selectedLeague.name)}-${slugify(selectedDivision.name)}-sportsconnect-${today}.csv`;
+    const blob = new Blob([result.csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -176,7 +129,9 @@ export function SportsConnectExporter({ leagues }: { leagues: LeagueOption[] }) 
         </div>
         <div>
           <h2 className="font-semibold text-gray-900">SportsConnect Export</h2>
-          <p className="text-xs text-gray-500">Download a schedule CSV for SportsConnect import</p>
+          <p className="text-xs text-gray-500">
+            Import-ready schedule CSV with rounds and end times
+          </p>
         </div>
       </div>
 
@@ -205,6 +160,7 @@ export function SportsConnectExporter({ leagues }: { leagues: LeagueOption[] }) 
                 onChange={(e) => {
                   setSelectedLeagueId(e.target.value);
                   setStatus("idle");
+                  setErrorMsg(null);
                 }}
               >
                 <option value="">Select a season…</option>
@@ -234,6 +190,7 @@ export function SportsConnectExporter({ leagues }: { leagues: LeagueOption[] }) 
                 onChange={(e) => {
                   setSelectedDivisionId(e.target.value);
                   setStatus("idle");
+                  setErrorMsg(null);
                 }}
               >
                 <option value="">Select a division…</option>
@@ -254,9 +211,9 @@ export function SportsConnectExporter({ leagues }: { leagues: LeagueOption[] }) 
             </div>
           )}
           {status === "error" && (
-            <div className="flex items-center gap-2 text-sm text-red-600">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              Something went wrong. Please try again.
+            <div className="flex items-start gap-2 text-sm text-red-600">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{errorMsg ?? "Something went wrong. Please try again."}</span>
             </div>
           )}
           {status === "done" && (

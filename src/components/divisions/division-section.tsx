@@ -772,6 +772,7 @@ export function DivisionSection({
           divisions={divisions}
           divisionStats={divisionStats}
           leagueName={leagueName}
+          isPro={isProPlus(plan)}
           onClose={() => setShowExportPicker(false)}
           onPrint={handleExportPrint}
         />

@@ -139,8 +139,10 @@ function triggerCsvDownload(csv: string, filename: string) {
 //   • src/components/umpires/manual-print-button.tsx    (umpire schedule)
 //   • src/components/umpires/auto-print-on-load.tsx     (print-all view)
 //   • src/components/umpires/pay-report-modal.tsx       (umpire pay report)
-// The games schedule export (src/components/export/sportsconnect-exporter.tsx)
-// is CSV-only — there's no authoritative true-PDF baseline to align against.
+// The games schedule exports (the league page's export picker modal and the
+// /dashboard/export page, both driven by the shared builder in
+// src/lib/schedule/sports-connect-export.ts) are CSV-only — there's no
+// authoritative true-PDF baseline to align against.
 //
 // If a future dev wants real PDF file generation, do NOT switch just this one
 // export — that'd reintroduce the inconsistency this comment exists to prevent.

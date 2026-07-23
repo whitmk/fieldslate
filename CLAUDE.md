@@ -233,10 +233,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 
 ## Schedule export (Sports Connect)
 
-- **The CSV builder is a pure function** —
-  `buildSportsConnectCsv` in `src/lib/schedule/sports-connect-export.ts`;
-  the export-picker modal is only a host (fetch + download). Template
-  columns, in order:
+- **TWO surfaces, ONE builder — format changes go in the builder, never in
+  a surface.** `buildSportsConnectCsv` + `fetchSportsConnectGames` in
+  `src/lib/schedule/sports-connect-export.ts` are the only CSV logic; the
+  two hosts — the league page's export-picker modal row and the
+  `/dashboard/export` page (`sportsconnect-exporter.tsx`, which has NO
+  private CSV helpers since 2026-07-23) — only pick a division, call the
+  shared fetch + builder, and download WITHOUT a BOM. Their output is
+  byte-identical for the same division (harness-proven). Both are
+  Pro-gated (the page server-side, the modal row via `isPro`); the page
+  additionally offers the org-wide season picker INCLUDING archived
+  seasons — the one capability the modal lacks, and the reason the page
+  exists. Template columns, in order:
   `SortOrder,RoundNo,HomeTeam,AwayTeam,MatchDate,StartTime,EndTime,Location,Field`
   — CRLF endings, quote-only-when-needed, NO BOM (the file feeds Sports
   Connect's importer, not Excel; the older generic games CSV keeps its BOM).

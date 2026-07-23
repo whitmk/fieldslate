@@ -10,14 +10,15 @@ export default async function ExportPage() {
   const { data: { user } } = await supabase.auth.getUser();
   const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
-  // The /dashboard/export route IS the SportsConnect/BYGA exporter (a Pro+
-  // feature, including its per-division picker). Guard server-side so Free
-  // deep-links never receive the league/division data the client CSV needs —
-  // the basic single-button export stays Free elsewhere (the league detail
-  // page's Export PDF/CSV modal). Nav is also hidden for Free.
+  // The /dashboard/export route is the org-wide Sports Connect exporter (a
+  // Pro+ feature, including its per-division picker). Guard server-side so
+  // Free deep-links never receive the league/division data the client CSV
+  // needs — the basic single-button generic export stays Free elsewhere (the
+  // league detail page's export picker modal; that modal's Sports Connect row
+  // is Pro-gated to match this page). Nav is also hidden for Free.
   const plan = await getOrgPlan(currentOrgId);
   if (plan === "free") {
-    return <FeatureLockedCard feature="SportsConnect & BYGA export" />;
+    return <FeatureLockedCard feature="Sports Connect export" />;
   }
 
   // Export intentionally spans active + archived — exporting past-season
@@ -39,12 +40,15 @@ export default async function ExportPage() {
   const { data: rawDivisions } = leagueIds.length
     ? await supabase
         .from("divisions")
-        .select("id, name, league_id")
+        .select("id, name, league_id, settings")
         .in("league_id", leagueIds)
         .order("created_at", { ascending: true })
     : { data: [] };
 
-  type DivRow = Pick<Division, "id" | "name"> & { league_id: string };
+  type DivRow = Pick<Division, "id" | "name"> & {
+    league_id: string;
+    settings: unknown;
+  };
   const divisions = (rawDivisions ?? []) as DivRow[];
 
   const leagueOptions: LeagueOption[] = leagues.map((league) => ({
@@ -54,7 +58,13 @@ export default async function ExportPage() {
     isArchived: !!league.archived_at,
     divisions: divisions
       .filter((d) => d.league_id === league.id)
-      .map(({ id, name }) => ({ id, name })),
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        // Raw jsonb value — the builder validates and fails loud on bad input.
+        gameDuration: (d.settings as { game_duration?: unknown } | null)
+          ?.game_duration,
+      })),
   }));
 
   return (

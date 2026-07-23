@@ -5,7 +5,9 @@
 // and the fail-loud refusal on every invalid game_duration shape.
 import {
   buildSportsConnectCsv,
+  fetchSportsConnectGames,
   SPORTS_CONNECT_HEADER,
+  type SportsConnectFetchClient,
   type SportsConnectGame,
 } from "../../src/lib/schedule/sports-connect-export";
 
@@ -121,8 +123,44 @@ for (const line of lines.slice(1, 8)) {
   assert(line.endsWith(","), `Field column blank: ${line}`);
 }
 
-if (failures) {
-  console.error(`\n${failures} FAILURE(S)`);
-  process.exit(1);
+// ── Two surfaces, one output ─────────────────────────────────────────────────
+// The picker modal and the /dashboard/export page both call the REAL
+// fetchSportsConnectGames + buildSportsConnectCsv and download without a BOM.
+// Drive that exact path here (fake client returning the fixture rows) and
+// prove it is byte-identical to calling the builder directly — the shared
+// fetch must hand rows through unmodified.
+function fakeSupabase(rows: SportsConnectGame[]): SportsConnectFetchClient {
+  return {
+    from(table: string) {
+      return {
+        select() {
+          if (table === "teams") {
+            return { eq: async () => ({ data: [{ id: "t1" }], error: null }) };
+          }
+          return {
+            in() {
+              return { order: async () => ({ data: rows, error: null }) };
+            },
+          };
+        },
+      };
+    },
+  } as unknown as SportsConnectFetchClient;
 }
-console.log("\nAll checks passed.");
+
+(async () => {
+  const fetched = await fetchSportsConnectGames(fakeSupabase(games), "d1");
+  if (!fetched.ok) throw new Error("shared fetch errored: " + fetched.error);
+  const viaFetch = buildSportsConnectCsv(fetched.games, 90, "Majors");
+  if (!viaFetch.ok) throw new Error("viaFetch not ok");
+  assert(
+    viaFetch.csv === res.csv,
+    "fetch-path CSV byte-identical to direct builder call",
+  );
+
+  if (failures) {
+    console.error(`\n${failures} FAILURE(S)`);
+    process.exit(1);
+  }
+  console.log("\nAll checks passed.");
+})();
