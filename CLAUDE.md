@@ -379,9 +379,33 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   patch run their error through `isDivisionLockError`, show the friendly
   reason, and mark the division/row locked so the UI catches up instead of
   re-offering the action.
-- Chunks 1-3, 5, and 6 are landed. **Not built:** lock state on the wizard's
-  save-and-regenerate (it relies on the generator's own refusal message) and
-  on the interleague resolve surface.
+- **Interleague resolve is gated in the ROUTE, not the trigger — and that is
+  not a shortcut.** Verified against the live DB 2026-07-23: BOTH branches of
+  `/api/interleague/games/[id]/resolve` already PASS the trigger on a locked
+  division. Accept writes only `scheduled_at` / `status` /
+  `proposed_scheduled_at` / `proposed_venue_name`, every one of them in the
+  allowlist; decline deletes a `pending_interleague` row, which the carve-out
+  permits. Those permissions are exactly what lets an anonymous PARTNER
+  accept or decline under a lock without being stranded — the decision from
+  2026-07-23. Our own admin resolving is the SAME row shape; the only
+  difference is who is acting, so the trigger cannot distinguish them and the
+  gate has to live where the actor is known.
+  **Be honest about what that buys:** it stops the product's resolve path
+  completely (the UI has no other), but it is NOT a database guarantee the
+  way blocked INSERTs and DELETEs are — a caller issuing the same UPDATE
+  directly under RLS still succeeds. Do not describe interleague resolve as
+  trigger-enforced.
+- **The wizard's save-and-regenerate checks the lock BEFORE writing
+  anything.** The generator would refuse on its own, but only after
+  `saveEditDivisionData()` had already persisted the wizard changes —
+  producing "Division saved, but game schedule generation failed", a
+  half-applied refusal. It now refuses up front, changes nothing, and says
+  so; a locked division's *settings* can still be saved via "Save (don't
+  generate)", since settings are not games. The new-division path is exempt:
+  it plans before the division exists, so nothing can be locked.
+- Chunks 1-3, 5, and 6 are landed, including the wizard and interleague
+  resolve surfaces. Every surface in the original eight now carries lock
+  state.
 - **Harness: `scripts/sim/schedule-lock-sim.sql`** — 12 assertions, 12
   anti-vacuity counters, 9 mutants all killed (2026-07-23). Read its header
   before touching any of this; it is SQL, not `npm run`, for the reasons in

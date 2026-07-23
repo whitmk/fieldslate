@@ -10,6 +10,7 @@ import {
   Loader2,
   X,
   AlertTriangle,
+  Lock,
   Mail,
   Send,
   Inbox,
@@ -51,7 +52,10 @@ type CounterProposedGame = {
   proposed_venue_name: string | null;
   external_team_name: string | null;
   is_away: boolean;
-  home_team: { name: string; division: { name: string } | null } | null;
+  home_team: {
+    name: string;
+    division: { name: string; locked: boolean | null } | null;
+  } | null;
   venue: { name: string } | null;
   interleague_org: { name: string } | null;
   league: { name: string; season: string | null } | null;
@@ -852,7 +856,7 @@ export function InterleaguePageClient({
             .select(
               `id, scheduled_at, proposed_scheduled_at, proposed_venue_name,
                external_team_name, is_away,
-               home_team:teams!home_team_id(name, division:divisions(name)),
+               home_team:teams!home_team_id(name, division:divisions(name, locked)),
                venue:venues(name),
                interleague_org:interleague_orgs(name),
                league:leagues!inner(name, season, owner_id)`
@@ -1325,6 +1329,10 @@ export function InterleaguePageClient({
                       : `${g.home_team?.name ?? "TBD"} vs ${team}`;
                     const busy = resolvingId === g.id;
                     const canAcceptProposal = !!g.proposed_scheduled_at;
+                    // Per-ROW, because this list spans divisions and seasons —
+                    // one locked division must not disable the others' rows.
+                    const rowLocked = !!g.home_team?.division?.locked;
+                    const rowLockedReason = `${g.home_team?.division?.name ?? "This division"} is locked. Unlock it to resolve interleague games.`;
                     return (
                       <tr key={g.id} className="hover:bg-amber-50/40">
                         <td className="px-5 py-3.5">
@@ -1333,6 +1341,12 @@ export function InterleaguePageClient({
                             {g.home_team?.division?.name ?? "—"}
                             {g.league?.name ? ` · ${g.league.name}` : ""}
                           </p>
+                          {rowLocked && (
+                            <p className="mt-1 inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">
+                              <Lock className="h-3 w-3 flex-shrink-0" />
+                              {rowLockedReason}
+                            </p>
+                          )}
                         </td>
                         <td className="px-5 py-3.5 text-gray-700">
                           {g.proposed_scheduled_at && (
@@ -1355,12 +1369,14 @@ export function InterleaguePageClient({
                         <td className="px-5 py-3.5">
                           <div className="flex flex-wrap justify-end gap-1.5">
                             <button
-                              disabled={busy || !canAcceptProposal}
+                              disabled={busy || !canAcceptProposal || rowLocked}
                               onClick={() =>
                                 resolveGame(g.id, { action: "accept_proposal" })
                               }
                               title={
-                                canAcceptProposal
+                                rowLocked
+                                  ? rowLockedReason
+                                  : canAcceptProposal
                                   ? "Apply their proposed time"
                                   : "No time proposal on this game"
                               }
@@ -1370,7 +1386,8 @@ export function InterleaguePageClient({
                               Accept proposal
                             </button>
                             <button
-                              disabled={busy}
+                              disabled={busy || rowLocked}
+                              title={rowLocked ? rowLockedReason : undefined}
                               onClick={() =>
                                 resolveGame(g.id, { action: "keep_original" })
                               }
@@ -1379,7 +1396,8 @@ export function InterleaguePageClient({
                               Keep original
                             </button>
                             <button
-                              disabled={busy}
+                              disabled={busy || rowLocked}
+                              title={rowLocked ? rowLockedReason : undefined}
                               onClick={() => {
                                 setResolveError(null);
                                 setEditTarget(g);
@@ -1390,7 +1408,8 @@ export function InterleaguePageClient({
                               Edit
                             </button>
                             <button
-                              disabled={busy}
+                              disabled={busy || rowLocked}
+                              title={rowLocked ? rowLockedReason : undefined}
                               onClick={() => {
                                 setResolveError(null);
                                 setDeclineTarget(g);

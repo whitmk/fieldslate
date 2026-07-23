@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   CheckCircle2, AlertTriangle, Edit2, Zap, Loader2,
-  ExternalLink, X, Save, CalendarDays,
+  ExternalLink, X, Save, CalendarDays, Lock,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -22,6 +22,7 @@ import {
   type CoachConflict,
 } from "@/lib/schedule/detect-coach-conflicts";
 import { CoachConflictNotice } from "@/components/schedule/coach-conflict-notice";
+import { fetchDivisionLocks, lockedReason } from "@/lib/schedule/division-lock";
 import { getOfficialTitlePlural } from "@/lib/utils/official-title";
 import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
 import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
@@ -145,6 +146,25 @@ export function StepReview({
   const [error, setError] = useState("");
   const [regenResult, setRegenResult] = useState<RegenResult | null>(null);
   const [coachConflicts, setCoachConflicts] = useState<CoachConflict[]>([]);
+  // Schedule lock, loaded on mount in edit mode so the regenerate button is
+  // visibly unavailable BEFORE the click — not discovered by pressing it.
+  const [divisionLocked, setDivisionLocked] = useState(false);
+
+  useEffect(() => {
+    if (!divisionId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const locks = await fetchDivisionLocks(createClient(), [divisionId]);
+        if (!cancelled) setDivisionLocked(!!locks.get(divisionId)?.locked);
+      } catch {
+        // Leave the button enabled and let handleSaveAndGenerate's own
+        // fail-closed read produce the message — a failed pre-read here must
+        // not silently present as "unlocked" NOR block a legitimate save.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [divisionId]);
 
   // After a regen/plan persists games, sweep the whole season for shared-coach
   // conflicts touching this division (they can only be judged season-wide).
@@ -578,6 +598,38 @@ export function StepReview({
     setRegenKind(kind);
     setError("");
     setConfirmingKind(null);
+
+    // Schedule lock check FIRST, before anything is written. The generator
+    // would refuse on its own, but only AFTER saveEditDivisionData() had
+    // already persisted the wizard changes — producing "Division saved, but
+    // game schedule generation failed", which is exactly the confusing
+    // half-applied refusal this feature exists to prevent. Refusing up front
+    // means a locked division's regenerate changes nothing at all.
+    //
+    // Only the EDIT path can hit this: the new-division path plans before the
+    // division exists, so there is nothing to have locked.
+    if (isEditMode && divisionId) {
+      try {
+        const locks = await fetchDivisionLocks(createClient(), [divisionId]);
+        if (locks.get(divisionId)?.locked) {
+          setError(
+            `${lockedReason(data.name, "generate")} Nothing was saved — unlock it on the division's schedule panel, then run this again.`,
+          );
+          setSavingRegen(false);
+          setRegenKind(null);
+          return;
+        }
+      } catch (e) {
+        // Fail CLOSED: an unreadable lock must not be treated as unlocked on
+        // a path that wipes and rebuilds the schedule.
+        setError(
+          e instanceof Error ? e.message : "Couldn't read schedule lock state.",
+        );
+        setSavingRegen(false);
+        setRegenKind(null);
+        return;
+      }
+    }
 
     if (isEditMode) {
       // Edit-mode flow stays as before: persist the wizard changes, then
@@ -1025,10 +1077,23 @@ export function StepReview({
         </div>
       ) : (
         <div className="flex flex-col gap-2.5">
+          {divisionLocked && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <Lock className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+              <p className="text-sm text-amber-800">
+                <span className="font-semibold">{data.name} is locked.</span>{" "}
+                Settings can still be saved — only regenerating the schedule is
+                blocked. Unlock it on the division&apos;s schedule panel to
+                regenerate.
+              </p>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => (isEditMode ? setConfirmingKind("games") : handleSaveAndGenerate("games"))}
-            disabled={isBusy || !canSubmit}
+            title={divisionLocked ? lockedReason(data.name, "generate") : undefined}
+            disabled={isBusy || !canSubmit || divisionLocked}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#22C55E] py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {savingRegen && regenKind === "games" ? (

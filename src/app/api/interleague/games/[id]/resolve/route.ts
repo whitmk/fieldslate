@@ -101,7 +101,10 @@ export async function POST(
 
   // Load game with surrounding context for validation + email.
   type FetchRow = GameRow & {
-    home_team: { name: string; division: { name: string } | null } | null;
+    home_team: {
+      name: string;
+      division: { name: string; locked: boolean | null } | null;
+    } | null;
     interleague_org: { name: string } | null;
     league: { id: string; name: string; season: string | null; owner_id: string } | null;
     venue: { name: string } | null;
@@ -111,7 +114,7 @@ export async function POST(
     .select(
       `id, league_id, home_team_id, interleague_org_id, is_away, status, scheduled_at,
        external_team_name, proposed_scheduled_at, proposed_venue_name, venue_id,
-       home_team:teams!home_team_id(name, division:divisions(name)),
+       home_team:teams!home_team_id(name, division:divisions(name, locked)),
        interleague_org:interleague_orgs(name),
        league:leagues(id, name, season, owner_id),
        venue:venues(name)`
@@ -139,6 +142,34 @@ export async function POST(
     return NextResponse.json(
       { error: "This game isn't an interleague game." },
       { status: 400 },
+    );
+  }
+
+  // ── Schedule lock (0080/0082) ────────────────────────────────────────────
+  // This gate is ACTOR-based and lives HERE, not in the trigger, and that is
+  // deliberate — verified against the live DB 2026-07-23: BOTH branches of
+  // this route already pass the trigger on a locked division.
+  //   * accept writes only scheduled_at / status / proposed_scheduled_at /
+  //     proposed_venue_name — every one of them is in the trigger's allowlist.
+  //   * decline deletes a `pending_interleague` row, which the trigger's
+  //     carve-out permits.
+  // Those permissions exist so an anonymous PARTNER can accept or decline
+  // under a lock without being stranded. Our own admin resolving is the same
+  // row shape — the only difference is WHO is acting — so the trigger cannot
+  // tell them apart and the distinction has to be drawn where the actor is
+  // known: this authenticated route.
+  //
+  // Consequence to be honest about: this stops the product's resolve path
+  // completely (it is the only one the UI uses), but it is NOT a database
+  // guarantee the way blocked INSERTs and DELETEs are. A caller issuing the
+  // same UPDATE directly under RLS would still succeed.
+  if (game.home_team?.division?.locked) {
+    const divName = game.home_team.division.name ?? "This game's division";
+    return NextResponse.json(
+      {
+        error: `${divName} is locked. Unlock it on the division's schedule panel to resolve interleague games. Rainouts and reschedules still work while it's locked.`,
+      },
+      { status: 409 },
     );
   }
 
