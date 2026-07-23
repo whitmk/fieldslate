@@ -1053,8 +1053,19 @@ export async function generateSchedule(
     .in("home_team_id", teamIds)
     .or("status.neq.scheduled,interleague_org_id.is.null");
 
+  // HARD return, not a warning. This was a console.warn that fell through to
+  // the insert below — so a failed clear produced a schedule ON TOP of the old
+  // one (duplicate games) while reporting success. That is wrong regardless of
+  // schedule lock; the lock just makes it reachable on purpose, since a locked
+  // division's delete is refused by the 0082 trigger and the caller must see
+  // WHY rather than a confusing double-failure from the insert.
   if (delErr) {
-    console.warn("[generateSchedule] failed to clear old games:", delErr.message);
+    return {
+      success: false,
+      error: delErr.message.includes("division_locked")
+        ? "This division is locked. Unlock it to regenerate the schedule."
+        : `Couldn't clear the existing schedule: ${delErr.message}`,
+    };
   }
 
   // Pre-load venue bookings from ALL games already in the DB at these venues.

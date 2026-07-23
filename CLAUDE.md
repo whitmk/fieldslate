@@ -51,7 +51,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0081.** The repo files are the record, not the
+  **Latest migration: 0083.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -291,15 +291,71 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   games whose home team lacks a division, zero cross-division games. A null
   division means NO division, therefore no lock — allowed, not fail-closed;
   failing closed there would make orphan rows permanently immutable.
-- **Enforcement belongs in a trigger on `games`, not in client checks.** RLS
-  (0049) lets any org member insert/update/delete games straight from the
-  browser, so client-side and API-route checks are for the error MESSAGE, not
-  the guard. Five of the eight DB functions that mutate `games` are granted
-  to `anon` (token-bearing partner leagues) — enumerate with a `pg_proc`
-  scan on `prosrc` before assuming a path is admin-only.
-- Chunks 1 and 2 (columns, division-delete RPC) are landed. The enforcement
-  trigger, the bypass GUC, `delete_game_if_unblocked`'s `division_locked`
-  reason, and the UI are NOT yet built.
+- **Enforcement lives in `enforce_division_lock`, a BEFORE ROW trigger on
+  `games` (0082) — not in client checks.** RLS (0049) lets any org member
+  insert/update/delete games straight from the browser, so client-side and
+  API-route checks are for the error MESSAGE, not the guard. Five of the
+  eight DB functions that mutate `games` are granted to `anon`
+  (token-bearing partner leagues) — enumerate with a `pg_proc` scan on
+  `prosrc` before assuming a path is admin-only.
+- **The rules when locked:** INSERT always refused; DELETE refused EXCEPT
+  `pending_interleague` rows; UPDATE allowed only if every changed column is
+  in the allowlist (`status`, `scheduled_at`, `venue_id`,
+  `proposed_scheduled_at`, `proposed_venue_name`, `external_team_name`,
+  `updated_at`).
+- **The column check is SUBTRACTION-based and must stay that way:**
+  `to_jsonb(OLD) - allowlist IS DISTINCT FROM to_jsonb(NEW) - allowlist`.
+  NEVER an enumerated blocklist — a column added to `games` next year must be
+  blocked-when-locked BY DEFAULT. Mutant M4 in the harness swaps it for an
+  enumerated list and is caught only by the `notes` assertion; don't delete
+  that assertion.
+- **Trigger NAME ordering is load-bearing.** Postgres fires same-timing row
+  triggers in name order, and `enforce_division_lock` sorts before
+  `set_games_updated_at` so `updated_at` is unchanged at check time.
+  `updated_at` is in the allowlist anyway — keep both properties.
+- **`pending_interleague` deletes stay allowed** because those rows are
+  excluded from every export and the Reports matrix by
+  `countsAsScheduledGame` — they were never on the schedule parents
+  received. This is what lets an anonymous partner's DECLINE work under a
+  lock with NO bypass, and `delete_game_if_unblocked` (0083) excludes them
+  from its `division_locked` reason for exactly the same reason. **The
+  trigger and that RPC must agree about the same row** — if you change one
+  carve-out, change both.
+- **Bypass GUC rule:** `fieldslate.lock_bypass` is transaction-local
+  (`set_config(..., true)`) and belongs ONLY in a SECURITY DEFINER function
+  whose entire purpose is destroying the container the lock lives in.
+  Exactly two qualify: `delete_league_permanently` and
+  `delete_division_permanently`, and both set it AFTER their authorization
+  and block-condition gates so a refused call never enables it. Locking must
+  not make a division or season undeletable. `delete_game_if_unblocked` gets
+  a real CHECK, never a bypass. A third claimant is a design review.
+- **`posted` clearing is a STATEMENT-level trigger with transition tables**
+  (`clear_division_posted`, three triggers — insert/update/delete). Not per
+  row: the generator inserts in batches of 500 and a row trigger would fire
+  500 updates at one divisions row.
+- **Measured trigger cost (2026-07-23) — one stated threshold FAILED, and
+  the feature shipped anyway; here is the honest number.** Insert+delete
+  round trip, trigger on vs off: N=100 +12.6ms (+132%), N=500 +37.5ms
+  (+88%), N=2000 +149.6ms (+89%). The +10% relative threshold was missed by
+  a wide margin; the <50ms-at-N=500 absolute threshold passed. The curve is
+  linear, so it is per-row plpgsql overhead, not a missing index. Accepted
+  because the largest live division is 70 games — roughly +10ms on an
+  operation that already costs seconds of client round-trips, a few times
+  per season. **The relative threshold was the wrong metric for this
+  operation; the absolute one is the one to hold future changes to.** If a
+  league ever reaches thousands of games per division, the pre-designed
+  escape hatch is AFTER STATEMENT with transition tables (raise from there
+  and the statement still rolls back) — one set-based check instead of N.
+  A locked-division abort costs 0.6ms: it refuses at row 1 and never scans.
+- Chunks 1-3 are landed (columns, division-delete RPC, both triggers, the
+  bypass, and the RPC's third reason). **The UI is NOT built** — no lock
+  toggle, no posted checkbox, no locked state on any surface, and
+  generate-all does not yet skip-and-name locked divisions. Nothing can be
+  locked from the product today; `locked` is only settable by raw SQL.
+- **Harness: `scripts/sim/schedule-lock-sim.sql`** — 12 assertions, 12
+  anti-vacuity counters, 9 mutants all killed (2026-07-23). Read its header
+  before touching any of this; it is SQL, not `npm run`, for the reasons in
+  "Harness standard — SQL-level exceptions" below.
 
 ## Harness standard — SQL-level exceptions
 
@@ -318,7 +374,21 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   the live DB; always follow with a leak check that the scratch rows are
   gone. It is NOT `npm run`-able and does NOT run in CI. That is a real gap
   versus the officials/round-order sims; say so rather than letting it pass
-  as equivalent.
+  as equivalent. Live example: `scripts/sim/schedule-lock-sim.sql`.
+- **Mutants are `create or replace` on PRODUCTION functions.** Run every one
+  inside the same always-raising DO pattern so it can never commit, and
+  ALWAYS re-verify `md5(prosrc)` against the repo migration bodies
+  afterward. A surviving mutant in production is far worse than a failing
+  test. Same rule for `alter table ... disable trigger` in a benchmark: it
+  takes an ACCESS EXCLUSIVE lock on `games` for the transaction's duration
+  (briefly blocking the live app), so keep those transactions short and
+  confirm `tgenabled = 'O'` on every trigger when finished.
+- **A mutation result is "killed" ONLY if the BASELINE ASSERTION fails** —
+  not merely if the mutant behaves differently. Mixing those two criteria in
+  one script produces mutants that look like survivors when they were caught
+  (this happened on the 2026-07-23 lock run for M1/M2/M4 and had to be
+  re-proven assertion-by-assertion). State the criterion once and use it
+  everywhere.
 
 ## Schedule export (Sports Connect)
 
