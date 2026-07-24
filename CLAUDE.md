@@ -520,25 +520,22 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Never re-add a `.limit()` to a completeness-critical read — and never use
   1000 as a limit anywhere.** 1000 is PostgREST's own silent cap, so a real
   limit at that value is indistinguishable from being truncated by the server.
-- **Converted so far: the Schedule page games query ONLY** (list, calendar, and
-  print all share that one array; the page now renders a visible error and
-  suppresses the print region entirely on a read failure). **Conversion
+- **Converted so far: the Schedule page games query AND the Reports games read**
+  (`overview-reports.tsx` — completion, field utilization, and the field ×
+  division matrix all share that one array; on a read failure the whole Reports
+  body is replaced with a visible error, never partial numbers). **Conversion
   backlog, priority order** — several of these can silently truncate, so the
   fix is this uniform pattern, not one-line edits:
   1. **Venues page** (`venues-page-client.tsx`) — org-wide, ALL seasons, no
      league scope. **660 rows today against a 1000 cap**, grows every season,
      never resets. This one has a date on it.
-  2. **Reports matrix + field utilization** (`overview-reports.tsx`) — whole
-     season, no limit. Worst failure *shape* on the list: it produces derived
-     numbers, so truncation reads as plausible arithmetic rather than a short
-     list.
-  3. **Season page division cards** (`leagues/[id]/page.tsx`) — whole season.
-  4. **Both CSV exports** — generic (`export-picker-modal.tsx`) and Sports
+  2. **Season page division cards** (`leagues/[id]/page.tsx`) — whole season.
+  3. **Both CSV exports** — generic (`export-picker-modal.tsx`) and Sports
      Connect (`sports-connect-export.ts`).
-  5. **Division schedule panel** — and its OWN print region
+  4. **Division schedule panel** — and its OWN print region
      (`division-schedule-panel.tsx` ~1191), which has the identical
      `{activeGames.length} game` confident-count design.
-  6. **The calendar branch's `1000`** — move off that number regardless, so a
+  5. **The calendar branch's `1000`** — move off that number regardless, so a
      real cap can never be confused with the PostgREST one.
   Also unconverted on the Schedule page itself: the venue-options query
   (`.eq("league_id", …)`, no limit) that feeds the venue filter dropdown.
@@ -885,6 +882,58 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   choose to migrate every importer to `slots.ts` in one deliberate pass,
   that is a decision to make explicitly and prove with the four generator
   sims — not a "helpful" cleanup to slip into an unrelated diff.
+
+## Reports — field utilization (placeable-slot model)
+
+- **Utilization is GAMES ÷ PLACEABLE SLOTS, computed with `buildSlots` — the
+  generator's own grid — so the report and the scheduler can never disagree
+  about what fits.** It replaced a hours-based formula (game-hours ÷ a venue's
+  open wall-clock hours × ALL season weeks) that counted non-playing weekdays,
+  non-playing weeks, and hours no game could start in (an 8h Saturday window
+  fits three 2h games, not four), so packed Saturday-only fields read as ~39%.
+  Verified on SRALL Fall 2026 Minors: old 39% → new 73% on the two constrained
+  fields; the pre-third-field reconstruction reads 60/60 = 100%, 0 free (the
+  honest "at capacity" the old formula hid). Lives in `overview-reports.tsx`
+  (server math) + `field-utilization-card.tsx` (display only).
+- **DIVISION-CENTRIC, not venue-centric — load-bearing.** "How many slots" is
+  not one number for a field shared by divisions with different game lengths (a
+  165-min-spaced division fits more starts than a 180-min one), so each division
+  owns its own slot count per field, via `buildSlots(..., [venueId], ...)`.
+- **Three scoping rules that each prevent re-inflating the denominator — do NOT
+  "simplify" any of them; each one, removed, brings the old bug back one rung
+  down:**
+  1. **Supply is summed only over fields a division ACTUALLY has games on**, not
+     every eligible field. Adding eligible-but-unused fields would inflate the
+     denominator exactly as non-playing days did. (Eligible-unused fields still
+     show as empty columns in the games×divisions matrix.)
+  2. **Supply is scoped to the division's ACTUAL playing DATES** (dates with ≥1
+     counting game), not all season playing-days. `buildSlots` returns slots for
+     every Saturday in the season window; the report keeps only those on dates
+     the division plays. A division that plays 10 of 14 Saturdays has no
+     capacity on the other 4 (teams at their weekly limit), so counting them
+     would dilute the %.
+  3. **A shared field's supply is an UPPER BOUND and is MARKED as one.**
+     `buildSlots` for (division, field) ignores the OTHER division's games on
+     that field, so on a shared field it overstates supply → the % is a FLOOR.
+     Those fields (and any division containing one) render with `≤`/`≥`/"up to"
+     and a "shared — upper bound" chip. Never let an approximate number render as
+     a plain fact next to an exact one — that equal-trust misread is the whole
+     reason the marking exists (founder's explicit condition).
+- **PRACTICES are in NEITHER numerator nor denominator, deliberately.** The
+  generator does not reserve field time for practices (`buildSlots` takes no
+  practice input; the placement walk books only games), so netting practices out
+  of game supply here would make the report STRICTER than the scheduler —
+  calling a field full while the generator places another game on it. Report and
+  generator disagreeing about what fits is worse than the asymmetry. Practices
+  stay an informational per-division count. **REVISIT TRIGGER: if the generator
+  is ever changed to reserve field time against practices, close this asymmetry
+  in the SAME change — net practices into supply here and reserve them in
+  `buildSlots` together, never one alone.** (Reasoning is also inline in
+  `overview-reports.tsx`.)
+- **The games read is `fetchAllRows` (fail-loud, complete).** Utilization,
+  completion, and the matrix all derive from it; on a read error the entire
+  Reports body renders a visible error instead of any partial number. See
+  "Complete reads".
 
 ## Coach conflicts in schedule generation
 
