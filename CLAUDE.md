@@ -452,6 +452,23 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (this happened on the 2026-07-23 lock run for M1/M2/M4 and had to be
   re-proven assertion-by-assertion). State the criterion once and use it
   everywhere.
+- **Second half of the same rule: a mutant must be killed by the ASSERTION
+  THAT IS SUPPOSED TO CATCH IT, not merely killed by something.** Read the
+  failing assertion name on every kill; a red run is not the answer, the
+  right red line is. A mutant that dies early to an unrelated assertion
+  leaves the assertion it was written to exercise completely unproven while
+  the tally still reads "all killed" — so the summary count is true and
+  meaningless.
+  **Worked example (2026-07-23, skip-attribution run):** M15 was written to
+  prove the placement-invariance assertions. It mutated `tallyRejections` to
+  write into `venueBookings` — which that function also READS to compute its
+  own counts, so the run died at `[F1] weekly_cap attributed 0`, an
+  attribution assertion, before invariance was ever evaluated. 15/15 killed,
+  invariance unproven. The fix was to move the leak to the CALL SITE, after
+  the tally is computed: attributions then stay correct and the mutant dies
+  at `[INV] placement moved` — the line that was supposed to catch it. When a
+  mutant targets assertion X, deliberately construct it so nothing before X
+  can fire.
 
 ## Schedule export (Sports Connect)
 
