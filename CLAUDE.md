@@ -758,6 +758,65 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   every sentence the run produces. Re-run after ANY change to
   placement-diagnostics.ts, either walk copy, or `buildSlots`.
 
+## Generator reads fail CLOSED (and never run after a destructive step)
+
+- **Every `games` read in `generate-schedule.ts` returns an explicit error, and
+  the regenerate DELETE now runs AFTER all of them.** Before this, all 14 reads
+  discarded their error while the 3 writes checked theirs. The venue-booking
+  pre-load was the dangerous one: on a read error it produced an EMPTY booking
+  map, which the placement walk reads as "every field is free at every time", so
+  the generator double-booked fields and reported success — with the division's
+  previous schedule ALREADY DELETED, because the read ran after the delete. One
+  transient blip was enough, at any data size. Nothing in the product said a word.
+- **The ordering rule, generalized: no read whose failure is only detectable
+  after a destructive step may run after that step.** `generateSchedule` now
+  does all reads → builds every map → deletes → plans → inserts. An aborted run
+  leaves the games table byte-identical. `finishSchedule` and
+  `planScheduleForNewDivision` have no delete at all, so they only needed the
+  fail-closed part.
+- **STANDING RULE — `willBeClearedByRegenerate` mirrors the regenerate DELETE's
+  WHERE clause, and the two must be changed together.** Reading before the
+  delete means the pre-load reads still see the rows the delete is about to
+  remove, so each subtracts them via this predicate, which mirrors
+  `.eq(league_id).in(home_team_id).or("status.neq.scheduled,interleague_org_id.is.null")`.
+  **The predicate is TypeScript and the delete is PostgREST filter syntax;
+  neither can be derived from the other, so a change to one is silently wrong
+  until the other follows.** It is quiet when wrong in BOTH directions:
+  under-subtracting makes the division's own outgoing games block their own
+  replacement slots (a regenerate that places far fewer games than it should);
+  over-subtracting stops OTHER divisions' games from blocking, which is the
+  original double-booking bug arriving through the front door. **Anyone who
+  edits the delete's WHERE clause MUST edit the predicate to match and re-run
+  `npm run sim:generator-failclosed` — assertions D1 (under-subtract) and D2
+  (over-subtract) are the ONLY thing pinning the two together.** The function's
+  own header carries the same warning; keep both.
+- **Post-write reads can't fail closed by aborting, so they report UNKNOWN.**
+  The cross-division conflict check runs after the insert. On error it now sets
+  `ScheduleResult.conflictsUnavailable` (a plain-English message) and returns an
+  empty `conflicts` array — **non-null means conflicts are UNKNOWN, not zero.**
+  Every surface rendering a conflict count must say so rather than showing 0;
+  the setup step, generate-all modal, and wizard review panel all do.
+- **Harness: `npm run sim:generator-failclosed`** (TZ=UTC mandatory) — 67
+  assertions, anti-vacuity counters, **9 mutants all killed by their own
+  assertion** (2026-07-23), including one that moves the delete back above the
+  reads and dies with "expected 12, got 0". The shared fake client gained
+  targeted read-fault injection (`injectReadFault`, matching on the select
+  string) plus `ilike`/`maybeSingle`. **Use `selectEquals`, not
+  `selectIncludes`, for the coach-linked read** — its select is just
+  `"scheduled_at"`, a substring of every other games select, so a substring
+  fault silently retargets to the wrong read.
+- **Read that sim's mutation log before touching any of this.** It records three
+  separate cases where the tally said "all killed" while the assertion under
+  test proved nothing — a wrong-read fault, a happy-path fixture that doubled as
+  a subtraction test, and a fixture too loose for the second of two subtraction
+  loops to bind. All three were only visible by reading the failing assertion
+  NAME on each kill.
+- **Still open, deliberately out of scope** (its own session): the five
+  venue-keyed reads scoped only by `.in("venue_id", …)` — no season, no date —
+  and their PostgREST 1000-row truncation exposure. Whether it is safe to ignore
+  bookings outside the season window when concurrent seasons share a venue is a
+  design decision, not a mechanical conversion. See "Complete reads".
+
 ## Coach conflicts in schedule generation
 
 - **Same-division shared-coach double-booking is a KNOWN, deliberately

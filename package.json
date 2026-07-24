@@ -16,7 +16,8 @@
     "sim:team-reconcile": "npx tsx scripts/sim/team-reconcile-sim.ts",
     "sim:sc-export": "npx tsx scripts/sim/sports-connect-export-sim.ts",
     "sim:diagnostics": "TZ=UTC npx tsx scripts/sim/placement-diagnostics-sim.ts",
-    "sim:fetch-all": "npx tsx scripts/sim/fetch-all-sim.ts"
+    "sim:fetch-all": "npx tsx scripts/sim/fetch-all-sim.ts",
+    "sim:generator-failclosed": "TZ=UTC npx tsx scripts/sim/generator-fail-closed-sim.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

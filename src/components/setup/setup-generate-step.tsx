@@ -53,6 +53,9 @@ type RunStatus =
       // Rendered VERBATIM — never hand-write a shortfall sentence here.
       shortfallSummary: string | null;
       conflictGameCount: number;
+      // Non-null = conflicts are UNKNOWN (the post-write check couldn't run),
+      // which must never render as "0 conflicts". See ScheduleResult.
+      conflictsUnavailable: string | null;
     }
   | { state: "failed"; error: string }
   // A live re-count just before generating found this division already has
@@ -227,6 +230,7 @@ export function SetupGenerateStep({
             (n, c) => n + c.games.length,
             0,
           ),
+          conflictsUnavailable: res.conflictsUnavailable,
         });
       } else {
         setStatus(division.id, { state: "failed", error: res.error });
@@ -279,7 +283,11 @@ export function SetupGenerateStep({
           text: status.shortfallSummary ? `${head} ${status.shortfallSummary}` : head,
         });
       }
-      if (status.conflictGameCount > 0) {
+      if (status.conflictsUnavailable) {
+        // Unknown, not zero — say so rather than staying silent, which would
+        // read as a clean bill of health nobody actually checked.
+        lines.push({ divisionId: d.id, text: `${d.name}: ${status.conflictsUnavailable}` });
+      } else if (status.conflictGameCount > 0) {
         lines.push({
           divisionId: d.id,
           text: `${status.conflictGameCount} game${status.conflictGameCount !== 1 ? "s" : ""} in ${d.name} have field conflicts`,
@@ -474,15 +482,18 @@ export function SetupGenerateStep({
               )}
               {status?.state === "done" &&
                 (status.unscheduledCount > 0 ||
-                  status.conflictGameCount > 0) && (
+                  status.conflictGameCount > 0 ||
+                  status.conflictsUnavailable) && (
                   <p className="ml-7 text-xs text-amber-700">
                     {[
                       status.unscheduledCount > 0
                         ? `${status.unscheduledCount} game${status.unscheduledCount !== 1 ? "s" : ""} couldn't be scheduled`
                         : null,
-                      status.conflictGameCount > 0
-                        ? `${status.conflictGameCount} game${status.conflictGameCount !== 1 ? "s" : ""} have field conflicts`
-                        : null,
+                      status.conflictsUnavailable
+                        ? "field conflicts couldn't be checked"
+                        : status.conflictGameCount > 0
+                          ? `${status.conflictGameCount} game${status.conflictGameCount !== 1 ? "s" : ""} have field conflicts`
+                          : null,
                     ]
                       .filter(Boolean)
                       .join(" · ")}{" "}

@@ -27,6 +27,34 @@ export type Db = {
 
 export type DbError = { message: string } | null;
 
+/**
+ * Targeted read-fault injection.
+ *
+ * `failTables` (below) fails EVERY read of a table, which is too coarse to
+ * prove anything about the generator's individual `games` reads: the engine
+ * issues several, so a table-wide fault always trips the FIRST one and every
+ * assertion about the later reads passes vacuously. That is precisely the
+ * "killed by the wrong assertion" trap. A fault therefore matches on the
+ * select string, so a sim can fail exactly the venue-booking read and prove
+ * that specific abort.
+ */
+export type ReadFault = {
+  table: keyof Db;
+  /** Match only reads whose select string contains this substring. */
+  selectIncludes?: string;
+  /**
+   * Match only reads whose select string is EXACTLY this. Needed when one
+   * read's select is a substring of another's: the coach-linked read selects
+   * just "scheduled_at", which every other games read also contains, so a
+   * substring fault silently retargets to the wrong read and the assertion
+   * proves something other than what it claims.
+   */
+  selectEquals?: string;
+  /** Fail only the Nth matching read (1-indexed). Default: every match. */
+  nth?: number;
+  message?: string;
+};
+
 type EmbedNode = {
   alias: string;
   target: string;
@@ -127,6 +155,8 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
   private orderBy: { column: string; ascending: boolean } | null = null;
   private singleMode = false;
   private embeds: EmbedNode[] = [];
+  private selectCols = "";
+  private maybeSingleMode = false;
 
   constructor(
     private fake: FakeClient,
@@ -135,6 +165,7 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
   ) {}
 
   select(cols: string): this {
+    this.selectCols = cols;
     this.embeds = parseEmbeds(cols);
     return this;
   }
@@ -182,8 +213,29 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
     return this;
   }
 
+  /** PostgREST ilike — case-insensitive, `%` wildcards. The generator uses it
+   *  to resolve a cross-division coach-linked team by name. */
+  ilike(column: string, pattern: string): this {
+    const rx = new RegExp(
+      "^" +
+        pattern
+          .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+          .replace(/%/g, ".*") +
+        "$",
+      "i",
+    );
+    this.filters.push((r) => typeof r[column] === "string" && rx.test(r[column] as string));
+    return this;
+  }
+
   single(): this {
     this.singleMode = true;
+    return this;
+  }
+
+  /** Zero rows -> {data: null, error: null}; more than one -> error. */
+  maybeSingle(): this {
+    this.maybeSingleMode = true;
     return this;
   }
 
@@ -203,6 +255,18 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
   }
 
   private execute(): { data: unknown; error: DbError } {
+    // Targeted fault injection first — it is the precise one, and letting the
+    // coarse table-wide fault win would mask which read actually aborted.
+    if (!this.write) {
+      const fault = this.fake.matchReadFault(this.table, this.selectCols);
+      if (fault) {
+        return {
+          data: null,
+          error: { message: fault.message ?? `injected ${this.table} read failure` },
+        };
+      }
+    }
+
     // fault injection — exercises the engine's fail-closed constraint read
     if (!this.write && this.fake.failTables.has(this.table)) {
       return { data: null, error: { message: `injected ${this.table} read failure` } };
@@ -241,6 +305,16 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
         return embedded != null && embedded[ef.field] === ef.value;
       });
     }
+    if (this.maybeSingleMode) {
+      if (projected.length === 0) return { data: null, error: null };
+      if (projected.length > 1) {
+        return {
+          data: null,
+          error: { message: `expected <=1 row in ${this.table}, got ${projected.length}` },
+        };
+      }
+      return { data: projected[0], error: null };
+    }
     if (this.singleMode) {
       if (projected.length !== 1) {
         return {
@@ -266,8 +340,31 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
 export class FakeClient {
   private idCounter = 0;
   failTables = new Set<keyof Db>();
+  readFaults: ReadFault[] = [];
+  /** Per-fault match counts — a sim FAILS if a fault it installed never fired,
+   *  which is what stops an abort assertion from passing vacuously. */
+  faultHits: number[] = [];
 
   constructor(public db: Db) {}
+
+  /** Returns the fault that should fail this read, or null. */
+  matchReadFault(table: keyof Db, selectCols: string): ReadFault | null {
+    for (let i = 0; i < this.readFaults.length; i++) {
+      const f = this.readFaults[i];
+      if (f.table !== table) continue;
+      if (f.selectEquals != null && selectCols.trim() !== f.selectEquals) continue;
+      if (f.selectIncludes && !selectCols.includes(f.selectIncludes)) continue;
+      this.faultHits[i] = (this.faultHits[i] ?? 0) + 1;
+      if (f.nth != null && this.faultHits[i] !== f.nth) continue;
+      return f;
+    }
+    return null;
+  }
+
+  injectReadFault(f: ReadFault): void {
+    this.readFaults.push(f);
+    this.faultHits.push(0);
+  }
 
   nextId(prefix: string): string {
     return `${prefix}_${++this.idCounter}`;

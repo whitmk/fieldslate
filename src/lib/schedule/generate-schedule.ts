@@ -49,6 +49,14 @@ export type ScheduleResult =
       // sentence (same rule as the schedule-lock wording helpers).
       shortfallSummary: string | null;
       conflicts: ScheduleConflict[];
+      // Set when the post-write cross-division conflict CHECK could not run.
+      // This read happens after the games are inserted, so it cannot fail
+      // closed by aborting — the schedule already exists. Reporting an empty
+      // `conflicts` array in that case would be the same lie the booking reads
+      // used to tell: "we found none" when the truth is "we could not look".
+      // Non-null means conflicts are UNKNOWN, not zero; every surface that
+      // renders a conflict count must say so rather than showing 0.
+      conflictsUnavailable: string | null;
     }
   | { success: false; error: string };
 
@@ -63,6 +71,50 @@ export interface ScheduleConflict {
     awayTeam: string;
     divisionName?: string; // present when cross-division conflict detection is run
   }>;
+}
+
+// ─── Mirror of the regenerate DELETE predicate ────────────────────────────────
+//
+// generateSchedule clears the division's old games before writing new ones. Its
+// booking pre-loads used to run AFTER that delete, which is why they needed no
+// filter — the rows were simply gone. They now run BEFORE it, so that a failed
+// read aborts while the existing schedule is still intact, and they must
+// subtract the rows the delete is about to remove. Without that subtraction the
+// division's own outgoing games would block the very slots meant to replace
+// them, and a regenerate would place far fewer games than it should.
+//
+// DRIFT HAZARD — READ BEFORE EDITING EITHER SIDE. This function and the
+// `.delete()` chain in generateSchedule must describe the SAME rows. Neither can
+// be derived from the other (one is PostgREST filter syntax, the other
+// TypeScript), so a change to one is silently wrong until the other follows.
+// `npm run sim:generator-failclosed` pins them together (assertion group D);
+// that check is the only thing standing between a predicate edit and a
+// regenerate that quietly drops games.
+
+export type ClearablePredicateRow = {
+  league_id: string | null;
+  home_team_id: string | null;
+  status: string | null;
+  interleague_org_id: string | null;
+};
+
+/**
+ * True when the regenerate delete would remove this row.
+ *
+ * Mirrors:
+ *   .eq("league_id", leagueId)
+ *   .in("home_team_id", teamIds)
+ *   .or("status.neq.scheduled,interleague_org_id.is.null")
+ */
+export function willBeClearedByRegenerate(
+  row: ClearablePredicateRow,
+  leagueId: string,
+  teamIds: Set<string>,
+): boolean {
+  if (row.league_id !== leagueId) return false;
+  if (!row.home_team_id || !teamIds.has(row.home_team_id)) return false;
+  // Preserved: accepted interleague games (scheduled AND carrying an org).
+  return row.status !== "scheduled" || row.interleague_org_id === null;
 }
 
 // ─── Settings shape stored in divisions.settings (jsonb) ──────────────────────
@@ -1017,11 +1069,21 @@ export async function generateSchedule(
 
       if (!linked) continue;
 
-      // Fetch that team's already-scheduled games
-      const { data: linkedGames } = await supabase
+      // Fetch that team's already-scheduled games. Fails CLOSED: an empty
+      // result reads as "the shared coach has nothing on" and would let the
+      // planner book both of their teams at the same time in another division.
+      const { data: linkedGames, error: linkedGamesErr } = await supabase
         .from("games")
         .select("scheduled_at")
         .or(`home_team_id.eq.${linked.id},away_team_id.eq.${linked.id}`);
+      if (linkedGamesErr) {
+        return {
+          success: false,
+          error:
+            `Couldn't check the schedule of a team sharing a coach with this division: ` +
+            `${linkedGamesErr.message}. Nothing was changed. Try again.`,
+        };
+      }
 
       if (linkedGames?.length) {
         const set = blocked.get(thisId)!;
@@ -1102,12 +1164,23 @@ export async function generateSchedule(
   // ones that survived the upcoming delete (status='scheduled' interleague).
   const acceptedByTeamOrg = new Map<string, { home: number; away: number }>();
   {
-    const { data: acceptedRaw } = await supabase
+    // Fails CLOSED: an empty result reads as "no interleague games are already
+    // accepted", so the run would re-create matchups that survive the delete —
+    // duplicating invites the partner league has already agreed to.
+    const { data: acceptedRaw, error: acceptedErr } = await supabase
       .from("games")
       .select("home_team_id, interleague_org_id, is_away")
       .in("home_team_id", teamIds)
       .eq("status", "scheduled")
       .not("interleague_org_id", "is", null);
+    if (acceptedErr) {
+      return {
+        success: false,
+        error:
+          `Couldn't check which interleague games are already accepted: ${acceptedErr.message}. ` +
+          `Nothing was changed. Try again.`,
+      };
+    }
     for (const g of (acceptedRaw ?? []) as Array<{
       home_team_id: string;
       interleague_org_id: string | null;
@@ -1172,12 +1245,155 @@ export async function generateSchedule(
     };
   }
 
-  // ── 8. Assign matchups to slots (greedy) ─────────────────────────────────────
+  // ── 8. Pre-load existing bookings — BEFORE anything destructive ─────────────
+  //
+  // ORDERING IS LOAD-BEARING. These three reads used to run AFTER the delete
+  // below, and every one of them discarded its error. A transient read failure
+  // therefore produced an EMPTY booking map, which reads as "every slot is
+  // free" — so the generator happily double-booked fields, reported success,
+  // and did it with the division's previous schedule already deleted and
+  // unrecoverable. Reading first means a failure aborts while the old schedule
+  // is still intact and nothing has changed.
+  //
+  // The cost of reading first is that these rows still include the games the
+  // delete is about to remove, so each read subtracts them via
+  // willBeClearedByRegenerate — see the drift warning on that function.
 
-  // Delete this division's old games BEFORE querying existing venue bookings so
-  // they don't falsely block slots in the new schedule. Preserve accepted
-  // interleague games (status='scheduled' AND interleague_org_id IS NOT NULL)
-  // so the recipient's confirmed bookings aren't wiped.
+  const clearableTeamIds = new Set(teamIds);
+
+  // Venue bookings from ALL games already in the DB at these venues. This makes
+  // the conflict check venue-aware across every division — not just games
+  // generated in the current run.
+  const { data: existingGamesRaw, error: venueReadErr } = await supabase
+    .from("games")
+    .select(
+      "venue_id, scheduled_at, league_id, home_team_id, status, interleague_org_id",
+    )
+    .in("venue_id", venueIds);
+  if (venueReadErr) {
+    return {
+      success: false,
+      error:
+        `Couldn't check which venue times are already booked: ${venueReadErr.message}. ` +
+        `Nothing was changed — the existing schedule is untouched. Try again.`,
+    };
+  }
+
+  // Preserved accepted interleague games for our teams, so we don't double-book
+  // those teams at the same datetime in this run.
+  const { data: preservedRaw, error: preservedReadErr } = await supabase
+    .from("games")
+    .select(
+      "home_team_id, scheduled_at, league_id, status, interleague_org_id",
+    )
+    .in("home_team_id", teamIds);
+  if (preservedReadErr) {
+    return {
+      success: false,
+      error:
+        `Couldn't check this division's existing games: ${preservedReadErr.message}. ` +
+        `Nothing was changed — the existing schedule is untouched. Try again.`,
+    };
+  }
+
+  // Per-org per-date away count: any existing away game against one of this
+  // division's orgs (across the league — even other divisions) counts against
+  // that org's field_count for the day. Only needed when there are orgs.
+  const awayByOrgDate = new Map<string, number>();
+  if (orgIds.length > 0) {
+    const { data: existingAwayRaw, error: awayReadErr } = await supabase
+      .from("games")
+      .select(
+        "interleague_org_id, scheduled_at, league_id, home_team_id, status",
+      )
+      .eq("league_id", div.league_id)
+      .eq("is_away", true)
+      .in("interleague_org_id", orgIds);
+    if (awayReadErr) {
+      return {
+        success: false,
+        error:
+          `Couldn't check existing away games against partner leagues: ${awayReadErr.message}. ` +
+          `Nothing was changed — the existing schedule is untouched. Try again.`,
+      };
+    }
+    for (const g of (existingAwayRaw ?? []) as Array<{
+      interleague_org_id: string | null;
+      scheduled_at: string;
+      league_id: string | null;
+      home_team_id: string | null;
+      status: string | null;
+    }>) {
+      if (!g.interleague_org_id) continue;
+      if (
+        willBeClearedByRegenerate(
+          { ...g, interleague_org_id: g.interleague_org_id },
+          div.league_id,
+          clearableTeamIds,
+        )
+      ) {
+        continue;
+      }
+      const date = g.scheduled_at.substring(0, 10);
+      const key = `${g.interleague_org_id}|${date}`;
+      awayByOrgDate.set(key, (awayByOrgDate.get(key) ?? 0) + 1);
+    }
+  }
+
+  // "venueId:YYYY-MM-DD" → start times (minutes from midnight) already booked
+  const venueBookings = new Map<string, number[]>();
+
+  for (const g of (existingGamesRaw ?? []) as Array<{
+    venue_id: string;
+    scheduled_at: string;
+    league_id: string | null;
+    home_team_id: string | null;
+    status: string | null;
+    interleague_org_id: string | null;
+  }>) {
+    if (willBeClearedByRegenerate(g, div.league_id, clearableTeamIds)) continue;
+    const date = g.scheduled_at.substring(0, 10);
+    const vKey = `${g.venue_id}:${date}`;
+    const mins = timeToMinutes(g.scheduled_at.substring(11, 16));
+    if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
+    venueBookings.get(vKey)!.push(mins);
+  }
+
+  const minVenueGap = Number(settings.game_duration ?? 0) + Number(settings.buffer_minutes ?? 0);
+  const maxPerTeamDay = Math.max(1, Number(settings.max_games_per_team_per_day ?? 1));
+
+  const teamTimes = new Map<string, Set<string>>();  // teamId → booked isoStrings
+  const teamWeek = new Map<string, number>();        // "teamId|weekKey" → count
+  const teamDay = new Map<string, number>();         // "teamId|YYYY-MM-DD" → count
+
+  teamIds.forEach((id) => teamTimes.set(id, new Set()));
+
+  // Seed team caps with any preserved accepted interleague games so we don't
+  // double-book the same team at the same time / push past per-day or per-week caps.
+  for (const g of (preservedRaw ?? []) as Array<{
+    home_team_id: string;
+    scheduled_at: string;
+    league_id: string | null;
+    status: string | null;
+    interleague_org_id: string | null;
+  }>) {
+    if (willBeClearedByRegenerate(g, div.league_id, clearableTeamIds)) continue;
+    const iso = g.scheduled_at.substring(0, 19);
+    const date = g.scheduled_at.substring(0, 10);
+    teamTimes.get(g.home_team_id)?.add(iso);
+    const hdk = `${g.home_team_id}|${date}`;
+    teamDay.set(hdk, (teamDay.get(hdk) ?? 0) + 1);
+    const hwk = `${g.home_team_id}|${weekKey(date)}`;
+    teamWeek.set(hwk, (teamWeek.get(hwk) ?? 0) + 1);
+  }
+
+  // ── 8b. Clear the old schedule ───────────────────────────────────────────────
+  //
+  // Every read that informs placement has already succeeded, so this is now the
+  // first step that can destroy anything. Preserve accepted interleague games
+  // (status='scheduled' AND interleague_org_id IS NOT NULL) so the recipient's
+  // confirmed bookings aren't wiped — willBeClearedByRegenerate above mirrors
+  // this exact predicate and must be changed with it.
   const { error: delErr } = await supabase
     .from("games")
     .delete()
@@ -1200,78 +1416,7 @@ export async function generateSchedule(
     };
   }
 
-  // Pre-load venue bookings from ALL games already in the DB at these venues.
-  // This makes the conflict check venue-aware across every division — not just
-  // games generated in the current run.
-  const { data: existingGames } = await supabase
-    .from("games")
-    .select("venue_id, scheduled_at")
-    .in("venue_id", venueIds);
-
-  // Also pre-load the preserved accepted interleague games for our teams so we
-  // don't double-book those teams at the same datetime in this run.
-  const { data: preservedForTeams } = await supabase
-    .from("games")
-    .select("home_team_id, scheduled_at")
-    .in("home_team_id", teamIds);
-
-  // Pre-seed the per-org per-date away count: any existing away game against
-  // one of this division's orgs (across the league — even other divisions)
-  // counts against that org's field_count for the day. We only need this map
-  // when there are orgs to scope by.
-  const awayByOrgDate = new Map<string, number>();
-  if (orgIds.length > 0) {
-    const { data: existingAwayRaw } = await supabase
-      .from("games")
-      .select("interleague_org_id, scheduled_at")
-      .eq("league_id", div.league_id)
-      .eq("is_away", true)
-      .in("interleague_org_id", orgIds);
-    for (const g of (existingAwayRaw ?? []) as Array<{
-      interleague_org_id: string | null;
-      scheduled_at: string;
-    }>) {
-      if (!g.interleague_org_id) continue;
-      const date = g.scheduled_at.substring(0, 10);
-      const key = `${g.interleague_org_id}|${date}`;
-      awayByOrgDate.set(key, (awayByOrgDate.get(key) ?? 0) + 1);
-    }
-  }
-
-  // "venueId:YYYY-MM-DD" → start times (minutes from midnight) already booked
-  const venueBookings = new Map<string, number[]>();
-
-  for (const g of (existingGames ?? []) as { venue_id: string; scheduled_at: string }[]) {
-    const date = g.scheduled_at.substring(0, 10);
-    const vKey = `${g.venue_id}:${date}`;
-    const mins = timeToMinutes(g.scheduled_at.substring(11, 16));
-    if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
-    venueBookings.get(vKey)!.push(mins);
-  }
-
-  const minVenueGap = Number(settings.game_duration ?? 0) + Number(settings.buffer_minutes ?? 0);
-  const maxPerTeamDay = Math.max(1, Number(settings.max_games_per_team_per_day ?? 1));
-
-  const teamTimes = new Map<string, Set<string>>();  // teamId → booked isoStrings
-  const teamWeek = new Map<string, number>();        // "teamId|weekKey" → count
-  const teamDay = new Map<string, number>();         // "teamId|YYYY-MM-DD" → count
-
-  teamIds.forEach((id) => teamTimes.set(id, new Set()));
-
-  // Seed team caps with any preserved accepted interleague games so we don't
-  // double-book the same team at the same time / push past per-day or per-week caps.
-  for (const g of (preservedForTeams ?? []) as Array<{
-    home_team_id: string;
-    scheduled_at: string;
-  }>) {
-    const iso = g.scheduled_at.substring(0, 19);
-    const date = g.scheduled_at.substring(0, 10);
-    teamTimes.get(g.home_team_id)?.add(iso);
-    const hdk = `${g.home_team_id}|${date}`;
-    teamDay.set(hdk, (teamDay.get(hdk) ?? 0) + 1);
-    const hwk = `${g.home_team_id}|${weekKey(date)}`;
-    teamWeek.set(hwk, (teamWeek.get(hwk) ?? 0) + 1);
-  }
+  // ── 9. Assign matchups to slots (greedy) ─────────────────────────────────────
 
   // Shared planner — team identifiers here are real UUIDs since teams exist
   // in the DB. The same planner is used by planScheduleForNewDivision with
@@ -1356,7 +1501,11 @@ export async function generateSchedule(
     venue: { name: string } | null;
   };
 
-  const { data: crossDivRaw } = await supabase
+  // This read runs AFTER the insert, so it cannot fail closed by aborting — the
+  // games already exist. What it CAN do is refuse to claim a clean bill of
+  // health it didn't earn: on error, conflicts are reported as UNKNOWN rather
+  // than as an empty list.
+  const { data: crossDivRaw, error: crossDivErr } = await supabase
     .from("games")
     .select(
       "id, scheduled_at, venue_id," +
@@ -1365,6 +1514,22 @@ export async function generateSchedule(
       "venue:venues(name)"
     )
     .in("venue_id", venueIds);
+
+  if (crossDivErr) {
+    return {
+      success: true,
+      gamesCreated: scheduled.length,
+      unscheduledCount: plan.unscheduledCount,
+      constraintBlockedCount: plan.constraintBlockedCount,
+      preferMissCount: plan.preferMissCount,
+      shortfallSummary,
+      conflicts: [],
+      conflictsUnavailable:
+        `The schedule was created, but the field-conflict check couldn't run: ` +
+        `${crossDivErr.message}. Open the division's schedule to check for ` +
+        `double-booked fields.`,
+    };
+  }
 
   const crossDivGames: ConflictInputGame[] = ((crossDivRaw ?? []) as unknown as CrossDivRaw[]).map((g) => ({
     id: g.id,
@@ -1390,6 +1555,7 @@ export async function generateSchedule(
     preferMissCount: plan.preferMissCount,
     shortfallSummary,
     conflicts,
+    conflictsUnavailable: null,
   };
 }
 
@@ -1559,10 +1725,21 @@ export async function planScheduleForNewDivision(
       const linked = linkedRaw as { id: string } | null;
       if (!linked) continue;
 
-      const { data: linkedGames } = await supabase
+      // Fails CLOSED — same reasoning as generateSchedule: an empty result
+      // reads as "the shared coach has nothing on" and would let both of their
+      // teams be booked at the same time.
+      const { data: linkedGames, error: linkedGamesErr } = await supabase
         .from("games")
         .select("scheduled_at")
         .or(`home_team_id.eq.${linked.id},away_team_id.eq.${linked.id}`);
+      if (linkedGamesErr) {
+        return {
+          success: false,
+          error:
+            `Couldn't check the schedule of a team sharing a coach with this division: ` +
+            `${linkedGamesErr.message}. Nothing was changed. Try again.`,
+        };
+      }
       const set = blocked.get(thisId)!;
       for (const g of (linkedGames ?? []) as { scheduled_at: string }[]) {
         set.add(g.scheduled_at.substring(0, 19));
@@ -1596,12 +1773,20 @@ export async function planScheduleForNewDivision(
   // these orgs anywhere in the league (other divisions count too).
   const awayByOrgDate = new Map<string, number>();
   if (orgIds.length > 0) {
-    const { data: awayRaw } = await supabase
+    const { data: awayRaw, error: awayReadErr } = await supabase
       .from("games")
       .select("interleague_org_id, scheduled_at")
       .eq("league_id", input.leagueId)
       .eq("is_away", true)
       .in("interleague_org_id", orgIds);
+    if (awayReadErr) {
+      return {
+        success: false,
+        error:
+          `Couldn't check existing away games against partner leagues: ${awayReadErr.message}. ` +
+          `Nothing was changed. Try again.`,
+      };
+    }
     for (const g of (awayRaw ?? []) as Array<{
       interleague_org_id: string | null;
       scheduled_at: string;
@@ -1616,10 +1801,21 @@ export async function planScheduleForNewDivision(
   // ── Pre-seed venue bookings from existing games at our venues ────────────
   const venueBookings = new Map<string, number[]>();
   {
-    const { data: existing } = await supabase
+    // Fails CLOSED: an empty booking map reads as "every field is free at every
+    // time", which is exactly how a transient read error turns into a plan that
+    // double-books other divisions' games.
+    const { data: existing, error: venueReadErr } = await supabase
       .from("games")
       .select("venue_id, scheduled_at")
       .in("venue_id", usableVenueIds);
+    if (venueReadErr) {
+      return {
+        success: false,
+        error:
+          `Couldn't check which venue times are already booked: ${venueReadErr.message}. ` +
+          `Nothing was changed. Try again.`,
+      };
+    }
     for (const g of (existing ?? []) as {
       venue_id: string;
       scheduled_at: string;
@@ -1895,9 +2091,19 @@ export async function finishSchedule(
         .maybeSingle();
       const linked2 = linkedRaw2 as unknown as { id: string } | null;
       if (!linked2) continue;
-      const { data: linkedGames } = await supabase
+      // Fails CLOSED — an empty result reads as "the shared coach has nothing
+      // on" and would let both of their teams be booked at the same time.
+      const { data: linkedGames, error: linkedGamesErr } = await supabase
         .from("games").select("scheduled_at")
         .or(`home_team_id.eq.${linked2.id},away_team_id.eq.${linked2.id}`);
+      if (linkedGamesErr) {
+        return {
+          success: false,
+          error:
+            `Couldn't check the schedule of a team sharing a coach with this division: ` +
+            `${linkedGamesErr.message}. Nothing was changed. Try again.`,
+        };
+      }
       if (linkedGames?.length) {
         const set = blocked.get(thisId)!;
         for (const g of linkedGames as { scheduled_at: string }[]) set.add(g.scheduled_at.substring(0, 19));
@@ -1931,11 +2137,22 @@ export async function finishSchedule(
   // same end state by deleting non-accepted games outright before planning.
   // (pending_interleague rows DO count — they're real matchups awaiting
   // acceptance, and re-creating them would duplicate the invite.)
-  const { data: existingRaw } = await supabase
+  // Fails CLOSED. This read IS the deficit math's view of what already exists;
+  // an empty result reads as "this division has no games at all", so finish
+  // would try to create a full season on top of the existing one.
+  const { data: existingRaw, error: existingReadErr } = await supabase
     .from("games")
     .select("id, home_team_id, away_team_id, interleague_org_id, is_away, venue_id, scheduled_at")
     .in("home_team_id", teamIds)
     .neq("status", "cancelled");
+  if (existingReadErr) {
+    return {
+      success: false,
+      error:
+        `Couldn't check this division's existing games: ${existingReadErr.message}. ` +
+        `Nothing was changed. Try again.`,
+    };
+  }
 
   type ExistingGame = {
     id: string;
@@ -2022,7 +2239,10 @@ export async function finishSchedule(
 
   // If nothing is missing, return early
   if (!intraDeficitExists && !interleagueDeficitExists) {
-    return { success: true, gamesCreated: 0, unscheduledCount: 0, constraintBlockedCount: 0, preferMissCount: 0, shortfallSummary: null, conflicts: [] };
+    // conflictsUnavailable is null, not a message: nothing was written, so an
+    // empty conflicts list is a true statement about this run rather than an
+    // unearned all-clear.
+    return { success: true, gamesCreated: 0, unscheduledCount: 0, constraintBlockedCount: 0, preferMissCount: 0, shortfallSummary: null, conflicts: [], conflictsUnavailable: null };
   }
 
   // Build intra-division matchups by cycling round-robin rounds:
@@ -2116,10 +2336,21 @@ export async function finishSchedule(
 
   // ── 9. Pre-load ALL venue bookings (existing + cross-division) — no delete ───
 
-  const { data: allVenueGamesRaw } = await supabase
+  // Fails CLOSED: an empty booking map reads as "every field is free at every
+  // time", which is precisely how a transient read error becomes a finish run
+  // that double-books other divisions' games.
+  const { data: allVenueGamesRaw, error: allVenueReadErr } = await supabase
     .from("games")
     .select("venue_id, scheduled_at, home_team_id, away_team_id")
     .in("venue_id", venueIds);
+  if (allVenueReadErr) {
+    return {
+      success: false,
+      error:
+        `Couldn't check which venue times are already booked: ${allVenueReadErr.message}. ` +
+        `Nothing was changed. Try again.`,
+    };
+  }
 
   type VenueGame = { venue_id: string; scheduled_at: string; home_team_id: string; away_team_id: string | null };
   const allVenueGames = (allVenueGamesRaw ?? []) as unknown as VenueGame[];
@@ -2166,12 +2397,20 @@ export async function finishSchedule(
   // Pre-seed per-org per-date away count for the field_count cap.
   const awayByOrgDateFinish = new Map<string, number>();
   if (orgIdsFinish.length > 0) {
-    const { data: existingAwayRaw } = await supabase
+    const { data: existingAwayRaw, error: awayReadErrFinish } = await supabase
       .from("games")
       .select("interleague_org_id, scheduled_at")
       .eq("league_id", div.league_id)
       .eq("is_away", true)
       .in("interleague_org_id", orgIdsFinish);
+    if (awayReadErrFinish) {
+      return {
+        success: false,
+        error:
+          `Couldn't check existing away games against partner leagues: ${awayReadErrFinish.message}. ` +
+          `Nothing was changed. Try again.`,
+      };
+    }
     for (const g of (existingAwayRaw ?? []) as Array<{
       interleague_org_id: string | null;
       scheduled_at: string;
@@ -2388,10 +2627,28 @@ export async function finishSchedule(
     venue: { name: string } | null;
   };
 
-  const { data: crossDivRaw } = await supabase
+  // Post-write, so it cannot abort — but it can refuse to report a clean bill
+  // of health it didn't earn. See ScheduleResult.conflictsUnavailable.
+  const { data: crossDivRaw, error: crossDivErr } = await supabase
     .from("games")
     .select("id, scheduled_at, venue_id, home_team:teams!home_team_id(name, division:divisions(name)), away_team:teams!away_team_id(name), venue:venues(name)")
     .in("venue_id", venueIds);
+
+  if (crossDivErr) {
+    return {
+      success: true,
+      gamesCreated: scheduled.length,
+      unscheduledCount: unscheduled.length,
+      constraintBlockedCount: constraintBlockedFinish,
+      preferMissCount: preferMissFinish,
+      shortfallSummary,
+      conflicts: [],
+      conflictsUnavailable:
+        `The games were added, but the field-conflict check couldn't run: ` +
+        `${crossDivErr.message}. Open the division's schedule to check for ` +
+        `double-booked fields.`,
+    };
+  }
 
   const crossDivGames: ConflictInputGame[] = ((crossDivRaw ?? []) as unknown as CrossDivRaw[]).map((g) => ({
     id: g.id,
@@ -2413,5 +2670,6 @@ export async function finishSchedule(
     preferMissCount: preferMissFinish,
     shortfallSummary,
     conflicts,
+    conflictsUnavailable: null,
   };
 }

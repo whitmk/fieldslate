@@ -127,6 +127,9 @@ type RegenResult = {
   // hand-write a shortfall sentence here (see placement-diagnostics.ts).
   shortfallSummary?: string | null;
   conflicts: ScheduleConflict[];
+  // Non-null = the post-write field-conflict check couldn't run, so conflicts
+  // are UNKNOWN rather than zero. Must never render as "no conflicts".
+  conflictsUnavailable?: string | null;
   savedDivisionId: string;
 };
 
@@ -666,6 +669,7 @@ export function StepReview({
       result.preferMissCount = gameRes.preferMissCount;
       result.shortfallSummary = gameRes.shortfallSummary;
       result.conflicts = gameRes.conflicts;
+      result.conflictsUnavailable = gameRes.conflictsUnavailable;
       await logActivity(
         leagueId,
         divId,
@@ -758,7 +762,10 @@ export function StepReview({
   if (regenResult) {
     const hasUnscheduled = (regenResult.unscheduledCount ?? 0) > 0;
     const hasFieldConflicts = regenResult.conflicts.length > 0;
-    const hasIssues = hasUnscheduled || hasFieldConflicts;
+    // Unknown conflicts count as an issue: the header must not read "generated"
+    // clean when the check never ran.
+    const conflictsUnknown = !!regenResult.conflictsUnavailable;
+    const hasIssues = hasUnscheduled || hasFieldConflicts || conflictsUnknown;
 
     const headerTitle = hasIssues
       ? "Game schedule generated with issues"
@@ -809,6 +816,17 @@ export function StepReview({
                   </p>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {conflictsUnknown && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+              <p className="text-sm text-amber-800">
+                {regenResult.conflictsUnavailable}
+              </p>
             </div>
           </div>
         )}

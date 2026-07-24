@@ -72,6 +72,8 @@ type RunStatus =
       // Rendered VERBATIM — never hand-write a shortfall sentence here.
       shortfallSummary: string | null;
       conflictGameCount: number;
+      // Non-null = conflicts UNKNOWN, not zero. See ScheduleResult.
+      conflictsUnavailable: string | null;
     }
   | { state: "failed"; error: string }
   // Live re-count found games since planning — left untouched, not regenerated.
@@ -297,6 +299,7 @@ export function GenerateAllModal({
               (n, c) => n + c.games.length,
               0,
             ),
+            conflictsUnavailable: res.conflictsUnavailable,
           },
         }));
       } else {
