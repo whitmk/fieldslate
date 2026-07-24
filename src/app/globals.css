@@ -21,7 +21,7 @@ body {
 }
 
 @media print {
-  /* ── Root: no margin/padding so the page area starts at true zero ── */
+  /* ── Root: no margin/padding, full natural height, nothing clipped ── */
   html,
   body {
     margin: 0 !important;
@@ -32,19 +32,38 @@ body {
     background: white !important;
   }
 
-  /* ── Hide everything via visibility ── */
-  body {
+  /* ════════════════════════════════════════════════════════════════════
+     Two print modes share this stylesheet:
+
+       • Snack-shack prints add `.print-active` to `.fieldslate-snack-print-ready`
+         for the duration of window.print(). That region stays on the older
+         visibility + position:absolute mechanism (its documents are short, so
+         the single-page clip below never bites it) — see its dedicated block
+         lower in this file. When it is active we reproduce the legacy hide here
+         (visibility:hidden + a collapsed app shell) so nothing else paints.
+
+       • Everything else prints a `.fieldslate-print-region` (schedule page,
+         division panel, both umpire pages). That region is laid out in NORMAL
+         FLOW: its ancestor chain is expanded and every unrelated element is
+         removed with display:none, so the region grows to its full height and
+         paginates across as many pages as it needs.
+
+         It must NEVER be position:absolute. An out-of-flow box is clipped by
+         the browser's print engine at roughly one page's height, which
+         silently truncated a 260-game, ~53-page season down to a single page's
+         worth of games — the last game (Oct 17) simply fell off the end with
+         no warning. The DOM was complete; the absolute box was the clip. See
+         schedule-print-region.tsx for the matching count-vs-content invariant.
+     ════════════════════════════════════════════════════════════════════ */
+
+  /* ── Snack-shack print active: legacy hide (the snack region shows itself
+     absolutely from its own block below) ── */
+  body:has(.fieldslate-snack-print-ready.print-active) {
     visibility: hidden;
   }
-
-  /* ── Collapse every app layout wrapper to zero height so the browser
-     doesn't paginate over their invisible content. The print region uses
-     position:absolute and has no positioned ancestor, so it anchors to the
-     initial containing block and is NOT clipped by these overflow:hidden
-     containers. ── */
-  body > div,
-  body > div > div,
-  main {
+  body:has(.fieldslate-snack-print-ready.print-active) > div,
+  body:has(.fieldslate-snack-print-ready.print-active) > div > div,
+  body:has(.fieldslate-snack-print-ready.print-active) main {
     display: block !important;
     height: 0 !important;
     min-height: 0 !important;
@@ -54,24 +73,48 @@ body {
     margin: 0 !important;
   }
 
-  /* ── Show only the schedule print region ── */
+  /* ── Normal print-region mode (no snack print active) ────────────────── */
+
+  /* (a) Force every ANCESTOR of the region into unclipped normal flow so the
+     region can reach its full height and break across pages. Keyed on :has()
+     so it touches only the region's ancestor chain — the app shell
+     (body > div > div > main) plus any wrapper between main and the region —
+     and never the region's own subtree. */
+  body:not(:has(.fieldslate-snack-print-ready.print-active)) :has(.fieldslate-print-region) {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* (b) Remove every element that is NOT the region, one of its ancestors, or
+     one of its descendants — the sidebar, topbar, and the on-screen
+     list/calendar. display:none (not visibility:hidden) so the removed chrome
+     reclaims its space and leaves no blank leading pages. Gated on a region
+     actually being present so printing an unrelated page is left untouched. */
+  body:has(.fieldslate-print-region):not(:has(.fieldslate-snack-print-ready.print-active))
+    *:not(:has(.fieldslate-print-region)):not(.fieldslate-print-region):not(.fieldslate-print-region *) {
+    display: none !important;
+  }
+
+  /* (c) The region itself: visible, in normal flow, never absolutely
+     positioned (see the truncation note above). ── */
   .fieldslate-print-region {
     display: block !important;
     visibility: visible !important;
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
+    position: static !important;
+    top: auto;
+    left: auto;
+    width: 100% !important;
     height: auto !important;
     min-height: 0 !important;
     padding: 0;
     /* prevent a trailing blank page after the last line of content */
     page-break-after: avoid;
     break-after: avoid;
-  }
-
-  .fieldslate-print-region * {
-    visibility: visible !important;
   }
 
   /* No trailing page break after the last child (final table or date group) */
