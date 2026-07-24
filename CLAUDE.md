@@ -860,6 +860,32 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   bookings outside the season window when concurrent seasons share a venue is a
   design decision, not a mechanical conversion. See "Complete reads".
 
+## Schedule slot grid — canonical import path
+
+- **`src/lib/schedule/slots.ts` is THE home of `buildSlots`,
+  `buildPlayingDates`, and the slot-grid helpers/types (`Slot`,
+  `DivisionSettings`, `timeToMinutes`, `weekKey`, `minutesToTimeStr`,
+  `localDateStr`, `DAY_TO_JS`, `JS_TO_DAY`).** They were lifted out of
+  `generate-schedule.ts` verbatim (commit after 2026-07-24) because that
+  file is `"use client"` and imports the browser Supabase client at module
+  scope, so a SERVER consumer (the Reports field-utilization card) could not
+  import `buildSlots` without dragging the client boundary into a server
+  render. `slots.ts` carries no directive and depends only on the pure
+  availability helpers.
+- **NEW code imports from `./slots` (or `@/lib/schedule/slots`), always.**
+  This is the single source of the "how many games fit" answer the generator
+  and the report must never disagree about.
+- **`generate-schedule.ts` re-exports `buildSlots` / `buildPlayingDates`
+  (`export { … } from "./slots"` equivalent) as a PERMANENT compatibility
+  shim — do NOT remove it, and do NOT migrate the existing importers off it
+  as busywork.** Two valid paths therefore exist by design; the rule is new
+  code uses `slots.ts`, old importers (`scarcity-order.ts`, the sims that
+  reach it via the engine's public surface) keep working through the
+  re-export. Removing the shim breaks them for zero benefit. If you ever DO
+  choose to migrate every importer to `slots.ts` in one deliberate pass,
+  that is a decision to make explicitly and prove with the four generator
+  sims — not a "helpful" cleanup to slip into an unrelated diff.
+
 ## Coach conflicts in schedule generation
 
 - **Same-division shared-coach double-booking is a KNOWN, deliberately
