@@ -112,16 +112,24 @@ body {
     height: auto !important;
     min-height: 0 !important;
     padding: 0;
-    /* prevent a trailing blank page after the last line of content */
-    page-break-after: avoid;
-    break-after: avoid;
+    /* NOTE: deliberately NO `break-after: avoid` here. WebKit mishandles
+       break-avoid on a very tall (multi-page) block — it CLIPS the overflow
+       instead of paginating it. A 260-game, ~53-page season truncated at
+       page 14 (Oct 10) in Safari/Preview while Chrome printed all 15 pages,
+       post-fix; removing this is what closes that gap. A trailing blank page
+       is the acceptable cost of living without it, and margin-bottom:0 below
+       is the WebKit-safe way to keep that blank page from appearing. Do not
+       reintroduce page-break-after/break-after:avoid on the region or its
+       tables. */
   }
 
-  /* No trailing page break after the last child (final table or date group) */
+  /* Suppress a trailing blank page the WebKit-safe way: zero the last
+     element's bottom margin instead of a break-avoid hint. (`:last-of-type`
+     matches EVERY table here — each sits alone in its per-day wrapper div —
+     which is harmless for margin-bottom, but was previously applying
+     break-after:avoid to every table: the same WebKit clip, now removed.) */
   .fieldslate-print-region > *:last-child,
   .fieldslate-print-table:last-of-type {
-    page-break-after: avoid;
-    break-after: avoid;
     margin-bottom: 0;
   }
 
