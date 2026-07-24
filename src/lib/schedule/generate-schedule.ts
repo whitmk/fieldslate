@@ -16,6 +16,14 @@ import {
   type TeamConstraintRule,
   type TeamGameConstraintRow,
 } from "./team-constraints";
+import {
+  describeShortfall,
+  emptyDiagnostics,
+  recordAbandonment,
+  tallyRejections,
+  type PlacementDiagnostics,
+  type ShortfallContext,
+} from "./placement-diagnostics";
 
 // ─── Public result types ───────────────────────────────────────────────────────
 
@@ -34,6 +42,12 @@ export type ScheduleResult =
       // (pass 2 of the two-pass walk). Informational, not a failure —
       // preferences are best-effort by design.
       preferMissCount: number;
+      // Honest skip-reason attribution: the dominant cause of the unplaced
+      // matchups, with arithmetic ONLY where a config-level computation proves
+      // a gap. Null when nothing went unplaced. Built by describeShortfall —
+      // surfaces render it verbatim and must never hand-write a shortfall
+      // sentence (same rule as the schedule-lock wording helpers).
+      shortfallSummary: string | null;
       conflicts: ScheduleConflict[];
     }
   | { success: false; error: string };
@@ -386,6 +400,45 @@ function closedPlayingDayMessage(
 }
 
 /**
+ * The dates buildSlots will consider: playing days inside [start, end], minus
+ * blackouts, minus the trailing bye weeks.
+ *
+ * Extracted from buildSlots verbatim (pure refactor, no behavior change) so the
+ * placement diagnostics can report a playing-date count that provably matches
+ * the pool the walk actually saw, rather than re-deriving the same rules and
+ * risking divergence.
+ */
+export function buildPlayingDates(
+  startDate: string,
+  endDate: string,
+  s: DivisionSettings,
+  blackoutDates: Set<string> = new Set(),
+): string[] {
+  const allowedDays = new Set(s.playing_days.map((d) => DAY_TO_JS[d]));
+
+  // Collect all valid game dates (playing days, not blacked out)
+  const allDates: string[] = [];
+  const cur = new Date(startDate + "T00:00:00");
+  const end = new Date(endDate + "T00:00:00");
+
+  while (cur <= end) {
+    const iso = localDateStr(cur);
+    if (allowedDays.has(cur.getDay()) && !blackoutDates.has(iso)) allDates.push(iso);
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  // Remove bye weeks — strip the last N distinct game-weeks
+  if (s.bye_weeks > 0 && allDates.length > 0) {
+    const uniqueWeeks = [...new Set(allDates.map(weekKey))];
+    if (s.bye_weeks < uniqueWeeks.length) {
+      const byeKeys = new Set(uniqueWeeks.slice(-s.bye_weeks));
+      return allDates.filter((d) => !byeKeys.has(weekKey(d)));
+    }
+  }
+  return allDates;
+}
+
+/**
  * Returns all (venue × datetime) pairs in chronological order.
  * Slots are spaced by game_duration + buffer_minutes, capped at
  * max_games_per_field_per_day per venue per day. Filters each candidate
@@ -402,33 +455,12 @@ export function buildSlots(
 ): Slot[] {
   if (!venueIds.length) return [];
 
-  const allowedDays = new Set(s.playing_days.map((d) => DAY_TO_JS[d]));
-
   // Coerce JSONB values to Number before arithmetic (prevents "90"+"15"="9015").
   const gameDuration = Number(s.game_duration);
   const bufferMins = Number(s.buffer_minutes);
   const interval = Math.max(1, gameDuration + bufferMins);
 
-  // Collect all valid game dates (playing days, not blacked out)
-  const allDates: string[] = [];
-  const cur = new Date(startDate + "T00:00:00");
-  const end = new Date(endDate + "T00:00:00");
-
-  while (cur <= end) {
-    const iso = localDateStr(cur);
-    if (allowedDays.has(cur.getDay()) && !blackoutDates.has(iso)) allDates.push(iso);
-    cur.setDate(cur.getDate() + 1);
-  }
-
-  // Remove bye weeks — strip the last N distinct game-weeks
-  let validDates = allDates;
-  if (s.bye_weeks > 0 && allDates.length > 0) {
-    const uniqueWeeks = [...new Set(allDates.map(weekKey))];
-    if (s.bye_weeks < uniqueWeeks.length) {
-      const byeKeys = new Set(uniqueWeeks.slice(-s.bye_weeks));
-      validDates = allDates.filter((d) => !byeKeys.has(weekKey(d)));
-    }
-  }
+  const validDates = buildPlayingDates(startDate, endDate, s, blackoutDates);
 
   const slots: Slot[] = [];
 
@@ -475,6 +507,65 @@ export function buildSlots(
   );
 
   return slots;
+}
+
+/**
+ * Assembles the config-level facts describeShortfall needs to decide whether a
+ * gap is provable. Shared by all three placement flows so the arithmetic rules
+ * live in exactly one place.
+ *
+ * `gamesPerTeam` is the TOTAL each team plays (intra-division + interleague) —
+ * the weekly and daily caps apply to every game a team plays, so counting only
+ * intra-division games would understate demand and could suppress a real gap.
+ */
+export function buildShortfallContext(args: {
+  settings: DivisionSettings;
+  gamesPerTeam: number;
+  maxPerTeamDay: number;
+  playingDates: string[];
+  matchups: Matchup[];
+  slots: Slot[];
+  venueAvailability: Map<string, VenueAvailability>;
+  venueNames: Map<string, string>;
+  orgFieldCount: Map<string, number>;
+  orgNames: Map<string, string>;
+}): ShortfallContext {
+  const { settings: s } = args;
+
+  const awayMatchupsByOrg = new Map<string, number>();
+  let homeMatchupCount = 0;
+  for (const m of args.matchups) {
+    if (m.isAway && m.interleagueOrgId) {
+      awayMatchupsByOrg.set(
+        m.interleagueOrgId,
+        (awayMatchupsByOrg.get(m.interleagueOrgId) ?? 0) + 1,
+      );
+    } else {
+      homeMatchupCount++;
+    }
+  }
+
+  return {
+    gamesPerTeam: args.gamesPerTeam,
+    maxGamesPerWeek: Number(s.max_games_per_week),
+    maxPerTeamDay: args.maxPerTeamDay,
+    playingDates: args.playingDates,
+    homeMatchupCount,
+    awayMatchupsByOrg,
+    orgFieldCount: args.orgFieldCount,
+    orgNames: args.orgNames,
+    slots: args.slots,
+    venueAvailability: args.venueAvailability,
+    venueNames: args.venueNames,
+    // Same resolution order buildSlots uses: per-day window, else the legacy
+    // earliest/latest pair, else the historical 09:00–17:00 default.
+    dayWindow: (day) => ({
+      start: s.day_windows?.[day]?.start ?? s.earliest_start ?? "09:00",
+      end: s.day_windows?.[day]?.end ?? s.latest_start ?? "17:00",
+    }),
+    gameDuration: Number(s.game_duration),
+    bufferMinutes: Number(s.buffer_minutes),
+  };
 }
 
 // ─── Conflict detection (exported for UI use) ──────────────────────────────────
@@ -606,6 +697,10 @@ export interface PlanScheduleResult {
   constraintBlockedCount: number;
   // See ScheduleResult.preferMissCount.
   preferMissCount: number;
+  // Per-filter attribution of the unplaced matchups. Populated by a read-only
+  // pass that runs ONLY after a matchup is abandoned — see
+  // placement-diagnostics.ts for why it cannot be inline counters.
+  diagnostics: PlacementDiagnostics;
 }
 
 export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
@@ -619,6 +714,7 @@ export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
   const unscheduled: Matchup[] = [];
   let constraintBlockedCount = 0;
   let preferMissCount = 0;
+  const diagnostics = emptyDiagnostics();
 
   // Deduped (date, time) view for away matchups: they don't claim a venue,
   // so iterating venues for the same time is wasted work.
@@ -742,6 +838,28 @@ export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
     if (!assigned) {
       unscheduled.push({ homeId, awayId, interleagueOrgId, isAway });
       if (constraintRejected) constraintBlockedCount++;
+
+      // Attribution pass — READ-ONLY, and only for matchups that already
+      // failed, so it cannot move a single placement. It re-walks the same
+      // pool evaluating every filter independently (no short-circuit), which
+      // is what keeps the counts free of chain-order bias. An empty pool is a
+      // distinct terminal case, not a filter rejection.
+      if (pool.length === 0) {
+        diagnostics.emptyPool++;
+      } else {
+        recordAbandonment(
+          diagnostics,
+          tallyRejections(
+            { homeId, awayId, interleagueOrgId, isAway },
+            pool,
+            {
+              venueBookings, teamTimes, teamDay, teamWeek, awayByOrgDate,
+              blocked, constraintRules, orgFieldCount,
+              minVenueGap, maxPerTeamDay, maxGamesPerWeek,
+            },
+          ),
+        );
+      }
     }
   }
 
@@ -750,6 +868,7 @@ export function planSchedule(input: PlanScheduleInput): PlanScheduleResult {
     unscheduledCount: unscheduled.length,
     constraintBlockedCount,
     preferMissCount,
+    diagnostics,
   };
 }
 
@@ -823,7 +942,7 @@ export async function generateSchedule(
   const { data: dvRows, error: dvErr } = await supabase
     .from("division_venues")
     .select(
-      "venue_id, venue:venues!inner(id, availability, availability_configured)",
+      "venue_id, venue:venues!inner(id, name, availability, availability_configured)",
     )
     .eq("division_id", divisionId)
     .eq("allow_games", true)
@@ -833,13 +952,16 @@ export async function generateSchedule(
 
   type DvVenueRow = {
     venue_id: string;
-    venue: { id: string; availability: unknown; availability_configured: boolean } | null;
+    venue: { id: string; name: string; availability: unknown; availability_configured: boolean } | null;
   };
   const dvVenueRows = (dvRows ?? []) as unknown as DvVenueRow[];
   const venueIds = dvVenueRows.map((r) => r.venue_id);
   const venueAvailability = new Map<string, VenueAvailability>();
+  // Names are for the shortfall wording only — nothing in placement reads them.
+  const venueNames = new Map<string, string>();
   for (const r of dvVenueRows) {
     venueAvailability.set(r.venue_id, parseAvailability(r.venue?.availability));
+    if (r.venue?.name) venueNames.set(r.venue_id, r.venue.name);
   }
 
   if (!venueIds.length) {
@@ -963,13 +1085,16 @@ export async function generateSchedule(
   // against an org on the same date.
   const orgIds = interleagueConfig.map((c) => c.interleague_org_id);
   const orgFieldCount = new Map<string, number>();
+  // Names are for the shortfall wording only — nothing in placement reads them.
+  const orgNames = new Map<string, string>();
   if (orgIds.length > 0) {
     const { data: orgRowsRaw } = await supabase
       .from("interleague_orgs")
-      .select("id, field_count")
+      .select("id, name, field_count")
       .in("id", orgIds);
-    for (const o of (orgRowsRaw ?? []) as Array<{ id: string; field_count: number | null }>) {
+    for (const o of (orgRowsRaw ?? []) as Array<{ id: string; name: string | null; field_count: number | null }>) {
       orgFieldCount.set(o.id, Math.max(1, Number(o.field_count ?? 1)));
+      if (o.name) orgNames.set(o.id, o.name);
     }
   }
 
@@ -1022,6 +1147,13 @@ export async function generateSchedule(
     div.name,
   );
   if (closedDayMsg) return { success: false, error: closedDayMsg };
+
+  const playingDates = buildPlayingDates(
+    div.start_date,
+    div.end_date,
+    settings,
+    blackoutDates,
+  );
 
   const slots = buildSlots(
     div.start_date,
@@ -1161,18 +1293,32 @@ export async function generateSchedule(
     maxGamesPerWeek: Number(settings.max_games_per_week),
   });
 
+  const shortfallContext = buildShortfallContext({
+    settings,
+    // Total per team: intra-division plus every configured interleague game.
+    gamesPerTeam:
+      intraDivisionGamesPerTeam +
+      interleagueConfig.reduce((n, c) => n + Number(c.game_count || 0), 0),
+    maxPerTeamDay,
+    playingDates,
+    matchups,
+    slots,
+    venueAvailability,
+    venueNames,
+    orgFieldCount,
+    orgNames,
+  });
+  const shortfallSummary = describeShortfall(plan.diagnostics, shortfallContext);
+
   if (!plan.games.length) {
     return {
       success: false,
-      // Total failure hides the per-run counts, so name the constraint cause
-      // here too — otherwise a fully constraint-starved division reads as a
-      // generic capacity problem.
+      // Total failure hides the per-run counts, so carry the same honest
+      // attribution the partial-success path reports. NO lever advice — see
+      // placement-diagnostics.ts: naming a lever needs facts the code lacks.
       error:
         "Could not fit any games into the available slots. " +
-        (plan.constraintBlockedCount > 0
-          ? `${plan.constraintBlockedCount} matchup${plan.constraintBlockedCount === 1 ? " was" : "s were"} blocked by team scheduling constraints. `
-          : "") +
-        "Try extending the season dates, adding venues, or reducing games per team.",
+        (shortfallSummary ?? ""),
     };
   }
 
@@ -1242,6 +1388,7 @@ export async function generateSchedule(
     unscheduledCount: plan.unscheduledCount,
     constraintBlockedCount: plan.constraintBlockedCount,
     preferMissCount: plan.preferMissCount,
+    shortfallSummary,
     conflicts,
   };
 }
@@ -1280,7 +1427,13 @@ export interface NewDivisionPlannedGame {
 }
 
 export type NewDivisionPlanResult =
-  | { success: true; games: NewDivisionPlannedGame[]; unscheduledCount: number }
+  | {
+      success: true;
+      games: NewDivisionPlannedGame[];
+      unscheduledCount: number;
+      // See ScheduleResult.shortfallSummary — same string, same rules.
+      shortfallSummary: string | null;
+    }
   | { success: false; error: string };
 
 export async function planScheduleForNewDivision(
@@ -1340,20 +1493,24 @@ export async function planScheduleForNewDivision(
   // ── Venue availability ────────────────────────────────────────────────────
   type VenueRow = {
     id: string;
+    name: string;
     availability: unknown;
     availability_configured: boolean;
   };
   const { data: vRows, error: vErr } = await supabase
     .from("venues")
-    .select("id, availability, availability_configured")
+    .select("id, name, availability, availability_configured")
     .in("id", gameVenueIds)
     .eq("owner_id", input.currentOrgId)
     .eq("availability_configured", true);
   if (vErr) return { success: false, error: vErr.message };
   const venueRows = (vRows ?? []) as VenueRow[];
   const venueAvailability = new Map<string, VenueAvailability>();
+  // Names are for the shortfall wording only — nothing in placement reads them.
+  const venueNames = new Map<string, string>();
   for (const r of venueRows) {
     venueAvailability.set(r.id, parseAvailability(r.availability));
+    if (r.name) venueNames.set(r.id, r.name);
   }
   const usableVenueIds = venueRows.map((r) => r.id);
   if (usableVenueIds.length === 0) {
@@ -1415,19 +1572,23 @@ export async function planScheduleForNewDivision(
 
   // ── Interleague config: field_count caps per org ─────────────────────────
   const orgFieldCount = new Map<string, number>();
+  // Names are for the shortfall wording only — nothing in placement reads them.
+  const orgNames = new Map<string, string>();
   const orgIds = input.interleagueGames
     .filter((c) => c.game_count > 0)
     .map((c) => c.interleague_org_id);
   if (orgIds.length > 0) {
     const { data: orgRowsRaw } = await supabase
       .from("interleague_orgs")
-      .select("id, field_count")
+      .select("id, name, field_count")
       .in("id", orgIds);
     for (const o of (orgRowsRaw ?? []) as Array<{
       id: string;
+      name: string | null;
       field_count: number | null;
     }>) {
       orgFieldCount.set(o.id, Math.max(1, Number(o.field_count ?? 1)));
+      if (o.name) orgNames.set(o.id, o.name);
     }
   }
 
@@ -1523,6 +1684,13 @@ export async function planScheduleForNewDivision(
   );
   if (closedDayMsg) return { success: false, error: closedDayMsg };
 
+  const playingDates = buildPlayingDates(
+    input.startDate,
+    input.endDate,
+    input.settings,
+    blackoutDates,
+  );
+
   const slots = buildSlots(
     input.startDate,
     input.endDate,
@@ -1568,12 +1736,30 @@ export async function planScheduleForNewDivision(
     maxGamesPerWeek: Number(input.settings.max_games_per_week),
   });
 
+  const shortfallContext = buildShortfallContext({
+    settings: input.settings,
+    // Total per team: intra-division plus every configured interleague game.
+    gamesPerTeam:
+      Number(input.intraDivisionGamesPerTeam) +
+      interleagueConfig.reduce((n, c) => n + Number(c.game_count || 0), 0),
+    maxPerTeamDay,
+    playingDates,
+    matchups,
+    slots,
+    venueAvailability,
+    venueNames,
+    orgFieldCount,
+    orgNames,
+  });
+  const shortfallSummary = describeShortfall(plan.diagnostics, shortfallContext);
+
   if (!plan.games.length) {
     return {
       success: false,
+      // Honest attribution, NO lever advice — same rule as the other two flows.
       error:
         "Could not fit any games into the available slots. " +
-        "Try extending the season dates, adding venues, or reducing games per team.",
+        (shortfallSummary ?? ""),
     };
   }
 
@@ -1597,6 +1783,7 @@ export async function planScheduleForNewDivision(
     success: true,
     games,
     unscheduledCount: plan.unscheduledCount,
+    shortfallSummary,
   };
 }
 
@@ -1646,7 +1833,7 @@ export async function finishSchedule(
   const { data: dvRows, error: dvErr } = await supabase
     .from("division_venues")
     .select(
-      "venue_id, venue:venues!inner(id, availability, availability_configured)",
+      "venue_id, venue:venues!inner(id, name, availability, availability_configured)",
     )
     .eq("division_id", divisionId)
     .eq("allow_games", true)
@@ -1655,13 +1842,16 @@ export async function finishSchedule(
   if (dvErr) return { success: false, error: dvErr.message };
   type DvVenueRowFinish = {
     venue_id: string;
-    venue: { id: string; availability: unknown; availability_configured: boolean } | null;
+    venue: { id: string; name: string; availability: unknown; availability_configured: boolean } | null;
   };
   const dvVenueRowsFinish = (dvRows ?? []) as unknown as DvVenueRowFinish[];
   const venueIds = dvVenueRowsFinish.map((r) => r.venue_id);
   const venueAvailability = new Map<string, VenueAvailability>();
+  // Names are for the shortfall wording only — nothing in placement reads them.
+  const venueNames = new Map<string, string>();
   for (const r of dvVenueRowsFinish) {
     venueAvailability.set(r.venue_id, parseAvailability(r.venue?.availability));
+    if (r.venue?.name) venueNames.set(r.venue_id, r.venue.name);
   }
   if (!venueIds.length) {
     return {
@@ -1795,13 +1985,16 @@ export async function finishSchedule(
   // on the same date.
   const orgIdsFinish = interleagueConfig.map((c) => c.interleague_org_id);
   const orgFieldCountFinish = new Map<string, number>();
+  // Names are for the shortfall wording only — nothing in placement reads them.
+  const orgNamesFinish = new Map<string, string>();
   if (orgIdsFinish.length > 0) {
     const { data: orgRowsRaw } = await supabase
       .from("interleague_orgs")
-      .select("id, field_count")
+      .select("id, name, field_count")
       .in("id", orgIdsFinish);
-    for (const o of (orgRowsRaw ?? []) as Array<{ id: string; field_count: number | null }>) {
+    for (const o of (orgRowsRaw ?? []) as Array<{ id: string; name: string | null; field_count: number | null }>) {
       orgFieldCountFinish.set(o.id, Math.max(1, Number(o.field_count ?? 1)));
+      if (o.name) orgNamesFinish.set(o.id, o.name);
     }
   }
 
@@ -1829,7 +2022,7 @@ export async function finishSchedule(
 
   // If nothing is missing, return early
   if (!intraDeficitExists && !interleagueDeficitExists) {
-    return { success: true, gamesCreated: 0, unscheduledCount: 0, constraintBlockedCount: 0, preferMissCount: 0, conflicts: [] };
+    return { success: true, gamesCreated: 0, unscheduledCount: 0, constraintBlockedCount: 0, preferMissCount: 0, shortfallSummary: null, conflicts: [] };
   }
 
   // Build intra-division matchups by cycling round-robin rounds:
@@ -1897,6 +2090,13 @@ export async function finishSchedule(
     div.name,
   );
   if (closedDayMsg) return { success: false, error: closedDayMsg };
+
+  const playingDates = buildPlayingDates(
+    div.start_date,
+    div.end_date,
+    settings,
+    blackoutDates,
+  );
 
   const slots = buildSlots(
     div.start_date,
@@ -2000,6 +2200,8 @@ export async function finishSchedule(
   const unscheduled: Matchup[] = [];
   let constraintBlockedFinish = 0;
   let preferMissFinish = 0;
+  const diagnosticsFinish = emptyDiagnostics();
+  const maxGamesPerWeekFinish = Number(settings.max_games_per_week);
 
   // Deduped (date, time) pool for away matchups — they don't claim a venue.
   const dateTimeOnlySlotsFinish: Slot[] = [];
@@ -2114,19 +2316,56 @@ export async function finishSchedule(
     if (!assigned) {
       unscheduled.push({ homeId, awayId, interleagueOrgId, isAway });
       if (constraintRejected) constraintBlockedFinish++;
+
+      // Deliberate mirror of planSchedule's attribution pass — read-only, runs
+      // only after abandonment. Any change here must be mirrored there.
+      if (pool.length === 0) {
+        diagnosticsFinish.emptyPool++;
+      } else {
+        recordAbandonment(
+          diagnosticsFinish,
+          tallyRejections(
+            { homeId, awayId, interleagueOrgId, isAway },
+            pool,
+            {
+              venueBookings, teamTimes, teamDay, teamWeek,
+              awayByOrgDate: awayByOrgDateFinish,
+              blocked, constraintRules,
+              orgFieldCount: orgFieldCountFinish,
+              minVenueGap, maxPerTeamDay,
+              maxGamesPerWeek: maxGamesPerWeekFinish,
+            },
+          ),
+        );
+      }
     }
   }
+
+  const shortfallContext = buildShortfallContext({
+    settings,
+    // Total per team: intra-division plus every configured interleague game.
+    gamesPerTeam:
+      intraDivisionGamesPerTeamFinish +
+      interleagueConfig.reduce((n, c) => n + Number(c.game_count || 0), 0),
+    maxPerTeamDay,
+    playingDates,
+    matchups,
+    slots,
+    venueAvailability,
+    venueNames,
+    orgFieldCount: orgFieldCountFinish,
+    orgNames: orgNamesFinish,
+  });
+  const shortfallSummary = describeShortfall(diagnosticsFinish, shortfallContext);
 
   if (!scheduled.length) {
     return {
       success: false,
-      // Same constraint-cause naming as generateSchedule's total-failure path.
+      // Same honest attribution as generateSchedule's total-failure path, and
+      // the same rule: NO lever advice.
       error:
         "Could not fit the remaining games into available slots. " +
-        (constraintBlockedFinish > 0
-          ? `${constraintBlockedFinish} matchup${constraintBlockedFinish === 1 ? " was" : "s were"} blocked by team scheduling constraints. `
-          : "") +
-        "Try extending the season dates, adding venues, or reducing games per team.",
+        (shortfallSummary ?? ""),
     };
   }
 
@@ -2172,6 +2411,7 @@ export async function finishSchedule(
     unscheduledCount: unscheduled.length,
     constraintBlockedCount: constraintBlockedFinish,
     preferMissCount: preferMissFinish,
+    shortfallSummary,
     conflicts,
   };
 }

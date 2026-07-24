@@ -584,6 +584,76 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `scripts/sim/fake-supabase.ts` — when the engine grows a new query shape,
   extend THAT fake (it throws on unknown shapes; never stub in a sim).
 
+## Skip-reason attribution (why games went unplaced)
+
+- **`src/lib/schedule/placement-diagnostics.ts` is the ONE home for both the
+  per-filter attribution and the shortfall wording.** Every surface renders
+  `shortfallSummary` VERBATIM — same rule as the schedule-lock wording
+  helpers: never hand-write a shortfall sentence at a call site, and never
+  write a parallel attribution.
+- **Attribution runs AFTER abandonment, never inline — this is load-bearing.**
+  The walk short-circuits (`continue`) on the first failing filter, so inline
+  per-slot counters would be biased by chain ORDER: the first filter checked
+  takes credit for every slot the later filters would also have rejected.
+  (The pre-existing constraint attribution is honest only because the
+  constraint check sits LAST.) Instead `tallyRejections` runs only for
+  matchups that already failed, evaluates every filter INDEPENDENTLY with no
+  short-circuit, and mutates nothing. Zero cost on the success path.
+- **It is a REPORTING change and must stay one.** `planSchedule`'s walk is
+  byte-identical in behavior; the harness pins this against a golden recorded
+  from the pre-change tree (`scripts/sim/fixtures/placement-golden.json`) plus
+  a golden-free INV2 check. If placement moves, something leaked — fix the
+  leak, do NOT re-record the golden (the recorder's header states the only
+  legitimate re-record case).
+- **The venue availability window is NOT a walk filter.** `isVenueAvailable`
+  runs inside `buildSlots`, so a too-short window yields a SMALLER SLOT POOL
+  and then surfaces in the walk as venue collisions. A walk counter for it
+  would read zero in exactly the case that misleads — which is why it is a
+  supply-side computation instead. Same for `max_games_per_field_per_day`.
+- **WHICH FILTERS CARRY ARITHMETIC:** `venue_booking` (via the venue-window
+  supply analysis), `weekly_cap` (games per team vs. playing weeks × cap),
+  `daily_cap` (vs. playing dates × cap), `org_field_cap` (away games vs.
+  partner field count × dates).
+  **WHICH DELIBERATELY DO NOT, and must not gain one:** `team_time` (pure
+  cascade of prior placements — no meaningful unit), `coach_block` (set by
+  ANOTHER division's persisted schedule, which this run doesn't control),
+  `team_constraint` (arbitrary per-team rule sets; one "gap" would collapse
+  unrelated rules into an invented number).
+- **THE CAVEAT THAT MATTERS MOST — a number is emitted only when an
+  INDEPENDENT config-level computation proves a shortfall.** A filter can bite
+  from pure greedy cascade on a perfectly feasible config. When
+  `weeks × cap >= games_per_team` and the weekly cap still dominates, there is
+  NO gap: the sentence says the config has room and the games stranded behind
+  already-placed ones. That was the real cause of one of the two wrong
+  messages this feature replaced; fabricating a gap there would be worse than
+  the old copy. Mutant M12 removes exactly this branch and is caught only by
+  the D2 assertion — don't delete it.
+- **Venue-window narration is REPRODUCE-OR-STAY-SILENT.** Supply is COUNTED
+  from the real slot pool, then the per-field narration is recomputed and
+  checked against that count; on mismatch (legacy
+  `max_games_per_field_per_day` divisions, mixed per-venue windows) the
+  arithmetic is suppressed and only cause+count is reported. Mutant M13 needs
+  a fixture tuned so every LATER guard passes — an earlier version of P5
+  exited at a later guard and let M13 survive.
+- **NO LEVER RECOMMENDATIONS, anywhere.** Widening a window, shortening a
+  buffer and adding a field can all close the same gap, and which is right
+  depends on facts the code does not have (whether the city will grant earlier
+  field time). Name the gap; let the admin pick the lever. The harness scans
+  EVERY sentence the run produces against a lever-word pattern list and fails
+  on a hit — that guard applies to any new wording too.
+- **Both placement copies carry the pass** (`planSchedule` and
+  `finishSchedule`'s inline copy); mutants M1/M2 cover them separately.
+  `planScheduleForNewDivision` gets it via the shared `planSchedule`.
+- **Surfaces:** wizard review panel, generate-all modal, setup generate step
+  (two renderings), division schedule panel (generate + finish), and all three
+  total-failure error strings. All lever copy was removed from them.
+- **Harness: `npm run sim:diagnostics`** (`scripts/sim/placement-diagnostics-sim.ts`,
+  TZ=UTC mandatory) — 247 assertions, 15 mutants all killed 2026-07-23,
+  anti-vacuity counters requiring every filter to have DOMINATED at least once
+  plus the empty-pool and tie cases to have fired. `SHOW_SENTENCES=1` prints
+  every sentence the run produces. Re-run after ANY change to
+  placement-diagnostics.ts, either walk copy, or `buildSlots`.
+
 ## Coach conflicts in schedule generation
 
 - **Same-division shared-coach double-booking is a KNOWN, deliberately
@@ -957,6 +1027,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   input value to the DB.
 
 ## Open items
+
+- **Rainout reschedule modal carries lever advice** — `rainout-reschedule-modal.tsx`
+  line ~515 says "Try adding venues or extending the season end date." Same
+  smell as the generator copy removed 2026-07-23, but a different feature with
+  no attribution machinery behind it: there is no rejection tally for the
+  rainout slot search, so honest wording there needs its own (small) design
+  pass, not a copy-paste of `shortfallSummary`. Deliberately left out of the
+  skip-attribution change.
 
 - Run the ghost-invite cleanup by hand: four pre-0074 pending SRA→Westside
   invites (three from 2026-05-16 to whitking10@gmail.com, one to Westside's

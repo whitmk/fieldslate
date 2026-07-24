@@ -69,6 +69,8 @@ type RunStatus =
       unscheduledCount: number;
       constraintBlockedCount: number;
       preferMissCount: number;
+      // Rendered VERBATIM — never hand-write a shortfall sentence here.
+      shortfallSummary: string | null;
       conflictGameCount: number;
     }
   | { state: "failed"; error: string }
@@ -290,6 +292,7 @@ export function GenerateAllModal({
             unscheduledCount: res.unscheduledCount,
             constraintBlockedCount: res.constraintBlockedCount,
             preferMissCount: res.preferMissCount,
+            shortfallSummary: res.shortfallSummary,
             conflictGameCount: res.conflicts.reduce(
               (n, c) => n + c.games.length,
               0,
@@ -360,13 +363,13 @@ export function GenerateAllModal({
     // done
     if (s.unscheduledCount > 0) {
       const attempted = s.gamesCreated + s.unscheduledCount;
-      const reason =
-        s.constraintBlockedCount > 0
-          ? `${s.constraintBlockedCount} blocked by team constraints`
-          : "no available slots in allowed windows";
+      // The generator names the cause; this surface only reports the count.
+      // No lever advice and no hard-coded interpretation — the old
+      // "no available slots in allowed windows" guess was wrong twice.
+      const head = `${p.name}: ${s.unscheduledCount} of ${attempted} games couldn't be placed.`;
       return {
         tone: "warn",
-        text: `${p.name}: ${s.unscheduledCount} of ${attempted} games couldn't be placed — ${reason}.`,
+        text: s.shortfallSummary ? `${head} ${s.shortfallSummary}` : head,
       };
     }
     if (s.preferMissCount > 0) {

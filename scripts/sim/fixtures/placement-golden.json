@@ -1,0 +1,142 @@
+{
+  "partial": [
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "A",
+      "away_team_identifier": "B",
+      "interleague_org_id": null,
+      "venue_id": "venue-0",
+      "scheduled_at": "2026-09-12T09:00:00",
+      "status": "scheduled",
+      "is_away": false
+    },
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "A",
+      "away_team_identifier": "B",
+      "interleague_org_id": null,
+      "venue_id": "venue-0",
+      "scheduled_at": "2026-09-19T09:00:00",
+      "status": "scheduled",
+      "is_away": false
+    },
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "A",
+      "away_team_identifier": "B",
+      "interleague_org_id": null,
+      "venue_id": "venue-0",
+      "scheduled_at": "2026-09-26T09:00:00",
+      "status": "scheduled",
+      "is_away": false
+    }
+  ],
+  "allPlaced": [
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "A",
+      "away_team_identifier": "B",
+      "interleague_org_id": null,
+      "venue_id": "venue-0",
+      "scheduled_at": "2026-09-12T09:00:00",
+      "status": "scheduled",
+      "is_away": false
+    },
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "A",
+      "away_team_identifier": "B",
+      "interleague_org_id": null,
+      "venue_id": "venue-0",
+      "scheduled_at": "2026-09-19T09:00:00",
+      "status": "scheduled",
+      "is_away": false
+    }
+  ],
+  "venueContention": [
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "A",
+      "away_team_identifier": "B",
+      "interleague_org_id": null,
+      "venue_id": "venue-0",
+      "scheduled_at": "2026-09-12T11:00:00",
+      "status": "scheduled",
+      "is_away": false
+    },
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "A",
+      "away_team_identifier": "B",
+      "interleague_org_id": null,
+      "venue_id": "venue-0",
+      "scheduled_at": "2026-09-19T09:00:00",
+      "status": "scheduled",
+      "is_away": false
+    }
+  ],
+  "away": [
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "A",
+      "away_team_identifier": null,
+      "interleague_org_id": "org-1",
+      "venue_id": null,
+      "scheduled_at": "2026-09-12T09:00:00",
+      "status": "pending_interleague",
+      "is_away": true
+    },
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "B",
+      "away_team_identifier": null,
+      "interleague_org_id": "org-1",
+      "venue_id": null,
+      "scheduled_at": "2026-09-19T09:00:00",
+      "status": "pending_interleague",
+      "is_away": true
+    }
+  ],
+  "withAbandonment": [
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "A",
+      "away_team_identifier": "B",
+      "interleague_org_id": null,
+      "venue_id": "venue-0",
+      "scheduled_at": "2026-09-12T09:00:00",
+      "status": "scheduled",
+      "is_away": false
+    },
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "A",
+      "away_team_identifier": "B",
+      "interleague_org_id": null,
+      "venue_id": "venue-0",
+      "scheduled_at": "2026-09-19T09:00:00",
+      "status": "scheduled",
+      "is_away": false
+    },
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "C",
+      "away_team_identifier": "D",
+      "interleague_org_id": null,
+      "venue_id": "venue-0",
+      "scheduled_at": "2026-09-12T11:00:00",
+      "status": "scheduled",
+      "is_away": false
+    },
+    {
+      "league_id": "league-1",
+      "home_team_identifier": "C",
+      "away_team_identifier": "D",
+      "interleague_org_id": null,
+      "venue_id": "venue-0",
+      "scheduled_at": "2026-09-19T11:00:00",
+      "status": "scheduled",
+      "is_away": false
+    }
+  ]
+}

@@ -14,7 +14,8 @@
     "sim:scarcity": "TZ=UTC npx tsx scripts/sim/scarcity-order-sim.ts",
     "sim:coach-conflicts": "TZ=UTC npx tsx scripts/sim/coach-conflict-sim.ts",
     "sim:team-reconcile": "npx tsx scripts/sim/team-reconcile-sim.ts",
-    "sim:sc-export": "npx tsx scripts/sim/sports-connect-export-sim.ts"
+    "sim:sc-export": "npx tsx scripts/sim/sports-connect-export-sim.ts",
+    "sim:diagnostics": "TZ=UTC npx tsx scripts/sim/placement-diagnostics-sim.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

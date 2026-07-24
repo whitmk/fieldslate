@@ -50,6 +50,8 @@ type RunStatus =
       constraintBlockedCount: number;
       // Games placed outside team preferences (pass 2). Informational only.
       preferMissCount: number;
+      // Rendered VERBATIM — never hand-write a shortfall sentence here.
+      shortfallSummary: string | null;
       conflictGameCount: number;
     }
   | { state: "failed"; error: string }
@@ -220,6 +222,7 @@ export function SetupGenerateStep({
           unscheduledCount: res.unscheduledCount,
           constraintBlockedCount: res.constraintBlockedCount,
           preferMissCount: res.preferMissCount,
+          shortfallSummary: res.shortfallSummary,
           conflictGameCount: res.conflicts.reduce(
             (n, c) => n + c.games.length,
             0,
@@ -268,13 +271,12 @@ export function SetupGenerateStep({
       if (status?.state !== "done") return [];
       const lines: { divisionId: string; text: string }[] = [];
       if (status.unscheduledCount > 0) {
+        // Count here, cause from the generator — rendered verbatim, no lever
+        // advice and no hard-coded interpretation.
+        const head = `${status.unscheduledCount} game${status.unscheduledCount !== 1 ? "s" : ""} couldn't be scheduled in ${d.name}.`;
         lines.push({
           divisionId: d.id,
-          text:
-            `${status.unscheduledCount} game${status.unscheduledCount !== 1 ? "s" : ""} couldn't be scheduled in ${d.name}` +
-            (status.constraintBlockedCount > 0
-              ? ` (${status.constraintBlockedCount} blocked by team constraints)`
-              : ""),
+          text: status.shortfallSummary ? `${head} ${status.shortfallSummary}` : head,
         });
       }
       if (status.conflictGameCount > 0) {
@@ -476,10 +478,7 @@ export function SetupGenerateStep({
                   <p className="ml-7 text-xs text-amber-700">
                     {[
                       status.unscheduledCount > 0
-                        ? `${status.unscheduledCount} game${status.unscheduledCount !== 1 ? "s" : ""} couldn't be scheduled` +
-                          (status.constraintBlockedCount > 0
-                            ? ` (${status.constraintBlockedCount} blocked by team constraints)`
-                            : "")
+                        ? `${status.unscheduledCount} game${status.unscheduledCount !== 1 ? "s" : ""} couldn't be scheduled`
                         : null,
                       status.conflictGameCount > 0
                         ? `${status.conflictGameCount} game${status.conflictGameCount !== 1 ? "s" : ""} have field conflicts`
@@ -494,6 +493,10 @@ export function SetupGenerateStep({
                     >
                       review on your schedule page
                     </Link>
+                    {/* Cause from the generator, verbatim. */}
+                    {status.unscheduledCount > 0 && status.shortfallSummary && (
+                      <span className="mt-1 block">{status.shortfallSummary}</span>
+                    )}
                   </p>
                 )}
               {/* Neutral tone on purpose — preferences are best-effort. */}

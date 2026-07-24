@@ -123,6 +123,9 @@ type RegenResult = {
   constraintBlockedCount?: number;
   // Games placed outside team preferences (pass 2). Informational only.
   preferMissCount?: number;
+  // The generator's honest shortfall attribution. Rendered VERBATIM — never
+  // hand-write a shortfall sentence here (see placement-diagnostics.ts).
+  shortfallSummary?: string | null;
   conflicts: ScheduleConflict[];
   savedDivisionId: string;
 };
@@ -661,6 +664,7 @@ export function StepReview({
       result.unscheduledCount = gameRes.unscheduledCount;
       result.constraintBlockedCount = gameRes.constraintBlockedCount;
       result.preferMissCount = gameRes.preferMissCount;
+      result.shortfallSummary = gameRes.shortfallSummary;
       result.conflicts = gameRes.conflicts;
       await logActivity(
         leagueId,
@@ -733,6 +737,7 @@ export function StepReview({
       savedDivisionId: divId,
       gamesCreated: planResult.games.length,
       unscheduledCount: planResult.unscheduledCount,
+      shortfallSummary: planResult.shortfallSummary,
     };
 
     await logActivity(
@@ -795,11 +800,14 @@ export function StepReview({
                 <p className="text-sm font-semibold text-amber-800">
                   {regenResult.unscheduledCount} matchup{regenResult.unscheduledCount !== 1 ? "s" : ""} could not be scheduled
                 </p>
-                <p className="mt-1 text-xs text-amber-700">
-                  {(regenResult.constraintBlockedCount ?? 0) > 0
-                    ? `${regenResult.constraintBlockedCount} of these were blocked by team scheduling constraints — review those teams' constraint windows or place the games manually. Any others ran out of slots: try extending dates, adding venues, or reducing games per team.`
-                    : "Not enough slots. Try extending dates, adding venues, or reducing games per team."}
-                </p>
+                {/* The generator's attribution, rendered verbatim. No lever
+                    advice: which fix is right depends on facts the code
+                    doesn't have. Name the gap, let the admin pick. */}
+                {regenResult.shortfallSummary && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    {regenResult.shortfallSummary}
+                  </p>
+                )}
               </div>
             </div>
           </div>
