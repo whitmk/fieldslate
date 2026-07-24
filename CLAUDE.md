@@ -548,6 +548,49 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   return. Head-counts (`{ count: "exact", head: true }`) are exact regardless,
   so the dashboard stat cards and `division-game-counts.ts` are immune.
 
+## Print path (PDF) — the RENDER-side truncation, and engine divergence
+
+- **This is the render-side twin of the fetch truncation above.** The Schedule
+  page / division panel / both umpire pages print via `window.print()` and the
+  browser's Save-as-PDF, using the shared `.fieldslate-print-region` +
+  `@media print` block in `globals.css`. A complete DOM (correct 260-game
+  header) can STILL print short if the print CSS clips — same right-looking,
+  silently-wrong failure, one layer down.
+- **Two clip bugs found and fixed, IN ORDER — a fix for one did NOT fix the
+  other, and each was invisible until printed:**
+  1. `position: absolute` on the region (pre-`f9cdd47`). Browsers clip an
+     out-of-flow box at ~one page; a ~53-page season printed one page's worth.
+     Fixed by moving to NORMAL FLOW (`f9cdd47`): expand the region's ancestor
+     chain via `:has()`, remove all other elements with a `display:none` sweep
+     (`:has()` + complex `:not(.fieldslate-print-region *)`), region
+     `position: static`. See the block's own header comment.
+  2. `break-after: avoid` / `page-break-after: avoid` on the region container
+     AND (via a `:last-of-type` that matched every day's table) on every
+     table. WebKit mishandles break-avoid on a very tall multi-page block and
+     CLIPS instead of paginating — Chrome was unaffected. Removed; trailing
+     blank page suppressed the WebKit-safe way with `margin-bottom: 0` only.
+     Do not reintroduce any break-avoid on the region or its tables.
+- **CHROME VERIFICATION IS NOT SUFFICIENT FOR THE PRINT PATH — it has already
+  diverged between engines once, silently.** Bug 1 was proven fixed in Chrome
+  while Safari/Preview still truncated at the SAME point (Oct 10; Safari showed
+  14 pages, Chrome 15). Admins print from whatever browser they have, so a
+  print-CSS change that "works" in one engine can ship a truncated schedule in
+  another with no error anywhere. **Any future change to the `@media print`
+  block or the print regions REQUIRES a manual WebKit/Safari print check
+  (print the largest real season, confirm the last date prints), not just
+  Chrome.** The Claude Code session tooling could not do this: the in-app
+  browser is Chromium and Claude-in-Chrome is Chrome — neither is WebKit, and
+  print pagination is not observable through them at all (screen media only).
+  The engine check is a human step; leave it to the founder and wait for it.
+- **Still-open WebKit suspect if truncation recurs:** the print tables use
+  `border-collapse: collapse` (globals.css), and WebKit has documented
+  border-collapse pagination bugs. Not yet implicated (the break-avoid removal
+  is the current hypothesis), but it is the next lever — switch to
+  `border-collapse: separate` — if a single large day's table ever clips
+  mid-table. A transformed ancestor was RULED OUT (the only transform is on the
+  print-hidden Sidebar, a sibling of the region's ancestor chain, not an
+  ancestor).
+
 ## Schedule export (Sports Connect)
 
 - **TWO surfaces, ONE builder — format changes go in the builder, never in
