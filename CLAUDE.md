@@ -1232,3 +1232,17 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   zero-duration rows exist). The defect is UX only: the admin sees a raw
   constraint-violation message instead of a friendly guard. Wants the
   `66e7256` guard class as polish, not as a data-integrity fix.
+- **Pay-report modal print is an unverified whole-page print path**
+  (`pay-report-modal.tsx` ~line 188, mounted on `/dashboard/umpires` via
+  `PayReportButton`). It prints via a whole-page `window.print()` using
+  `print:block`/`print:hidden` utilities and has NO `.fieldslate-print-region`
+  — unlike the schedule/division/umpire print regions. Under the OLD
+  unconditional `body { visibility: hidden }` in the print CSS it was printing
+  BLANK (nothing re-showed the modal). The print-normal-flow rewrite in
+  `f9cdd47` removed that unconditional blank (body is no longer hidden when no
+  region is present), so this surface's print behavior CHANGED — it now prints
+  *something* rather than nothing — but nobody has verified what it actually
+  produces (likely the page chrome + modal, unstyled for print). Whoever
+  touches it next should either convert it to the `.fieldslate-print-region`
+  mechanism (the schedule/umpire pattern) or print it once and confirm what
+  comes out today. Not a regression of a working feature — it was blank before.
