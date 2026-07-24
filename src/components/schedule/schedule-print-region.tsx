@@ -10,6 +10,16 @@ import type { ScheduleGame } from "./schedule-list";
 // The matchup/venue/status helpers duplicate the private ones in
 // schedule-list.tsx: that module is "use client", so a server component can't
 // call functions imported across the client boundary. Keep these in sync.
+//
+// THIS COMPONENT PRINTS `games.length` AS THE SEASON'S GAME COUNT. That number
+// is only true because its caller reads via `fetchAllRows` (complete-or-throw)
+// and does not render this region at all on a read error. This component cannot
+// tell a complete array from a truncated one, so it does not try — the
+// guarantee lives at the fetch. Anyone passing a capped, sliced, paged, or
+// error-fallback array here reintroduces the bug it was built around: a 260-game
+// season that printed "200 games" and stopped two weeks early, looking finished.
+// If a partial array ever becomes legitimate, this header must stop asserting a
+// total rather than quietly reporting the slice.
 
 function matchupLabel(g: ScheduleGame): string {
   const home = g.home_team?.name ?? "TBD";

@@ -16,6 +16,7 @@ import {
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
 import { SchedulePrintButton } from "@/components/schedule/schedule-print-button";
 import { SchedulePrintRegion } from "@/components/schedule/schedule-print-region";
+import { fetchAllRows, type PagedResult } from "@/lib/supabase/fetch-all";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
@@ -201,6 +202,7 @@ export default async function SchedulePage({
 
   // ── Games ────────────────────────────────────────────────────────────────────
   let games: ScheduleGame[] = [];
+  let gamesError: string | null = null;
 
   let teamIdScope: string[] | null = null;
   if (effectiveTeamId) {
@@ -212,9 +214,24 @@ export default async function SchedulePage({
   }
 
   if (seasonId) {
-    let gamesQuery = supabase
-      .from("games")
-      .select(`
+    // COMPLETE-OR-THROW. This array feeds three things: the on-screen list, the
+    // calendar, and SchedulePrintRegion — which prints its LENGTH as the game
+    // count on a document leagues hand to boards and parents. A capped read here
+    // does not merely hide rows, it puts a confidently wrong total in a header.
+    // That is what a hardcoded `.limit(200)` did: a 260-game season printed
+    // "200 games" and stopped two weeks early, mid-day, with no signal anywhere.
+    //
+    // Deliberately NO `.limit()`. Do not add one back — not 200, and not 1000
+    // either, since 1000 is PostgREST's own silent cap and a real limit at that
+    // value is indistinguishable from being truncated by the server.
+    try {
+      games = await fetchAllRows<ScheduleGame>(
+        "the season schedule",
+        ({ from, to, exactCount }) => {
+          let q = supabase
+            .from("games")
+            .select(
+              `
         id, scheduled_at, status, league_id, home_team_id, away_team_id,
         interleague_org_id, is_away, external_team_name, proposed_venue_name,
         home_team:teams!home_team_id(name, division_id, division:divisions(name, umpires_per_game)),
@@ -222,45 +239,67 @@ export default async function SchedulePage({
         interleague_org:interleague_orgs(name),
         venue:venues(name),
         game_umpires:game_umpires(id, role, umpire:umpires(id, name))
-      `)
-      // Season scope is non-optional — it also carries the org scope, since
-      // the season id was validated against the current org's active seasons.
-      .eq("league_id", seasonId)
-      .order("scheduled_at", { ascending: true })
-      .limit(mode === "calendar" ? 1000 : 200);
+      `,
+              exactCount ? { count: "exact" } : undefined,
+            )
+            // Season scope is non-optional — it also carries the org scope, since
+            // the season id was validated against the current org's active seasons.
+            .eq("league_id", seasonId)
+            .order("scheduled_at", { ascending: true })
+            // Unique tiebreak — LOAD-BEARING, for two independent reasons.
+            // (1) Range paging over a non-unique sort key can drop or duplicate
+            //     rows at page boundaries, because tied rows have no guaranteed
+            //     relative order across two separate queries.
+            // (2) Determinism in the output itself. Games routinely share an
+            //     exact start time (SRALL Fall 2026 has three at 2026-10-03
+            //     12:45), so without a tiebreak the order within a timestamp —
+            //     and, when the old cap sliced through one, WHICH game survived
+            //     into the PDF — varied between prints of identical data.
+            .order("id", { ascending: true });
 
-    if (teamIdScope !== null) {
-      if (teamIdScope.length === 0) {
-        gamesQuery = gamesQuery.in("home_team_id", [
-          "00000000-0000-0000-0000-000000000000",
-        ]);
-      } else if (effectiveTeamId) {
-        gamesQuery = gamesQuery.or(
-          `home_team_id.eq.${effectiveTeamId},away_team_id.eq.${effectiveTeamId}`,
-        );
-      } else {
-        gamesQuery = gamesQuery.in("home_team_id", teamIdScope);
-      }
-    }
+          if (teamIdScope !== null) {
+            if (teamIdScope.length === 0) {
+              q = q.in("home_team_id", [
+                "00000000-0000-0000-0000-000000000000",
+              ]);
+            } else if (effectiveTeamId) {
+              q = q.or(
+                `home_team_id.eq.${effectiveTeamId},away_team_id.eq.${effectiveTeamId}`,
+              );
+            } else {
+              q = q.in("home_team_id", teamIdScope);
+            }
+          }
 
-    // Venue filter composes as AND with the division/team scope above.
-    // Interleague away games (venue_id null) fall out under a specific venue
-    // by design — they're only reachable under "All venues".
-    if (selectedVenueId) {
-      gamesQuery = gamesQuery.eq("venue_id", selectedVenueId);
-    }
+          // Venue filter composes as AND with the division/team scope above.
+          // Interleague away games (venue_id null) fall out under a specific
+          // venue by design — they're only reachable under "All venues".
+          if (selectedVenueId) {
+            q = q.eq("venue_id", selectedVenueId);
+          }
 
-    if (gridRange) {
-      gamesQuery = gamesQuery
-        .gte("scheduled_at", `${gridRange.gridStart}T00:00:00`)
-        .lt("scheduled_at", `${gridRange.dayAfterGridEnd}T00:00:00`);
-    }
-    if (hidePast) {
-      gamesQuery = gamesQuery.gte("scheduled_at", todayIso);
-    }
+          if (gridRange) {
+            q = q
+              .gte("scheduled_at", `${gridRange.gridStart}T00:00:00`)
+              .lt("scheduled_at", `${gridRange.dayAfterGridEnd}T00:00:00`);
+          }
+          if (hidePast) {
+            q = q.gte("scheduled_at", todayIso);
+          }
 
-    const { data: rawGames } = await gamesQuery;
-    games = (rawGames as unknown as ScheduleGame[] | null) ?? [];
+          return q.range(from, to) as unknown as PromiseLike<
+            PagedResult<ScheduleGame>
+          >;
+        },
+      );
+    } catch (err) {
+      // Surface it. The previous code discarded the error entirely, so a failed
+      // read rendered as "No games found." — indistinguishable from an empty
+      // season, and it printed as a blank schedule.
+      gamesError =
+        err instanceof Error ? err.message : "Could not load the season schedule.";
+      games = [];
+    }
   }
 
   // Empty-state /setup link gate (Chunk 4): own-org owner mid-setup AND the
@@ -338,7 +377,17 @@ export default async function SchedulePage({
           </div>
         </CardHeader>
         <CardContent>
-          {mode === "calendar" ? (
+          {gamesError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <p className="font-medium">Couldn&apos;t load the schedule.</p>
+              <p className="mt-1">{gamesError}</p>
+              <p className="mt-2 text-red-600">
+                Nothing is shown rather than a partial list, so a printed
+                schedule can&apos;t be missing games without saying so. Reload to
+                try again.
+              </p>
+            </div>
+          ) : mode === "calendar" ? (
             <ScheduleCalendar
               games={games}
               month={month}
@@ -359,8 +408,15 @@ export default async function SchedulePage({
 
       {/* Print-only region — hidden on screen, revealed by the global
           @media print rules. Renders in both list and calendar modes since a
-          printed calendar grid isn't useful. */}
-      <SchedulePrintRegion games={games} seasonName={season?.name ?? null} />
+          printed calendar grid isn't useful.
+
+          Suppressed on a read error: the region prints its own row count as a
+          header, so rendering it from a failed (therefore empty or partial)
+          fetch would produce a confident, wrong document. Better to print
+          nothing than to print "0 games" for a full season. */}
+      {!gamesError && (
+        <SchedulePrintRegion games={games} seasonName={season?.name ?? null} />
+      )}
     </div>
   );
 }

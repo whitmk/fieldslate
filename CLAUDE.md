@@ -71,13 +71,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   migration 0070 (every checkout returned 503 until the grant landed).
   service_role bypasses RLS but NOT table-level privileges.
 - **PostgREST silently caps every query at 1000 rows.** No error is raised —
-  partial results are indistinguishable from complete ones. Season-scoped
-  queries (`.eq("league_id", …)`) are safe at current scale; the exposure is
-  any query NOT scoped to a single season (org-wide / all-time sweeps). The
-  Schedule venue-options query and the calendar query both inherit this cap
-  deliberately — fine now. Before onboarding a customer with large historical
-  data, audit cross-season queries and add pagination or a hit-the-cap guard
-  as one uniform pass.
+  partial results are indistinguishable from complete ones. The exposure is
+  widest on queries NOT scoped to a single season (org-wide / all-time
+  sweeps). **Do not read the old "season-scoped queries are safe" line as
+  "season-scoped reads are fine"** — the schedule PDF bug (below) was a
+  season-scoped read that truncated anyway, via an explicit `.limit()`. The
+  cap and hardcoded limits are two doors into the same failure. See
+  "Complete reads" below for the pattern and the conversion backlog.
 
 ## Billing — read this whole section before touching Stripe code
 
@@ -470,6 +470,84 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   mutant targets assertion X, deliberately construct it so nothing before X
   can fire.
 
+## Complete reads — row limits and silent truncation
+
+- **`fetchAllRows` in `src/lib/supabase/fetch-all.ts` is THE way to read a set
+  that must be COMPLETE** — anything a printed document, an export file, or a
+  derived number is built from. It pages, and it either returns every row or
+  it THROWS. It never returns a short array. Callers must surface the throw,
+  never fall back to a partial or empty list: "no games found" and "we could
+  not read the games" look identical to an admin, and only one is safe to
+  print. Harness: **`npm run sim:fetch-all`** — 36 assertions, 8 mutants all
+  killed (2026-07-23).
+- **Why it exists.** Printing SRALL Fall 2026 produced a PDF headed
+  "Printed … · 200 games" for a **260-game** season that stopped two weeks
+  early (last row 2026-10-03, true last game 2026-10-17) and looked finished.
+  Cause: `.limit(mode === "calendar" ? 1000 : 200)` on the Schedule page's
+  games query. The 200 was a **display** cap (originally `.limit(50)`, bumped
+  in `e41f519`) that `SchedulePrintRegion` inherited when it was added later
+  in `a3a8b82` — the print path never had a query of its own. **Nobody ever
+  chose 200 for a document.** The header count was `games.length`, i.e. the
+  length of the truncated array, so the PDF stated its own truncation as fact.
+- **Three rules that are easy to get wrong. All three are mutant-proven; do
+  not "simplify" any of them:**
+  1. **Terminate on a SHORT PAGE, never on reaching the count.** Stopping at
+     `rows.length >= count` silently drops every row inserted after the count
+     snapshot. This was the first draft and the harness caught it before it
+     shipped (mutant M7, caught only by assertion S11).
+  2. **The caller MUST end its `.order()` chain with a unique tiebreak
+     (`id`).** Range paging over a non-unique sort key drops or duplicates
+     rows at page boundaries. It also fixes output determinism, which matters
+     independently: SRALL Fall 2026 has **69 timestamps carrying ties, largest
+     group 8**, so without a tiebreak the order within each of those groups
+     varied between page loads — and when the old cap sliced through a tie
+     group, *which* game survived into the PDF was arbitrary and differed
+     between prints of identical data.
+  3. **A read that returns no exact count THROWS.** Without a count, a short
+     page and a server-side cap are indistinguishable, so completeness cannot
+     be verified — and an unverifiable read is the whole failure mode. This
+     also turns "the builder forgot `{ count: 'exact' }`" into an immediate
+     loud error instead of a truncation discovered in a customer's PDF.
+- **Cap discovery is load-bearing, but only in combination.** Because `offset`
+  advances by rows actually received, paging self-corrects even when the page
+  size sits above the server cap — so removing cap discovery breaks nothing
+  *until the count is ALSO wrong*, at which point no full page ever appears and
+  the walk stops early (194 of 250 in the harness). This is a worked example of
+  the "killed by the RIGHT assertion" rule: mutant M1 first died only to an
+  efficiency assertion while every completeness assertion passed, reading as
+  8/8 killed and proving nothing. Scenario S15 was built to construct exactly
+  the failing combination. Don't delete S11 or S15.
+- **Never re-add a `.limit()` to a completeness-critical read — and never use
+  1000 as a limit anywhere.** 1000 is PostgREST's own silent cap, so a real
+  limit at that value is indistinguishable from being truncated by the server.
+- **Converted so far: the Schedule page games query ONLY** (list, calendar, and
+  print all share that one array; the page now renders a visible error and
+  suppresses the print region entirely on a read failure). **Conversion
+  backlog, priority order** — several of these can silently truncate, so the
+  fix is this uniform pattern, not one-line edits:
+  1. **Venues page** (`venues-page-client.tsx`) — org-wide, ALL seasons, no
+     league scope. **660 rows today against a 1000 cap**, grows every season,
+     never resets. This one has a date on it.
+  2. **Reports matrix + field utilization** (`overview-reports.tsx`) — whole
+     season, no limit. Worst failure *shape* on the list: it produces derived
+     numbers, so truncation reads as plausible arithmetic rather than a short
+     list.
+  3. **Season page division cards** (`leagues/[id]/page.tsx`) — whole season.
+  4. **Both CSV exports** — generic (`export-picker-modal.tsx`) and Sports
+     Connect (`sports-connect-export.ts`).
+  5. **Division schedule panel** — and its OWN print region
+     (`division-schedule-panel.tsx` ~1191), which has the identical
+     `{activeGames.length} game` confident-count design.
+  6. **The calendar branch's `1000`** — move off that number regardless, so a
+     real cap can never be confused with the PostgREST one.
+  Also unconverted on the Schedule page itself: the venue-options query
+  (`.eq("league_id", …)`, no limit) that feeds the venue filter dropdown.
+- **Not affected, verified:** the public token schedule (`/schedule/[token]`)
+  goes through `get_interleague_schedule_by_token`, which returns an aggregated
+  json scalar — the row cap applies to table reads, not a function's json
+  return. Head-counts (`{ count: "exact", head: true }`) are exact regardless,
+  so the dashboard stat cards and `division-game-counts.ts` are immune.
+
 ## Schedule export (Sports Connect)
 
 - **TWO surfaces, ONE builder — format changes go in the builder, never in
@@ -517,6 +595,15 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   builder (rounds, tiebreaks, quoting, midnight wrap, refusal shapes);
   mutation-checked (status-filter and duration-guard mutants both fail it).
   Re-run after ANY change to the builder or `weekKeyFromIsoDate`.
+- **KNOWN HARNESS GAP: `sim:sc-export` drives the BUILDER, not the FETCH.** It
+  feeds `buildSportsConnectCsv` fixture rows directly and never exercises
+  `fetchSportsConnectGames`, so it **structurally cannot catch a truncated
+  read** — a capped or short fetch produces a CSV that is internally perfect,
+  passes every assertion, and is silently missing games. Green here says
+  nothing about completeness. `fetchSportsConnectGames` has no `.limit()` but
+  is unconverted and still exposed to the PostgREST 1000-row cap (see
+  "Complete reads"); when it moves to `fetchAllRows`, the fetch needs its own
+  coverage rather than an extension of this sim's builder assertions.
 
 ## Schedule filters
 
