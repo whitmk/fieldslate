@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Loader2, Lock, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { LocationPicker } from "@/components/venues/location-picker";
 import type { Venue } from "@/types/database";
 import {
   DAY_KEYS,
@@ -80,9 +81,12 @@ interface VenueEditFormProps {
   /** Whether this venue has ANY scheduled game yet. False → the empty-state
    *  note ("game days appear once you've generated this field's schedule"). */
   venueHasGames?: boolean;
+  /** Fires when a location is created via the inline picker, so a host that
+   *  renders its own location grouping (the Venues page) can refresh. */
+  onLocationsChanged?: () => void;
 }
 
-/** Venue editor (name, field count, weekly availability). State is
+/** Venue editor (name, location, weekly availability). State is
  *  initialized from `venue` on mount — key by venue.id when the target
  *  venue can change. Deliberately contains no <form> element: it is reused
  *  inside modals on other pages, and an implicit submit bubbling into a
@@ -95,12 +99,11 @@ export function VenueEditForm({
   className,
   gameDays,
   venueHasGames = false,
+  onLocationsChanged,
 }: VenueEditFormProps) {
   const derivedGameDays = gameDays ?? new Map<DayKey, number>();
   const [name, setName] = useState(venue.name);
-  const [capacity, setCapacity] = useState(
-    venue.capacity ? String(venue.capacity) : "",
-  );
+  const [locationId, setLocationId] = useState<string | null>(venue.location_id);
   const [draft, setDraft] = useState<AvailabilityDraft>(() =>
     draftFromAvailability(parseAvailability(venue.availability)),
   );
@@ -171,7 +174,7 @@ export function VenueEditForm({
       .from("venues")
       .update({
         name: name.trim(),
-        capacity: capacity ? parseInt(capacity, 10) : null,
+        location_id: locationId,
         availability: availability as never,
         availability_configured: hasAnyDayConfigured(availability),
       } as never)
@@ -196,18 +199,20 @@ export function VenueEditForm({
           placeholder="Venue name"
           className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
         />
-        <input
-          type="number"
-          placeholder="Number of fields (optional)"
-          value={capacity}
-          onChange={(e) => setCapacity(e.target.value)}
-          min="0"
-          className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-        />
-        <p className="text-xs text-gray-400">
-          Informational for now — conflict detection currently treats each
-          venue as one field.
-        </p>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Location (optional)</label>
+          <LocationPicker
+            ownerId={venue.owner_id}
+            value={locationId}
+            onChange={setLocationId}
+            onLocationsChanged={onLocationsChanged}
+          />
+          <p className="text-xs text-gray-400">
+            Group this field under a park or complex (e.g. Monroe Complex).
+            Location is for labeling only — scheduling still books this venue as
+            one field.
+          </p>
+        </div>
       </div>
 
       {/* Availability section */}

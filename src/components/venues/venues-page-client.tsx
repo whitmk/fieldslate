@@ -8,12 +8,14 @@ import {
   Trash2,
   Loader2,
   Clock,
+  Check,
   AlertTriangle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { VenueEditForm } from "@/components/venues/venue-edit-form";
-import type { Venue } from "@/types/database";
+import { LocationPicker } from "@/components/venues/location-picker";
+import type { Venue, Location } from "@/types/database";
 import {
   DAY_KEYS,
   DAY_LABELS,
@@ -44,6 +46,9 @@ export function VenuesPageClient({
   showSetupLink,
 }: Props) {
   const [venues, setVenues] = useState<Venue[]>([]);
+  // Locations (park/complex groupings). When the org has none, the list renders
+  // exactly as before — a flat grid — and no headings appear.
+  const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Derived game days per venue (read-only) + which venues have any schedule.
@@ -54,7 +59,7 @@ export function VenuesPageClient({
   // Add form (basics only — admin sets hours after creating)
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState("");
-  const [addCapacity, setAddCapacity] = useState("");
+  const [addLocationId, setAddLocationId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -68,8 +73,85 @@ export function VenuesPageClient({
   // dialog owns the RPC call and busy/error/blocked state.
   const [deleteTarget, setDeleteTarget] = useState<Venue | null>(null);
 
+  // Location queued for the delete-confirm dialog. Deletion goes through the
+  // delete_location_if_unreferenced RPC (0085), which refuses (and names the
+  // fields) while any venue still points at the location.
+  const [deleteLocationTarget, setDeleteLocationTarget] = useState<Location | null>(null);
+
+  // Inline location rename (heading pencil). A plain update — venues reference
+  // locations by id, so a rename touches nothing else (no name-keyed refs, no
+  // reference integrity to guard, no RPC needed).
+  const [renamingLocationId, setRenamingLocationId] = useState<string | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  function startRenameLocation(loc: Location) {
+    setRenamingLocationId(loc.id);
+    setRenameName(loc.name);
+    setRenameError(null);
+  }
+
+  function cancelRenameLocation() {
+    setRenamingLocationId(null);
+    setRenameName("");
+    setRenameError(null);
+  }
+
+  async function handleRenameLocation(loc: Location) {
+    const name = renameName.trim();
+    if (renameSaving) return;
+    if (!name) {
+      setRenameError("Location name can't be empty.");
+      return;
+    }
+    // Reject a case-insensitive duplicate of ANOTHER location in this org —
+    // there is no uniqueness constraint, and two "Monroe Complex" rows would be
+    // indistinguishable in every picker. An unchanged name (same row) is fine.
+    const clash = locations.some(
+      (l) => l.id !== loc.id && l.name.trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (clash) {
+      setRenameError("A location with that name already exists.");
+      return;
+    }
+    setRenameSaving(true);
+    setRenameError(null);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("locations")
+      .update({ name } as never)
+      .eq("id", loc.id);
+    if (error) {
+      // 23505 = the 0086 unique index firing on a race the app guard above
+      // couldn't see (two tabs). Map it to the same friendly message; never
+      // surface a raw unique-violation.
+      setRenameError(
+        (error as { code?: string }).code === "23505"
+          ? "A location with that name already exists."
+          : error.message ?? "Could not rename location.",
+      );
+      setRenameSaving(false);
+      return;
+    }
+    await loadLocations();
+    setRenameSaving(false);
+    cancelRenameLocation();
+  }
+
+  async function loadLocations() {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("locations")
+      .select("*")
+      .eq("owner_id", currentOrgId)
+      .order("name");
+    setLocations((data as Location[]) ?? []);
+  }
+
   async function loadVenues() {
     const supabase = createClient();
+    await loadLocations();
     const { data } = await supabase
       .from("venues")
       .select("*")
@@ -107,9 +189,9 @@ export function VenuesPageClient({
       .from("venues")
       .insert([{
         name: addName.trim(),
-        capacity: addCapacity ? parseInt(addCapacity, 10) : null,
+        location_id: addLocationId,
         owner_id: currentOrgId,
-      }])
+      }] as never)
       .select("*")
       .single();
     if (error || !newRow) {
@@ -119,7 +201,7 @@ export function VenuesPageClient({
     }
     await loadVenues();
     setAddName("");
-    setAddCapacity("");
+    setAddLocationId(null);
     setShowAdd(false);
     setAdding(false);
     // Drop the admin straight into the availability editor for the new venue.
@@ -128,6 +210,47 @@ export function VenuesPageClient({
   }
 
   const unconfiguredCount = venues.filter((v) => !v.availability_configured).length;
+
+  // Edit-or-display card for one venue. Shared by the flat and grouped layouts
+  // so both stay byte-identical in behavior.
+  const renderVenueCard = (venue: Venue) =>
+    editId === venue.id ? (
+      <VenueEditForm
+        key={venue.id}
+        venue={venue}
+        gameDays={gameDaysByVenue.get(venue.id)}
+        venueHasGames={venuesWithGames.has(venue.id)}
+        className="rounded-xl border border-[#22C55E]/40 bg-white p-4 shadow-sm"
+        onLocationsChanged={loadLocations}
+        onSaved={async () => {
+          await loadVenues();
+          setEditId(null);
+          onChanged?.();
+        }}
+        onCancel={() => setEditId(null)}
+      />
+    ) : (
+      <DisplayCard
+        key={venue.id}
+        venue={venue}
+        onEdit={() => setEditId(venue.id)}
+        onDelete={() => setDeleteTarget(venue)}
+      />
+    );
+
+  // Group venues by location for the nested layout. Only used when the org has
+  // at least one location; otherwise the flat grid renders exactly as before.
+  const venuesByLocation = new Map<string, Venue[]>();
+  const unassignedVenues: Venue[] = [];
+  for (const v of venues) {
+    if (v.location_id) {
+      const list = venuesByLocation.get(v.location_id) ?? [];
+      list.push(v);
+      venuesByLocation.set(v.location_id, list);
+    } else {
+      unassignedVenues.push(v);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -160,45 +283,53 @@ export function VenuesPageClient({
 
       {/* Add form */}
       {showAdd && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-          <input
-            type="text"
-            placeholder="Venue name"
-            value={addName}
-            onChange={(e) => setAddName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-            autoFocus
-            className="h-10 min-w-0 flex-1 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-          />
-          <input
-            type="number"
-            placeholder="Number of fields (optional)"
-            value={addCapacity}
-            onChange={(e) => setAddCapacity(e.target.value)}
-            min="0"
-            className="h-10 w-48 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-          />
-          <button
-            onClick={handleAdd}
-            disabled={adding || !addName.trim()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
-          >
-            {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            {adding ? "Adding…" : "Add venue"}
-          </button>
-          <button
-            onClick={() => { setShowAdd(false); setAddName(""); setAddCapacity(""); setAddError(null); }}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition-colors hover:text-gray-700"
-          >
-            Cancel
-          </button>
+        <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex min-w-[12rem] flex-1 flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500">Venue (field) name</label>
+              <input
+                type="text"
+                placeholder="e.g. Andrews"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                autoFocus
+                className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              />
+            </div>
+            <div className="flex min-w-[14rem] flex-1 flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500">Location (optional)</label>
+              <LocationPicker
+                ownerId={currentOrgId}
+                value={addLocationId}
+                onChange={setAddLocationId}
+                onLocationsChanged={loadLocations}
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleAdd}
+              disabled={adding || !addName.trim()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
+            >
+              {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              {adding ? "Adding…" : "Add venue"}
+            </button>
+            <button
+              onClick={() => { setShowAdd(false); setAddName(""); setAddLocationId(null); setAddError(null); }}
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition-colors hover:text-gray-700"
+            >
+              Cancel
+            </button>
+          </div>
           {addError && (
-            <p className="w-full text-xs text-red-500">{addError}</p>
+            <p className="text-xs text-red-500">{addError}</p>
           )}
-          <p className="w-full text-xs text-gray-400">
-            You&rsquo;ll set the venue&rsquo;s open hours next. Number of
-            fields is informational for now — conflict detection currently
-            treats each venue as one field.
+          <p className="text-xs text-gray-400">
+            You&rsquo;ll set the venue&rsquo;s open hours next. A location groups
+            several fields under one park or complex — it&rsquo;s for labeling
+            only and doesn&rsquo;t change scheduling.
           </p>
         </div>
       )}
@@ -214,31 +345,112 @@ export function VenuesPageClient({
           <p className="mt-1 text-sm text-gray-400">Add your first venue to assign games to fields.</p>
           {showSetupLink && <FinishSetupLink className="mt-3" />}
         </div>
-      ) : (
+      ) : locations.length === 0 ? (
+        // No locations yet → flat grid, exactly as before this feature.
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {venues.map((venue) =>
-            editId === venue.id ? (
-              <VenueEditForm
-                key={venue.id}
-                venue={venue}
-                gameDays={gameDaysByVenue.get(venue.id)}
-                venueHasGames={venuesWithGames.has(venue.id)}
-                className="rounded-xl border border-[#22C55E]/40 bg-white p-4 shadow-sm"
-                onSaved={async () => {
-                  await loadVenues();
-                  setEditId(null);
-                  onChanged?.();
-                }}
-                onCancel={() => setEditId(null)}
-              />
-            ) : (
-              <DisplayCard
-                key={venue.id}
-                venue={venue}
-                onEdit={() => setEditId(venue.id)}
-                onDelete={() => setDeleteTarget(venue)}
-              />
-            )
+          {venues.map((venue) => renderVenueCard(venue))}
+        </div>
+      ) : (
+        // Nested: one section per location, its fields beneath, then an
+        // "Unassigned" group for venues with no location.
+        <div className="flex flex-col gap-6">
+          {locations.map((loc) => {
+            const locVenues = venuesByLocation.get(loc.id) ?? [];
+            return (
+              <section key={loc.id} className="group flex flex-col gap-3">
+                {renamingLocationId === loc.id ? (
+                  <div className="flex flex-col gap-1 border-b border-gray-100 pb-1.5">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 flex-shrink-0 text-[#22C55E]" />
+                      <input
+                        value={renameName}
+                        autoFocus
+                        onChange={(e) => { setRenameName(e.target.value); setRenameError(null); }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRenameLocation(loc);
+                          if (e.key === "Escape") cancelRenameLocation();
+                        }}
+                        className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2.5 py-1 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/30"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRenameLocation(loc)}
+                        disabled={renameSaving || !renameName.trim()}
+                        className="inline-flex items-center gap-1 rounded-lg bg-[#22C55E] px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
+                      >
+                        {renameSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelRenameLocation}
+                        disabled={renameSaving}
+                        className="rounded-lg px-2 py-1 text-xs text-gray-400 transition-colors hover:text-gray-600 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {renameError && <p className="pl-6 text-xs text-red-500">{renameError}</p>}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-[#0C1F3F]">
+                      <MapPin className="h-4 w-4 text-[#22C55E]" />
+                      {loc.name}
+                      <span className="text-xs font-normal text-gray-400">
+                        {locVenues.length} field{locVenues.length === 1 ? "" : "s"}
+                      </span>
+                    </h2>
+                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() => startRenameLocation(loc)}
+                        title="Rename location"
+                        className="rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                        aria-label={`Rename location ${loc.name}`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteLocationTarget(loc)}
+                        title="Delete location"
+                        className="rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500"
+                        aria-label={`Delete location ${loc.name}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {locVenues.length === 0 ? (
+                  <p className="text-xs text-gray-400">
+                    No fields in this location yet. Assign a field to it from the
+                    field&rsquo;s edit form, or delete this empty location.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    {locVenues.map((venue) => renderVenueCard(venue))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+
+          {unassignedVenues.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <div className="border-b border-gray-100 pb-1.5">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-500">
+                  Unassigned
+                  <span className="text-xs font-normal text-gray-400">
+                    {unassignedVenues.length} field{unassignedVenues.length === 1 ? "" : "s"}
+                  </span>
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                {unassignedVenues.map((venue) => renderVenueCard(venue))}
+              </div>
+            </section>
           )}
         </div>
       )}
@@ -251,6 +463,17 @@ export function VenuesPageClient({
             await loadVenues();
             setDeleteTarget(null);
             onChanged?.();
+          }}
+        />
+      )}
+
+      {deleteLocationTarget && (
+        <DeleteLocationDialog
+          location={deleteLocationTarget}
+          onClose={() => setDeleteLocationTarget(null)}
+          onDeleted={async () => {
+            await loadVenues();
+            setDeleteLocationTarget(null);
           }}
         />
       )}
@@ -291,11 +514,6 @@ function DisplayCard({
         {venue.address && <p className="text-xs text-gray-400">{venue.address}</p>}
         {(venue.city || venue.state) && (
           <p className="text-xs text-gray-400">{[venue.city, venue.state].filter(Boolean).join(", ")}</p>
-        )}
-        {venue.capacity != null && (
-          <p className="text-xs text-gray-400">
-            {venue.capacity} field{venue.capacity === 1 ? "" : "s"}
-          </p>
         )}
         {venue.availability_configured && openDays.length > 0 && (
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -488,6 +706,133 @@ function DeleteVenueDialog({
               >
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                 {busy ? "Deleting…" : "Delete venue"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Delete-location dialog ───────────────────────────────────────────────────
+
+// Result shape of delete_location_if_unreferenced (0085). The COUNT is the
+// guard: a location with any venue still pointing at it returns { blocked }
+// and is NOT deleted; venue_names names the fields so the admin knows what to
+// move first.
+type DeleteLocationRpcResult =
+  | { deleted: true; name: string }
+  | { blocked: true; name: string; count: number; venue_names: string[] };
+
+function DeleteLocationDialog({
+  location,
+  onClose,
+  onDeleted,
+}: {
+  location: Location;
+  onClose: () => void;
+  onDeleted: () => Promise<void> | void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<{ count: number; venue_names: string[] } | null>(null);
+
+  async function handleDelete() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setBlocked(null);
+    const supabase = createClient();
+    const { data, error: rpcErr } = await supabase.rpc(
+      "delete_location_if_unreferenced" as never,
+      { p_location_id: location.id } as never,
+    );
+    if (rpcErr) {
+      setError(rpcErr.message ?? "Could not delete this location.");
+      setBusy(false);
+      return;
+    }
+    const result = data as unknown as DeleteLocationRpcResult;
+    if ("blocked" in result) {
+      setBlocked({ count: result.count, venue_names: result.venue_names });
+      setBusy(false);
+      return;
+    }
+    await onDeleted();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => e.target === e.currentTarget && !busy && onClose()}
+    >
+      <div className="flex w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center gap-2 border-b border-gray-100 px-6 py-4">
+          <Trash2 className="h-4 w-4 text-red-500" />
+          <h2 className="text-base font-semibold text-[#0C1F3F]">Delete location</h2>
+        </div>
+        <div className="flex flex-col gap-3 px-6 py-4">
+          {blocked ? (
+            <>
+              <p className="text-sm text-gray-700">
+                <span className="font-semibold">{location.name}</span> can&rsquo;t
+                be deleted yet — {blocked.count} field
+                {blocked.count === 1 ? " is" : "s are"} still in it:
+              </p>
+              <ul className="flex flex-col gap-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {blocked.venue_names.map((n) => (
+                  <li key={n} className="flex items-start gap-2">
+                    <span aria-hidden className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-amber-500" />
+                    <span>{n}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-sm text-gray-500">
+                Move these fields to another location (or Unassigned) first, then
+                delete this location. The fields themselves are not affected.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-gray-700">
+              Delete <span className="font-semibold">{location.name}</span>? This
+              only removes the location grouping — it will succeed only if no
+              fields are still assigned to it. No venue or schedule is affected.
+            </p>
+          )}
+          {error && (
+            <p className="rounded-md border border-red-100 bg-red-50 px-2.5 py-1.5 text-xs text-red-600">
+              {error}
+            </p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
+          {blocked ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg bg-[#0C1F3F] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80"
+            >
+              Got it
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={busy}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:opacity-50"
+              >
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                {busy ? "Deleting…" : "Delete location"}
               </button>
             </>
           )}

@@ -1827,6 +1827,7 @@ export type BlackoutDate = Database["public"]["Tables"]["blackout_dates"]["Row"]
 export type Division    = Database["public"]["Tables"]["divisions"]["Row"];
 export type Team        = Database["public"]["Tables"]["teams"]["Row"];
 export type Venue       = Database["public"]["Tables"]["venues"]["Row"];
+export type Location    = Database["public"]["Tables"]["locations"]["Row"];
 export type Game        = Database["public"]["Tables"]["games"]["Row"];
 export type ActivityLog  = Database["public"]["Tables"]["activity_log"]["Row"];
 export type PracticeTimeSlot = Database["public"]["Tables"]["practice_time_slots"]["Row"];
