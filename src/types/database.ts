@@ -1577,6 +1577,47 @@ export type Database = {
           },
         ]
       }
+      locations: {
+        Row: {
+          address: string | null
+          city: string | null
+          created_at: string
+          id: string
+          name: string
+          owner_id: string
+          state: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          owner_id: string
+          state?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          owner_id?: string
+          state?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "locations_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       venues: {
         Row: {
           address: string | null
@@ -1586,6 +1627,7 @@ export type Database = {
           city: string | null
           created_at: string
           id: string
+          location_id: string | null
           name: string
           owner_id: string
           state: string | null
@@ -1600,6 +1642,7 @@ export type Database = {
           city?: string | null
           created_at?: string
           id?: string
+          location_id?: string | null
           name: string
           owner_id: string
           state?: string | null
@@ -1614,6 +1657,7 @@ export type Database = {
           city?: string | null
           created_at?: string
           id?: string
+          location_id?: string | null
           name?: string
           owner_id?: string
           state?: string | null
@@ -1621,6 +1665,13 @@ export type Database = {
           venue_type?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "venues_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "venues_owner_id_fkey"
             columns: ["owner_id"]
