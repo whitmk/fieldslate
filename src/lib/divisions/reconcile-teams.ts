@@ -147,6 +147,38 @@ export function rewriteEntriesForRenames(
   });
 }
 
+/**
+ * PURE. Apply one team's DELETION to a division's `settings.teams[]` entries.
+ * Mirror of {@link rewriteEntriesForRenames}, but a delete both DROPS the
+ * team's own entry (only in its home division) AND CLEARS every name-keyed
+ * `conflict_team` back-reference that pointed at it (in this or any other
+ * division, matched by the reference's `conflict_division`). A rename rewrites
+ * the reference to the new name; a delete has no new name, so it clears the
+ * whole conflict tuple — a dangling ref to a team that no longer exists is
+ * exactly the drift this reconciliation prevents.
+ */
+export function rewriteEntriesForDeletion(
+  entries: TeamEntry[],
+  entriesDivisionId: string,
+  deletedDivisionId: string,
+  deletedName: string,
+): TeamEntry[] {
+  const isSelf = entriesDivisionId === deletedDivisionId;
+  const target = deletedName.trim();
+  const out: TeamEntry[] = [];
+  for (const e of entries) {
+    // Drop the deleted team's own entry from its home division.
+    if (isSelf && e.name.trim() === target) continue;
+    // Clear a back-reference that named the deleted team.
+    if (e.conflict_division === deletedDivisionId && e.conflict_team.trim() === target) {
+      out.push({ ...e, has_coach_conflict: false, conflict_division: "", conflict_team: "" });
+    } else {
+      out.push(e);
+    }
+  }
+  return out;
+}
+
 /** Strip the transient `id` before persisting to jsonb — the jsonb stays
  *  name + coach-conflict metadata only; identity lives on the `teams` row. */
 export function toJsonbEntries(entries: TeamEntry[]): TeamEntry[] {
@@ -276,6 +308,95 @@ async function countTeamGames(client: ReconcileClient, teamId: string): Promise<
   const h = (home.data ?? []) as unknown[];
   const a = (away.data ?? []) as unknown[];
   return h.length + a.length;
+}
+
+/** Read one division's settings, apply the deletion to its `teams[]`, and write
+ *  it back only if something changed. The delete twin of
+ *  {@link applyRenamesToDivisionSettings}; used for the deleted team's own
+ *  division (self) and every sibling division. */
+async function applyDeletionToDivisionSettings(
+  client: ReconcileClient,
+  divisionId: string,
+  deletedDivisionId: string,
+  deletedName: string,
+): Promise<{ error: string | null }> {
+  const { data, error } = await client
+    .from("divisions")
+    .select("settings")
+    .eq("id", divisionId)
+    .single();
+  if (error) return { error: error.message };
+
+  const settings = ((data as { settings: unknown } | null)?.settings ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const entries = Array.isArray(settings.teams) ? (settings.teams as TeamEntry[]) : [];
+  const rewritten = rewriteEntriesForDeletion(entries, divisionId, deletedDivisionId, deletedName);
+
+  // Skip the write when this division neither held the team nor referenced it.
+  if (JSON.stringify(rewritten) === JSON.stringify(entries)) return { error: null };
+
+  const { error: upErr } = await client
+    .from("divisions")
+    .update({ settings: { ...settings, teams: toJsonbEntries(rewritten) } } as never)
+    .eq("id", divisionId);
+  return { error: upErr ? upErr.message : null };
+}
+
+/** Propagate a deletion to every division in the league EXCEPT the team's own —
+ *  cross-division `conflict_team` back-references keyed to the team's division. */
+async function propagateDeletionToOtherDivisions(
+  client: ReconcileClient,
+  leagueId: string,
+  excludeDivisionId: string,
+  deletedName: string,
+): Promise<{ error: string | null }> {
+  const { data, error } = await client
+    .from("divisions")
+    .select("id")
+    .eq("league_id", leagueId)
+    .neq("id", excludeDivisionId);
+  if (error) return { error: error.message };
+
+  for (const row of (data ?? []) as { id: string }[]) {
+    const res = await applyDeletionToDivisionSettings(client, row.id, excludeDivisionId, deletedName);
+    if (res.error) return res;
+  }
+  return { error: null };
+}
+
+// ── Post-delete jsonb reconciliation (schedule panel) ─────────────────────────
+
+export type TeamDeleteReconcileResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Reconcile `divisions.settings.teams[]` AFTER `delete_team_if_unblocked` (0084)
+ * has removed the `teams` row. The RPC owns the destructive teams/games delete;
+ * this owns the name-keyed jsonb copy, so the two stay in agreement (the old
+ * panel delete skipped the jsonb entirely — the drift `S Team 1 - Rookie` came
+ * from). Removes the team's entry from its own division and clears every
+ * `conflict_team` back-reference naming it, in BOTH scopes (self + cross).
+ *
+ * Runs only after a confirmed delete: doing it first would strip the jsonb for a
+ * team a block condition then refuses — the exact drift, in reverse. A null
+ * `divisionId` (orphan team) has no home entry and no ref keyed to it, so there
+ * is nothing to reconcile.
+ */
+export async function reconcileJsonbAfterTeamDelete(
+  args: { leagueId: string; divisionId: string | null; teamName: string },
+  client: ReconcileClient = createClient(),
+): Promise<TeamDeleteReconcileResult> {
+  const { leagueId, divisionId, teamName } = args;
+  if (!divisionId) return { ok: true };
+
+  const selfRes = await applyDeletionToDivisionSettings(client, divisionId, divisionId, teamName);
+  if (selfRes.error) return { ok: false, error: selfRes.error };
+
+  const otherRes = await propagateDeletionToOtherDivisions(client, leagueId, divisionId, teamName);
+  if (otherRes.error) return { ok: false, error: otherRes.error };
+
+  return { ok: true };
 }
 
 // ── Inline rename (schedule panel) ───────────────────────────────────────────

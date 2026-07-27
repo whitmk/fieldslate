@@ -30,6 +30,8 @@
 import {
   reconcileTeamsOnSave,
   renameTeamInline,
+  reconcileJsonbAfterTeamDelete,
+  rewriteEntriesForDeletion,
   planTeamReconciliation,
   mergeLiveTeamsWithJsonb,
   toJsonbEntries,
@@ -58,6 +60,10 @@ const counters = {
   crossDivConflictRewrite: 0,
   inlineRename: 0,
   collisionBlocked: 0,
+  deleteEntryRemoved: 0,
+  deleteInDivRefCleared: 0,
+  deleteCrossDivRefCleared: 0,
+  deleteMutantsCaught: 0,
   mutantsCaught: 0,
 };
 
@@ -379,6 +385,101 @@ async function scenarioCollisionBlocked() {
   counters.collisionBlocked++;
 }
 
+// ── Post-delete jsonb reconciliation (delete_team_if_unblocked, 0084) ─────────
+// The RPC removes the teams row; reconcileJsonbAfterTeamDelete keeps the
+// name-keyed jsonb copy in agreement — dropping the team's own entry AND
+// clearing every conflict_team back-reference to it, in BOTH scopes.
+
+async function scenarioDeleteReconcile() {
+  const db: Db = { teams: [], divisions: [], games: [] };
+  // d1: Aces references Bees (in-division). d2: Cats references Bees in d1
+  // (cross-division). Bees is the team about to be deleted.
+  seedDivision(db, "d1", [
+    { name: "Aces", entry: entry("Aces", { has_coach_conflict: true, conflict_division: "d1", conflict_team: "Bees" }) },
+    { name: "Bees" },
+  ]);
+  seedDivision(db, "d2", [
+    { name: "Cats", entry: entry("Cats", { has_coach_conflict: true, conflict_division: "d1", conflict_team: "Bees" }) },
+  ]);
+  const client = new FakeClient(db);
+
+  // Emulate the RPC's authoritative delete of the teams row.
+  db.teams = db.teams.filter((t) => t.id !== "d1_Bees");
+
+  const res = await reconcileJsonbAfterTeamDelete(
+    { leagueId: LEAGUE, divisionId: "d1", teamName: "Bees" },
+    client.asClient(),
+  );
+  assert(res.ok, "delete: reconcile succeeds");
+
+  const d1 = db.divisions.find((d) => d.id === "d1") as { settings: { teams: TeamEntry[] } };
+  const d2 = db.divisions.find((d) => d.id === "d2") as { settings: { teams: TeamEntry[] } };
+
+  if (!d1.settings.teams.some((e) => e.name === "Bees")) counters.deleteEntryRemoved++;
+  else assert(false, "delete: Bees entry removed from its own division jsonb");
+
+  const aces = d1.settings.teams.find((e) => e.name === "Aces");
+  if (aces && aces.conflict_team === "" && aces.has_coach_conflict === false) counters.deleteInDivRefCleared++;
+  else assert(false, "delete: in-division conflict_team ref to Bees cleared");
+
+  const cats = d2.settings.teams.find((e) => e.name === "Cats");
+  if (cats && cats.conflict_team === "" && cats.has_coach_conflict === false) counters.deleteCrossDivRefCleared++;
+  else assert(false, "delete: cross-division conflict_team ref to Bees cleared");
+
+  assertAgree(db, "d1", "delete-d1");
+  assertAgree(db, "d2", "delete-d2");
+}
+
+// Mutation testing for the pure delete rewrite. The real function must satisfy
+// all three invariants; each mutant must break at least one.
+type DeleteRewrite = typeof rewriteEntriesForDeletion;
+
+function deleteRewriteInvariantsHold(fn: DeleteRewrite): boolean {
+  const d1In: TeamEntry[] = [
+    entry("Aces", { has_coach_conflict: true, conflict_division: "d1", conflict_team: "Bees" }),
+    entry("Bees"),
+  ];
+  const d2In: TeamEntry[] = [
+    entry("Cats", { has_coach_conflict: true, conflict_division: "d1", conflict_team: "Bees" }),
+  ];
+  const d1Out = fn(d1In, "d1", "d1", "Bees"); // self division
+  const d2Out = fn(d2In, "d2", "d1", "Bees"); // sibling division
+  const entryRemoved = !d1Out.some((e) => e.name === "Bees");
+  const inDivCleared = d1Out.find((e) => e.name === "Aces")?.conflict_team === "";
+  const crossCleared = d2Out.find((e) => e.name === "Cats")?.conflict_team === "";
+  return entryRemoved && inDivCleared && crossCleared;
+}
+
+const DELETE_MUTANTS: { name: string; fn: DeleteRewrite }[] = [
+  {
+    // Never drops the deleted team's own entry → jsonb keeps a phantom.
+    name: "keeps deleted entry",
+    fn: (entries, entriesDivId, deletedDivId, deletedName) =>
+      entries.map((e) =>
+        e.conflict_division === deletedDivId && e.conflict_team.trim() === deletedName.trim()
+          ? { ...e, has_coach_conflict: false, conflict_division: "", conflict_team: "" }
+          : e,
+      ),
+  },
+  {
+    // Drops the entry but leaves every conflict_team back-reference dangling.
+    name: "leaves dangling conflict_team refs",
+    fn: (entries, entriesDivId, deletedDivId, deletedName) => {
+      const isSelf = entriesDivId === deletedDivId;
+      return entries.filter((e) => !(isSelf && e.name.trim() === deletedName.trim()));
+    },
+  },
+];
+
+function runDeleteMutationTests() {
+  assert(deleteRewriteInvariantsHold(rewriteEntriesForDeletion), "delete-mutation: real rewrite holds invariants");
+  for (const m of DELETE_MUTANTS) {
+    const held = deleteRewriteInvariantsHold(m.fn);
+    assert(!held, `delete-mutation: mutant "${m.name}" must be caught`);
+    if (!held) counters.deleteMutantsCaught++;
+  }
+}
+
 // ── Mutation testing (break rename detection → must fail) ─────────────────────
 //
 // applyPlanToDb mirrors reconcileTeamsOnSave's orchestration but takes an
@@ -482,7 +583,9 @@ async function main() {
   await scenarioConflictRewriteBothScopes();
   await scenarioInlineRenameParity();
   await scenarioCollisionBlocked();
+  await scenarioDeleteReconcile();
   await runMutationTests();
+  runDeleteMutationTests();
 
   console.log("\nanti-vacuity counters:", JSON.stringify(counters, null, 0));
   const zero = Object.entries(counters).filter(([, v]) => v === 0);

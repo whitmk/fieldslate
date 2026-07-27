@@ -8,7 +8,7 @@ import {
   Pencil, Trash2, Check, Users, ListChecks, Lock, LockOpen, Send,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { renameTeamInline } from "@/lib/divisions/reconcile-teams";
+import { renameTeamInline, reconcileJsonbAfterTeamDelete } from "@/lib/divisions/reconcile-teams";
 import {
   generateSchedule,
   finishSchedule,
@@ -29,7 +29,6 @@ import {
   setDivisionLock,
   setDivisionPosted,
   lockedReason,
-  isDivisionLockError,
 } from "@/lib/schedule/division-lock";
 import { AutoAssignUmpiresButton } from "@/components/umpires/auto-assign-button";
 import {
@@ -61,6 +60,63 @@ interface Props {
 }
 
 type Team = { id: string; name: string };
+
+// ── Team-delete preview (delete_team_if_unblocked, migration 0084) ────────────
+type DeleteDestroyed = {
+  games: number;
+  umpire_assignments: number;
+  reschedule_requests: number;
+  override_history: number;
+  practice_slots: number;
+  availability_blocks: number;
+  team_constraints: number;
+  official_conflicts: number;
+};
+type DeleteSideEffects = {
+  playoff_slots_cleared: number;
+  official_coach_links_cleared: number;
+  snack_shack_assignments_cleared: number;
+};
+type DeletePreview =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "blocked"; reasons: string[] }
+  | { status: "ready"; destroyed: DeleteDestroyed; sideEffects: DeleteSideEffects };
+
+/** Human sentence for each server block reason. Lock wording is shared with the
+ *  rest of the panel via lockedReason so it can't drift. */
+function describeDeleteBlock(reason: string, divisionName: string): string {
+  switch (reason) {
+    case "division_locked":
+      return lockedReason(divisionName, "deleteTeam");
+    case "interleague_accepted":
+      return "This team has accepted interleague games — a partner league is relying on them. Resolve those games first (that flow notifies the partner).";
+    case "result_recorded":
+      return "This team has a game with a recorded result. Deleting it would erase season history.";
+    default:
+      return "This team can't be deleted right now.";
+  }
+}
+
+/** Confirm-dialog lines from the preview's real counts. Coach-entered data
+ *  (practice slots, availability blocks) is always named — it is the reason
+ *  this delete is dangerous. Zero-count categories are omitted rather than
+ *  shown as a bare "0" on a destructive confirm. */
+function deletePreviewLines(d: DeleteDestroyed, s: DeleteSideEffects): string[] {
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const lines: string[] = [plural(d.games, "scheduled game", "scheduled games")];
+  if (d.practice_slots > 0) lines.push(`${plural(d.practice_slots, "practice slot", "practice slots")} (coach-entered)`);
+  if (d.availability_blocks > 0) lines.push(`${plural(d.availability_blocks, "availability block", "availability blocks")} (coach-entered)`);
+  if (d.team_constraints > 0) lines.push(plural(d.team_constraints, "scheduling constraint", "scheduling constraints"));
+  if (d.official_conflicts > 0) lines.push(plural(d.official_conflicts, "official conflict-of-interest link", "official conflict-of-interest links"));
+  if (d.umpire_assignments > 0) lines.push(plural(d.umpire_assignments, "umpire assignment", "umpire assignments"));
+  const orphaned: string[] = [];
+  if (s.official_coach_links_cleared > 0) orphaned.push(`${plural(s.official_coach_links_cleared, "official's coach link", "officials' coach links")}`);
+  if (s.playoff_slots_cleared > 0) orphaned.push(plural(s.playoff_slots_cleared, "playoff slot", "playoff slots"));
+  if (s.snack_shack_assignments_cleared > 0) orphaned.push(plural(s.snack_shack_assignments_cleared, "snack shack assignment", "snack shack assignments"));
+  if (orphaned.length > 0) lines.push(`Cleared (kept, not deleted): ${orphaned.join(", ")}`);
+  return lines;
+}
 
 type GameRow = {
   id: string;
@@ -132,9 +188,13 @@ export function DivisionSchedulePanel({
   const [editError, setEditError] = useState<string | null>(null);
   const [savingTeamId, setSavingTeamId] = useState<string | null>(null);
 
-  // Team delete state
+  // Team delete state. The preview (delete_team_if_unblocked in p_commit=false
+  // mode) fills the confirm dialog with the server's real counts / block
+  // reasons; the modal stays open on a blocked result so the reason is readable
+  // AT the action, not down in the footer (Defect 2).
   const [deleteTarget, setDeleteTarget] = useState<Team | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
 
   // Bulk rainout select mode
   const [selectMode, setSelectMode] = useState(false);
@@ -475,41 +535,96 @@ export function DivisionSchedulePanel({
     setSavingTeamId(null);
   }
 
-  async function handleDeleteTeam(team: Team) {
+  // ── Guarded team delete (delete_team_if_unblocked, migration 0084) ──────────
+  // Replaces the old three bare, non-atomic client deletes (delete home games,
+  // delete away games, delete team) that skipped the jsonb and surfaced the
+  // locked refusal in the footer. Now: open -> server PREVIEW (real counts /
+  // block reasons) -> confirm -> server COMMIT (atomic) -> reconcile jsonb.
+  type DeleteRpc = {
+    blocked?: boolean;
+    deleted?: boolean;
+    reasons?: string[];
+    destroyed?: DeleteDestroyed;
+    side_effects?: DeleteSideEffects;
+  };
+
+  function openDeleteModal(team: Team) {
+    setDeleteTarget(team);
+    void runDeletePreview(team);
+  }
+
+  function closeDeleteModal() {
+    if (deleteLoading) return;
+    setDeleteTarget(null);
+    setDeletePreview(null);
+  }
+
+  async function runDeletePreview(team: Team) {
+    setDeletePreview({ status: "loading" });
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("delete_team_if_unblocked" as never, {
+      p_team_id: team.id,
+      p_commit: false,
+    } as never);
+    if (error) {
+      setDeletePreview({ status: "error", message: error.message });
+      return;
+    }
+    const res = (data ?? {}) as DeleteRpc;
+    if (res.blocked) {
+      if (res.reasons?.includes("division_locked")) setLocked(true);
+      setDeletePreview({ status: "blocked", reasons: res.reasons ?? [] });
+      return;
+    }
+    setDeletePreview({
+      status: "ready",
+      destroyed: res.destroyed as DeleteDestroyed,
+      sideEffects: res.side_effects as DeleteSideEffects,
+    });
+  }
+
+  async function confirmDeleteTeam(team: Team) {
     setDeleteLoading(true);
     const supabase = createClient();
-
-    // Delete games where the team is home or away (no cascade on those FKs).
-    // A locked division refuses these at the trigger; surface that as the lock
-    // message rather than raw SQL, and STOP — deleting the team while its
-    // games survive would strand orphan rows.
-    const homeDel = await supabase.from("games").delete().eq("home_team_id", team.id);
-    const awayDel = await supabase.from("games").delete().eq("away_team_id", team.id);
-    const delErr = homeDel.error ?? awayDel.error;
-    if (delErr) {
+    const { data, error } = await supabase.rpc("delete_team_if_unblocked" as never, {
+      p_team_id: team.id,
+      p_commit: true,
+    } as never);
+    if (error) {
       setDeleteLoading(false);
-      setDeleteTarget(null);
-      setResult({
-        type: "error",
-        message: isDivisionLockError(delErr.message)
-          ? lockedReason(divisionName, "deleteTeam")
-          : `Couldn't delete the team's games: ${delErr.message}`,
-      });
+      setDeletePreview({ status: "error", message: error.message });
       return;
     }
-
-    const { error: teamErr } = await supabase.from("teams").delete().eq("id", team.id);
-    if (teamErr) {
+    const res = (data ?? {}) as DeleteRpc;
+    if (res.blocked) {
+      // Raced: a block condition (usually a lock toggled between preview and
+      // confirm) appeared. Nothing was deleted — keep the modal open, show why,
+      // and let the UI catch up.
+      if (res.reasons?.includes("division_locked")) setLocked(true);
       setDeleteLoading(false);
-      setDeleteTarget(null);
-      setResult({ type: "error", message: `Couldn't delete the team: ${teamErr.message}` });
+      setDeletePreview({ status: "blocked", reasons: res.reasons ?? [] });
       return;
     }
-
-    setDeleteTarget(null);
+    // Deleted. Reconcile the name-keyed jsonb copy (the RPC deliberately leaves
+    // divisions.settings.teams[] alone) so the two stay in agreement.
+    const recon = await reconcileJsonbAfterTeamDelete({
+      leagueId,
+      divisionId,
+      teamName: team.name,
+    });
     setDeleteLoading(false);
+    setDeleteTarget(null);
+    setDeletePreview(null);
     await fetchGames();
     onScheduleChange?.();
+    setResult(
+      recon.ok
+        ? { type: "success", message: `${team.name} deleted.` }
+        : {
+            type: "error",
+            message: `${team.name} was deleted, but its saved team list couldn't be updated (${recon.error}). Re-saving the division from the wizard will fix it.`,
+          },
+    );
   }
 
   async function handleRainOut(game: GameRow) {
@@ -683,9 +798,10 @@ export function DivisionSchedulePanel({
                           <Pencil className="h-3 w-3" />
                         </button>
                         <button
-                          onClick={() => setDeleteTarget(team)}
-                          title="Delete team"
-                          className="flex h-6 w-6 items-center justify-center rounded-md text-gray-300 transition-colors hover:bg-red-50 hover:text-red-400"
+                          onClick={() => openDeleteModal(team)}
+                          disabled={locked}
+                          title={locked ? lockedReason(divisionName, "deleteTeam") : "Delete team"}
+                          className="flex h-6 w-6 items-center justify-center rounded-md text-gray-300 transition-colors hover:bg-red-50 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-300"
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
@@ -699,34 +815,78 @@ export function DivisionSchedulePanel({
         </div>
       )}
 
-      {/* ── Delete confirmation modal ── */}
+      {/* ── Delete confirmation modal ──
+          Counts and block reasons come from the server preview
+          (delete_team_if_unblocked, p_commit=false). On a blocked result the
+          modal STAYS OPEN with the reason and no delete button — the whole
+          point of Defect 2's fix is that the "why" is readable at the action. */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
             <div className="mb-1 flex items-center gap-2">
-              <Trash2 className="h-4 w-4 text-red-500" />
-              <h3 className="text-base font-bold text-[#0C1F3F]">Delete team?</h3>
+              {deletePreview?.status === "blocked"
+                ? <Lock className="h-4 w-4 text-amber-500" />
+                : <Trash2 className="h-4 w-4 text-red-500" />}
+              <h3 className="text-base font-bold text-[#0C1F3F]">
+                {deletePreview?.status === "blocked" ? "Can't delete this team" : "Delete team?"}
+              </h3>
             </div>
-            <p className="mt-2 text-sm text-gray-600">
-              <span className="font-semibold">{deleteTarget.name}</span> will be permanently removed along with{" "}
-              <span className="font-semibold">all of their scheduled games</span>. This cannot be undone.
-            </p>
+
+            {deletePreview?.status === "loading" && (
+              <p className="mt-2 flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking what this would remove…
+              </p>
+            )}
+
+            {deletePreview?.status === "error" && (
+              <p className="mt-2 text-sm text-red-600">
+                Couldn&apos;t check this team: {deletePreview.message}
+              </p>
+            )}
+
+            {deletePreview?.status === "blocked" && (
+              <div className="mt-2 space-y-2">
+                {deletePreview.reasons.map((r) => (
+                  <p key={r} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    {describeDeleteBlock(r, divisionName)}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {deletePreview?.status === "ready" && (
+              <div className="mt-2 text-sm text-gray-600">
+                <p>
+                  <span className="font-semibold">{deleteTarget.name}</span> will be permanently
+                  removed, along with:
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {deletePreviewLines(deletePreview.destroyed, deletePreview.sideEffects).map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-gray-400">This cannot be undone.</p>
+              </div>
+            )}
+
             <div className="mt-5 flex justify-end gap-2">
               <button
-                onClick={() => setDeleteTarget(null)}
+                onClick={closeDeleteModal}
                 disabled={deleteLoading}
                 className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-gray-300 disabled:opacity-50"
               >
-                Cancel
+                {deletePreview?.status === "blocked" || deletePreview?.status === "error" ? "Close" : "Cancel"}
               </button>
-              <button
-                onClick={() => handleDeleteTeam(deleteTarget)}
-                disabled={deleteLoading}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:opacity-50"
-              >
-                {deleteLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                {deleteLoading ? "Deleting…" : "Delete team & games"}
-              </button>
+              {deletePreview?.status === "ready" && (
+                <button
+                  onClick={() => confirmDeleteTeam(deleteTarget)}
+                  disabled={deleteLoading}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:opacity-50"
+                >
+                  {deleteLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  {deleteLoading ? "Deleting…" : "Delete team & games"}
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -51,7 +51,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0083.** The repo files are the record, not the
+  **Latest migration: 0084.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -267,6 +267,84 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   the delete's own transaction. A failed pre-flight count renders "couldn't
   count", never a silent 0 — a 0 on a destructive confirm is the worst
   possible failure mode.
+
+## Team deletion (single team)
+
+- **`delete_team_if_unblocked` (0084) is THE single-team hard-delete path** —
+  a SECURITY DEFINER RPC in the 0078/0079/0081 family (row lock →
+  `is_org_member` gate → block conditions → `{blocked, reasons, …}` or atomic
+  delete + disclosure counts). It REPLACED the panel's three bare, non-atomic
+  client deletes (delete home games → delete away games → delete `teams` row)
+  in `division-schedule-panel.tsx`, which skipped the jsonb entirely and
+  surfaced a locked refusal in the footer. Entry point: the trash icon on a
+  team row in the division schedule panel.
+- **It fixed TWO defects.** Defect 1 (dangerous, found during investigation):
+  `enforce_division_lock` (0082) is a trigger on `games` ONLY, so a team with
+  ZERO games deleted CLEAN on a LOCKED division — taking its `practice_slots`,
+  `team_availability_blocks`, `team_game_constraints`, `official_conflicts`
+  on CASCADE, no refusal, no disclosure. The RPC reads `divisions.locked`
+  DIRECTLY (first block condition), so the lock fires with zero games — do NOT
+  make this lean on the games trigger. Defect 2 (reported): the caught,
+  correctly-worded refusal rendered in the panel footer while the modal
+  closed — read as "nothing happened". The modal now shows block reasons AT
+  the action and STAYS OPEN on a blocked result.
+- **Exactly three block conditions, ALL evaluated (never first-match):**
+  1. *Division locked* (`divisions.locked`). BLOCK, do NOT set `lock_bypass` —
+     a team is not the container the lock lives in, so the bypass rule (only
+     `delete_league_permanently` / `delete_division_permanently` qualify) does
+     not apply. Fires regardless of games (Defect 1).
+  2. *Accepted interleague* (mirror 0079): a game on the team with
+     `interleague_org_id IS NOT NULL AND status <> 'pending_interleague'`.
+  3. *Recorded result* (mirror 0079): a game on the team with
+     `home_score`/`away_score NOT NULL OR status = 'completed'` — refused even
+     when unlocked.
+- **`p_commit boolean` — the RPC is its own preview.** `p_commit=false`
+  evaluates blocks + computes every disclosure count and deletes NOTHING;
+  `p_commit=true` re-evaluates blocks (the lock can flip between preview and
+  confirm — a blocked commit deletes nothing) then deletes. The confirm dialog
+  is populated from the preview call, so counts come from ONE authoritative
+  source, never a parallel client count that could drift. Deletion order is
+  games-first (the `games` FKs are NO ACTION), then the team.
+- **DISCLOSURE, not gates:** destroyed counts (games + per-game
+  `game_umpires`/`conflict_overrides`/`interleague_reschedule_requests`, plus
+  `practice_slots`/`team_availability_blocks`/`team_game_constraints`/
+  `official_conflicts`) and SET-NULL side effects (`playoff_games`
+  home/away/winner, `umpires.team_id` coach link, `snack_shack_blocks`).
+  `practice_slots` + `team_availability_blocks` are named IN the confirm copy —
+  coach-entered data is why this delete is dangerous. `practices_legacy` is
+  ignored (dead table), same call as the venue guard.
+- **The jsonb is reconciled on the CLIENT, not in the RPC.** The RPC owns only
+  the destructive teams/games delete; `reconcileJsonbAfterTeamDelete` in
+  `reconcile-teams.ts` (the single team-name path — never a bare jsonb write)
+  runs AFTER a confirmed delete and removes the team's own
+  `settings.teams[]` entry + clears every `conflict_team` back-reference to it
+  in BOTH scopes (self + cross-division, keyed by `conflict_division`). Runs
+  after the delete, never before — doing it first would strip the jsonb for a
+  team a block then refuses (drift in reverse). This closes the old
+  "`handleDeleteTeam` leaves the jsonb stale on delete" bug that produced the
+  `S Team 1 - Rookie` phantom in SRALL Fall 2026 Rookies.
+- **Harness: `scripts/sim/team-delete-sim.sql`** — SQL, run via Supabase MCP
+  (same SQL-level-exception standard as `schedule-lock-sim.sql`; NOT
+  `npm run`-able), 12 assertions + 12 anti-vacuity counters + 5 mutants all
+  killed by their own assertion (2026-07-27), incl. the ★ Defect-1 mutant
+  (gate the lock on `games>0` → the zero-games-locked commit assertion A4
+  fails). The jsonb reconcile is covered by `npm run sim:team-reconcile`
+  (`scenarioDeleteReconcile` + 2 delete-rewrite mutants). Re-verify
+  `md5(prosrc)` = `725e6e9d5bc00ca3f4252e1ba40f13d2` after any mutation run.
+- **THREE team-count sources already disagree — the delete does NOT touch the
+  third, by design.** The panel roster header ("Teams · N") reads the LIVE
+  `teams` table (`teams.length`); the wizard edit-load derives N from
+  `mergeLiveTeamsWithJsonb` (live + jsonb). Both drop by one on a delete. But
+  the season-page division card's people badge reads the STORED
+  `divisions.team_count` COLUMN (`division-section.tsx`), which is written only
+  by the wizard save (from the configured count) and maintained by NOTHING on
+  inline add (`create_team`) or delete — so it drifts independently (SRALL
+  Fall 2026 Rookies: badge 15 while 16 live rows existed). The guarded delete
+  deliberately leaves `team_count` alone: it is a wizard-configured value, not
+  a live counter, and decrementing only the delete side would not make the
+  badge correct (adds already drift it). Fixing the badge = make it read the
+  live count, a separate decision. Do not "fix" it by writing `team_count` in
+  the delete RPC.
 
 ## Schedule lock + posted flag
 
@@ -968,10 +1046,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `divisions.settings.teams[]` jsonb (name-keyed copy, including name-keyed
   `conflict_team` back-references). ANY operation that changes or removes a
   team must update BOTH or they silently diverge. Rename is fixed (`1296df9`,
-  below); the panel's `handleDeleteTeam` still leaves the jsonb stale on
-  delete — same family, different trigger, still open. **Rule: never add a
-  second code path that writes a team name or removes a team — route through
-  `src/lib/divisions/reconcile-teams.ts`.**
+  below); the panel's `handleDeleteTeam` delete path is ALSO fixed now — it
+  routes through `delete_team_if_unblocked` (0084) + `reconcileJsonbAfterTeamDelete`
+  (see "Team deletion (single team)" above), so both copies stay in agreement
+  on delete. **Rule: never add a second code path that writes a team name or
+  removes a team — route through `src/lib/divisions/reconcile-teams.ts`.**
 - **Historical damage:** a wizard rename on SRALL Fall 2026 T-Ball created a
   duplicate `teams` row (the wizard reconciled by name and only inserted
   net-new names), splitting one real team across two identities and
@@ -1012,9 +1091,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   rewritten in both scopes, collision aborts with no writes. Mutation-tested
   (detection mutants + in-source guard disables all caught) with anti-vacuity
   counters. Re-run after ANY change to `reconcile-teams.ts` or the two call
-  sites. **Still open in this family:** the panel's `handleDeleteTeam` leaves
-  the jsonb stale on delete (delete path, not rename). SRALL's duplicate rows
-  were repaired 2026-07-22 — see Historical damage above.
+  sites. **Delete-path drift is now CLOSED too:** the panel's team delete
+  routes through `delete_team_if_unblocked` (0084) +
+  `reconcileJsonbAfterTeamDelete` (see "Team deletion (single team)"), so a
+  delete keeps both copies in agreement. SRALL's duplicate rows were repaired
+  2026-07-22 — see Historical damage above; the `S Team 1 - Rookie` stale
+  jsonb entry from the old delete path is a separate pending data cleanup.
 
 ## Venues
 
