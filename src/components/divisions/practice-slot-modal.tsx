@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Lock, Trash2, Wand2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 
 const DAY_OPTIONS: { key: string; label: string }[] = [
   { key: "Mo", label: "Mon" },
@@ -21,7 +22,7 @@ export type SlotTimeSlot = {
   division_id: string;
 };
 
-export type SlotVenue = { id: string; name: string };
+export type SlotVenue = { id: string; name: string; location: { name: string } | null };
 
 export type SlotTeam = {
   id: string;
@@ -274,7 +275,7 @@ export function PracticeSlotModal({
                 </option>
                 {venues.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.name}
+                    {qualifiedVenueLabel(v)}
                   </option>
                 ))}
               </select>

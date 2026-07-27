@@ -28,6 +28,7 @@ import {
   parseAvailability,
   type VenueAvailability,
 } from "@/lib/venues/availability";
+import { qualifiedVenueLabel, byQualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   CONFLICT_TYPE_LABELS,
   insertConflictOverrides,
@@ -55,7 +56,7 @@ type GameRow = {
   venue: { id: string; name: string } | null;
 };
 
-type Venue = { id: string; name: string; availability: VenueAvailability };
+type Venue = { id: string; name: string; availability: VenueAvailability; location: { name: string } | null };
 
 type DivSettings = {
   game_duration: number;
@@ -239,7 +240,7 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
       // games at unconfigured venues, so don't offer them as a move target.
       supabase
         .from("venues")
-        .select("id, name, availability")
+        .select("id, name, availability, location:locations(name)")
         .in("id", venueIds)
         .eq("availability_configured", true),
       supabase
@@ -323,12 +324,22 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
 
     setVenues(
       (
-        (venueRes.data ?? []) as { id: string; name: string; availability: unknown }[]
-      ).map((v) => ({
-        id: v.id,
-        name: v.name,
-        availability: parseAvailability(v.availability),
-      })),
+        (venueRes.data ?? []) as {
+          id: string;
+          name: string;
+          availability: unknown;
+          location: { name: string } | null;
+        }[]
+      )
+        .map((v) => ({
+          id: v.id,
+          name: v.name,
+          availability: parseAvailability(v.availability),
+          location: v.location ?? null,
+        }))
+        // Sort by the qualified label so a park's fields cluster in the
+        // move-target dropdown (order-only; the value written is the venue id).
+        .sort(byQualifiedVenueLabel),
     );
 
     // Detect conflicts across all venue games, filter to those touching this division
@@ -410,7 +421,7 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
         const win = targetVenue.availability[dayKey];
         found.push({
           type: "venue_hours",
-          message: `${targetVenue.name} isn't open at this time (${DAY_LABELS[dayKey]}: ${
+          message: `${qualifiedVenueLabel(targetVenue)} isn't open at this time (${DAY_LABELS[dayKey]}: ${
             win ? `${fmtTime12(win.start)} – ${fmtTime12(win.end)}` : "closed"
           }).`,
         });
@@ -428,7 +439,7 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
     if (venueClash) {
       found.push({
         type: "venue_double_book",
-        message: `${targetVenue?.name ?? "This venue"} already has a game within ${gap} minutes of this time.`,
+        message: `${targetVenue ? qualifiedVenueLabel(targetVenue) : "This venue"} already has a game within ${gap} minutes of this time.`,
       });
     }
 
@@ -862,7 +873,7 @@ export function ConflictResolverModal({ leagueId, divisionId, divisionName, onCl
                                       className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-[#0C1F3F] focus:border-[#0C1F3F] focus:outline-none"
                                     >
                                       {venues.map((v) => (
-                                        <option key={v.id} value={v.id}>{v.name}</option>
+                                        <option key={v.id} value={v.id}>{qualifiedVenueLabel(v)}</option>
                                       ))}
                                     </select>
                                   </div>

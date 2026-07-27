@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { MapPin, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { qualifiedVenueLabel, byQualifiedVenueLabel } from "@/lib/venues/venue-label";
 import type { SnackShackWizardData } from "../wizard-types";
 
 interface Venue {
   id: string;
   name: string;
   city: string | null;
+  location: { name: string } | null;
 }
 
 interface Props {
@@ -37,21 +39,25 @@ export function StepVenues({ data, update, leagueId, currentOrgId }: Props) {
         ),
       );
 
+      // Sort by the qualified label so a park's fields cluster together
+      // (order-only; the home-venue selection is id-keyed and unaffected).
+      const sortByLabel = (rows: Venue[] | null) =>
+        (rows ?? []).slice().sort(byQualifiedVenueLabel);
       if (venueIds.length > 0) {
         const { data: vRaw } = await supabase
           .from("venues")
-          .select("id, name, city")
+          .select("id, name, city, location:locations(name)")
           .in("id", venueIds)
           .order("name", { ascending: true });
-        setVenues((vRaw as Venue[] | null) ?? []);
+        setVenues(sortByLabel(vRaw as Venue[] | null));
       } else {
         // Fallback: load all venues owned by the user
         const { data: vRaw } = await supabase
           .from("venues")
-          .select("id, name, city")
+          .select("id, name, city, location:locations(name)")
           .eq("owner_id", currentOrgId)
           .order("name", { ascending: true });
-        setVenues((vRaw as Venue[] | null) ?? []);
+        setVenues(sortByLabel(vRaw as Venue[] | null));
       }
       setLoading(false);
     }
@@ -108,7 +114,7 @@ export function StepVenues({ data, update, leagueId, currentOrgId }: Props) {
                   className="h-4 w-4 rounded border-gray-300 text-[#22C55E] focus:ring-[#22C55E]/30"
                 />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">{v.name}</p>
+                  <p className="text-sm font-medium text-gray-900">{qualifiedVenueLabel(v)}</p>
                   {v.city && (
                     <p className="text-xs text-gray-400">{v.city}</p>
                   )}

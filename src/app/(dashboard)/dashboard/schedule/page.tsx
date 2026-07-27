@@ -17,6 +17,7 @@ import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
 import { SchedulePrintButton } from "@/components/schedule/schedule-print-button";
 import { SchedulePrintRegion } from "@/components/schedule/schedule-print-region";
 import { fetchAllRows, type PagedResult } from "@/lib/supabase/fetch-all";
+import { byQualifiedVenueLabel } from "@/lib/venues/venue-label";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
@@ -168,23 +169,25 @@ export default async function SchedulePage({
   const { data: venueData } = seasonId
     ? await supabase
         .from("games")
-        .select("venue_id, venue:venues(name)")
+        .select("venue_id, venue:venues(name, location:locations(name))")
         .eq("league_id", seasonId)
         .not("venue_id", "is", null)
-    : { data: [] as { venue_id: string; venue: { name: string } | null }[] };
+    : { data: [] as { venue_id: string; venue: { name: string; location: { name: string } | null } | null }[] };
   const venues = (() => {
     const rows = (venueData ?? []) as unknown as {
       venue_id: string;
-      venue: { name: string } | null;
+      venue: { name: string; location: { name: string } | null } | null;
     }[];
-    const byId = new Map<string, string>();
+    const byId = new Map<string, { name: string; location: { name: string } | null }>();
     for (const r of rows) {
       if (r.venue_id && r.venue?.name && !byId.has(r.venue_id)) {
-        byId.set(r.venue_id, r.venue.name);
+        byId.set(r.venue_id, { name: r.venue.name, location: r.venue.location ?? null });
       }
     }
-    return Array.from(byId, ([id, name]) => ({ id, name })).sort((a, b) =>
-      a.name.localeCompare(b.name),
+    // Sort by the qualified label so a park's fields cluster in the dropdown
+    // (order-only; the filter value is the venue id and is unaffected).
+    return Array.from(byId, ([id, v]) => ({ id, name: v.name, location: v.location })).sort(
+      byQualifiedVenueLabel,
     );
   })();
 

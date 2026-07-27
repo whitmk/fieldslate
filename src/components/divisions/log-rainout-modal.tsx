@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
 import { logActivity } from "@/lib/activity-log";
+import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import type { Division } from "@/types/database";
 
 type GameOption = {
@@ -17,7 +18,7 @@ type GameOption = {
   away_team_id: string;
   home_team: { name: string } | null;
   away_team: { name: string } | null;
-  venue: { name: string } | null;
+  venue: { name: string; location: { name: string } | null } | null;
 };
 
 type MultiGameOption = GameOption & {
@@ -89,7 +90,7 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
         id, scheduled_at, home_team_id, away_team_id,
         home_team:teams!home_team_id(name),
         away_team:teams!away_team_id(name),
-        venue:venues(name)
+        venue:venues(name, location:locations(name))
       `)
       .in("home_team_id", teamIds)
       .eq("status", "scheduled")
@@ -133,7 +134,7 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
         id, scheduled_at, home_team_id, away_team_id,
         home_team:teams!home_team_id(name),
         away_team:teams!away_team_id(name),
-        venue:venues(name)
+        venue:venues(name, location:locations(name))
       `)
       .in("home_team_id", teamIds)
       .eq("status", "scheduled")
@@ -341,7 +342,7 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
                     {fmtGameDate(selectedGame.scheduled_at)} at {fmtGameTime(selectedGame.scheduled_at)}
-                    {selectedGame.venue?.name ? ` · ${selectedGame.venue.name}` : ""}
+                    {selectedGame.venue ? ` · ${qualifiedVenueLabel(selectedGame.venue)}` : ""}
                   </p>
                 </div>
                 <p className="text-sm text-gray-600">
@@ -415,7 +416,7 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
                                 </p>
                                 <p className="mt-0.5 text-xs text-gray-400">
                                   {fmtGameDate(game.scheduled_at)} at {fmtGameTime(game.scheduled_at)}
-                                  {game.venue?.name ? ` · ${game.venue.name}` : ""}
+                                  {game.venue ? ` · ${qualifiedVenueLabel(game.venue)}` : ""}
                                 </p>
                               </div>
                               <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-300" />
@@ -541,7 +542,7 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
                                 </p>
                                 <p className="mt-0.5 text-xs text-gray-400">
                                   {fmtGameTime(game.scheduled_at)}
-                                  {game.venue?.name ? ` · ${game.venue.name}` : ""}
+                                  {game.venue ? ` · ${qualifiedVenueLabel(game.venue)}` : ""}
                                   {game.division_name ? ` · ${game.division_name}` : ""}
                                 </p>
                               </div>

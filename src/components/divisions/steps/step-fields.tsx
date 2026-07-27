@@ -12,6 +12,10 @@ import {
 } from "@/lib/venues/availability";
 import type { WizardData, VenueAssignment } from "../wizard-types";
 import type { Venue } from "@/types/database";
+import { qualifiedVenueLabel, byQualifiedVenueLabel } from "@/lib/venues/venue-label";
+
+// Venue row widened with its joined location (for the qualified chooser label).
+type VenueRow = Venue & { location: { name: string } | null };
 
 interface Props {
   data: WizardData;
@@ -21,7 +25,7 @@ interface Props {
 }
 
 export function StepFields({ data, update, leagueId, currentOrgId }: Props) {
-  const [venues, setVenues] = useState<Venue[]>([]);
+  const [venues, setVenues] = useState<VenueRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [conflictMap, setConflictMap] = useState<Record<string, string>>({});
 
@@ -31,12 +35,16 @@ export function StepFields({ data, update, leagueId, currentOrgId }: Props) {
 
       const { data: venueData } = await supabase
         .from("venues")
-        .select("*")
+        .select("*, location:locations(name)")
         .eq("owner_id", currentOrgId)
         .eq("availability_configured", true)
         .order("name");
 
-      const allVenues = (venueData as Venue[]) ?? [];
+      // Sort by the qualified label so a park's fields cluster together
+      // (order-only; selection is id-keyed and unaffected).
+      const allVenues = ((venueData as VenueRow[]) ?? [])
+        .slice()
+        .sort(byQualifiedVenueLabel);
       setVenues(allVenues);
 
       const { data: existingDivisions } = await supabase
@@ -162,7 +170,7 @@ export function StepFields({ data, update, leagueId, currentOrgId }: Props) {
                 <div className="flex items-center gap-3 min-w-0">
                   <MapPin className="h-4 w-4 flex-shrink-0 text-gray-300" />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-[#0C1F3F] truncate">{venue.name}</p>
+                    <p className="text-sm font-medium text-[#0C1F3F] truncate">{qualifiedVenueLabel(venue)}</p>
                     {(venue.city || venue.state) && (
                       <p className="text-xs text-gray-400">
                         {[venue.city, venue.state].filter(Boolean).join(", ")}

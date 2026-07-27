@@ -12,6 +12,7 @@ import {
   type DayKey,
   type VenueAvailability,
 } from "@/lib/venues/availability";
+import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   constraintsFromRows,
   violatesHardConstraint,
@@ -230,21 +231,31 @@ export function RainoutRescheduleModal({
     const { data: dvRows } = await supabase
       .from("division_venues")
       .select(
-        "venue_id, venue:venues!inner(name, availability, availability_configured)",
+        "venue_id, venue:venues!inner(name, availability, availability_configured, location:locations(name))",
       )
       .eq("division_id", divisionId)
       .eq("venue.availability_configured", true);
 
     type DVRow = {
       venue_id: string;
-      venue: { name: string; availability: unknown; availability_configured: boolean } | null;
+      venue: {
+        name: string;
+        availability: unknown;
+        availability_configured: boolean;
+        location: { name: string } | null;
+      } | null;
     };
     const venueRows = (dvRows ?? []) as unknown as DVRow[];
     const venueIds = venueRows.map((r) => r.venue_id);
+    // Slots are chosen here (rainout closes a PARK), so the venue is shown as
+    // the qualified "Complex — Field" label. Slot ORDER is time-based and left
+    // untouched; the venue is an attribute of each slot, not the option key.
     const venueNames: Record<string, string> = {};
     const venueAvailability: Record<string, unknown> = {};
     for (const r of venueRows) {
-      venueNames[r.venue_id] = r.venue?.name ?? r.venue_id;
+      venueNames[r.venue_id] = r.venue
+        ? qualifiedVenueLabel({ name: r.venue.name, location: r.venue.location })
+        : r.venue_id;
       venueAvailability[r.venue_id] = r.venue?.availability ?? {};
     }
 

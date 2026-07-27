@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { MapPin, Plus, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { qualifiedVenueLabel, byQualifiedVenueLabel } from "@/lib/venues/venue-label";
 import type { PlayoffWizardData, VenueAssignment } from "../playoff-wizard-types";
 
 interface Venue {
@@ -11,6 +12,7 @@ interface Venue {
   name: string;
   city?: string | null;
   state?: string | null;
+  location?: { name: string } | null;
 }
 
 interface Props {
@@ -77,12 +79,14 @@ export function StepVenues({ data, update, currentOrgId }: Props) {
       // unconfigured ones anyway.
       const { data: venueData } = await supabase
         .from("venues")
-        .select("id, name, city, state")
+        .select("id, name, city, state, location:locations(name)")
         .eq("owner_id", currentOrgId)
         .eq("availability_configured", true)
         .order("name");
 
-      setVenues((venueData as Venue[]) ?? []);
+      // Sort by the qualified label so a park's fields cluster together
+      // (order-only; selection is id-keyed and unaffected).
+      setVenues(((venueData as Venue[]) ?? []).slice().sort(byQualifiedVenueLabel));
       setLoading(false);
     }
     load();
@@ -184,7 +188,7 @@ export function StepVenues({ data, update, currentOrgId }: Props) {
                   <MapPin className="h-4 w-4 flex-shrink-0 text-gray-300" />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-[#0C1F3F]">
-                      {venue.name}
+                      {qualifiedVenueLabel(venue)}
                     </p>
                     {(venue.city || venue.state) && (
                       <p className="text-xs text-gray-400">

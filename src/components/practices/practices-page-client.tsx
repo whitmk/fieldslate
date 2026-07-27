@@ -42,6 +42,7 @@ import {
 } from "@/components/divisions/practice-slot-modal";
 import { PracticeExportModal } from "@/components/practices/practice-export-modal";
 import { autoAssignPractices } from "@/lib/practices/auto-assign";
+import { qualifiedVenueLabel, byQualifiedVenueLabel } from "@/lib/venues/venue-label";
 
 const DAY_OPTIONS: { key: string; label: string; short: string; full: string }[] = [
   { key: "Mo", label: "Mon", short: "M",  full: "Monday" },
@@ -55,7 +56,10 @@ const DAY_OPTIONS: { key: string; label: string; short: string; full: string }[]
 const ALL_DAY_KEYS = DAY_OPTIONS.map((d) => d.key);
 
 type Division = { id: string; name: string; league_id: string };
-type Venue = { id: string; name: string };
+// Widened with the joined location so every chooser fed from allVenues (the
+// Fields filter, the practice-slot modal, the per-team Preferred field select)
+// can render the qualified "Complex — Field" label.
+type Venue = { id: string; name: string; location: { name: string } | null };
 type TimeSlot = {
   id: string;
   division_id: string;
@@ -225,7 +229,7 @@ export function PracticesPageClient({
         ? supabase
             .from("division_venues")
             .select(
-              "division_id, venue_id, allow_practices, venue:venues!inner(id, name, availability_configured)",
+              "division_id, venue_id, allow_practices, venue:venues!inner(id, name, availability_configured, location:locations(name))",
             )
             .in("division_id", orgDivisionIds)
             .eq("allow_practices", true)
@@ -279,9 +283,11 @@ export function PracticesPageClient({
     for (const r of dvRows) {
       if (r.venue && !venueMap.has(r.venue.id)) venueMap.set(r.venue.id, r.venue);
     }
-    setAllVenues(
-      [...venueMap.values()].sort((a, b) => a.name.localeCompare(b.name)),
-    );
+    // Sort by the qualified label so a park's fields cluster together. This one
+    // sort at the source clusters every downstream chooser (Fields filter, slot
+    // modal via buildVenueList, per-team Preferred field) — all preserve this
+    // order. Order-only; every selection is id-keyed.
+    setAllVenues([...venueMap.values()].sort(byQualifiedVenueLabel));
 
     // practice_slots + team_availability_blocks key off team_id, where the
     // team_id set was just narrowed to this org's teams above. No extra
@@ -557,7 +563,7 @@ export function PracticesPageClient({
     }
     return allVenues
       .filter((v) => venueIds.has(v.id))
-      .map((v) => ({ id: v.id, name: v.name }));
+      .map((v) => ({ id: v.id, name: v.name, location: v.location }));
   }
 
   function openCreateSlot(venue: Venue, day: string, startTime: string) {
@@ -760,7 +766,7 @@ export function PracticesPageClient({
         />
         <MultiSelectPopover
           label="Fields"
-          items={allVenues.map((v) => ({ id: v.id, label: v.name }))}
+          items={allVenues.map((v) => ({ id: v.id, label: qualifiedVenueLabel(v) }))}
           selected={filterFields}
           onChange={setFilterFields}
           allLabel="All fields"
@@ -2090,7 +2096,7 @@ function TeamPreferenceCard({
             <option value="">Any</option>
             {venues.map((v) => (
               <option key={v.id} value={v.id}>
-                {v.name}
+                {qualifiedVenueLabel(v)}
               </option>
             ))}
           </select>

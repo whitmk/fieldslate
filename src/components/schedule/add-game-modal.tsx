@@ -19,6 +19,7 @@ import {
   isVenueAvailable,
   parseAvailability,
 } from "@/lib/venues/availability";
+import { qualifiedVenueLabel, byQualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   CONFLICT_TYPE_LABELS,
   insertConflictOverrides,
@@ -48,7 +49,7 @@ export type AddGameSeason = { id: string; name: string };
 export type AddGameDivision = { id: string; name: string; league_id: string };
 export type AddGameTeam = { id: string; name: string; division_id: string };
 
-type VenueOption = { id: string; name: string };
+type VenueOption = { id: string; name: string; location: { name: string } | null };
 
 const inputClasses =
   "h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400";
@@ -171,11 +172,13 @@ export function AddGameModal({
       }
       const { data } = await supabase
         .from("venues")
-        .select("id, name")
+        .select("id, name, location:locations(name)")
         .eq("owner_id", ownerId)
         .order("name");
       if (!cancelled) {
-        setVenues((data as VenueOption[] | null) ?? []);
+        // Sort by the qualified label so a park's fields cluster in the
+        // dropdown (order-only; the chosen value is the venue id).
+        setVenues(((data as VenueOption[] | null) ?? []).slice().sort(byQualifiedVenueLabel));
         setVenuesLoading(false);
       }
     }
@@ -656,7 +659,7 @@ export function AddGameModal({
               </option>
               {venues.map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.name}
+                  {qualifiedVenueLabel(v)}
                 </option>
               ))}
             </select>

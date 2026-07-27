@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 
 interface Props {
-  venues: { id: string; name: string }[];
+  venues: { id: string; name: string; location?: { name: string } | null }[];
   selectedId: string;
 }
 
@@ -26,7 +27,7 @@ export function VenueFilter({ venues, selectedId }: Props) {
       <option value="">All venues</option>
       {venues.map((v) => (
         <option key={v.id} value={v.id}>
-          {v.name}
+          {qualifiedVenueLabel(v)}
         </option>
       ))}
     </select>
