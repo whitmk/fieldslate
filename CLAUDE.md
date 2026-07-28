@@ -51,7 +51,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0084.** The repo files are the record, not the
+  **Latest migration: 0087.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -1122,6 +1122,134 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   whole-row `<button>` tap targets; nesting an edit button would be
   invalid HTML). Phone users edit venues on the Venues page.
 
+## Locations (venue → park/complex hierarchy)
+
+- **The model.** A `locations` row (0085) is an org-scoped park/complex
+  ("Monroe Complex") that GROUPS venues (fields). `venues.location_id` is a
+  NULLABLE FK → `locations(id)` ON DELETE RESTRICT. **The venue stays the
+  atomic bookable unit; a location holds NO schedule data.** A venue with no
+  location behaves EXACTLY as before this feature existed — that is the whole
+  compatibility story (every venue is location-less until an org opts in).
+  Migrations: 0085 (table + column + delete guard), 0086 (unique index),
+  0087 (token RPCs emit location).
+- **THE SCOPE FENCE — and why it holds.** Nothing scheduling-related reads
+  `location_id`: not the generators, not conflict detection, not the
+  availability jsonb, not `division_venues`, not the Reports matrix, not
+  `delete_venue_if_unreferenced`. It holds because every venue reference in
+  the engine is ID-keyed (verified: `division_venues`, `teams.preferred_field_id`,
+  `snack_shack_settings.home_venue_ids`, the generator's venue maps), so
+  location is a pure DISPLAY grouping. **Only two kinds of code read
+  `location_id`: the CSV builder and `qualifiedVenueLabel`.** If a change
+  appears to need a scheduling path to know about locations, STOP — the plan
+  is wrong.
+- **THE CHOOSER vs DISPLAY line (safety-critical, not cosmetic).** Anywhere the
+  user CHOOSES a field, show the qualified `"Monroe Complex — Andrews"` label;
+  anywhere the user merely READS a schedule, the bare short name stays. The
+  reason: SRALL's fields span four different leagues' parks (Wright/WSLL,
+  Ives/SLL, Monroe/SRALL, Forestville/EMLL). Once names are short, a picker
+  reading "Perry, Minors, Polley, Andrews" gives no way to tell whose park is
+  whose, and during a rainout (moving many games fast) a mis-pick lands a game
+  at the wrong league's field. That is a real error, which is why choosers are
+  qualified and displays are not.
+- **ONE formatter: `qualifiedVenueLabel(venue)` in
+  `src/lib/venues/venue-label.ts`** (with `byQualifiedVenueLabel` for sorting).
+  Input `{ name; location?: { name } | null }` → `"Complex — Field"` with a
+  location, the bare name UNCHANGED without. Never hand-write the concatenation;
+  never add a second formatter. It deliberately does NOT collide with the
+  pre-existing game-level `venueLabel(g)` in schedule-list / schedule-print-region
+  / game-detail-modal, which are DISPLAY surfaces and stay bare.
+- **Chooser surfaces carrying it** (each widened its venue embed to a NULLABLE
+  `location:locations(name)` join — an `!inner` on locations would empty every
+  picker, since zero venues have a location today): Add Game modal, practice-slot
+  modal, rainout-reschedule slot labels, conflict-resolver move-target,
+  division-wizard Fields step, snack-shack Home venues, playoffs Venues step,
+  the practices Preferred-field select, plus (as filters, for disambiguation)
+  the schedule-page venue filter, the practices Fields filter, and the
+  log-rainout game picker (rain closes a PARK — the park is the discriminator).
+  Picker options are sorted by the qualified label so a park's fields cluster;
+  the option VALUE is always `venue.id` — a label change must never change a
+  value.
+- **THE DEFERRED INTERNAL DISPLAY SWEEP.** The read-only display surfaces
+  (schedule list, dashboard cards, print regions, Reports matrix) keep the bare
+  short name ON PURPOSE for now. **TRIGGER to do the sweep:** the first org that
+  has the SAME field name under two different locations (e.g. an "Andrews" in
+  Monroe Complex and an "Andrews" in Wright Complex) — at that point bare names
+  become ambiguous even when just reading, and the displays need the qualified
+  label too. Until then, leave them bare.
+- **The CSV export split** (`sports-connect-export.ts`, one of the two
+  sanctioned `location_id` readers): venue HAS a location → Location = location
+  name, Field = venue name; venue has NO location → Location = venue name,
+  Field = blank (today's exact behavior); is_away → unchanged
+  (`proposed_venue_name` fallback, blank Field). Proven byte-for-byte in
+  `npm run sim:sc-export`.
+- **PARTNER-FACING labels go through the three token RPCs, which EMIT, they do
+  not FORMAT.** `get_interleague_schedule_by_token`, `get_interleague_invite_by_token`,
+  and `get_reschedule_request_by_token` (0087) each emit a nested
+  `venue.location` object (`{ name } | null`); TypeScript's one formatter does
+  all concatenation, so RPC results and direct-query embeds share ONE signature.
+  **DO NOT "simplify" this by granting `anon` SELECT on `locations`.** These RPCs
+  feed ANONYMOUS surfaces (public token schedule page, public invite page,
+  acceptance-confirmation email) and `anon` has NO grant on `locations` by
+  design — a grant would expose every org's park list to anonymous callers. The
+  RPCs are SECURITY DEFINER for exactly this reason: route location THROUGH them.
+  The one exception is the game-resolve email route, which runs as our
+  AUTHENTICATED admin and reads its own org's location via a direct embed under
+  RLS. (All three surfaces render the bare name for a location-less venue —
+  byte-identical to today — so there is no partner-visible change until a venue
+  gets a location.)
+- **The delete guard is COUNT-based, never FK-error-based** (same house rule as
+  0078/0081): `delete_location_if_unreferenced` (0085) row-locks →
+  `is_org_member` gate → COUNTS venues referencing the location → returns
+  `{blocked, count, venue_names}` and deletes nothing if any exist, else deletes.
+  The ON DELETE RESTRICT FK is a BACKSTOP only; the count is the guard, and a raw
+  FK error must never reach the user.
+- **Name uniqueness is enforced TWO ways** and both must stay: the app guard
+  (LocationPicker create + heading rename reject a case-insensitive duplicate —
+  the friendly path users see) AND the DB unique index
+  `locations_owner_name_uniq (owner_id, lower(name))` (0086 — the backstop for
+  races/other create paths). Applied while `locations` was empty so it could
+  never fail on real data (the deliberate opposite of `venues`, where existing
+  rows made uniqueness unsafe). Both create/rename paths CATCH a raw 23505 and
+  map it to the same "A location with that name already exists" message — a raw
+  unique-violation must never reach the UI.
+- **RENAME is safe and is the escape hatch.** A location rename is a plain
+  `locations.update` by id — venues reference locations by ID, so a rename
+  touches nothing else (no name-keyed refs, no reference integrity to guard, no
+  RPC needed). It exists because the delete guard correctly BLOCKS deleting a
+  location that still has fields, so a typo'd name would otherwise be unfixable
+  without detaching every field first.
+- **Renaming a venue does NOT clear `posted`** — deliberate. The game hasn't
+  moved (only its label changed), and a ten-field rename sitting would otherwise
+  fire `posted` across every division at once. Relatedly, **schedule LOCK does
+  not cover venue names**: a locked division protects against destructive
+  re-derivation of GAMES, not against renaming a venue, so a locked schedule's
+  printed wording can still change under a rename. Both are accepted.
+- **The interleague venue-hours gate matches by NAME and this feature nudges it.**
+  `get_game_venue_context_for_gate` (and the sender-side propose route) match a
+  partner's free-typed `proposed_venue_name` against OUR venue names via
+  `lower(v.name)`, fail-open (unmatched → skip the hours check). Live today: 15
+  games carry a proposed name, ZERO match a venue. Shortening venue names makes
+  an accidental match MORE likely, which moves that gate from skipping to
+  ENFORCING a venue's hours — the safer direction, but a live behavior change
+  driven purely by data entry, not code. Not a bug; know it exists.
+- **The "Number of fields (optional)" capacity input was RETIRED** from the
+  add/edit forms and the card display (a venue is now explicitly one field under
+  a location, so a per-venue field count is self-contradictory). The
+  `venues.capacity` COLUMN and its existing values are UNTOUCHED — insert/update
+  simply stopped writing it. No data dropped; the column can be dropped later if
+  desired.
+- **Stored-name audit (2026-07-27): nothing but `activity_log` bakes in a venue
+  name, and that is ACCEPTABLE.** Every other venue-name materialization
+  (playoff bracket/export `venue_name`, Reports, the division panel, the CSV,
+  practice export) is computed at RENDER/EXPORT time from a live `venue:venues(name)`
+  join, so a rename flows through automatically — nothing persisted. `activity_log`
+  messages are free text and DO contain venue names captured at write time (79
+  live rows), but a log is a record of what was true when written, so it is left
+  as-is BY DESIGN. `games.proposed_venue_name` stores the PARTNER's field name
+  (external free text), not ours. If you ever add a NON-log surface that persists
+  a venue name at write time, that IS a bug (the SRALL name-keyed drift family) —
+  route it through the id instead.
+
 ## Interleague invites
 
 - **Invite status is STORED, not derived.** `interleague_invites.status`
@@ -1156,13 +1284,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   0074); only genuinely invalid tokens get the not-found screen. The
   interleague dashboard refetches on tab focus/visibility — deliberately no
   polling and no realtime.
-- **`venues.capacity` is informational-only** (UI label "Number of fields"
-  since 2026-07-14): nothing in the codebase reads it — conflict detection
-  treats every venue as ONE field regardless of its value. The separate,
-  actually-consumed fields concept is `interleague_orgs.field_count` (the
-  schedule generator caps same-day away games per partner org). If capacity
-  is ever wired into conflict detection, update the helper copy on the
-  venues page in the same change.
+- **`venues.capacity` is informational-only** and its INPUT is now RETIRED
+  (2026-07-27, see the Locations section): nothing in the codebase reads it —
+  conflict detection treats every venue as ONE field regardless of its value —
+  and the add/edit forms no longer collect it, though the column and existing
+  values remain. The separate, actually-consumed fields concept is
+  `interleague_orgs.field_count` (the schedule generator caps same-day away
+  games per partner org).
 
 ## Officials / umpires
 
@@ -1390,6 +1518,19 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   input value to the DB.
 
 ## Open items
+
+- **Dead-column cleanup (backlog, no reader/writer).** `divisions.practice_venue_id`
+  (no UI picker anywhere, 1 live row) and `venues.venue_type` (read/written
+  nowhere, superseded by `division_venues.allow_games`/`allow_practices`) are
+  both dead columns. Same family; a future cleanup migration can drop them.
+  Not urgent — flagged so a reader doesn't assume they mean something.
+- **`dashboard_readonly` holds EXECUTE on functions it shouldn't (least-privilege
+  backlog).** `delete_location_if_unreferenced` and every function created since
+  the July "alter default privileges … grant execute on functions" change carry
+  an EXECUTE grant to `dashboard_readonly`. It fails CLOSED (the functions gate
+  on `is_org_member`, which matches `auth.uid()`, and the dashboard connects with
+  NO JWT), so nothing is exposed — but it is one layer of protection instead of
+  two. Clean up alongside the restricted Stripe key.
 
 - **Rainout reschedule modal carries lever advice** — `rainout-reschedule-modal.tsx`
   line ~515 says "Try adding venues or extending the season end date." Same
