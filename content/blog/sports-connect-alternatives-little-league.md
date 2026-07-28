@@ -112,6 +112,8 @@ That's the question to ask in a demo. Registration and volunteer management are 
 **What should we do first?**
 Export your data from Sports Connect, and put "scheduling plan for 2027" on your next board agenda as its own line item — separate from the registration migration.
 
+For the story behind FieldSlate, see [Why I Built FieldSlate](https://www.thefieldslate.com/blog/why-i-built-fieldslate).
+
 ---
 
 *FieldSlate is season-scheduling software for youth leagues — field-conflict detection, interleague coordination, umpire assignments, and playoff brackets. Free to try at [thefieldslate.com](https://www.thefieldslate.com).*

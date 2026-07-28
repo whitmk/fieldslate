@@ -102,6 +102,8 @@ Little League's Central Registration is moving to PlayMetrics for the 2027 seaso
 **How much should scheduling software cost for a Little League?**
 Models vary widely: per-player fees (add up fast for big leagues), annual subscriptions, and flat per-season pricing. For comparison's sake, convert every quote to a per-season total for your actual numbers before comparing.
 
+For the story behind FieldSlate, see [Why I Built FieldSlate](https://www.thefieldslate.com/blog/why-i-built-fieldslate).
+
 ---
 
 *FieldSlate is season-scheduling software for youth leagues — field-conflict detection, interleague coordination, umpire assignments, and playoff brackets. Free to try at [thefieldslate.com](https://www.thefieldslate.com).*
