@@ -173,6 +173,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Live articles:**
   https://www.thefieldslate.com/blog/sports-connect-alternatives-little-league
   https://www.thefieldslate.com/blog/little-league-scheduling-software
+  https://www.thefieldslate.com/blog/why-i-built-fieldslate
 - **FAQPage JSON-LD comes from frontmatter.** A post with an optional `faq`
   list ({question, answer} pairs, answers plain text — no markdown) gets a
   FAQPage block on its page; `src/lib/blog.ts` fails the build on a malformed
