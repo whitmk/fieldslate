@@ -22,10 +22,15 @@
 //   proposed new time). Revisit only if original-date storage is added.
 // - EndTime: start + game_duration. buffer_minutes is between-game spacing,
 //   never part of play length — do not add it.
-// - Field: deliberately blank on every row. FieldSlate has no per-field
-//   concept (venues are single fields; venues.capacity is informational
-//   only). Do not stub a value here — per-field support is a separate
-//   future feature.
+// - Location / Field split by whether the venue has a LOCATION (park/complex):
+//   * venue HAS a location  → Location = location name, Field = venue name.
+//   * venue has NO location  → Location = venue name,   Field = blank
+//     (today's exact behavior, byte-for-byte — every venue is location-less
+//     until an org adopts locations, so this is what every current export
+//     produces).
+//   The venue stays the atomic bookable unit; location is a grouping label.
+//   Never stub a Field value when there is no location — a blank Field is
+//   correct, and a venue with no location is the common case.
 // - is_away interleague games swap columns (partner org's team is HomeTeam):
 //   the games table always stores OUR team as home_team_id and flags the
 //   true home side with is_away (verified against live rows 2026-07-23), but
@@ -38,7 +43,8 @@
 //   to match the schedule panel's display rule, so a stale counter-proposal
 //   venue can never surface on a home game. Blank/whitespace names fall
 //   through the same as blank partner names (venues.name is NOT NULL but
-//   has no non-blank CHECK).
+//   has no non-blank CHECK). is_away games carry no venue row, so they never
+//   get a Field value — Field stays blank exactly as today.
 
 import { countsAsScheduledGame, weekKeyFromIsoDate } from "@/lib/venues/game-days";
 import type { createClient } from "@/lib/supabase/client";
@@ -52,7 +58,7 @@ export type SportsConnectGame = {
   proposed_venue_name: string | null;
   home_team: { name: string } | null;
   away_team: { name: string } | null;
-  venue: { name: string } | null;
+  venue: { name: string; location: { name: string } | null } | null;
 };
 
 export type SportsConnectResult =
@@ -83,7 +89,7 @@ export async function fetchSportsConnectGames(
     .select(`id, scheduled_at, status, is_away, external_team_name, proposed_venue_name,
       home_team:teams!home_team_id(name),
       away_team:teams!away_team_id(name),
-      venue:venues(name)`)
+      venue:venues(name, location:locations(name))`)
     .in("home_team_id", teamIds)
     .order("scheduled_at", { ascending: true });
   if (error) return { ok: false, error: error.message };
@@ -155,6 +161,25 @@ export function buildSportsConnectCsv(
     const partner = g.external_team_name?.trim() || (g.away_team?.name ?? "TBD");
     const [homeName, awayName] = g.is_away ? [partner, ourTeam] : [ourTeam, partner];
     const start = startMinutes(g.scheduled_at);
+    // Location / Field split (see header). A venue with a location fills BOTH;
+    // a venue without one keeps today's behavior (Location = venue, Field
+    // blank); an is_away row has no venue, so Location falls back to
+    // proposed_venue_name and Field stays blank — all byte-for-byte as before
+    // for the no-location case.
+    const venueName = g.venue?.name?.trim() ?? "";
+    const locationName = g.venue?.location?.name?.trim() ?? "";
+    let location: string;
+    let field: string;
+    if (venueName && locationName) {
+      location = locationName;
+      field = venueName;
+    } else if (venueName) {
+      location = venueName;
+      field = "";
+    } else {
+      location = g.is_away ? g.proposed_venue_name?.trim() ?? "" : "";
+      field = "";
+    }
     return [
       String(i + 1),
       String(roundByWeek.get(weekKeyFromIsoDate(g.scheduled_at)) ?? 0),
@@ -163,8 +188,8 @@ export function buildSportsConnectCsv(
       fmtMatchDate(g.scheduled_at),
       fmtHHMM(start),
       fmtHHMM(start + duration),
-      g.venue?.name?.trim() || (g.is_away ? g.proposed_venue_name?.trim() ?? "" : ""),
-      "", // Field — blank by design, see header comment
+      location,
+      field,
     ]
       .map(csvField)
       .join(",");

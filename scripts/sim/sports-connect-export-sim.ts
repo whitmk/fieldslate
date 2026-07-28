@@ -2,7 +2,10 @@
 // Exact-row assertions: header, CRLF, SortOrder tiebreaks, Monday-start
 // RoundNo weeks (same-weekend grouping, gap-week skip), is_away swap,
 // comma quoting, M/D/YYYY, EndTime math incl. midnight wrap, blank Field,
-// and the fail-loud refusal on every invalid game_duration shape.
+// the fail-loud refusal on every invalid game_duration shape, AND the
+// Location/Field location split (Chunk 4): venue-with-location fills both
+// columns, venue-without-location keeps today's blank Field, is_away is
+// unchanged.
 import {
   buildSportsConnectCsv,
   fetchSportsConnectGames,
@@ -28,7 +31,7 @@ function g(p: Partial<SportsConnectGame> & { id: string; scheduled_at: string })
     proposed_venue_name: null,
     home_team: { name: "Home" },
     away_team: { name: "Away" },
-    venue: { name: "Park" },
+    venue: { name: "Park", location: null },
     ...p,
   };
 }
@@ -105,6 +108,66 @@ const longRounds = longRes.csv.split("\r\n").slice(1, 12).map((l) => l.split(","
 assert(
   longRounds.join(",") === "1,2,3,4,5,6,7,8,9,10,11",
   `11-week season rounds in order (got: ${longRounds.join(",")})`,
+);
+
+// ── Location / Field split (Chunk 4) ─────────────────────────────────────────
+// Three cases, proven exact-row (not eyeballed):
+//   1. venue WITH a location  → Location = location name, Field = venue name.
+//   2. venue WITHOUT a location → Location = venue name, Field = blank
+//      (byte-for-byte today's behavior).
+//   3. is_away (no venue row) → Location = proposed_venue_name, Field = blank,
+//      column swap — entirely unchanged by this feature.
+// Plus two edge cases: a comma in the location name must quote the Location
+// cell, and a whitespace-only location name degrades to "no location".
+const locGames: SportsConnectGame[] = [
+  g({
+    id: "L1", scheduled_at: "2026-10-24T09:00:00+00:00",
+    home_team: { name: "AA" }, away_team: { name: "BB" },
+    venue: { name: "Andrews", location: { name: "Monroe Complex" } },
+  }),
+  g({
+    id: "L2", scheduled_at: "2026-10-24T10:00:00+00:00",
+    home_team: { name: "CC" }, away_team: { name: "DD" },
+    venue: { name: "Franklin", location: null },
+  }),
+  g({
+    id: "L3", scheduled_at: "2026-10-24T11:00:00+00:00", is_away: true,
+    external_team_name: "Wolves", away_team: null, home_team: { name: "Us" },
+    venue: null, proposed_venue_name: "Their Park",
+  }),
+  g({
+    id: "L4", scheduled_at: "2026-10-24T13:00:00+00:00",
+    home_team: { name: "EE" }, away_team: { name: "FF" },
+    venue: { name: "Andrews", location: { name: "Monroe, East" } },
+  }),
+  g({
+    id: "L5", scheduled_at: "2026-10-24T14:00:00+00:00",
+    home_team: { name: "GG" }, away_team: { name: "HH" },
+    venue: { name: "Blank Loc", location: { name: "   " } },
+  }),
+];
+const locRes = buildSportsConnectCsv(locGames, 60, "Loc");
+if (!locRes.ok) throw new Error("locRes not ok: " + locRes.error);
+const locLines = locRes.csv.split("\r\n");
+assert(
+  locLines[1] === "1,1,AA,BB,10/24/2026,09:00,10:00,Monroe Complex,Andrews",
+  `venue+location → Location=location, Field=venue (got: ${locLines[1]})`,
+);
+assert(
+  locLines[2] === "2,1,CC,DD,10/24/2026,10:00,11:00,Franklin,",
+  `venue, no location → Location=venue, Field blank (got: ${locLines[2]})`,
+);
+assert(
+  locLines[3] === "3,1,Wolves,Us,10/24/2026,11:00,12:00,Their Park,",
+  `is_away, no venue → Location=proposed, Field blank, swap (got: ${locLines[3]})`,
+);
+assert(
+  locLines[4] === '4,1,EE,FF,10/24/2026,13:00,14:00,"Monroe, East",Andrews',
+  `comma in location name → Location quoted, Field=venue (got: ${locLines[4]})`,
+);
+assert(
+  locLines[5] === "5,1,GG,HH,10/24/2026,14:00,15:00,Blank Loc,",
+  `whitespace-only location → treated as no location (got: ${locLines[5]})`,
 );
 
 // No-leading-zero date: 2026-09-05 → 9/5/2026
