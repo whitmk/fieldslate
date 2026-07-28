@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { SITE_URL } from "@/lib/site";
+import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   validateVenueName,
   validateTeamName,
@@ -42,7 +43,7 @@ type ScheduleGame = {
   proposed_venue_name: string | null;
   home_team: { name: string };
   division: { name: string };
-  venue: { name: string } | null;
+  venue: { name: string; location: { name: string } | null } | null;
 };
 
 type SchedulePayload = {
@@ -308,7 +309,7 @@ function buildRecipientConfirmationEmail(params: {
   const gameRows = games
     .map((g) => {
       const recipientIsHome = g.is_away;
-      const venue = g.venue?.name ?? g.proposed_venue_name ?? "TBD";
+      const venue = g.venue ? qualifiedVenueLabel(g.venue) : g.proposed_venue_name ?? "TBD";
       const matchup = `${g.external_team_name ?? "Your team"} vs ${g.home_team.name}`;
       const tag = recipientIsHome ? "HOME" : "AWAY";
       return `<tr>
@@ -393,7 +394,7 @@ function buildRecipientConfirmationEmail(params: {
           "Confirmed games:",
           ...games.map((g) => {
             const recipientIsHome = g.is_away;
-            const venue = g.venue?.name ?? g.proposed_venue_name ?? "TBD";
+            const venue = g.venue ? qualifiedVenueLabel(g.venue) : g.proposed_venue_name ?? "TBD";
             return `  • ${fmtIso(g.scheduled_at)} — ${g.external_team_name ?? "Your team"} vs ${g.home_team.name} (${recipientIsHome ? "HOME" : "AWAY"}, ${venue})`;
           }),
         ]),

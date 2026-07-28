@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
 import { SITE_URL } from "@/lib/site";
+import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 
 export const runtime = "nodejs";
 
@@ -107,7 +108,7 @@ export async function POST(
     } | null;
     interleague_org: { name: string } | null;
     league: { id: string; name: string; season: string | null; owner_id: string } | null;
-    venue: { name: string } | null;
+    venue: { name: string; location: { name: string } | null } | null;
   };
   const { data: gameRaw, error: gameErr } = await supabase
     .from("games")
@@ -117,7 +118,7 @@ export async function POST(
        home_team:teams!home_team_id(name, division:divisions(name, locked)),
        interleague_org:interleague_orgs(name),
        league:leagues(id, name, season, owner_id),
-       venue:venues(name)`
+       venue:venues(name, location:locations(name))`
     )
     .eq("id", params.id)
     .single();
@@ -361,7 +362,7 @@ export async function POST(
     const finalIso = updatePayload.scheduled_at ?? game.scheduled_at;
     const finalVenue = game.is_away
       ? (updatePayload.proposed_venue_name ?? game.proposed_venue_name ?? "your venue")
-      : (game.venue?.name ?? "TBD");
+      : (game.venue ? qualifiedVenueLabel(game.venue) : "TBD");
     const matchup = game.is_away
       ? `${ourTeam} AT ${orgName} (${theirTeam})`
       : `${ourTeam} vs ${theirTeam}`;

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, Ban, Check, Loader2, MapPin, Send, Trophy, X } from "lucide-react";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 
 export type PendingGame = {
   id: string;
@@ -13,7 +14,7 @@ export type PendingGame = {
   proposed_venue_name: string | null;
   home_team: { name: string };
   division: { id: string; name: string };
-  venue: { name: string } | null;
+  venue: { name: string; location: { name: string } | null } | null;
 };
 
 type Action = "accept" | "counter" | "decline";
@@ -480,8 +481,8 @@ function GameRow({ game, state, onChange }: GameRowProps) {
           </p>
           <p className="mt-0.5 text-xs text-gray-500">
             {game.division.name} · {fmtGameDate(game.scheduled_at)}, {fmtGameTime(game.scheduled_at)}
-            {game.venue?.name && !game.is_away && (
-              <> · {game.venue.name}</>
+            {game.venue && !game.is_away && (
+              <> · {qualifiedVenueLabel(game.venue)}</>
             )}
             {game.is_away && (
               <> · at your venue</>

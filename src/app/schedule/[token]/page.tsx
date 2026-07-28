@@ -6,6 +6,7 @@ import {
   InviteFooter,
 } from "@/components/interleague/invite-shell";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   AlertTriangle,
   CalendarDays,
@@ -29,7 +30,7 @@ type Game = {
   proposed_venue_name: string | null;
   home_team: { name: string };
   division: { name: string };
-  venue: { name: string } | null;
+  venue: { name: string; location: { name: string } | null } | null;
 };
 
 type SchedulePayload = {
@@ -159,9 +160,11 @@ function GameRow({
   //   our `is_away = true` → the recipient hosts. So for them it's HOME.
   //   our `is_away = false` → we host. So for them it's AWAY.
   const recipientIsHome = game.is_away;
-  const venueName =
-    game.venue?.name ??
-    (game.is_away ? game.proposed_venue_name ?? "Your venue" : "TBD");
+  const venueName = game.venue
+    ? qualifiedVenueLabel(game.venue)
+    : game.is_away
+      ? game.proposed_venue_name ?? "Your venue"
+      : "TBD";
   const isFuture = new Date(game.scheduled_at).getTime() > Date.now();
 
   return (
