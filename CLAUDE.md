@@ -998,6 +998,90 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   that is a decision to make explicitly and prove with the four generator
   sims — not a "helpful" cleanup to slip into an unrelated diff.
 
+## Reschedule picker — a DIFFERENT slot model than the generator, on purpose
+
+- **Two models exist in this repo and they disagree. `reschedule-slots.ts` is
+  the CORRECT one; the others are the ones to fix.**
+  `src/lib/schedule/reschedule-slots.ts` (the picker,
+  `RainoutRescheduleModal`) offers EVERY conflict-free start on a **15-minute
+  grid** and computes occupancy by **REAL SPAN**, resolving each existing
+  game's duration from **its OWN division**. Everything else — the generator
+  (`buildSlots` / `planSchedule` / `finishSchedule`), BOTH detector copies
+  (`detectScheduleConflicts` and `detect-conflicts.ts`), the conflict resolver,
+  and the panel badge — still uses the OLD model: a fixed lattice anchored at
+  the division's window open stepping by `game_duration + buffer_minutes`, with
+  occupancy measured as **start-distance** (`|a − b| < gap`) using the
+  **placing** division's numbers for every game regardless of whose it is.
+  **Do NOT "align" the picker back to the lattice.** Fixing the generator side
+  is a separate, larger change.
+- **Why it was fixed here first (the live bug):** SRALL's Andrews Field hosts
+  Majors (120 + 60) at 10:00 and 1:00. Placing Minors (105 + 30), the lattice
+  yielded only 10:00 / 12:15 / 2:30 / 4:45; the first three collided, leaving
+  **4:45 as the only offer while the field was empty from 3:00 PM**. An admin
+  could not place a game at 3:30.
+- **BOTH HALVES MUST STAY TOGETHER — half 1 alone is worse than neither.**
+  Start-distance **over**-reserves when the placing division's interval exceeds
+  the existing game's real span (the Andrews symptom), and **under**-reserves
+  when it is shorter — a 90-minute division placed against a 120-minute game
+  passes at +90 while that game is still running. The coarse lattice was
+  MASKING the under-reservation: at 135-minute steps the overlapping candidates
+  were unreachable. Put a fine grid on a start-distance test and the picker
+  starts offering slots that **genuinely overlap real games**. Never ship the
+  grid without the span test.
+- **`buffer_minutes` is SYMMETRIC separation using the PLACING division's
+  value.** The candidate's span is padded by the buffer on each side, then
+  tested for overlap. Symmetric because clearing the field is needed on both
+  sides — after-only padding lets a candidate be crammed against an existing
+  game's START. Placing-division because the buffer states how much room THIS
+  division needs around ITS games; using the existing game's (Majors' 60) would
+  push Minors to 4:00 and re-hide the recovered time. Andrews now offers
+  3:30 / 3:45 / 4:00 / 4:15 — `3:00 real end + 30 buffer`, exactly.
+- **A window CLOSE means the span must END by it** — in `day_windows.end` AND
+  in the legacy `latest_start` fallback, despite that field's name. A window
+  that says 18:00 and permits a game running to 18:30 is not a window. This is
+  why 4:45 correctly disappeared from Andrews (105 min → 6:30 PM); the fix for
+  a league that wants it back is to WIDEN the Minors Saturday window, not to
+  loosen this check. **The generator still checks only the START
+  (`timeMin <= latest`), so it can place a game the picker considers illegal.**
+  Known, accepted, and the safe direction — the picker is the stricter one.
+- **REGENERATING A DIVISION WIPES HAND-PLACED TIMES.** A game moved to a
+  non-lattice time (3:30) is deleted and re-placed on a lattice time by the
+  next regenerate. Nothing warns about this. Tell admins before they hand-place
+  a lot of games; it is the same class as the finish-schedule gap-fill note
+  under "Game deletion".
+- **`spansOverlap` MIRRORS `gamesOverlap` (`src/lib/umpires/conflicts.ts`) — it
+  does not reuse it, and the two must NOT be "de-duplicated" without solving
+  the units problem first.** `gamesOverlap` is millisecond-based
+  (`new Date(scheduled_at).getTime()`), correct for its own all-instants
+  inputs. The picker compares a bare LOCAL candidate (`"2026-08-15T15:30:00"`)
+  against a stored `+00` wall-clock, so `new Date()` on both would be wrong by
+  the browser's offset in every non-UTC zone — and would violate the
+  wall-clock-substring house convention (see `game-days.ts`'s header). The
+  predicate is identical, transposed to minutes. **The umpire path is untouched
+  and byte-identical.**
+- **KNOWN GAPS in the picker, deliberately not fixed here:**
+  1. **No officials/umpire check on the new slot** — neither availability,
+     blackouts, nor double-booking. `game_umpires` assignments travel with the
+     game to whatever time is chosen, so a reschedule can silently put an
+     official in two places.
+  2. **No `practice_slots` occupancy check** — a practice booked 3:00–4:00 at
+     a venue does NOT block a 3:30 game offer there.
+  3. **The venue-occupancy read is org-wide and unpaginated** (`.in("venue_id",
+     …)`, no season scope, no `fetchAllRows`) — exposed to the PostgREST
+     1000-row cap. **Real-span correctness is only as good as the occupancy
+     list**, so that read is now load-bearing for CORRECTNESS, not merely
+     completeness: a truncated read hides a game and the picker offers a slot
+     on top of it. See "Complete reads"; this belongs in that backlog.
+- **Harness: `npm run sim:reschedule-slots`** (TZ=UTC mandatory) — 50
+  assertions, 6 anti-vacuity counters, **11 mutants all killed BY THEIR OWN
+  assertion** (2026-07-30). Read its mutation log before touching any of this:
+  two mutants initially died at the WRONG assertion and had to be re-proven —
+  M5 needed fixture **F2b** (short existing game, long placing division,
+  positioned mid-window) because F2's longer existing game makes mis-sizing
+  over-reserve, which is safe and invisible; and the single one-sided-buffer
+  mutant was split into **M3a/M3b** so both sides of the symmetric buffer are
+  pinned. Do not delete F2b, M3a, or M3b.
+
 ## Reports — field utilization (placeable-slot model)
 
 - **Utilization is GAMES ÷ PLACEABLE SLOTS, computed with `buildSlots` — the
