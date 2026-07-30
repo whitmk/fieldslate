@@ -734,6 +734,42 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   venue are consistent with each other by design for now; if reconciliation
   is ever added, apply it to BOTH uniformly, not one.
 
+## Bye line (division schedule panel)
+
+- **Lives on the division schedule panel ONLY** (`division-schedule-panel.tsx`)
+  — not the main Schedule page (that page is season-wide and flat; per-division
+  byes there are a different, larger job). It is derived READ-ONLY display: a
+  per-week "Bye: {teams}" line rendered at each week boundary, computed from the
+  division's own game rows. **A team is on bye for a week iff it has ZERO game
+  rows of ANY status that week** (appearing as `home_team_id` or `away_team_id`).
+  Weeks with no games render no line — there is no day-group to anchor to
+  (accepted for v1). Helpers live in `src/lib/venues/game-days.ts`; harness is
+  `npm run sim:bye-line` (feature landed in commit `1a99665`).
+- **`teamIsOccupiedThisWeek(status)` is status-blind ON PURPOSE — do not "fix"
+  it.** It ignores its `status` argument (always returns `true`) and carries an
+  inline `eslint-disable` for the deliberately-unread parameter. That parameter
+  is the SEAM, not an oversight: any row — cancelled, `pending_interleague`,
+  anything — means the team MIGHT be playing, and the bye line answers "is it
+  safe to move a game onto this team this week," where "might be playing" must
+  never read as free. Do NOT add a status filter, and do NOT collapse it into
+  `countsAsScheduledGame`, which is the OPPOSITE predicate: that one filters FOR
+  real games (excludes cancelled + pending_interleague) to feed views that
+  report actually-scheduled games (venue game-days, Sports Connect, Reports).
+  The two carry mutual DRIFT-HAZARD comments naming each other; keep both, and
+  keep them apart.
+- **Week bucketing is the THIRD consumer of `weekKeyFromIsoDate`** (alongside
+  Sports Connect `RoundNo` and the venue game-days derivation). Never invent a
+  second week definition — wall-clock date substring only, never parse the
+  instant (house convention; see the `game-days.ts` header).
+- **KNOWN GAP — reads `games`, NOT `playoff_games`.** `playoff_games` is a
+  parallel table the bye computation does not touch, so once brackets exist a
+  team playing ONLY a playoff game in a given week will wrongly read as on bye.
+  Unresolved by design for now — **flag/close this before playoffs go live.**
+- **Styling is neutral GRAY, deliberately not amber.** Amber means WARNING in
+  this codebase (constraint violations, coach double-booked, interleague,
+  locked); a bye is neutral information requiring no action. Same reasoning as
+  the neutral prefer-miss notes — do not restyle it as a warning.
+
 ## Generate-all ordering
 
 - **`npm run sim:scarcity` proves the "generate all divisions" run-order**
