@@ -40,6 +40,7 @@ import {
   getOfficialTitlePluralLower,
   padRoleLabels,
 } from "@/lib/utils/official-title";
+import { byeTeamsByWeek, weekKeyFromIsoDate } from "@/lib/venues/game-days";
 
 
 type PrintMode = "games";
@@ -730,6 +731,18 @@ export function DivisionSchedulePanel({
     grouped.get(key)!.push(ev);
   }
 
+  // ── Per-week bye lines ────────────────────────────────────────────────────
+  // Computed from the FULL division game set (`games`) + roster (`teams`),
+  // never the rendered/filtered array — a team playing elsewhere must never
+  // read as on bye. `grouped` is chronological, so each week's day-groups are
+  // contiguous; we tag the FIRST day-group of each week and draw the line there.
+  const byeByWeek = byeTeamsByWeek(games, teams);
+  const firstDateKeyOfWeek = new Map<string, string>();
+  for (const dateKey of grouped.keys()) {
+    const wk = weekKeyFromIsoDate(dateKey);
+    if (!firstDateKeyOfWeek.has(wk)) firstDateKeyOfWeek.set(wk, dateKey);
+  }
+
   return (
     <div className="border-t border-gray-100 bg-gray-50/40 px-6 py-5">
 
@@ -1167,8 +1180,21 @@ export function DivisionSchedulePanel({
             )}
           </div>
 
-          {Array.from(grouped.entries()).map(([dateKey, dayEvents], groupIdx) => (
+          {Array.from(grouped.entries()).map(([dateKey, dayEvents], groupIdx) => {
+            // Bye line renders once per week, at that week's first day-group.
+            const weekKey = weekKeyFromIsoDate(dateKey);
+            const isFirstOfWeek = firstDateKeyOfWeek.get(weekKey) === dateKey;
+            const weekByes = isFirstOfWeek ? byeByWeek.get(weekKey) ?? [] : [];
+            return (
             <div key={dateKey} className={groupIdx > 0 ? "border-t border-gray-50" : ""}>
+              {weekByes.length > 0 && (
+                <div className="bg-gray-50/60 px-4 py-2">
+                  <p className="text-xs font-medium text-gray-600">
+                    <span className="font-semibold uppercase tracking-wide">Bye:</span>{" "}
+                    {weekByes.join(", ")}
+                  </p>
+                </div>
+              )}
               <div className="bg-gray-50/70 px-4 py-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                   {fmtGameDate(dateKey)}
@@ -1316,7 +1342,8 @@ export function DivisionSchedulePanel({
                 })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

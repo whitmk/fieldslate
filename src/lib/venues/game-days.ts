@@ -37,9 +37,39 @@ export const NON_COUNTING_STATUSES = new Set([
 
 /** True when a game row counts as a real, scheduled game (not cancelled or a
  *  pending interleague proposal). The single predicate every games-derived
- *  view should filter on. */
+ *  view should filter on.
+ *
+ *  DRIFT HAZARD — read before "simplifying" against `teamIsOccupiedThisWeek`
+ *  below. They are NOT synonyms and must not be merged. This one applies a
+ *  STATUS FILTER (excludes cancelled and pending_interleague) because it feeds
+ *  views that report real, played/scheduled games — venue game-days, Sports
+ *  Connect, Reports. `teamIsOccupiedThisWeek` deliberately applies NO status
+ *  filter, because "is this team free" is a different question from "is this a
+ *  real game": a cancelled or pending row still means the team might be
+ *  playing. Do not route the bye computation through this function, and do not
+ *  give the other one a status filter to match this one. */
 export function countsAsScheduledGame(status: string): boolean {
   return !NON_COUNTING_STATUSES.has(status);
+}
+
+/** True when a game row makes a team OCCUPIED for its week — i.e. the row
+ *  should prevent that team from being listed as on bye.
+ *
+ *  It IGNORES status ON PURPOSE — this is not an unfinished helper. A team is on
+ *  bye for a week only if it has ZERO game rows of ANY status that week, so any
+ *  row at all occupies the team. The named seam is kept because the reason is
+ *  worth stating at the call site: this line answers "is it safe to move a game
+ *  onto this team this week," and for that question "might be playing" must
+ *  never read as free. A cancelled game (awaiting a makeup) and a
+ *  pending_interleague proposal (an invite that may yet be accepted) both mean
+ *  the team might have a commitment — so both occupy the week. Contrast
+ *  `countsAsScheduledGame` above, which DOES filter status; do not add a status
+ *  filter here to "match" it. The `status` param is intentionally unread — it
+ *  documents that status was considered and deliberately not consulted, and
+ *  keeps the call site reading `teamIsOccupiedThisWeek(g.status)`. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- see above: status is deliberately unread
+export function teamIsOccupiedThisWeek(status: string): boolean {
+  return true;
 }
 
 // A day-of-week only becomes a recurring "game day" once games land on it in at
@@ -64,6 +94,67 @@ export function weekKeyFromIsoDate(iso: string): string {
   const m = String(monday.getMonth() + 1).padStart(2, "0");
   const day = String(monday.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/** Minimal game shape the bye computation needs. Deliberately structural (not
+ *  the panel's GameRow) so this stays a pure, testable helper. */
+export type ByeGameInput = {
+  scheduled_at: string; // ISO wall-clock, e.g. "2026-10-24T09:00:00+00:00"
+  status: string;
+  home_team_id: string | null;
+  away_team_id: string | null;
+};
+
+/** Minimal team shape: id (identity) + name (display). */
+export type ByeTeamInput = { id: string; name: string };
+
+/**
+ * For each week that has AT LEAST ONE game row, the teams on bye that week
+ * (sorted by name). Keyed by `weekKeyFromIsoDate` (the same Monday-start,
+ * wall-clock-substring bucket Sports Connect's RoundNo and the venue game-days
+ * derivation use — never a second week definition).
+ *
+ * A team is on bye for a week when it has ZERO rows that week, where a row
+ * occupies a team's week iff the team is its `home_team_id` OR `away_team_id`.
+ * Status is NOT consulted — any row (scheduled, cancelled, or
+ * pending_interleague) means the team might be playing, so it is not free (see
+ * `teamIsOccupiedThisWeek`'s header for why this line treats "might be playing"
+ * as occupied).
+ *
+ * Weeks with no game rows never appear here (nothing to key them off, and the
+ * panel renders no day-group for them — accepted for v1). Callers MUST pass the
+ * FULL division game set — filtering first would make teams playing elsewhere
+ * read as on bye, the exact failure this line exists to prevent.
+ */
+export function byeTeamsByWeek(
+  games: ByeGameInput[],
+  teams: ByeTeamInput[],
+): Map<string, string[]> {
+  const weeks = new Set<string>();
+  const occupiedByWeek = new Map<string, Set<string>>();
+  for (const g of games) {
+    const wk = weekKeyFromIsoDate(g.scheduled_at);
+    weeks.add(wk); // any row anchors the week (a day-group renders for it)
+    if (!teamIsOccupiedThisWeek(g.status)) continue;
+    let occupied = occupiedByWeek.get(wk);
+    if (!occupied) {
+      occupied = new Set();
+      occupiedByWeek.set(wk, occupied);
+    }
+    if (g.home_team_id) occupied.add(g.home_team_id);
+    if (g.away_team_id) occupied.add(g.away_team_id);
+  }
+
+  const out = new Map<string, string[]>();
+  for (const wk of weeks) {
+    const occupied = occupiedByWeek.get(wk) ?? new Set<string>();
+    const byes = teams
+      .filter((t) => !occupied.has(t.id))
+      .map((t) => t.name)
+      .sort((a, b) => a.localeCompare(b));
+    out.set(wk, byes);
+  }
+  return out;
 }
 
 /**
