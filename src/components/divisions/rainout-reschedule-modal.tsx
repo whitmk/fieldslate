@@ -7,18 +7,21 @@ import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
 import {
-  isVenueAvailable,
   parseAvailability,
-  type DayKey,
   type VenueAvailability,
 } from "@/lib/venues/availability";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   constraintsFromRows,
-  violatesHardConstraint,
-  type TeamConstraintRule,
   type TeamGameConstraintRow,
 } from "@/lib/schedule/team-constraints";
+import {
+  buildAvailableSlots,
+  durationFromSettings,
+  toMins,
+  type OccupiedSpan,
+  type SlotOption,
+} from "@/lib/schedule/reschedule-slots";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,140 +39,11 @@ interface Props {
   buildLogMessage?: (p: { newScheduledAt: string; newVenueName: string }) => string;
 }
 
-interface SlotOption {
-  isoString: string;   // "YYYY-MM-DDTHH:MM:SS"
-  venueId: string;
-  venueName: string;
-  date: string;        // "YYYY-MM-DD"
-}
-
-// ─── Helpers ───────────────────────────────────────────────────────────────────
-
-function pad2(n: number) { return String(n).padStart(2, "0"); }
-
-function localDateStr(d: Date) {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-function toMins(hhmm: string): number {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
-}
-
-function minsToHHMM(mins: number): string {
-  return `${pad2(Math.floor(mins / 60))}:${pad2(mins % 60)}`;
-}
-
-const DAY_TO_JS: Record<string, number> = {
-  Su: 0, Mo: 1, Tu: 2, We: 3, Th: 4, Fr: 5, Sa: 6,
-};
-const JS_TO_DAY: Record<number, string> = {
-  0: "Su", 1: "Mo", 2: "Tu", 3: "We", 4: "Th", 5: "Fr", 6: "Sa",
-};
-
-// ─── Slot builder ──────────────────────────────────────────────────────────────
-
-function buildAvailableSlots(params: {
-  startDate: string;
-  endDate: string;
-  playingDays: string[];
-  dayWindows: Record<string, { start: string; end: string }>;
-  earliestStart: string;
-  latestStart: string;
-  gameDuration: number;
-  bufferMinutes: number;
-  maxPerTeamDay: number;
-  venueIds: string[];
-  venueNames: Record<string, string>;
-  venueAvailability: Record<string, VenueAvailability>;
-  blackoutDates: Set<string>;
-  // existing game bookings (excluding the cancelled game)
-  venueBookings: Map<string, number[]>;    // "venueId:YYYY-MM-DD" → booked start mins
-  homeTeamTimes: Set<string>;              // isoStrings when home team plays
-  awayTeamTimes: Set<string>;             // isoStrings when away team plays
-  homeTeamDayCounts: Map<string, number>; // "YYYY-MM-DD" → count
-  awayTeamDayCounts: Map<string, number>; // "YYYY-MM-DD" → count
-  // team_game_constraints (0076) for both teams. This surface is
-  // pick-from-valid by design (no override path), so severity-'block' slots
-  // are simply never offered. Both teams are always local here — the
-  // reschedule action is gated on away_team_id being non-null.
-  homeTeamId: string;
-  awayTeamId: string;
-  constraintRules: Map<string, TeamConstraintRule[]>;
-}): SlotOption[] {
-  const {
-    startDate, endDate, playingDays, dayWindows,
-    earliestStart, latestStart, gameDuration, bufferMinutes,
-    maxPerTeamDay, venueIds, venueNames, venueAvailability, blackoutDates,
-    venueBookings, homeTeamTimes, awayTeamTimes,
-    homeTeamDayCounts, awayTeamDayCounts,
-    homeTeamId, awayTeamId, constraintRules,
-  } = params;
-
-  const allowedDays = new Set(playingDays.map((d) => DAY_TO_JS[d]));
-  const interval = Math.max(1, Number(gameDuration) + Number(bufferMinutes));
-  const minGap = interval;
-  const duration = Number(gameDuration);
-
-  // Start from today (no point scheduling in the past)
-  const today = localDateStr(new Date());
-  const effectiveStart = startDate < today ? today : startDate;
-
-  const slots: SlotOption[] = [];
-  const cur = new Date(effectiveStart + "T00:00:00");
-  const end = new Date(endDate + "T00:00:00");
-
-  while (cur <= end) {
-    const date = localDateStr(cur);
-
-    if (allowedDays.has(cur.getDay()) && !blackoutDates.has(date)) {
-      const dayKey = JS_TO_DAY[cur.getDay()] as DayKey;
-      const win = dayWindows[dayKey];
-      const earliest = toMins(win?.start ?? earliestStart ?? "09:00");
-      const latest   = toMins(win?.end   ?? latestStart  ?? "17:00");
-
-      const homeDayCount = homeTeamDayCounts.get(date) ?? 0;
-      const awayDayCount = awayTeamDayCounts.get(date) ?? 0;
-
-      if (homeDayCount < maxPerTeamDay && awayDayCount < maxPerTeamDay) {
-        for (let timeMin = earliest; timeMin <= latest; timeMin += interval) {
-          const isoString = `${date}T${minsToHHMM(timeMin)}:00`;
-          const wallTime = minsToHHMM(timeMin);
-
-          // Both teams must be free at this exact datetime
-          if (homeTeamTimes.has(isoString)) continue;
-          if (awayTeamTimes.has(isoString)) continue;
-
-          // Neither team may have a severity-'block' constraint window
-          // covering this start time (0076).
-          if (violatesHardConstraint(constraintRules, homeTeamId, isoString)) continue;
-          if (violatesHardConstraint(constraintRules, awayTeamId, isoString)) continue;
-
-          // Each venue: must be open (per venue.availability), within hours,
-          // and free of existing bookings at this wall time.
-          for (const venueId of venueIds) {
-            const av = venueAvailability[venueId];
-            if (!av) continue;
-            if (!isVenueAvailable(av, dayKey, wallTime, duration)) continue;
-
-            const vKey = `${venueId}:${date}`;
-            const booked = venueBookings.get(vKey) ?? [];
-            const conflict = booked.some((t) => Math.abs(t - timeMin) < minGap);
-            if (!conflict) {
-              slots.push({ isoString, venueId, venueName: venueNames[venueId] ?? venueId, date });
-            }
-          }
-        }
-      }
-    }
-
-    cur.setDate(cur.getDate() + 1);
-  }
-
-  // Chronological, then venue name
-  slots.sort((a, b) => a.isoString.localeCompare(b.isoString) || a.venueName.localeCompare(b.venueName));
-  return slots;
-}
+// Slot construction (the 15-minute grid + real-span occupancy test) lives in
+// @/lib/schedule/reschedule-slots so the sim can drive the real function —
+// this file is "use client" and imports the browser Supabase client at module
+// scope. See that module's header for the model and why it diverges from the
+// generator's lattice.
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
@@ -274,27 +148,59 @@ export function RainoutRescheduleModal({
       .eq("league_id", leagueId);
     const blackoutDates = new Set(((blackoutRaw ?? []) as { date: string }[]).map((b) => b.date));
 
-    // 4a. All games at these venues (for venue conflict detection), excluding the cancelled game
-    const { data: venueGamesRaw } = await supabase
+    // 4a. All games at these venues (for venue conflict detection), excluding
+    // the cancelled game. Each row carries its OWN division's settings so its
+    // real span can be computed — an existing Majors game is 120 minutes long
+    // whether or not the division being placed is 105. Embedding the division
+    // via home_team mirrors the umpire booking feed's shape; `games` always
+    // stores our team as home_team_id (interleague `is_away` rows carry a null
+    // venue_id and so never appear in this venue-keyed read).
+    const { data: venueGamesRaw, error: venueGamesErr } = await supabase
       .from("games")
-      .select("venue_id, scheduled_at")
+      .select(
+        "venue_id, scheduled_at, home_team:teams!home_team_id(division:divisions(settings))",
+      )
       .in("venue_id", venueIds)
       .neq("id", gameId)
       .neq("status", "cancelled");
 
-    const venueBookings = new Map<string, number[]>();
-    for (const g of (venueGamesRaw ?? []) as { venue_id: string; scheduled_at: string }[]) {
-      const date = g.scheduled_at.substring(0, 10);
-      const vKey = `${g.venue_id}:${date}`;
-      const mins = toMins(g.scheduled_at.substring(11, 16));
-      if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
-      venueBookings.get(vKey)!.push(mins);
+    // Fail CLOSED: without the occupancy set we would offer slots on top of
+    // real games. Same stance as the constraint read below.
+    if (venueGamesErr) {
+      setLoadError("Couldn't load existing games for these venues. Try again.");
+      setLoading(false);
+      return;
     }
 
-    // 4b. All games for both teams (to check team availability), excluding the cancelled game
-    const { data: teamGamesRaw } = await supabase
+    type OccupancyRow = {
+      scheduled_at: string;
+      home_team: { division: { settings: unknown } | null } | null;
+    };
+
+    const venueBookings = new Map<string, OccupiedSpan[]>();
+    for (const g of (venueGamesRaw ?? []) as unknown as (OccupancyRow & {
+      venue_id: string;
+    })[]) {
+      const date = g.scheduled_at.substring(0, 10);
+      const vKey = `${g.venue_id}:${date}`;
+      const span: OccupiedSpan = {
+        startMin: toMins(g.scheduled_at.substring(11, 16)),
+        durationMin: durationFromSettings(g.home_team?.division?.settings),
+      };
+      if (!venueBookings.has(vKey)) venueBookings.set(vKey, []);
+      venueBookings.get(vKey)!.push(span);
+    }
+
+    // 4b. All games for both teams (to check team availability), excluding the
+    // cancelled game. Durations come along for the same reason as 4a: team
+    // occupancy is now tested by real span, so on a 15-minute grid a team's
+    // 10:00 game correctly blocks 10:15. The old exact-timestamp check only
+    // blocked 10:00 — safe under the coarse lattice, unsafe on a fine grid.
+    const { data: teamGamesRaw, error: teamGamesErr } = await supabase
       .from("games")
-      .select("home_team_id, away_team_id, scheduled_at")
+      .select(
+        "home_team_id, away_team_id, scheduled_at, home_team:teams!home_team_id(division:divisions(settings))",
+      )
       .or(
         `home_team_id.eq.${homeTeamId},away_team_id.eq.${homeTeamId},` +
         `home_team_id.eq.${awayTeamId},away_team_id.eq.${awayTeamId}`,
@@ -302,22 +208,39 @@ export function RainoutRescheduleModal({
       .neq("id", gameId)
       .neq("status", "cancelled");
 
-    const homeTeamTimes = new Set<string>();
-    const awayTeamTimes = new Set<string>();
+    if (teamGamesErr) {
+      setLoadError("Couldn't load existing games for these teams. Try again.");
+      setLoading(false);
+      return;
+    }
+
+    const homeTeamSpans = new Map<string, OccupiedSpan[]>();
+    const awayTeamSpans = new Map<string, OccupiedSpan[]>();
     const homeTeamDayCounts = new Map<string, number>();
     const awayTeamDayCounts = new Map<string, number>();
 
-    for (const g of (teamGamesRaw ?? []) as { home_team_id: string; away_team_id: string; scheduled_at: string }[]) {
-      const iso = g.scheduled_at.substring(0, 19);
+    const pushSpan = (m: Map<string, OccupiedSpan[]>, date: string, s: OccupiedSpan) => {
+      if (!m.has(date)) m.set(date, []);
+      m.get(date)!.push(s);
+    };
+
+    for (const g of (teamGamesRaw ?? []) as unknown as (OccupancyRow & {
+      home_team_id: string;
+      away_team_id: string;
+    })[]) {
       const date = g.scheduled_at.substring(0, 10);
+      const span: OccupiedSpan = {
+        startMin: toMins(g.scheduled_at.substring(11, 16)),
+        durationMin: durationFromSettings(g.home_team?.division?.settings),
+      };
       const playsHome = g.home_team_id === homeTeamId || g.away_team_id === homeTeamId;
       const playsAway = g.home_team_id === awayTeamId || g.away_team_id === awayTeamId;
       if (playsHome) {
-        homeTeamTimes.add(iso);
+        pushSpan(homeTeamSpans, date, span);
         homeTeamDayCounts.set(date, (homeTeamDayCounts.get(date) ?? 0) + 1);
       }
       if (playsAway) {
-        awayTeamTimes.add(iso);
+        pushSpan(awayTeamSpans, date, span);
         awayTeamDayCounts.set(date, (awayTeamDayCounts.get(date) ?? 0) + 1);
       }
     }
@@ -358,8 +281,8 @@ export function RainoutRescheduleModal({
       venueAvailability: venueAvailabilityParsed,
       blackoutDates,
       venueBookings,
-      homeTeamTimes,
-      awayTeamTimes,
+      homeTeamSpans,
+      awayTeamSpans,
       homeTeamDayCounts,
       awayTeamDayCounts,
       homeTeamId,

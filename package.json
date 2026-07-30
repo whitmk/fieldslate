@@ -18,7 +18,8 @@
     "sim:diagnostics": "TZ=UTC npx tsx scripts/sim/placement-diagnostics-sim.ts",
     "sim:fetch-all": "npx tsx scripts/sim/fetch-all-sim.ts",
     "sim:generator-failclosed": "TZ=UTC npx tsx scripts/sim/generator-fail-closed-sim.ts",
-    "sim:bye-line": "TZ=UTC npx tsx scripts/sim/bye-line-sim.ts"
+    "sim:bye-line": "TZ=UTC npx tsx scripts/sim/bye-line-sim.ts",
+    "sim:reschedule-slots": "TZ=UTC npx tsx scripts/sim/reschedule-slots-sim.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
