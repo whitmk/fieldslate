@@ -30,6 +30,14 @@
 //       lands on a different calendar day than its wall-clock date must be
 //       read by its wall-clock. TZ=UTC is mandatory so this is meaningful.
 //
+//   F8  OCCUPANCY READ SCOPE. The venue-occupancy read is date-bounded to the
+//       division's window (never league-bounded — a concurrent season's game at
+//       the same field genuinely occupies it). The dangerous edge is the UPPER
+//       bound: `scheduled_at` is a timestamp, so a naive `<= endDate` compares
+//       against endDate 00:00 and DROPS every game on the final day. Mutant M11
+//       does exactly that, and the final Saturday then offers its FULL grid —
+//       slots directly on top of both real games.
+//
 // Plus: F6 team real-span occupancy (a team's 10:00 game blocks 10:15 on the
 // fine grid — the hole the 15-minute grid would otherwise open).
 
@@ -39,6 +47,8 @@ import {
   spansOverlap,
   durationFromSettings,
   SLOT_GRID_MINUTES,
+  occupancyWindow,
+  inOccupancyWindow,
   type BuildAvailableSlotsParams,
   type OccupiedSpan,
   type SlotOption,
@@ -70,6 +80,8 @@ const counters = {
   windowEndExclusions: 0,    // rejected because the span ran past window close
   venueCloseExclusions: 0,   // rejected because the span ran past venue close
   offeredSlots: 0,           // total slots offered across all fixtures
+  scopeExcludedRows: 0,      // rows the occupancy date-scope correctly dropped
+  scopeKeptFinalDay: 0,      // final-day rows the scope correctly KEPT
 };
 
 // ── Fixture builder ───────────────────────────────────────────────────────────
@@ -389,6 +401,75 @@ console.log("\nF7  preserved filters: blackout, day cap, playing days, constrain
   assert(legacy[0] === "14:00" && legacy[legacy.length - 1] === "15:00", "F7: legacy earliest/latest still honored when day_windows absent");
 }
 
+// ══ F8 — OCCUPANCY READ SCOPE: the last-day boundary ═════════════════════════
+console.log("\nF8  occupancy scope: a final-day game stays in scope and still blocks");
+{
+  // The picker's venue read is now date-bounded. The dangerous edge is the
+  // UPPER bound: `scheduled_at` is a timestamp, so a naive `<= endDate` compares
+  // against endDate 00:00 and DROPS every game on the final day. That dropped
+  // row is occupancy the picker needs — losing it makes a colliding slot look
+  // free. This fixture runs candidate rows through the REAL window predicate,
+  // feeds only the survivors to the REAL slot builder, and asserts the final
+  // Saturday still refuses the colliding slots. Mutant M11 shortens the bound.
+  const START = "2026-08-15";
+  const END = "2026-10-24"; // a Saturday, and the season's last day
+  const win = occupancyWindow(START, END);
+
+  assert(
+    win.toIsoExclusive === "2026-10-25T00:00:00+00:00",
+    `F8: upper bound rolls to the day AFTER endDate (got ${win.toIsoExclusive})`,
+  );
+  assert(win.fromIso === "2026-08-15T00:00:00+00:00", "F8: lower bound is endDate-inclusive at 00:00");
+
+  // Postgres hands back "YYYY-MM-DD HH:MM:SS+00" (space, not T).
+  const lastDayGame = "2026-10-24 13:00:00+00";
+  assert(inOccupancyWindow(lastDayGame, win), "F8: a 1:00 PM game on the FINAL day is IN scope");
+  assert(inOccupancyWindow("2026-10-24 23:59:00+00", win), "F8: 11:59 PM on the final day is IN scope");
+  assert(inOccupancyWindow("2026-08-15 00:00:00+00", win), "F8: midnight on the FIRST day is IN scope");
+  assert(!inOccupancyWindow("2026-08-14 23:59:00+00", win), "F8: the day before the season is OUT of scope");
+  assert(!inOccupancyWindow("2026-10-25 00:00:00+00", win), "F8: the day after the season is OUT of scope");
+
+  // Candidate rows as the DB would return them; only in-scope rows reach the
+  // builder, exactly as the query filter does server-side.
+  // Both final-day Majors games, mirroring the real Andrews Saturday shape, so
+  // the expected offer set matches F1 and a dropped row is unmistakable.
+  const lastDayGameAM = "2026-10-24 10:00:00+00";
+  const candidateRows = [
+    { scheduled_at: "2026-07-04 13:00:00+00", startMin: 780, durationMin: 120 }, // pre-season, correctly dropped
+    { scheduled_at: lastDayGameAM,            startMin: 600, durationMin: 120 }, // FINAL DAY — must survive
+    { scheduled_at: lastDayGame,              startMin: 780, durationMin: 120 }, // FINAL DAY — must survive
+    { scheduled_at: "2026-11-07 13:00:00+00", startMin: 780, durationMin: 120 }, // post-season, correctly dropped
+  ];
+  const kept = candidateRows.filter((r) => inOccupancyWindow(r.scheduled_at, win));
+  counters.scopeExcludedRows += candidateRows.length - kept.length;
+  counters.scopeKeptFinalDay += kept.filter((r) => r.scheduled_at.startsWith(END)).length;
+
+  const bookings = new Map<string, OccupiedSpan[]>();
+  for (const r of kept) {
+    const date = r.scheduled_at.substring(0, 10);
+    const k = `${VENUE}:${date}`;
+    if (!bookings.has(k)) bookings.set(k, []);
+    bookings.get(k)!.push({ startMin: r.startMin, durationMin: r.durationMin });
+  }
+
+  const slots = buildAvailableSlots(
+    baseParams({ startDate: START, endDate: END, venueBookings: bookings }),
+  );
+  const finalDay = times(slots.filter((s) => s.date === END));
+  counters.offeredSlots += slots.length;
+
+  assert(
+    JSON.stringify(finalDay) === JSON.stringify(["15:30", "15:45", "16:00", "16:15"]),
+    `F8: final-day offers still cleared by the 1:00 game (got ${finalDay.join(",")})`,
+  );
+  assert(!finalDay.includes("10:00"), "F8: 10:00 on the final day is still BLOCKED — the row survived the scope");
+  assert(!finalDay.includes("13:00"), "F8: 13:00 on the final day is still BLOCKED");
+  // A mid-season Saturday has no bookings at all, so it offers the full grid —
+  // proves the scope did not over-exclude either.
+  const midSeason = times(slots.filter((s) => s.date === "2026-09-19"));
+  assert(midSeason.length > 4 && midSeason[0] === "10:00", "F8: an unbooked in-scope date still offers its full grid");
+}
+
 // ── Anti-vacuity gate ────────────────────────────────────────────────────────
 console.log("\nAnti-vacuity counters");
 for (const [name, n] of Object.entries(counters)) {
@@ -403,7 +484,7 @@ console.log(
 process.exit(failures === 0 ? 0 : 1);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MUTATION LOG — 2026-07-30. 11 mutants, all killed BY THE ASSERTION EACH WAS
+// MUTATION LOG — 2026-07-30. 13 mutants, all killed BY THE ASSERTION EACH WAS
 // WRITTEN TO EXERCISE. Criterion: a mutant is KILLED only when the BASELINE
 // ASSERTION FAILS; and per the house rule, being killed by *something* is not
 // enough — the named assertion below must appear in the failing set. Each was
@@ -473,4 +554,16 @@ process.exit(failures === 0 ? 0 : 1);
 // M10  durationFromSettings returns the raw value without the >0 guard
 //      → KILLED at F5 "zero duration falls back to 90" — and nothing else.
 //
-// All 11 killed at their own assertion. Suite re-verified green after revert.
+// M11  ★ Occupancy scope upper bound → naive `<= endDate`:
+//        toIsoExclusive = `${endDate}T00:00:00+00:00`
+//      → KILLED at F8 "a 1:00 PM game on the FINAL day is IN scope" and F8
+//        "final-day offers still cleared by the 1:00 game", where the offer set
+//        becomes the FULL grid (10:00…16:15) — the picker offering slots on top
+//        of BOTH real games. This is the truncation failure mode in miniature:
+//        occupancy the read never returned cannot block anything, and nothing
+//        errors. Do not delete F8.
+//
+// M12  Occupancy scope lower bound → excludes the first day
+//      → KILLED at F8 "midnight on the FIRST day is IN scope".
+//
+// All 13 killed at their own assertion. Suite re-verified green after revert.

@@ -102,6 +102,76 @@ export function durationFromSettings(settings: unknown): number {
   return Number.isFinite(d) && d > 0 ? d : DEFAULT_GAME_DURATION_MINS;
 }
 
+// ── Occupancy read scope ──────────────────────────────────────────────────────
+//
+// The picker's venue-occupancy read was `.in("venue_id", venueIds)` with NO date
+// bound: org-wide, every season ever, unpaginated — straight into PostgREST's
+// silent 1000-row cap. Under the old fixed lattice that was largely harmless
+// (the coarse grid skipped past most danger anyway). With real-span occupancy it
+// is LOAD-BEARING FOR CORRECTNESS: a row hidden by truncation is a game the
+// picker cannot see, so it offers a slot directly on top of it. Truncation
+// raises no error, so a correct list and a truncated one are indistinguishable.
+//
+// SCOPE BY DATE, NEVER BY SEASON. `buildAvailableSlots` consults occupancy only
+// for dates in the division's window, and `venueBookings` is keyed
+// `venueId:date` with only same-date spans compared — so the division's
+// [start_date, end_date] is a sufficient superset. But `games` has no
+// `division_id` and season means `league_id`, and scoping by league_id would
+// HIDE a concurrent season's game at the same field on the same date. That game
+// really does occupy the field. Adding a league filter here would be invisible
+// today (only one league currently uses these venues) and wrong later.
+
+export type OccupancyWindow = {
+  /** Inclusive lower bound, explicit +00 offset. */
+  fromIso: string;
+  /** EXCLUSIVE upper bound — the day AFTER endDate at 00:00. */
+  toIsoExclusive: string;
+};
+
+/** Next calendar day for a "YYYY-MM-DD", via local-midnight date arithmetic —
+ *  the same substring convention as `dayKeyFromIsoDate`, never an instant. */
+function nextDateStr(date: string): string {
+  const d = new Date(date.substring(0, 10) + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return localDateStr(d);
+}
+
+/**
+ * Half-open bounds `[fromIso, toIsoExclusive)` for the picker's occupancy reads.
+ *
+ * The upper bound is the day AFTER `endDate`, and that rollover is the whole
+ * point: `scheduled_at` is a timestamp, so a `<= endDate` bound would compare
+ * against `endDate 00:00` and silently DROP every game on the final day —
+ * a 3:30 PM game on the last Saturday of the season is `> 2026-10-24`. That
+ * dropped row is exactly the occupancy the picker needs in order to refuse a
+ * colliding slot. Fixture F8 and mutant M11 pin this.
+ *
+ * Bounds carry an explicit `+00:00` so the comparison is exact regardless of the
+ * database's configured timezone; stored `scheduled_at` values are `+00`.
+ */
+export function occupancyWindow(startDate: string, endDate: string): OccupancyWindow {
+  return {
+    fromIso: `${startDate.substring(0, 10)}T00:00:00+00:00`,
+    toIsoExclusive: `${nextDateStr(endDate)}T00:00:00+00:00`,
+  };
+}
+
+/**
+ * Does a stored `scheduled_at` fall inside the window? Mirrors what the `.gte()`
+ * / `.lt()` filters do server-side, so the sim can prove the scope keeps the
+ * rows the picker depends on.
+ *
+ * Pure string comparison on the `YYYY-MM-DDTHH:MM:SS` prefix — no `Date`
+ * parsing. Both sides are `+00`, so the prefixes are directly comparable and
+ * this stays inside the wall-clock convention. Postgres returns
+ * `"2026-10-24 15:30:00+00"` (space) while candidates use `T`; normalize first.
+ */
+export function inOccupancyWindow(scheduledAt: string, win: OccupancyWindow): boolean {
+  const key = (s: string) => s.replace(" ", "T").substring(0, 19);
+  const k = key(scheduledAt);
+  return k >= key(win.fromIso) && k < key(win.toIsoExclusive);
+}
+
 const DAY_TO_JS: Record<string, number> = {
   Su: 0, Mo: 1, Tu: 2, We: 3, Th: 4, Fr: 5, Sa: 6,
 };

@@ -18,10 +18,12 @@ import {
 import {
   buildAvailableSlots,
   durationFromSettings,
+  occupancyWindow,
   toMins,
   type OccupiedSpan,
   type SlotOption,
 } from "@/lib/schedule/reschedule-slots";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -155,32 +157,59 @@ export function RainoutRescheduleModal({
     // via home_team mirrors the umpire booking feed's shape; `games` always
     // stores our team as home_team_id (interleague `is_away` rows carry a null
     // venue_id and so never appear in this venue-keyed read).
-    const { data: venueGamesRaw, error: venueGamesErr } = await supabase
-      .from("games")
-      .select(
-        "venue_id, scheduled_at, home_team:teams!home_team_id(division:divisions(settings))",
-      )
-      .in("venue_id", venueIds)
-      .neq("id", gameId)
-      .neq("status", "cancelled");
-
-    // Fail CLOSED: without the occupancy set we would offer slots on top of
-    // real games. Same stance as the constraint read below.
-    if (venueGamesErr) {
-      setLoadError("Couldn't load existing games for these venues. Try again.");
-      setLoading(false);
-      return;
-    }
+    // Bounded to the division's own date window — the only dates the slot
+    // builder ever consults. NOT scoped by league: a concurrent season's game
+    // at the same field on the same date genuinely occupies it, so a
+    // league filter here would hide real occupancy. See occupancyWindow's
+    // header for why the upper bound rolls to the following day.
+    const win = occupancyWindow(div.start_date, div.end_date);
 
     type OccupancyRow = {
       scheduled_at: string;
       home_team: { division: { settings: unknown } | null } | null;
     };
 
+    // PAGINATED + FAIL-LOUD. This read is load-bearing for correctness now that
+    // occupancy is tested by real span: a row lost to PostgREST's silent
+    // 1000-row cap is a game the picker cannot see, so it would offer a slot
+    // directly on top of it. fetchAllRows returns every row or throws — it
+    // never returns a short array. The `.order("id")` tiebreak is REQUIRED:
+    // range paging over a non-unique sort key drops rows at page boundaries,
+    // and games tie on scheduled_at constantly.
+    let venueGamesRaw: (OccupancyRow & { venue_id: string })[];
+    try {
+      venueGamesRaw = await fetchAllRows<OccupancyRow & { venue_id: string }>(
+        "existing games at these venues",
+        ({ from, to, exactCount }) =>
+          supabase
+            .from("games")
+            .select(
+              "venue_id, scheduled_at, home_team:teams!home_team_id(division:divisions(settings))",
+              exactCount ? { count: "exact" } : undefined,
+            )
+            .in("venue_id", venueIds)
+            .neq("id", gameId)
+            .neq("status", "cancelled")
+            .gte("scheduled_at", win.fromIso)
+            .lt("scheduled_at", win.toIsoExclusive)
+            .order("scheduled_at")
+            .order("id")
+            .range(from, to) as unknown as PromiseLike<{
+            data: (OccupancyRow & { venue_id: string })[] | null;
+            error: { message: string } | null;
+            count?: number | null;
+          }>,
+      );
+    } catch {
+      // Fail CLOSED: without a COMPLETE occupancy set we would offer slots on
+      // top of real games. A partial list is worse than no list.
+      setLoadError("Couldn't load existing games for these venues. Try again.");
+      setLoading(false);
+      return;
+    }
+
     const venueBookings = new Map<string, OccupiedSpan[]>();
-    for (const g of (venueGamesRaw ?? []) as unknown as (OccupancyRow & {
-      venue_id: string;
-    })[]) {
+    for (const g of venueGamesRaw) {
       const date = g.scheduled_at.substring(0, 10);
       const vKey = `${g.venue_id}:${date}`;
       const span: OccupiedSpan = {
@@ -206,7 +235,13 @@ export function RainoutRescheduleModal({
         `home_team_id.eq.${awayTeamId},away_team_id.eq.${awayTeamId}`,
       )
       .neq("id", gameId)
-      .neq("status", "cancelled");
+      .neq("status", "cancelled")
+      // Same date window as the venue read. Left unpaginated deliberately: a
+      // `teams` row belongs to exactly one season, so this is bounded by
+      // games-per-team (max 22 observed either side, ~44 for the pair) and
+      // cannot approach the 1000-row cap.
+      .gte("scheduled_at", win.fromIso)
+      .lt("scheduled_at", win.toIsoExclusive);
 
     if (teamGamesErr) {
       setLoadError("Couldn't load existing games for these teams. Try again.");
