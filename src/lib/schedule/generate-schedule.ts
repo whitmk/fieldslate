@@ -473,21 +473,30 @@ export function buildShortfallContext(args: {
  * Given a flat list of scheduled games, returns any venue double-bookings.
  * Call this after fetching games from the DB to drive a warning banner.
  */
-export interface ConflictInputGame {
-  id: string;
-  scheduled_at: string;
-  venue_id: string | null;
-  venue_name: string;
-  home_team_name: string;
-  away_team_name: string;
-  division_name?: string;
-}
+// Re-exported from ./detect-conflicts — this file used to carry a byte-identical
+// COPY of the type and the predicate, and two copies of a rule this subtle is a
+// drift hazard. detect-conflicts.ts is directive-free, so this "use client"
+// module can import it. The two wrappers differ only in their RETURN shape
+// (`games` with display labels here, `gameIds` there); the model lives in one
+// place. See that file's header for why the LATER game's buffer governs and why
+// `max()` is the wrong-and-tempting answer.
+export type { ConflictInputGame } from "./detect-conflicts";
+import {
+  venueGamesConflict,
+  type ConflictInputGame,
+} from "./detect-conflicts";
 
 export function detectScheduleConflicts(
   games: ConflictInputGame[],
   gameDuration: number,
   bufferMinutes: number,
 ): ScheduleConflict[] {
+  // Same migration bridge as detectConflicts: real-span when every game carries
+  // its own duration, legacy start-distance otherwise so unmigrated callers
+  // (the panel badge, the resolver, this file's own post-write conflict report)
+  // keep today's exact behavior. Delete the legacy branch once they supply
+  // per-game durations; do not add new scalar-only callers.
+  const realSpan = games.every((g) => typeof g.durationMin === "number");
   const minGap = Number(gameDuration) + Number(bufferMinutes);
   const byVenueDay = new Map<string, ConflictInputGame[]>();
 
@@ -511,11 +520,20 @@ export function detectScheduleConflicts(
 
     for (let i = 0; i < sorted.length; i++) {
       for (let j = i + 1; j < sorted.length; j++) {
-        const minsA = timeToMinutes(sorted[i].scheduled_at.substring(11, 16));
-        const minsB = timeToMinutes(sorted[j].scheduled_at.substring(11, 16));
-        if (Math.abs(minsA - minsB) < minGap) {
-          conflictingGames.add(sorted[i]);
-          conflictingGames.add(sorted[j]);
+        const a = sorted[i];
+        const b = sorted[j];
+        const hit = realSpan
+          ? venueGamesConflict(
+              { scheduled_at: a.scheduled_at, durationMin: a.durationMin!, bufferMin: a.bufferMin ?? 0 },
+              { scheduled_at: b.scheduled_at, durationMin: b.durationMin!, bufferMin: b.bufferMin ?? 0 },
+            )
+          : Math.abs(
+              timeToMinutes(a.scheduled_at.substring(11, 16)) -
+                timeToMinutes(b.scheduled_at.substring(11, 16)),
+            ) < minGap;
+        if (hit) {
+          conflictingGames.add(a);
+          conflictingGames.add(b);
         }
       }
     }

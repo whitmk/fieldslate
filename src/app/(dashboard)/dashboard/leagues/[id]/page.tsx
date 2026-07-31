@@ -18,7 +18,7 @@ import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
 import { ActivityLogPanel } from "@/components/dashboard/activity-log-panel";
 import { ArchivedSeasonBanner } from "@/components/seasons/archived-season-banner";
-import { detectConflicts } from "@/lib/schedule/detect-conflicts";
+import { detectConflicts, venueGamesConflict } from "@/lib/schedule/detect-conflicts";
 import { RainedOutStatCard, type RainedOutGame } from "@/components/dashboard/rained-out-stat-card";
 import { ConflictStatCard, type ConflictGame } from "@/components/dashboard/conflict-stat-card";
 import type { BlackoutAffectedGame } from "@/components/blackout/blackout-dates-panel";
@@ -126,6 +126,34 @@ export default async function LeaguePage({ params }: { params: { id: string } })
   const blackoutMap = new Map<string, string | null>();
   for (const b of blackoutDates) blackoutMap.set(b.date, b.label);
 
+  // Per-game duration/buffer from the game's OWN home-team division. Both venue
+  // conflict passes below (badge membership and the "Conflicts with" peer list)
+  // read these, so a Majors game is 120 minutes long even when a Minors pass is
+  // doing the comparing. `allDivisions` already carries every division's
+  // settings, so no query had to widen for this.
+  //
+  // Fallbacks are the SHARED defaults, not 0: a 0-length span can never overlap
+  // anything, so a division with unset settings would silently report zero
+  // conflicts forever. (The panel badge and resolver still use `?? 0` on the
+  // legacy scalar path — a separate known bug, reported not fixed here.)
+  const DEFAULT_DURATION_MIN = 90;
+  const durationByDivisionId = new Map<string, number>();
+  const bufferByDivisionId = new Map<string, number>();
+  for (const div of allDivisions) {
+    const ds = (div.settings ?? {}) as { game_duration?: number; buffer_minutes?: number };
+    const dur = Number(ds.game_duration);
+    durationByDivisionId.set(div.id, Number.isFinite(dur) && dur > 0 ? dur : DEFAULT_DURATION_MIN);
+    bufferByDivisionId.set(div.id, Number(ds.buffer_minutes) || 0);
+  }
+  function durationFor(g: GameRow): number {
+    const divId = g.home_team?.division_id;
+    return (divId ? durationByDivisionId.get(divId) : undefined) ?? DEFAULT_DURATION_MIN;
+  }
+  function bufferFor(g: GameRow): number {
+    const divId = g.home_team?.division_id;
+    return (divId ? bufferByDivisionId.get(divId) : undefined) ?? 0;
+  }
+
   // Per-division stats
   const allConflictingGameIds = new Set<string>();
 
@@ -175,6 +203,10 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         venue_name: g.venue?.name ?? "Unknown venue",
         home_team_name: g.home_team?.name ?? "TBD",
         away_team_name: g.away_team?.name ?? "TBD",
+        // Each game's OWN division numbers — this pass spans divisions, so the
+        // pass's own scalars must not be applied to another division's games.
+        durationMin: durationFor(g),
+        bufferMin: bufferFor(g),
       })),
       gameDuration,
       bufferMins,
@@ -201,26 +233,17 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     }
   }
 
-  // Per-game gap (game_duration + buffer) from the home team's division settings
-  const gapByDivisionId = new Map<string, number>();
-  for (const div of allDivisions) {
-    const ds = (div.settings ?? {}) as { game_duration?: number; buffer_minutes?: number };
-    gapByDivisionId.set(
-      div.id,
-      Number(ds.game_duration ?? 0) + Number(ds.buffer_minutes ?? 0),
-    );
-  }
-  function gapFor(g: GameRow): number {
-    const divId = g.home_team?.division_id;
-    return (divId ? gapByDivisionId.get(divId) : undefined) ?? 105;
-  }
-  function timeMin(hhmm: string): number {
-    const [h, m] = hhmm.split(":").map(Number);
-    return h * 60 + m;
-  }
-
-  // Pairwise peer detection: same venue + same date + within max(gapA, gapB) minutes.
-  // Powers the "conflicts with" list shown under each Double-booked badge.
+  // Pairwise peer detection — powers the "Conflicts with" list under each
+  // Double-booked badge. It now shares `venueGamesConflict` with the badge
+  // membership pass above, so the two can no longer disagree about the same
+  // pair. It previously used `Math.abs(minsA - minsB) < Math.max(gapFor(a),
+  // gapFor(b))` — a start-distance rule found NOWHERE else in the codebase, and
+  // `max()` is precisely the wrong answer: it reproduced all 8 live SRALL false
+  // positives. See detect-conflicts.ts's header.
+  //
+  // NOTE the input sets still differ: this loop skips cancelled games and the
+  // membership pass does not, so the two can still diverge on a cancelled row.
+  // That inconsistency is pre-existing and reported, not fixed here.
   const peersByGameId = new Map<string, GameRow[]>();
   const venueDayBuckets = new Map<string, GameRow[]>();
   for (const g of allGames) {
@@ -234,9 +257,12 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     for (let i = 0; i < group.length; i++) {
       for (let j = i + 1; j < group.length; j++) {
         const a = group[i], b = group[j];
-        const minsA = timeMin(a.scheduled_at.substring(11, 16));
-        const minsB = timeMin(b.scheduled_at.substring(11, 16));
-        if (Math.abs(minsA - minsB) < Math.max(gapFor(a), gapFor(b))) {
+        if (
+          venueGamesConflict(
+            { scheduled_at: a.scheduled_at, durationMin: durationFor(a), bufferMin: bufferFor(a) },
+            { scheduled_at: b.scheduled_at, durationMin: durationFor(b), bufferMin: bufferFor(b) },
+          )
+        ) {
           if (!peersByGameId.has(a.id)) peersByGameId.set(a.id, []);
           if (!peersByGameId.has(b.id)) peersByGameId.set(b.id, []);
           peersByGameId.get(a.id)!.push(b);

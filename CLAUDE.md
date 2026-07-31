@@ -998,6 +998,88 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   that is a decision to make explicitly and prove with the four generator
   sims — not a "helpful" cleanup to slip into an unrelated diff.
 
+## Venue conflict detection — the buffer belongs to the ARRIVING team
+
+- **THE RULE.** Two games at the same venue/date conflict when their REAL SPANS
+  overlap — each span is `[start, start + ITS OWN division's game_duration)`,
+  half-open — with the **LATER game's start pushed back by the LATER game's
+  `buffer_minutes`**. One predicate: `venueGamesConflict` in
+  `src/lib/schedule/detect-conflicts.ts`.
+- **WHY THE LATER GAME'S BUFFER — read this before "improving" it.** The buffer
+  exists so the **ARRIVING team can warm up and take the field**. It is NOT the
+  departing game's teardown allowance. So the gap a pairing needs is whatever
+  the team showing up next needs — not the bigger of the two, and not the
+  incumbent's.
+- **`max(bufA, bufB)` IS WRONG, AND IT IS THE ANSWER YOU WILL REACH FOR.** It is
+  the natural way to make a one-sided rule symmetric, and it reproduces ALL 8
+  live SRALL false positives exactly (Majors 120+60 at 1:00 followed by Minors
+  105+30 at 3:30 — thirty minutes of real daylight, flagged). Earlier-game's-
+  buffer reproduces the same 8. **Both are ruled out on live evidence, not
+  taste.** `min()` is also wrong in the opposite direction: it clears a pairing
+  where the arriving division genuinely needs the gap.
+- **The consequence to expect and NOT "fix": a division's buffer no longer
+  protects the gap after its OWN games.** A Majors game ending at 3:00 can be
+  followed by Minors at 3:30, because Minors needs 30. Confirmed correct.
+- **The detector and the reschedule picker MUST agree.** The picker's
+  `candidateClearsSpan` uses the PLACING division's buffer — there, the placing
+  game is the one arriving. Same rule stated from the two different vantage
+  points those surfaces have. `spansOverlap` is literally shared between them
+  (detect-conflicts.ts imports it from reschedule-slots.ts) so they cannot drift
+  about what "overlap" means. **Change one, change the other.**
+- **Do NOT reuse `candidateClearsSpan` in a detector.** It is deliberately
+  ASYMMETRIC — the buffer belongs to the placing side and it pads BOTH sides of
+  the candidate. A detector has no placing side; both games already exist.
+  Inheriting it would smuggle in an unmade decision.
+- **`detectScheduleConflicts` (generate-schedule.ts) no longer carries a second
+  copy of the predicate** — it imports `venueGamesConflict` and re-exports the
+  shared `ConflictInputGame` type. The two wrappers differ ONLY in return shape
+  (`games` with display labels vs `gameIds`). Do not re-fork them.
+- **MIGRATION BRIDGE — a legacy branch still exists and must die.** When every
+  game carries `durationMin`, the real-span model runs; when they do not, the
+  OLD start-distance model runs on the scalar args. That fallback exists so the
+  fix could land on the LEAGUE PAGE without changing the division panel badge,
+  the conflict resolver, or the generator's post-write conflict report, which
+  still pass scalars. The fallback is **wholesale per call, never per pair**
+  (mutant M8). It is a bridge, not a design — the legacy branch is the wrong
+  model. **Do not add new scalar-only callers.**
+- **Surfaces STILL on the old model** (each is its own future change): the
+  division panel badge (`division-schedule-panel.tsx:364`), the conflict
+  resolver list + per-move check (`conflict-resolver-modal.tsx:357/432`),
+  `findFreeSlot` (`:150`, also still a fixed lattice), the generator's placement
+  loops (`generate-schedule.ts:653/2324`), the placement-diagnostics tally, the
+  dashboard critical-alerts count (exact-timestamp only), and `add-game-modal`
+  (exact-timestamp only). **Eleven implementations of venue collision exist;
+  consolidating them is a project, not a cleanup.**
+- **Live result (2026-07-30):** SRALL Fall 2026 went from **8 flagged to 0** —
+  all 8 were false positives. The one genuine overlap org-wide (archived QA
+  Season 2026-05-19, QA-Memorial 2026-07-27, two same-division QA-TBall games at
+  17:45 and 18:00, both 90 min — a real 75-minute overlap) is **still caught**.
+  Zero pairs newly flagged anywhere.
+- **KNOWN, NOT FIXED HERE:**
+  1. **Harvest-narrow undercount.** `leagues/[id]/page.tsx` detects venue-wide
+     but keeps only games whose home team is in the pass's division, so a
+     flagged CROSS-division pair contributes ONE game, not two (the old 8 shown
+     were half of 16 involved). Orthogonal to the predicate and separable.
+  2. **`?? 0` game_duration fallback** on the panel badge (`:364`) and resolver
+     (`:355`) gives `minGap = 0` — a division with unset settings reports zero
+     conflicts forever. The league page now uses a 90-minute default instead,
+     because a 0-length span can never overlap anything.
+  3. **Inconsistent cancelled-game filtering.** The peer list skips cancelled
+     games; the badge-membership pass does not — so the two can still disagree
+     about a cancelled row even though they now share a predicate.
+- **Harness: `npm run sim:venue-conflict`** (TZ=UTC mandatory) — 22 assertions,
+  5 anti-vacuity counters, **8 mutants all killed by their own assertion**.
+  Read its mutation log before touching this; three mutants initially failed
+  that standard. **F3b** is the only thing ruling out `max()`/earlier-buffer;
+  **F3c** exists solely so the duration-swap mutant has DIFFERING durations to
+  corrupt (F3a's two games are both 60 min, so a swap is a no-op there); and the
+  instant-parsing mutant SURVIVES the space-vs-`T` format check — under TZ=UTC
+  local equals UTC and V8 parses both — so only the **non-`+00` offset**
+  assertion catches it. Do not delete F3b, F3c, or that offset assertion.
+  M1 (revert to start-distance) must kill F1 while leaving **F2 GREEN**: the
+  genuine overlap is caught by both models, and a mutant that killed F2 too
+  would prove nothing about which model is better.
+
 ## Reschedule picker — a DIFFERENT slot model than the generator, on purpose
 
 - **Two models exist in this repo and they disagree. `reschedule-slots.ts` is
