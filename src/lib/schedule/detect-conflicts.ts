@@ -58,6 +58,21 @@ export interface ConflictInputGame {
   bufferMin?: number;
 }
 
+export interface DetectConflictsOptions {
+  /**
+   * Assert the real-span precondition instead of degrading to the legacy
+   * model. Set this whenever the caller supplies `durationMin` for every game
+   * — then a missing or non-finite one is a BUG and throws, rather than
+   * silently flipping the whole call back to start-distance.
+   *
+   * BOTH guards in this module are SILENT BY CONSTRUCTION when they are not
+   * strict: the legacy fallback returns plausible numbers and a zero-length
+   * span returns a plausible zero. Neither looks like a failure. That is why
+   * the caller that knows the invariant holds should say so.
+   */
+  strictPerGameDurations?: boolean;
+}
+
 export interface DetectedConflict {
   venueId: string;
   venueName: string;
@@ -97,6 +112,20 @@ export function venueGamesConflict(
   a: { scheduled_at: string; durationMin: number; bufferMin: number },
   b: { scheduled_at: string; durationMin: number; bufferMin: number },
 ): boolean {
+  // FAIL LOUD, do not absorb. Callers of this primitive (the league page's peer
+  // loop calls it directly, bypassing detectConflicts' own check) always know
+  // each game's duration, so a missing or non-finite one is a BUG. Degrading
+  // instead would produce a zero-length span that silently conflicts with
+  // nothing — a confident, wrong "no conflicts". See isUsableDuration.
+  if (!isUsableDuration(a.durationMin) || !isUsableDuration(b.durationMin)) {
+    throw new Error(
+      `venueGamesConflict: both games need a finite, positive durationMin ` +
+        `(got ${String(a.durationMin)} and ${String(b.durationMin)}). A game's ` +
+        `duration comes from its own division's game_duration; an unusable one ` +
+        `is a bug, not a condition to absorb.`,
+    );
+  }
+
   const aStart = startMinOf(a.scheduled_at);
   const bStart = startMinOf(b.scheduled_at);
 
@@ -116,10 +145,25 @@ export function venueGamesConflict(
   );
 }
 
-/** True when every game carries its own duration — the real-span model's
+/**
+ * A duration usable as a real span: finite AND positive.
+ *
+ * NOT `typeof x === "number"` — that is TRUE for NaN, which is the sharper of
+ * the two silent failures this module can suffer. A NaN duration would pass a
+ * typeof check, stay on the real-span path, and then coerce to a ZERO-LENGTH
+ * span inside `venueGamesConflict` (`Number(NaN) || 0` is 0). A zero-length
+ * span can never overlap anything, so EVERY conflict disappears — genuine ones
+ * included — and the surface reports a confident, believable zero. Zero and
+ * negative durations are rejected for the same reason.
+ */
+function isUsableDuration(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v > 0;
+}
+
+/** True when every game carries a usable duration — the real-span model's
  *  precondition. See `detectConflicts` for what happens when it doesn't. */
 function hasPerGameDurations(games: ConflictInputGame[]): boolean {
-  return games.every((g) => typeof g.durationMin === "number");
+  return games.every((g) => isUsableDuration(g.durationMin));
 }
 
 /**
@@ -145,7 +189,27 @@ export function detectConflicts(
   games: ConflictInputGame[],
   gameDuration: number,
   bufferMinutes: number,
+  opts: DetectConflictsOptions = {},
 ): DetectedConflict[] {
+  // STRICT callers assert the invariant instead of degrading. The league page
+  // supplies durationMin for EVERY game unconditionally, so a missing or
+  // non-finite one there means something upstream broke — and silently
+  // reverting that call to the legacy start-distance branch would resurrect
+  // every false positive at once, with no error, looking exactly like the fix
+  // had never shipped. Fail loud instead; see DetectConflictsOptions.
+  if (opts.strictPerGameDurations) {
+    const bad = games.find((g) => !isUsableDuration(g.durationMin));
+    if (bad) {
+      throw new Error(
+        `detectConflicts: game ${bad.id} has no usable durationMin ` +
+          `(got ${String(bad.durationMin)}). This caller supplies per-game ` +
+          `durations for every game, so this is a bug — not a reason to fall ` +
+          `back to the legacy start-distance model, which over- and ` +
+          `under-reserves and would silently restore known false positives.`,
+      );
+    }
+  }
+
   const realSpan = hasPerGameDurations(games);
   const legacyMinGap = Number(gameDuration) + Number(bufferMinutes);
   const byVenueDay = new Map<string, ConflictInputGame[]>();

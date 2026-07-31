@@ -32,6 +32,14 @@
 //   F5  TZ. Wall-clock substring only — never a parsed instant. Includes the
 //       Postgres space-separated format and the same-date-keyed limitation.
 //   F6  The legacy scalar bridge still reproduces old behavior exactly.
+//   F7  THE TWO SILENT GUARDS, made loud. Both failure modes here return a
+//       BELIEVABLE NUMBER rather than an error, which is what makes them
+//       dangerous: a missing durationMin flips the whole call back to
+//       start-distance (all known false positives return, no error), and a NaN
+//       duration passes a `typeof` check, stays on the real-span path, and
+//       coerces to a ZERO-LENGTH span that conflicts with nothing (every
+//       conflict vanishes, genuine ones included). The league-page path asserts
+//       both instead of absorbing them.
 
 import {
   venueGamesConflict,
@@ -61,6 +69,7 @@ const counters = {
   bufferDecidedPairs: 0, // pairs where the buffer (not the span) decided it
   legacyBridgeRuns: 0,  // detectConflicts calls that took the legacy branch
   realSpanRuns: 0,      // detectConflicts calls that took the real-span branch
+  guardsFired: 0,       // times a loud guard actually threw
 };
 
 const D = "2026-08-15";
@@ -74,6 +83,34 @@ function check(a: ReturnType<typeof g>, b: ReturnType<typeof g>): boolean {
   else counters.clearedPairs++;
   return hit;
 }
+/** Conflict-record count, or -1 if the call threw. Lets an assertion that
+ *  expects a NUMBER attribute a throw to ITSELF rather than crashing the run
+ *  and killing a later mutant at the wrong line (mutant M8 does exactly this:
+ *  per-pair mode sends an undefined duration into venueGamesConflict's guard). */
+function safeLen(fn: () => { length: number }): number {
+  try { return fn().length; } catch { return -1; }
+}
+
+/** Assert a call throws, and that the message names `mustMention` — a throw
+ *  with the wrong cause is not the guard we think we are testing. */
+function assertThrows(fn: () => unknown, mustMention: string, label: string) {
+  assertions++;
+  try {
+    fn();
+    failures++;
+    console.error(`  FAIL: ${label}  (did not throw)`);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes(mustMention)) {
+      counters.guardsFired++;
+      console.log(`  ok: ${label}`);
+    } else {
+      failures++;
+      console.error(`  FAIL: ${label}  (threw, but message lacked "${mustMention}": ${msg})`);
+    }
+  }
+}
+
 /** Order-independence: the predicate must not care which arg is which. */
 function checkBoth(a: ReturnType<typeof g>, b: ReturnType<typeof g>): boolean {
   const ab = check(a, b);
@@ -233,7 +270,73 @@ console.log("\nF6  legacy bridge: scalar callers keep today's exact behavior");
     legacy[1],
   ];
   counters.legacyBridgeRuns++;
-  assert(detectConflicts(mixed, 120, 60).length === 1, "F6: a MIXED set falls back to legacy wholesale, never per-pair");
+  assert(safeLen(() => detectConflicts(mixed, 120, 60)) === 1, "F6: a MIXED set falls back to legacy wholesale, never per-pair");
+}
+
+// ══ F7 — THE TWO SILENT GUARDS ═══════════════════════════════════════════════
+console.log("\nF7  silent guards made loud: missing durationMin, and NaN");
+{
+  const base = (id: string, hhmm: string) => ({
+    id, scheduled_at: `${D}T${hhmm}:00+00:00`, venue_id: "v", venue_name: "V",
+    home_team_name: "A", away_team_name: "B",
+  });
+
+  // F7a — MISSING durationMin on the strict (league-page) path. Absorbing this
+  // would silently revert to start-distance and restore every false positive.
+  const missing: ConflictInputGame[] = [
+    { ...base("m1", "13:00"), durationMin: 120, bufferMin: 60 },
+    { ...base("m2", "15:30"), bufferMin: 30 }, // no durationMin
+  ];
+  assertThrows(
+    () => detectConflicts(missing, 120, 60, { strictPerGameDurations: true }),
+    "m2",
+    "F7a: strict path THROWS on a missing durationMin (names the game)",
+  );
+  // Proof this is not a vacuous throw: absorbed, it returns a plausible flag.
+  counters.legacyBridgeRuns++;
+  assert(
+    safeLen(() => detectConflicts(missing, 120, 60)) === 1,
+    "F7a: absorbed, the SAME input silently reports a (false) conflict — the believable number",
+  );
+
+  // F7b — NaN durationMin on the strict path. `typeof NaN === "number"`, so the
+  // old check let this through onto the real-span path.
+  const nan: ConflictInputGame[] = [
+    { ...base("n1", "17:45"), durationMin: 90, bufferMin: 15 },
+    { ...base("n2", "18:00"), durationMin: Number("oops"), bufferMin: 15 },
+  ];
+  assertThrows(
+    () => detectConflicts(nan, 90, 15, { strictPerGameDurations: true }),
+    "n2",
+    "F7b: strict path THROWS on a NaN durationMin (names the game)",
+  );
+  // Non-strict must NOT silently take the real-span path with a NaN: a
+  // zero-length span conflicts with nothing, so this GENUINE overlap would
+  // vanish. It falls to legacy instead, which still catches it.
+  counters.legacyBridgeRuns++;
+  assert(
+    safeLen(() => detectConflicts(nan, 90, 15)) === 1,
+    "F7b: non-strict, a NaN falls to LEGACY and the genuine overlap is still caught (never a zero-length span)",
+  );
+
+  // F7c — the primitive itself fails loud, covering the league page's peer loop
+  // which calls it directly and bypasses detectConflicts' own check.
+  assertThrows(
+    () => venueGamesConflict(g("13:00", 120, 60), { scheduled_at: `${D}T15:30:00+00:00`, durationMin: Number.NaN, bufferMin: 30 }),
+    "finite, positive durationMin",
+    "F7c: venueGamesConflict THROWS on NaN (covers the peer loop)",
+  );
+  assertThrows(
+    () => venueGamesConflict(g("13:00", 120, 60), { scheduled_at: `${D}T15:30:00+00:00`, durationMin: 0, bufferMin: 30 }),
+    "finite, positive durationMin",
+    "F7c: venueGamesConflict THROWS on a zero duration (a 0-length span conflicts with nothing)",
+  );
+
+  // F7d — the bridge is untouched for unmigrated callers: no durationMin at all,
+  // non-strict, still legacy, still no throw.
+  counters.legacyBridgeRuns++;
+  const bridge: ConflictInputGame[] = [base("b1", "13:00"), base("b2", "15:30")];
+  assert(safeLen(() => detectConflicts(bridge, 120, 60)) === 1, "F7d: unmigrated scalar callers still work and do NOT throw");
 }
 
 // ── Anti-vacuity gate ────────────────────────────────────────────────────────
@@ -304,4 +407,27 @@ process.exit(failures === 0 ? 0 : 1);
 //      → KILLED at F6 "a MIXED set falls back to legacy wholesale, never
 //        per-pair".
 //
-// All 8 killed at their own assertion. Suite re-verified green after revert.
+//  M9  isUsableDuration → `typeof v === "number"` (NaN passes again)
+//      → KILLED at F7b "strict path THROWS on a NaN durationMin". This is the
+//        sharper of the two silent failures: NaN passes typeof, stays on the
+//        real-span path, and coerces to a ZERO-LENGTH span that conflicts with
+//        nothing — every conflict vanishes, genuine ones included, and the
+//        surface reports a confident zero.
+//
+// M10  strict assert removed (absorb instead of throw)
+//      → KILLED at F7a "strict path THROWS on a missing durationMin". F7a's
+//        second assertion shows WHY it matters: absorbed, the identical input
+//        silently reports a false conflict — a believable number, not an error.
+//
+// M11  venueGamesConflict's own guard removed
+//      → KILLED at F7c "venueGamesConflict THROWS on NaN". This guard covers
+//        the league page's PEER loop, which calls the primitive directly and
+//        never passes through detectConflicts' check.
+//
+// All 11 killed at their own assertion. Suite re-verified green after revert.
+//
+// NOTE on `safeLen`: F6's and F7's count assertions route their call through it
+// so a throw is attributed to THAT assertion instead of crashing the run. M8
+// (per-pair mode) sends an undefined duration into M11's guard and would
+// otherwise die with an uncaught exception at an unrelated line — killed, but
+// by nothing in particular. Keep safeLen.

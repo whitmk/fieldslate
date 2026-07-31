@@ -1055,6 +1055,31 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Season 2026-05-19, QA-Memorial 2026-07-27, two same-division QA-TBall games at
   17:45 and 18:00, both 90 min — a real 75-minute overlap) is **still caught**.
   Zero pairs newly flagged anywhere.
+- **BOTH GUARDS ARE SILENT BY CONSTRUCTION — if either fires, the symptom is a
+  BELIEVABLE NUMBER, not an error.** That is the whole reason the league page
+  asserts instead of degrading:
+  1. **The legacy fallback is all-or-nothing.** `hasPerGameDurations` uses
+     `.every()`, so ONE game lacking a usable duration flips the ENTIRE call
+     back to start-distance — every known false positive returns at once, with
+     no error, looking exactly like the fix had never shipped. The league page
+     therefore passes `{ strictPerGameDurations: true }` and THROWS instead:
+     `durationFor`/`bufferFor` are total (they always return a finite positive
+     number), so a violation there is a broken invariant, not a runtime
+     condition. Mutant M10 pins it.
+  2. **`typeof NaN === "number"` is TRUE.** A NaN duration would pass a typeof
+     check, stay on the real-span path, and coerce to a ZERO-LENGTH span inside
+     `venueGamesConflict` (`Number(NaN) || 0` is 0) — and a zero-length span
+     conflicts with nothing, so EVERY conflict disappears, genuine ones
+     included. `isUsableDuration` is therefore finite-AND-positive, never
+     `typeof`; zero and negative are rejected for the same reason. Mutant M9
+     pins it. `venueGamesConflict` carries its OWN copy of the guard because the
+     league page's PEER loop calls it directly, bypassing `detectConflicts`
+     entirely (mutant M11).
+  **Neither hazard is reachable on live data** — all 30 divisions have numeric,
+  positive `game_duration` and `buffer_minutes`, and zero teams lack a division
+  (verified 2026-07-30), so the 90-minute default is pure defence and currently
+  applies to nothing. The guards exist because the failure mode is invisible,
+  not because it is likely.
 - **KNOWN, NOT FIXED HERE:**
   1. **Harvest-narrow undercount.** `leagues/[id]/page.tsx` detects venue-wide
      but keeps only games whose home team is in the pass's division, so a
@@ -1067,8 +1092,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   3. **Inconsistent cancelled-game filtering.** The peer list skips cancelled
      games; the badge-membership pass does not — so the two can still disagree
      about a cancelled row even though they now share a predicate.
-- **Harness: `npm run sim:venue-conflict`** (TZ=UTC mandatory) — 22 assertions,
-  5 anti-vacuity counters, **8 mutants all killed by their own assertion**.
+- **Harness: `npm run sim:venue-conflict`** (TZ=UTC mandatory) — 29 assertions,
+  6 anti-vacuity counters, **11 mutants all killed by their own assertion**.
   Read its mutation log before touching this; three mutants initially failed
   that standard. **F3b** is the only thing ruling out `max()`/earlier-buffer;
   **F3c** exists solely so the duration-swap mutant has DIFFERING durations to

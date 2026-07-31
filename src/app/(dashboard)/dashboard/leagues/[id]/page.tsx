@@ -210,6 +210,11 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       })),
       gameDuration,
       bufferMins,
+      // durationFor/bufferFor are TOTAL — every game above gets a finite,
+      // positive duration. Assert that rather than let a broken invariant
+      // silently revert this call to start-distance, which would restore all
+      // the known false positives with no error at all.
+      { strictPerGameDurations: true },
     );
 
     const conflictingAtVenues = new Set(conflicts.flatMap((c) => c.gameIds));
