@@ -1066,21 +1066,63 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
      official in two places.
   2. **No `practice_slots` occupancy check** — a practice booked 3:00–4:00 at
      a venue does NOT block a 3:30 game offer there.
-  3. **The venue-occupancy read is org-wide and unpaginated** (`.in("venue_id",
-     …)`, no season scope, no `fetchAllRows`) — exposed to the PostgREST
-     1000-row cap. **Real-span correctness is only as good as the occupancy
-     list**, so that read is now load-bearing for CORRECTNESS, not merely
-     completeness: a truncated read hides a game and the picker offers a slot
-     on top of it. See "Complete reads"; this belongs in that backlog.
-- **Harness: `npm run sim:reschedule-slots`** (TZ=UTC mandatory) — 50
-  assertions, 6 anti-vacuity counters, **11 mutants all killed BY THEIR OWN
+  3. ~~The venue-occupancy read is org-wide and unpaginated~~ — **CLOSED
+     2026-07-30**, see "Occupancy read scope" below. The other two stand.
+- **Occupancy read scope — DATE-BOUNDED, NEVER SEASON-BOUNDED, and paginated.**
+  `occupancyWindow(startDate, endDate)` in `reschedule-slots.ts` supplies the
+  bounds for both of the picker's `games` reads.
+  - **Why it is load-bearing:** the read was `.in("venue_id", venueIds)` with no
+    date bound and no paging — org-wide, every season ever, straight into
+    PostgREST's silent 1000-row cap. Under the OLD fixed lattice a truncated
+    occupancy list was largely harmless (the coarse grid skipped past most
+    danger anyway). Under REAL-SPAN occupancy it is a correctness defect: a row
+    lost to truncation is a game the picker cannot see, so it offers a slot
+    directly on top of it, and **nothing errors**. Live at the time of the fix:
+    119 rows for a typical SRALL Minors reschedule against the 1000 cap —
+    unscoped it accrued ~119/season forever, so it would have reached the cap
+    in roughly eight seasons and truncated silently.
+  - **DO NOT ADD A `league_id` FILTER.** It looks like the obvious scope and it
+    is wrong: a CONCURRENT season's game at the same field on the same date
+    genuinely occupies that field. Filtering it out would hide real occupancy.
+    Today only one league uses these venues, so the bug would be invisible now
+    and wrong later. `games` has no `division_id`; season means `league_id`.
+    Date is the only correct axis.
+  - **The upper bound rolls to the day AFTER `end_date`, and that is the whole
+    point.** `scheduled_at` is a timestamp, so a naive `<= endDate` compares
+    against `endDate 00:00` and DROPS every game on the final day — a 3:30 PM
+    game on the season's last Saturday is `> 2026-10-24`. Mutant M11 makes
+    exactly that change and the final Saturday then offers its FULL grid, on
+    top of both real games. Bounds carry an explicit `+00:00` so the comparison
+    holds regardless of the database's configured timezone.
+  - **Date scope is SUFFICIENT because occupancy is same-date-keyed.**
+    `venueBookings` is keyed `venueId:date` and `buildAvailableSlots` consults
+    only dates inside the division window, so `[start_date, end_date]` is a
+    superset of what is ever read. If the model ever grows cross-midnight
+    awareness, this window must widen with it.
+  - **The venue read goes through `fetchAllRows`** (complete-or-throw, cap
+    discovery, `.order("id")` tiebreak) and fails CLOSED — a partial occupancy
+    list is worse than none. This is that helper's FIRST client-component use;
+    it is pure TS with no server-only imports. **The team read is date-scoped
+    but deliberately NOT paginated:** a `teams` row belongs to exactly one
+    season, so it is bounded by games-per-team (max 22 observed either side,
+    ~44 for a pair) and cannot approach the cap.
+  - **Still unconverted elsewhere** — the Venues page (660 rows), the division
+    panel, both CSV exports, `fetchSportsConnectGames`, and the five
+    venue-keyed generator reads. Same exposure, separate backlog; see
+    "Complete reads".
+- **Harness: `npm run sim:reschedule-slots`** (TZ=UTC mandatory) — 61
+  assertions, 8 anti-vacuity counters, **13 mutants all killed BY THEIR OWN
   assertion** (2026-07-30). Read its mutation log before touching any of this:
   two mutants initially died at the WRONG assertion and had to be re-proven —
   M5 needed fixture **F2b** (short existing game, long placing division,
   positioned mid-window) because F2's longer existing game makes mis-sizing
   over-reserve, which is safe and invisible; and the single one-sided-buffer
   mutant was split into **M3a/M3b** so both sides of the symmetric buffer are
-  pinned. Do not delete F2b, M3a, or M3b.
+  pinned. Fixture **F8** + mutants **M11/M12** pin the occupancy read scope
+  above — F8 runs candidate rows through the real window predicate and feeds
+  only the survivors to the real builder, so a scope that drops the final day
+  shows up as slots offered on top of real games. Do not delete F2b, M3a, M3b,
+  F8, M11, or M12.
 
 ## Reports — field utilization (placeable-slot model)
 
