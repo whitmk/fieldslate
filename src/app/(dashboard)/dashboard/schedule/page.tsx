@@ -14,10 +14,16 @@ import {
   type ScheduleGame,
 } from "@/components/schedule/schedule-list";
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
+import { ScheduleWeekGrid } from "@/components/schedule/schedule-week-grid";
 import { SchedulePrintButton } from "@/components/schedule/schedule-print-button";
 import { SchedulePrintRegion } from "@/components/schedule/schedule-print-region";
 import { fetchAllRows, type PagedResult } from "@/lib/supabase/fetch-all";
 import { gameDurationsFromDivisionRows } from "@/lib/schedule/division-durations";
+import {
+  parseWeekParam,
+  weekRange,
+  type WeekVenueInput,
+} from "@/lib/schedule/week-grid";
 import { byQualifiedVenueLabel } from "@/lib/venues/venue-label";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
@@ -26,7 +32,9 @@ import { isProPlus } from "@/lib/plan/limits";
 import { isSetupIncomplete } from "@/lib/setup/derive-step";
 
 function parseMode(raw: string | undefined): ViewMode {
-  return raw === "calendar" ? "calendar" : "list";
+  if (raw === "calendar") return "calendar";
+  if (raw === "week") return "week";
+  return "list";
 }
 
 function pad2(n: number) {
@@ -81,6 +89,7 @@ export default async function SchedulePage({
     past?: string;
     mode?: string;
     month?: string;
+    week?: string;
   };
 }) {
   const supabase = createClient();
@@ -96,6 +105,11 @@ export default async function SchedulePage({
   const selectedVenueId = searchParams.venue ?? "";
   const mode = parseMode(searchParams.mode);
   const month = parseMonth(searchParams.month);
+  // NULL when absent or malformed, and deliberately never defaulted here: the
+  // only correct "current week" depends on the VIEWER's timezone and this is a
+  // server component, where the clock is UTC. ScheduleWeekGrid resolves a null
+  // from the browser and rewrites the URL. See week-grid.ts.
+  const weekStart = mode === "week" ? parseWeekParam(searchParams.week) : null;
   // Default ON; the URL only carries `past=1` when the user has switched it OFF.
   const hidePast = searchParams.past !== "1";
 
@@ -228,6 +242,12 @@ export default async function SchedulePage({
   const today = todayLocalDateString();
   const todayIso = `${today}T00:00:00`;
   const gridRange = mode === "calendar" ? buildGridRange(month) : null;
+  // Week mode narrows the SAME shared query to seven days, exactly as calendar
+  // mode narrows it to its 42-day grid. Null until `?week=` resolves, in which
+  // case the query is simply not narrowed for that one render — the same
+  // season-wide read list mode does every load — and the grid filters to the
+  // week itself once it knows which one.
+  const weekBounds = weekStart ? weekRange(weekStart) : null;
 
   // ── Games ────────────────────────────────────────────────────────────────────
   let games: ScheduleGame[] = [];
@@ -313,7 +333,18 @@ export default async function SchedulePage({
               .gte("scheduled_at", `${gridRange.gridStart}T00:00:00`)
               .lt("scheduled_at", `${gridRange.dayAfterGridEnd}T00:00:00`);
           }
-          if (hidePast) {
+          if (weekBounds) {
+            q = q
+              .gte("scheduled_at", `${weekBounds.startDate}T00:00:00`)
+              .lt("scheduled_at", `${weekBounds.dayAfterEnd}T00:00:00`);
+          }
+          // hidePast DOES NOT APPLY IN WEEK MODE. The grid always shows a whole
+          // Monday-to-Sunday week; clipping the first three days of the current
+          // week would leave a grid whose empty columns mean "already played",
+          // which is indistinguishable from "nothing scheduled" — the exact
+          // misread the practices footnote exists to prevent. The toggle is
+          // hidden in week mode too, so nothing offers a control that no-ops.
+          if (hidePast && mode !== "week") {
             q = q.gte("scheduled_at", todayIso);
           }
 
@@ -344,6 +375,83 @@ export default async function SchedulePage({
         : undefined;
       return minutes === undefined ? g : { ...g, durationMin: minutes };
     });
+  }
+
+  // ── Week-by-field row set ────────────────────────────────────────────────────
+  // Venues flagged `division_venues.allow_games` for a division in THIS season.
+  // The grid unions this with any venue carrying a game in the displayed week
+  // (done client-side off the game rows, so it cannot disagree with the cells).
+  // An eligible field with no games still gets a row — a field sitting unused is
+  // the capacity signal this view exists to give.
+  //
+  // NOT SHARED WITH the Reports venues x divisions matrix, deliberately: that
+  // one is season-wide, division-keyed and filters through
+  // `countsAsScheduledGame`; this one is week-scoped, field-keyed and counts
+  // every status. See buildWeekRows and CLAUDE.md.
+  //
+  // Only fetched in week mode, so list and calendar loads are unchanged.
+  //
+  // fetchAllRows for the usual reason — a silently dropped row here removes a
+  // field from a capacity view. It deviates from that helper's literal "end the
+  // order chain with `id`" only because `division_venues` HAS no id column: its
+  // primary key is (division_id, venue_id), so ordering on both is the required
+  // total order. Live size is 12 rows for SRALL Fall 2026 and 65 across every
+  // season ever, against PostgREST's 1000-row cap.
+  let weekVenues: WeekVenueInput[] = [];
+  let weekVenuesError: string | null = null;
+  if (mode === "week" && seasonId) {
+    type DivisionVenueRow = {
+      venue_id: string;
+      venue: { name: string; location: { name: string } | null } | null;
+    };
+    try {
+      const rows = await fetchAllRows<DivisionVenueRow>(
+        "the season's game-eligible fields",
+        ({ from, to, exactCount }) =>
+          supabase
+            .from("division_venues")
+            .select(
+              "venue_id, division:divisions!inner(league_id), venue:venues(name, location:locations(name))",
+              exactCount ? { count: "exact" } : undefined,
+            )
+            .eq("division.league_id", seasonId)
+            .eq("allow_games", true)
+            .order("venue_id", { ascending: true })
+            .order("division_id", { ascending: true })
+            .range(from, to) as unknown as PromiseLike<
+            PagedResult<DivisionVenueRow>
+          >,
+      );
+      // A venue is eligible via ANY of its divisions; dedupe to one row each.
+      const byId = new Map<string, WeekVenueInput>();
+      for (const r of rows) {
+        if (!r.venue_id || !r.venue?.name || byId.has(r.venue_id)) continue;
+        byId.set(r.venue_id, {
+          venueId: r.venue_id,
+          name: r.venue.name,
+          locationName: r.venue.location?.name ?? null,
+        });
+      }
+      weekVenues = [...byId.values()];
+    } catch (err) {
+      // Surface it rather than rendering a grid missing its empty rows: the
+      // union arm would still show every field that HAS a game, so a silent
+      // failure looks like a complete grid with the unused fields gone — the
+      // one signal this view adds over list mode.
+      weekVenuesError =
+        err instanceof Error
+          ? err.message
+          : "Could not load the season's game-eligible fields.";
+    }
+  }
+
+  // A `?venue=` filter already narrows the games to one field, so leaving every
+  // other eligible field on screen as an empty row would misread as "these
+  // fields are free this week". The `?division=` filter deliberately does NOT
+  // narrow rows — a division's games are only part of what occupies a field —
+  // and the grid says so in a footnote instead.
+  if (selectedVenueId) {
+    weekVenues = weekVenues.filter((v) => v.venueId === selectedVenueId);
   }
 
   // Empty-state /setup link gate (Chunk 4): own-org owner mid-setup AND the
@@ -393,7 +501,9 @@ export default async function SchedulePage({
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-3">
-        <HidePastToggle hidePast={hidePast} />
+        {/* Week mode shows a whole week by definition, so the control would
+            do nothing — see the query above. */}
+        {mode !== "week" && <HidePastToggle hidePast={hidePast} />}
       </div>
 
       <Card>
@@ -431,6 +541,30 @@ export default async function SchedulePage({
                 try again.
               </p>
             </div>
+          ) : mode === "week" ? (
+            weekVenuesError ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <p className="font-medium">Couldn&apos;t load the fields.</p>
+                <p className="mt-1">{weekVenuesError}</p>
+                <p className="mt-2 text-red-600">
+                  The grid is hidden rather than shown without its unused
+                  fields, which would read as a complete week. Reload to try
+                  again.
+                </p>
+              </div>
+            ) : (
+              <ScheduleWeekGrid
+                games={games}
+                weekStart={weekStart}
+                eligibleVenues={weekVenues}
+                divisionFilterName={
+                  selectedDivisionId
+                    ? (divisions.find((d) => d.id === selectedDivisionId)?.name ??
+                      null)
+                    : null
+                }
+              />
+            )
           ) : mode === "calendar" ? (
             <ScheduleCalendar
               games={games}
