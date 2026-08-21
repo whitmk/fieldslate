@@ -50,7 +50,13 @@
 // identical half-open interval test, transposed to wall-clock minutes. The
 // umpire path is deliberately left untouched.
 
-import { isVenueAvailable, type DayKey, type VenueAvailability } from "@/lib/venues/availability";
+import {
+  DAY_KEYS,
+  isMakeupDay,
+  isVenueAvailable,
+  type DayKey,
+  type VenueAvailability,
+} from "@/lib/venues/availability";
 import { violatesHardConstraint, type TeamConstraintRule } from "@/lib/schedule/team-constraints";
 
 /** Candidate start times step by this many minutes across the division window.
@@ -297,6 +303,40 @@ export function buildAvailableSlots(params: BuildAvailableSlotsParams): SlotOpti
   const duration = Math.max(1, Number(gameDuration));
   const buffer = Math.max(0, Number(bufferMinutes) || 0);
 
+  // ── Makeup days ─────────────────────────────────────────────────────────────
+  //
+  // A day where at least one CANDIDATE venue is makeup-flagged becomes offerable
+  // even when the division does not play it. On such a day THE VENUE'S HOURS
+  // GOVERN: the division's `day_windows`/legacy band is not consulted at all,
+  // which is what makes designating a makeup day require no new hours anywhere.
+  //
+  // The bounds below are the UNION across makeup-flagged venues — min(open),
+  // max(close) — and are only a BOUNDING RANGE for the time loop. Each venue is
+  // still narrowed to its OWN window by `isVenueAvailable` inside the venue
+  // loop, exactly as on a normal playing day, so a wider union can never offer a
+  // slot at a field that is shut. That is why this needed no loop inversion.
+  //
+  // GRID ANCHOR: the time loop steps by SLOT_GRID_MINUTES from `earliest`, so on
+  // a makeup day the grid anchors at the venue's open time rather than the
+  // division's. Live windows open on quarter hours (16:30), so offered times
+  // stay on :00/:15/:30/:45 — but a venue opening at, say, 16:20 would anchor
+  // the grid there and offer 16:20/16:35/16:50. That is not new behavior (a
+  // division window opening at 16:20 does the same today), just newly reachable.
+  const makeupWindowByDay = new Map<DayKey, { startMin: number; endMin: number }>();
+  for (const day of DAY_KEYS) {
+    let lo = Number.POSITIVE_INFINITY;
+    let hi = Number.NEGATIVE_INFINITY;
+    for (const venueId of venueIds) {
+      const av = venueAvailability[venueId];
+      if (!av || !isMakeupDay(av, day)) continue;
+      const w = av[day];
+      if (!w) continue;
+      lo = Math.min(lo, toMins(w.start));
+      hi = Math.max(hi, toMins(w.end));
+    }
+    if (lo <= hi) makeupWindowByDay.set(day, { startMin: lo, endMin: hi });
+  }
+
   // Start from today (no point scheduling in the past)
   const today = params.today ?? localDateStr(new Date());
   const effectiveStart = startDate < today ? today : startDate;
@@ -308,11 +348,21 @@ export function buildAvailableSlots(params: BuildAvailableSlotsParams): SlotOpti
   while (cur <= end) {
     const date = localDateStr(cur);
 
-    if (allowedDays.has(cur.getDay()) && !blackoutDates.has(date)) {
-      const dayKey = JS_TO_DAY[cur.getDay()] as DayKey;
+    const dayKey = JS_TO_DAY[cur.getDay()] as DayKey;
+    const playsToday = allowedDays.has(cur.getDay());
+    const makeupToday = makeupWindowByDay.get(dayKey);
+
+    if ((playsToday || makeupToday) && !blackoutDates.has(date)) {
+      // On a day the division PLAYS, nothing changes — the division window
+      // governs even if some field is also makeup-flagged. Only a MAKEUP-ONLY
+      // day switches to the venue-union bounds.
       const win = dayWindows[dayKey];
-      const earliest = toMins(win?.start ?? earliestStart ?? "09:00");
-      const latest   = toMins(win?.end   ?? latestStart  ?? "17:00");
+      const earliest = playsToday
+        ? toMins(win?.start ?? earliestStart ?? "09:00")
+        : makeupToday!.startMin;
+      const latest = playsToday
+        ? toMins(win?.end ?? latestStart ?? "17:00")
+        : makeupToday!.endMin;
 
       const homeDayCount = homeTeamDayCounts.get(date) ?? 0;
       const awayDayCount = awayTeamDayCounts.get(date) ?? 0;
@@ -348,6 +398,11 @@ export function buildAvailableSlots(params: BuildAvailableSlotsParams): SlotOpti
           for (const venueId of venueIds) {
             const av = venueAvailability[venueId];
             if (!av) continue;
+            // On a MAKEUP-ONLY day only the flagged fields participate: a field
+            // that merely happens to be open that day was never offered for
+            // rained-out games. On a playing day every field participates as
+            // before.
+            if (!playsToday && !isMakeupDay(av, dayKey)) continue;
             if (!isVenueAvailable(av, dayKey, wallTime, duration)) continue;
 
             const booked = venueBookings.get(`${venueId}:${date}`) ?? [];
