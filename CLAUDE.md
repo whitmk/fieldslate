@@ -1306,6 +1306,97 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   genuine overlap is caught by both models, and a mutant that killed F2 too
   would prove nothing about which model is better.
 
+## Makeup days (per venue, per day)
+
+- **`venues.availability` gains a per-day `makeup?` boolean** — sibling to
+  `practice`, same jsonb, no schema change. It means "rained-out games may be
+  rescheduled onto this field on this day". Read by the rainout reschedule
+  picker and NOTHING else.
+- **`makeup` DEFAULTS FALSE. `practice` DEFAULTS TRUE. The two are opposite ON
+  PURPOSE — do not "make them consistent".** `practice` defaults true because
+  every pre-existing venue was already practice-usable and must stay so;
+  `makeup` is a new capability, so silence must mean no. Defaulting it true
+  would have turned every open weekday at every venue into a makeup day on the
+  day it shipped. `isMakeupDay` asks `=== true`; `isPracticeUsable` asks
+  `!== false`. Mutant M5 flips the default and dies.
+- **ON A MAKEUP DAY THE VENUE'S HOURS GOVERN.** The division's `playing_days`
+  and `day_windows` are not consulted for that day — which is precisely why
+  designating a makeup day needs no new hours anywhere (Friday has no
+  `day_windows` entry in any live division). On a day the division DOES play,
+  nothing changes, even if a field is also flagged.
+- **EVERY OTHER CONSTRAINT STILL APPLIES**: venue occupancy, buffer (the
+  arriving team's), team game constraints, blackout dates, team per-day caps,
+  and the must-END-by semantic. Only the day gate and the window source change.
+  A blackout still wins on a makeup day (mutant M6).
+- **The picker needed NO restructuring, and this is why:** `isVenueAvailable`
+  already performs the true per-venue window check inside the venue loop, so the
+  outer time loop is only a BOUNDING RANGE. On a makeup day it is widened to the
+  union of the flagged venues' windows — min(open), max(close) — and each field
+  is still narrowed to its own window. **Do not invert the loops** and do not
+  touch `spansOverlap` / `candidateClearsSpan` / the 15-minute grid; the feature
+  landed without altering a single predicate.
+- **On a makeup-only day, only FLAGGED fields participate.** A field that merely
+  happens to be open that day was never offered for makeups.
+- **GRID ANCHOR:** the time loop steps from the venue's open time on a makeup
+  day (16:30) rather than the division's (10:00). Live windows open on quarter
+  hours so offered times stay on the grid; a venue opening at 16:20 would anchor
+  there. Pre-existing behavior, newly reachable.
+- **THE WHOLESALE-WRITER HAZARD.** `draftToAvailability` (venue-edit-form.tsx)
+  rebuilds each day as a FRESH OBJECT LITERAL, so **a key not named there is
+  destroyed on the next venue save**. Any new availability key must be added in
+  all THREE of `AvailabilityDraft`, `draftFromAvailability` and
+  `draftToAvailability` — plus `DEFAULT_DRAFT` and the copy-Monday-to-weekdays
+  helper, which builds its own literal. Same class as the `divisions.settings`
+  wizard write; safe only because the wholesale writer IS the editor.
+- **THE SAVE GUARD REJECTED THE FEATURE'S OWN USE CASE, and now doesn't.**
+  `handleSave` blocks a save when a day is open, Practice is unchecked, and it
+  is not a derived game day. Open Friday + Practice off + Makeup on is exactly
+  what an admin needs here. `makeup` now counts as a purpose. If you add a
+  third kind of day-purpose, add it to that guard too.
+- **THREE EMPTY-STATE CASES, NOT TWO.** `isVenueAvailable` returns one `false`
+  for two different situations, so the picker separates them via `venueDayFit`
+  (closed / too_short / fits):
+  - `no_field` — nothing open and makeup-flagged. Links to the Venues page.
+  - `window_too_short` — a field IS open and flagged but cannot fit the span.
+    **This is the one that matters**: without it a too-short window renders as
+    `no_field` and tells the admin to add hours to a field that already has
+    them. Names the field and its real hours. Mutant M7 collapses it and dies.
+  - `occupied` — a field could have hosted it; everything is taken.
+    Informational, quieter, NO link. Ordered BEFORE `too_short`: if any field
+    could have taken the game, the day is full.
+  `blackout` and `team_cap` are reported separately — date facts, not config.
+- **`dayWindowBounds` is the SINGLE definition of a day's window.** Both
+  `isVenueAvailable` (does THIS start fit?) and `venueDayFit` (could ANY start
+  fit?) are expressed in terms of it so they cannot drift. Never re-derive
+  `parseHHMM(w.start)` at a call site.
+- **Diagnostics are CAPTURED DURING THE BUILD, never reconstructed** — each is
+  written at the `continue`/`if` that caused it. Reconstructing afterwards means
+  a second copy of the eligibility logic. `buildSlotsAndDiagnostics` is the real
+  implementation; `buildAvailableSlots` is a thin wrapper returning `.slots` so
+  slots-only callers and the existing 61 sim assertions are unaffected.
+- **NO "outside usual hours" LABEL on a makeup-only day.**
+  `earliest_start`/`latest_start` are derived from the division's FIRST PLAYING
+  DAY, so labelling a Friday slot against them would present Saturday's hours as
+  if they described Friday.
+- **THE PICKER STILL READS NO PRACTICE OCCUPANCY.** A practice booked 3–4pm does
+  not block a 3:30 game offer. Pre-existing, documented, and deliberately NOT
+  fixed here — but makeup days make it more REACHABLE, because weekday evenings
+  are exactly where practices live (all 13 live weekday practice entries in
+  "Fall 2026" run 17:00–18:30 at fields open 17:00–21:00). Practice and Makeup
+  are independent flags; a day may be both and nothing treats that as a
+  conflict.
+- **The flag is org-level and cross-season.** `venues` has no `league_id`, so a
+  Fall makeup-Friday stays set through Spring until someone changes it.
+- **Harness: `npm run sim:makeup-days`** (TZ=UTC) — 52 assertions, 10
+  anti-vacuity counters, 7 mutants all killed by their own assertion. **The
+  generation golden pins `Math.random`**: `generateSchedule` shuffles
+  (generate-schedule.ts:165), so an unpinned golden compares noise and proves
+  nothing. Both runs get the same seeded sequence and a separate assertion
+  proves the pinning works. **Three fixture shapes are required** — every field
+  open; a field closed on the playing day but flagged; and a field open on the
+  playing day with a too-short window AND flagged. Only the third catches an
+  `isVenueAvailable`-level leak; don't delete it.
+
 ## Reschedule picker — a DIFFERENT slot model than the generator, on purpose
 
 - **Two models exist in this repo and they disagree. `reschedule-slots.ts` is
