@@ -862,6 +862,51 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   harness drives the SAME code the component calls rather than a copy; the
   component has no second implementation. `fmtTimeRange` and `rendersStartOnly`
   share one `hasUsableDuration` predicate for the same reason.
+- **Division color coding is DERIVED FROM THE DIVISION ID, never stored.** Each
+  block carries a 3px colored LEFT edge (LEFT corners squared so the stripe is
+  not clipped; the right corners keep the block's original rounding), plus a legend above the grid covering only the divisions ON SCREEN
+  that week. Lives in `src/lib/schedule/division-colors.ts`.
+  **Do NOT store a color in `divisions.settings`** — that jsonb has many readers
+  and several writers, and the wizard save writes it WHOLESALE from form state
+  rather than merging the stored row, so a stored color would be silently
+  dropped by the next wizard save. The one-parser-one-writer discipline that
+  makes jsonb extension safe does not hold there. Deriving costs nothing and
+  cannot drift. There is no picker and no user-chosen color.
+- **The assignment rule: hash-with-linear-probe over the SEASON's divisions.**
+  Sort the season's ids ascending, take `fnv1a(id) % PALETTE.length` as the
+  preferred slot, and walk FORWARD to the next free slot if it is claimed.
+  Sorting first is what makes the caller's array order irrelevant. **Assignment
+  must run over the SEASON's divisions, never the week's** — otherwise a
+  division's stripe changes as the admin pages. Plain hash-modulo without the
+  probe collides constantly (five ids into ten slots collide often by the
+  birthday bound) and is mutant-proven to break the "five distinct colors"
+  assertion.
+- **The stability guarantee, stated rather than implied:** identical for the
+  same SET of ids, always, with no randomness/clock/state; ZERO collisions while
+  `count <= palette size`; **adding a division never moves any division whose id
+  sorts BEFORE it**, and one sorting after moves only if the newcomer claims the
+  exact slot it held (removal has the mirror property). That residual movement
+  is inherent to collision resolution over a shared slot space, and is accepted
+  because the division NAME is on every block — color is reinforcement, never
+  the sole carrier of the information. **Do not remove the name to make room.**
+- **Palette is 10 mid-tone hex colors** — headroom over a full Little League
+  ladder (8) and over the largest live season (5). **More divisions than colors
+  REPEATS a color; it must never throw and never degrade to grey.** Colors are
+  applied as inline `borderLeftColor`, NOT Tailwind classes: the JIT only emits
+  classes it can see as complete literal strings, so a computed
+  `` border-l-${hex} `` compiles to nothing — a silent failure that looks like
+  the feature simply not rendering.
+- **CANCELLED WINS.** A cancelled block keeps its greyed, struck-through
+  treatment and gets the NEUTRAL edge, never its division color — a greyed block
+  with a bright stripe sends two competing signals at once. `blockEdgeColor` is
+  the single place that rule is applied; a game with no division, or an id not
+  in the season, falls back to the same neutral edge rather than throwing.
+- **NOTE: this app has no dark mode.** No `darkMode` key in the Tailwind config,
+  zero `dark:` variants in `src`, no `prefers-color-scheme` anywhere (verified
+  2026-08-21). The palette is chosen to survive one arriving, but nothing
+  exercises that today and no `dark:` variants were added — one component
+  carrying them while the rest of the app has none would be inconsistent and
+  untestable.
 - **Harness: `npm run sim:week-grid`** (`scripts/sim/week-grid-sim.ts`) — **81
   assertions and 14 ANTI-VACUITY COUNTERS** over the real
   `src/lib/schedule/week-grid.ts`, run three times under **UTC,
