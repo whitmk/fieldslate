@@ -734,6 +734,55 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   venue are consistent with each other by design for now; if reconciliation
   is ever added, apply it to BOTH uniformly, not one.
 
+## Schedule page — the ONE shared games query
+
+- **`src/app/(dashboard)/dashboard/schedule/page.tsx` holds a SINGLE games read
+  that feeds three surfaces**: list mode, calendar mode, and
+  `SchedulePrintRegion`. There is no second query and no per-mode fetch. It is
+  `fetchAllRows` (complete-or-throw) with a `scheduled_at` + `id` ordering; the
+  `id` tiebreak and the absence of any `.limit()` are both load-bearing — see
+  "Complete reads" and the file's own comment block. Calendar mode adds a date
+  range on top; everything else is shared. A new view mode extends this query,
+  it does not get its own.
+- **`durationMin` on `ScheduleGame`: UNDEFINED MEANS UNRESOLVED, NEVER `?? 0`.**
+  It carries the game's own division `game_duration` and is ABSENT whenever that
+  cannot be resolved (division setting missing/zero/negative/non-numeric, or a
+  home team with no division). Do not coerce it to 0 and do not quietly default
+  it at a call site: `Number(NaN) || 0` is 0, a zero-length span overlaps
+  nothing, and the surface then renders a confident wrong answer instead of an
+  error — the same failure `isUsableDuration` exists to prevent in
+  `detect-conflicts.ts`. A consumer that needs a number must choose an explicit
+  default or render an honest "duration not set", and say which it did.
+  **Why no default is baked in:** fifteen sites in this repo resolve a game
+  duration under FOUR different fallback policies (throw / 90-with-a-finite-and-
+  positive-test / 90-via-`?? 90` / 0). Defaulting in the data layer would
+  silently pick a winner for all of them.
+- **Duration comes from the DIVISIONS read as a projected jsonb key —
+  `game_duration:settings->game_duration` — NEVER a `division:divisions(settings)`
+  embed on the games query.** `divisions.settings` also holds the division's full
+  `teams[]` array with coach metadata, so the embed ships that blob once PER GAME
+  ROW: +479,118 bytes onto SRALL Fall 2026's 184,267-byte, 272-game response
+  (2026-08-21). The projected key costs 338 bytes and rides a request the page
+  already makes. Resolution lives in `src/lib/schedule/division-durations.ts`
+  (`gameDurationsFromDivisionRows`) — pure, omits rather than defaults.
+- **The durations map deliberately shares the divisions query that feeds the
+  division-filter dropdown.** That coupling is chosen, not accidental: narrowing
+  that select would take durations with it, but it CANNOT fail quietly — the
+  filter dropdown and the end times vanish together, so the symptom is visible
+  rather than a plausible-looking grid. Weighed against a second round trip on
+  every Schedule page load, visible-when-broken won.
+- **The venue embed's `location` is NULLABLE — never `!inner`.** The games query
+  selects `venue:venues(name, location:locations(name))`, matching the
+  venue-filter query on the same page. 21 of 30 live venues have `location_id`
+  null, so an inner join empties the result for every org that has not adopted
+  locations. Also note the chooser/display line from "Locations": list, calendar
+  and print keep rendering the BARE `venue.name`; the qualified
+  "Complex — Field" label is for surfaces where a field is PICKED.
+- **`venue_id` is selected alongside the `venue` embed** because a field-centric
+  view needs an id to key rows and `venue.name` is not unique. It is null on
+  interleague away games — which is every null-venue row in production (24 of
+  24, verified 2026-08-21).
+
 ## Bye line (division schedule panel)
 
 - **Lives on the division schedule panel ONLY** (`division-schedule-panel.tsx`)

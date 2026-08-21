@@ -50,8 +50,36 @@ export type ScheduleGame = {
   } | null;
   away_team: { name: string } | null;
   interleague_org?: { name: string } | null;
-  venue: { name: string } | null;
+  /** `location` is OPTIONAL and NULLABLE, both deliberately. Optional so any
+   *  caller that does not select it still type-checks; nullable because only
+   *  one org has adopted locations (21 of 30 live venues have `location_id`
+   *  null), and an `!inner` join on locations would empty the result for
+   *  everyone else. Display surfaces keep rendering the bare `venue.name` — the
+   *  qualified "Complex — Field" label is for CHOOSERS, not for reading a
+   *  schedule. */
+  venue: { name: string; location?: { name: string } | null } | null;
   game_umpires?: ScheduleGameUmpire[];
+  /** The two fields below are OPTIONAL and exist for the week-by-field view
+   *  mode. List, calendar and the print region never read them, so a caller
+   *  that omits them behaves exactly as before.
+   *
+   *  `games.venue_id` — the row key for a field-centric grid. `venue.name`
+   *  alone cannot key rows: two venues may share a name. Null on interleague
+   *  away games, which is every null-venue row in production. */
+  venue_id?: string | null;
+  /** This game's own division `game_duration`, in minutes. Resolved on the
+   *  server from the Schedule page's divisions read, which selects the single
+   *  projected key `game_duration:settings->game_duration` — never a
+   *  `division:divisions(settings)` embed on the games query, because
+   *  `settings` also carries the whole teams[] array with coach metadata. See
+   *  `src/lib/schedule/division-durations.ts`.
+   *
+   *  UNDEFINED MEANS UNRESOLVED, NOT ZERO. It is absent when the division has
+   *  no usable duration and when the home team has no division. Never coerce it
+   *  with `?? 0` — a zero-length span silently matches nothing, which is how a
+   *  confident wrong answer gets rendered. Decide on an explicit default or an
+   *  honest "not set" state. */
+  durationMin?: number;
 };
 
 interface Props {

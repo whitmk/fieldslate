@@ -17,6 +17,7 @@ import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
 import { SchedulePrintButton } from "@/components/schedule/schedule-print-button";
 import { SchedulePrintRegion } from "@/components/schedule/schedule-print-region";
 import { fetchAllRows, type PagedResult } from "@/lib/supabase/fetch-all";
+import { gameDurationsFromDivisionRows } from "@/lib/schedule/division-durations";
 import { byQualifiedVenueLabel } from "@/lib/venues/venue-label";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
@@ -133,18 +134,43 @@ export default async function SchedulePage({
 
   // league_id rides along for the Add Game modal (games.league_id is NOT
   // NULL and derives from the chosen division).
+  //
+  // `game_duration:settings->game_duration` is a PROJECTED jsonb key, not the
+  // whole `settings` blob: settings also carries the division's full teams[]
+  // array with coach metadata, and nothing on this page needs it. It rides this
+  // request rather than taking one of its own, and it must NEVER become a
+  // `division:divisions(settings)` embed on the games query below — that ships
+  // the blob once per game row (+479,118 bytes on SRALL Fall 2026's 272-game
+  // response, against 338 bytes here). See division-durations.ts.
+  //
+  // COUPLING, STATED: narrowing this select would take game durations with it.
+  // That is acceptable because it cannot fail quietly — the division filter
+  // dropdown and the durations both come from THIS read, so a failure or a
+  // narrowing shows up as a missing filter AND missing end times, not as a
+  // plausible-looking grid.
   const { data: divisionData } = seasonId
     ? await supabase
         .from("divisions")
-        .select("id, name, league_id")
+        .select("id, name, league_id, game_duration:settings->game_duration")
         .eq("league_id", seasonId)
         .order("name")
-    : { data: [] as { id: string; name: string; league_id: string }[] };
-  const divisions = (divisionData ?? []) as {
+    : { data: [] as unknown[] };
+  const divisionRows = (divisionData ?? []) as unknown as {
     id: string;
     name: string;
     league_id: string;
+    game_duration?: unknown;
   }[];
+  // Narrowed back down for the two client components that take this list, so
+  // their serialized props stay exactly what they were before.
+  const divisions = divisionRows.map(({ id, name, league_id }) => ({
+    id,
+    name,
+    league_id,
+  }));
+  // division id -> minutes, omitting any division without a usable duration.
+  // UNDEFINED MEANS UNRESOLVED, NEVER ZERO — see division-durations.ts.
+  const gameDurationByDivisionId = gameDurationsFromDivisionRows(divisionRows);
 
   const { data: teamData } = seasonId
     ? await supabase
@@ -237,10 +263,11 @@ export default async function SchedulePage({
               `
         id, scheduled_at, status, league_id, home_team_id, away_team_id,
         interleague_org_id, is_away, external_team_name, proposed_venue_name,
+        venue_id,
         home_team:teams!home_team_id(name, division_id, division:divisions(name, umpires_per_game)),
         away_team:teams!away_team_id(name),
         interleague_org:interleague_orgs(name),
-        venue:venues(name),
+        venue:venues(name, location:locations(name)),
         game_umpires:game_umpires(id, role, umpire:umpires(id, name))
       `,
               exactCount ? { count: "exact" } : undefined,
@@ -303,6 +330,20 @@ export default async function SchedulePage({
         err instanceof Error ? err.message : "Could not load the season schedule.";
       games = [];
     }
+
+    // ── Per-game duration (week-by-field view mode) ───────────────────────────
+    // Attach each game's own division duration, resolved from the divisions
+    // read above — no extra round trip. Absent (not 0, not a default) whenever
+    // it cannot be resolved: unusable division setting, or a home team with no
+    // division. Existing renderers never read this field, so adding it changes
+    // nothing on screen. See ScheduleGame.durationMin before consuming it.
+    games = games.map((g) => {
+      const divisionId = g.home_team?.division_id;
+      const minutes = divisionId
+        ? gameDurationByDivisionId.get(divisionId)
+        : undefined;
+      return minutes === undefined ? g : { ...g, durationMin: minutes };
+    });
   }
 
   // Empty-state /setup link gate (Chunk 4): own-org owner mid-setup AND the
