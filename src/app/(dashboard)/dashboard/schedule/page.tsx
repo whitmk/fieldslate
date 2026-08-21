@@ -563,6 +563,12 @@ export default async function SchedulePage({
                       null)
                     : null
                 }
+                /* EVERY division in the season, deliberately not narrowed by
+                   the ?division= filter or by what appears this week: the
+                   colour assignment must be identical on every week and under
+                   every filter, or a division's stripe would change as the
+                   admin pages around. */
+                seasonDivisionIds={divisions.map((d) => d.id)}
               />
             )
           ) : mode === "calendar" ? (

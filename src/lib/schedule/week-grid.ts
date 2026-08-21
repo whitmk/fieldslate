@@ -351,3 +351,23 @@ export function blockMarkers(g: ScheduleGame): BlockMarkers {
     interleague: !!g.interleague_org_id && !pending,
   };
 }
+
+/** Divisions appearing in the displayed week's blocks, for the legend — NOT
+ *  every division in the season. Ordered by name so the legend is stable.
+ *  Keyed by division id (names are not unique across seasons); a game whose
+ *  home team has no division contributes nothing. */
+export function weekLegendDivisions(
+  cells: Map<string, ScheduleGame[]>,
+): { id: string; name: string }[] {
+  const byId = new Map<string, string>();
+  for (const bucket of cells.values()) {
+    for (const g of bucket) {
+      const id = g.home_team?.division_id;
+      if (!id || byId.has(id)) continue;
+      byId.set(id, g.home_team?.division?.name ?? "No division");
+    }
+  }
+  return [...byId]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}

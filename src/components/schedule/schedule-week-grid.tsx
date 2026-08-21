@@ -18,9 +18,14 @@ import {
   weekDates,
   weekLabel,
   visibleBlocks,
+  weekLegendDivisions,
   weekMatchupLabel,
   type WeekVenueInput,
 } from "@/lib/schedule/week-grid";
+import {
+  assignDivisionColors,
+  blockEdgeColor,
+} from "@/lib/schedule/division-colors";
 
 interface Props {
   games: ScheduleGame[];
@@ -33,6 +38,10 @@ interface Props {
   /** Set when `?division=` narrows the games — used to say so under the grid,
    *  because an empty cell would otherwise read as "this field is free". */
   divisionFilterName?: string | null;
+  /** EVERY division id in the season, not just the ones on screen this week.
+   *  Color assignment runs over the season so a division's stripe cannot change
+   *  when the user pages to a different week. */
+  seasonDivisionIds?: string[];
 }
 
 export function ScheduleWeekGrid({
@@ -40,6 +49,7 @@ export function ScheduleWeekGrid({
   weekStart,
   eligibleVenues,
   divisionFilterName = null,
+  seasonDivisionIds = [],
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -92,6 +102,10 @@ export function ScheduleWeekGrid({
   const byCell = bucketWeekGames(games, weekStart);
   const dates = weekDates(weekStart);
   const awayCount = countAwayGamesInWeek(games, weekStart);
+  // Over the SEASON's divisions, never the week's — see the module header.
+  const { colorById } = assignDivisionColors(seasonDivisionIds);
+  // Legend covers only what is actually on screen this week.
+  const legend = weekLegendDivisions(byCell);
 
   return (
     <div className="flex flex-col gap-4">
@@ -144,6 +158,21 @@ export function ScheduleWeekGrid({
           </button>
         </label>
       </div>
+
+      {legend.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          {legend.map((d) => (
+            <span key={d.id} className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+              <span
+                aria-hidden="true"
+                className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-sm"
+                style={{ backgroundColor: blockEdgeColor(d.id, false, colorById) }}
+              />
+              {d.name}
+            </span>
+          ))}
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <p className="py-8 text-center text-sm text-gray-500">
@@ -207,6 +236,7 @@ export function ScheduleWeekGrid({
                               <GameBlock
                                 key={g.id}
                                 game={g}
+                                colorById={colorById}
                                 onOpen={() => setDetailGame(g)}
                               />
                             ))}
@@ -253,21 +283,32 @@ export function ScheduleWeekGrid({
 
 function GameBlock({
   game,
+  colorById,
   onOpen,
 }: {
   game: ScheduleGame;
+  colorById: Map<string, string>;
   onOpen: () => void;
 }) {
   // Markers come from the shared helper so the harness counts exactly what this
   // renders — see blockMarkers for why pending games appear at all.
   const { cancelled, pending, interleague } = blockMarkers(game);
   const divisionName = game.home_team?.division?.name ?? null;
+  // CANCELLED WINS — a struck-through block gets the neutral edge, never its
+  // division color. See blockEdgeColor.
+  const edge = blockEdgeColor(game.home_team?.division_id, cancelled, colorById);
 
   return (
+    // Only the LEFT corners are squared (`rounded-l-none`), so the 3px stripe
+    // is not clipped by a corner radius; the right corners keep the block's
+    // original `rounded-md`, leaving it otherwise identical to before the
+    // colors landed. Inline style, not a Tailwind class: a computed
+    // `border-l-${hex}` is invisible to the JIT and would compile to nothing.
     <button
       type="button"
       onClick={onOpen}
-      className={`w-full rounded-md border px-2 py-1.5 text-left transition-colors ${
+      style={{ borderLeftColor: edge }}
+      className={`w-full rounded-r-md rounded-l-none border border-l-[3px] px-2 py-1.5 text-left transition-colors ${
         cancelled
           ? "border-gray-200 bg-gray-50 text-gray-400"
           : pending

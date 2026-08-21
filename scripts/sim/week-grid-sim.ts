@@ -33,8 +33,16 @@ import {
   visibleBlocks,
   blockMarkers,
   rendersStartOnly,
+  weekLegendDivisions,
 } from "@/lib/schedule/week-grid";
 import { DAY_KEYS as COLS } from "@/lib/venues/availability";
+import {
+  DIVISION_COLORS,
+  CANCELLED_EDGE_COLOR,
+  assignDivisionColors,
+  blockEdgeColor,
+  hashDivisionId,
+} from "@/lib/schedule/division-colors";
 import type { ScheduleGame } from "@/components/schedule/schedule-list";
 
 let checks = 0;
@@ -370,6 +378,150 @@ ok(
 ok(
   (visibleBlocks(cellsR.get(cellKey("vA", "Sa")) ?? [], true)).map((g) => g.id).join(",") === "r1,r2,r3",
   "vA Saturday ordered by start then id",
+);
+
+// ── Scenario C: division colors ──────────────────────────────────────────────
+//
+// Presentation logic, so this is assertion + one counter rather than the full
+// three-part harness. The counter is the load-bearing part: linear probing is
+// only exercised when two ids hash to the same slot, and if that never happens
+// in the run the collision handling is untested — which the counter says out
+// loud instead of letting a green run imply coverage.
+
+const N = DIVISION_COLORS.length;
+ok(N >= 8, `palette must cover a full Little League ladder (8), got ${N}`);
+ok(new Set(DIVISION_COLORS).size === N, "palette colors are all distinct");
+ok(!DIVISION_COLORS.includes(CANCELLED_EDGE_COLOR), "the cancelled edge is not a division color");
+
+// The REAL SRALL Fall 2026 division ids — so the acceptance test is checkable
+// against what production actually renders.
+const SRALL = [
+  { id: "018709c3-8edc-4674-9758-ef961ad7a24f", name: "Majors" },
+  { id: "27570442-f09f-4f0d-ab0a-46c7c957d23f", name: "T-Ball" },
+  { id: "998a5c55-4f13-477f-9a76-16164bee24e5", name: "Rookies" },
+  { id: "a76897be-5607-4599-a260-54a654ea1986", name: "Minors" },
+  { id: "cbb8dab8-b079-4344-bc18-291713c2afc5", name: "50/70" },
+];
+const srall = assignDivisionColors(SRALL.map((d) => d.id));
+ok(srall.colorById.size === 5, "SRALL: all five divisions colored");
+ok(new Set(srall.colorById.values()).size === 5, "SRALL: five DISTINCT colors (zero collisions)");
+console.log(
+  "  SRALL Fall 2026 →",
+  SRALL.map((d) => `${d.name}=${srall.colorById.get(d.id)}`).join(" "),
+);
+
+// Determinism: same ids, any input order, repeated calls -> identical result.
+const shuffled = [...SRALL.map((d) => d.id)].reverse();
+const again = assignDivisionColors(shuffled);
+ok(
+  SRALL.every((d) => again.colorById.get(d.id) === srall.colorById.get(d.id)),
+  "same id set in a DIFFERENT order yields identical colors",
+);
+const third = assignDivisionColors(SRALL.map((d) => d.id));
+ok(
+  SRALL.every((d) => third.colorById.get(d.id) === srall.colorById.get(d.id)),
+  "repeated calls are stable",
+);
+ok(hashDivisionId("abc") === hashDivisionId("abc"), "hash is pure");
+ok(hashDivisionId("abc") !== hashDivisionId("abd"), "hash distinguishes near-identical ids");
+
+// ZERO COLLISIONS while count <= palette size, proven over many synthetic
+// seasons rather than one lucky fixture.
+let probeFirings = 0;
+let zeroCollisionSeasons = 0;
+for (let seed = 0; seed < 400; seed++) {
+  for (let count = 1; count <= N; count++) {
+    const ids = Array.from(
+      { length: count },
+      (_, i) => `seed${seed}-div${i}-${(seed * 7919 + i * 104729).toString(16)}`,
+    );
+    const a = assignDivisionColors(ids);
+    ok(a.colorById.size === count, `season(seed ${seed}, n=${count}): every division colored`);
+    ok(
+      new Set(a.colorById.values()).size === count,
+      `season(seed ${seed}, n=${count}): ${count} distinct colors, ZERO collisions`,
+    );
+    probeFirings += a.probedCount;
+    if (a.probedCount === 0) zeroCollisionSeasons++;
+  }
+}
+
+// More divisions than colors: repeat, never throw, never grey out.
+const over = assignDivisionColors(
+  Array.from({ length: N + 4 }, (_, i) => `over-${i}-${(i * 7919).toString(16)}`),
+);
+ok(over.colorById.size === N + 4, "more divisions than colors: every one still gets a color");
+ok(new Set(over.colorById.values()).size === N, "colors repeat, capped at the palette size");
+ok(over.repeatedCount === 4, `exactly the overflow repeats, got ${over.repeatedCount}`);
+ok(
+  [...over.colorById.values()].every((v) => DIVISION_COLORS.includes(v)),
+  "overflow divisions get a real color, never the neutral/cancelled edge",
+);
+
+// STABILITY UNDER ADDITION — the guarantee, asserted rather than implied.
+// Every division sorting BEFORE the newcomer is untouched; one sorting AFTER
+// moves only if the newcomer took the exact slot it held.
+let addedShiftsObserved = 0;
+let addedBeforeChecked = 0;
+// Ids are built to LOOK like the uuids production uses — a pseudo-random hex
+// prefix — so the newcomer lands on both sides of the sort across the run. An
+// earlier version prefixed them "st0-d0-" and "st0-NEW-", where uppercase N
+// always sorts before lowercase d: the newcomer was first EVERY time and the
+// "sorts before" branch never executed. The counter below is what caught it.
+const rid = (n: number) =>
+  `${hashDivisionId(`rid-${n}`).toString(16).padStart(8, "0")}-4000-8000-${n}`;
+for (let seed = 0; seed < 300; seed++) {
+  const base = Array.from({ length: 5 }, (_, i) => rid(seed * 100 + i));
+  const before = assignDivisionColors(base);
+  const newcomer = rid(seed * 100 + 50);
+  const after = assignDivisionColors([...base, newcomer]);
+  for (const id of base) {
+    const changed = before.colorById.get(id) !== after.colorById.get(id);
+    if (id < newcomer) {
+      addedBeforeChecked++;
+      ok(!changed, `id sorting BEFORE the newcomer must never change color (seed ${seed})`);
+    } else if (changed) {
+      addedShiftsObserved++;
+    }
+  }
+}
+
+// Cancelled wins, and it wins over a division that HAS a color.
+const anyId = SRALL[0].id;
+ok(
+  blockEdgeColor(anyId, false, srall.colorById) === srall.colorById.get(anyId),
+  "a live block carries its division color",
+);
+ok(
+  blockEdgeColor(anyId, true, srall.colorById) === CANCELLED_EDGE_COLOR,
+  "CANCELLED WINS: a cancelled block gets the neutral edge, not its division color",
+);
+ok(
+  blockEdgeColor(null, false, srall.colorById) === CANCELLED_EDGE_COLOR,
+  "a game with no division falls back to the neutral edge",
+);
+ok(
+  blockEdgeColor("not-in-this-season", false, srall.colorById) === CANCELLED_EDGE_COLOR,
+  "an unknown division id falls back rather than throwing",
+);
+
+// Legend covers what is ON SCREEN, not the whole season.
+const legendR = weekLegendDivisions(cellsR);
+ok(legendR.length >= 1, "legend derived from the week's blocks");
+ok(
+  legendR.every((d) => scenarioR.some((g) => g.home_team?.division_id === d.id)),
+  "every legend entry actually appears in the week",
+);
+
+Object.assign(c, {
+  colorProbeFirings: probeFirings,
+  colorOverflowRepeats: over.repeatedCount,
+  colorAdditionShiftsObserved: addedShiftsObserved,
+  colorAdditionBeforeNewcomerChecked: addedBeforeChecked,
+});
+console.log(
+  `  colors: palette=${N} probeFirings=${probeFirings} ` +
+    `zeroCollisionSeasons=${zeroCollisionSeasons} additionShifts=${addedShiftsObserved}`,
 );
 
 console.log("  counters:", JSON.stringify(c));
