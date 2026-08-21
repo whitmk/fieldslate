@@ -21,6 +21,7 @@
     "sim:bye-line": "TZ=UTC npx tsx scripts/sim/bye-line-sim.ts",
     "sim:reschedule-slots": "TZ=UTC npx tsx scripts/sim/reschedule-slots-sim.ts",
     "sim:venue-conflict": "TZ=UTC npx tsx scripts/sim/venue-conflict-sim.ts",
+    "sim:makeup-days": "TZ=UTC npx tsx scripts/sim/makeup-days-sim.ts",
     "sim:week-grid": "TZ=UTC npx tsx scripts/sim/week-grid-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/week-grid-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/week-grid-sim.ts"
   },
   "dependencies": {
