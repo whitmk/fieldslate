@@ -737,7 +737,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Schedule page — the ONE shared games query
 
 - **`src/app/(dashboard)/dashboard/schedule/page.tsx` holds a SINGLE games read
-  that feeds three surfaces**: list mode, calendar mode, and
+  that feeds four surfaces**: list mode, calendar mode, week-by-field mode, and
   `SchedulePrintRegion`. There is no second query and no per-mode fetch. It is
   `fetchAllRows` (complete-or-throw) with a `scheduled_at` + `id` ordering; the
   `id` tiebreak and the absence of any `.limit()` are both load-bearing — see
@@ -783,6 +783,112 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   interleague away games — which is every null-venue row in production (24 of
   24, verified 2026-08-21).
 
+## Week-by-field view mode
+
+- **URL convention: `?mode=week` plus `?week=YYYY-MM-DD`, where the date is the
+  MONDAY of the displayed week** — the direct analogue of calendar mode's
+  `?month=YYYY-MM`. List is still the param-less default and `parseMode` still
+  coerces anything unknown to `"list"`. A hand-typed mid-week `?week=` snaps to
+  its Monday; a malformed one is treated as absent.
+- **"Which week is now" is resolved in the BROWSER and never on the server.**
+  `parseWeekParam` returns NULL rather than defaulting, `ViewModeToggle` seeds
+  the param from the browser clock, and `ScheduleWeekGrid` resolves a null
+  itself and `router.replace`s the URL. This is deliberate avoidance of the
+  page's existing `todayLocalDateString()` bug (bare `new Date()` in a SERVER
+  component, so "today" is UTC's today and a US league sees tomorrow from
+  roughly 4pm local). That bug is still open and out of scope — **do not "tidy"
+  the week default into it.** The one clock read lives in
+  `currentWeekStartLocal()`, which carries a client-components-only warning.
+- **Row set = `division_venues.allow_games` for a season division, UNIONed with
+  any venue carrying ANY game in the week (every status).** The union arm is
+  DEFENCE — a venue whose eligibility was unticked after its games were
+  scheduled must not silently drop them. Eligible fields with NO games keep an
+  empty row on purpose: an unused field is the capacity signal this view exists
+  to give, so never filter rows down to those with games.
+- **DELIBERATELY NOT SHARED with the Reports venues × divisions matrix
+  derivation (`overview-reports.tsx`), even though the two look nearly
+  identical. Do not "fix" them into one function.** Reports is SEASON-wide,
+  DIVISION-keyed, and filters through `countsAsScheduledGame` (excluding
+  cancelled and pending_interleague) because it reports real scheduled games.
+  This one is WEEK-scoped, FIELD-keyed, and counts EVERY status because a
+  cancelled or pending game still tells an admin whether that field is spoken
+  for. Merging them forces one to answer the other's question. Same
+  keep-them-apart reasoning as `countsAsScheduledGame` vs
+  `teamIsOccupiedThisWeek` in `game-days.ts`.
+- **`durationMin` undefined ⇒ START TIME ONLY.** `fmtTimeRange` renders
+  `"9:00 AM"` alone rather than inventing an end. No `?? 0` (which would render
+  "9:00 AM – 9:00 AM" and read as real data), no 90-minute fallback, and no
+  sixteenth duration policy — this view has exactly two states. See the
+  `durationMin` bullet under "Schedule page — the ONE shared games query".
+- **This view SHOWS pending_interleague games and therefore deliberately
+  disagrees with `countsAsScheduledGame`.** That predicate answers "is this a
+  real scheduled game" for exports and reports; this grid answers "is this field
+  spoken for", and a pending interleague proposal occupies the field — the
+  reschedule picker's occupancy read counts it for the same reason. Pending
+  games carry their own marker. Away interleague games have `venue_id` null and
+  cannot appear at all; that is correct, and the grid states the count in a
+  footnote rather than leaving them unaccounted for.
+- **"Show cancelled" hides BLOCKS, NEVER ROWS**, and defaults ON. It is LOCAL
+  component state, not a URL param (unlike `?past=`, which changes the query):
+  every status is already fetched, so it is pure display. Rows are derived from
+  the UNFILTERED game list, which makes the blocks-only rule structural — a
+  field whose only game this week is cancelled keeps its row when the toggle is
+  off. Do not reroute this through the query.
+- **`hidePast` does not apply in week mode** (and its toggle is hidden there). A
+  Monday-to-Sunday grid with its first three days clipped has empty columns
+  meaning "already played", which is indistinguishable from "nothing
+  scheduled" — the same misread the practices footnote exists to prevent.
+- **Row headers use the BARE venue name, never `qualifiedVenueLabel`**, and
+  rows are FLAT with no location bands: 70% of live venues have no location at
+  all, SRALL's venue names already carry their own "@ Complex (LEAGUE)"
+  suffixes, and one live location is named identically to its own venue. Sort is
+  location asc with NULLS LAST, then venue name.
+- **Practices are not shown, and the footnote saying so is load-bearing** — a
+  blank Wednesday otherwise reads as "this field is free" and an admin books
+  over a practice. A `?division=` filter adds a second footnote for the same
+  reason: under it an empty cell means "no games for THIS division", not "free".
+- **The clock is read in exactly three places, ALL post-mount, NONE in a render
+  path**: the mode toggle's `onClick`, the grid's "This week" `onClick`, and the
+  `useEffect` that `router.replace`s a missing `?week=`. Neither client
+  component reads a clock, a random, or `toLocale*` while rendering, so server
+  and client markup are identical. **Any change that moves a week default into
+  render is a hydration mismatch that tsc, eslint and `next build` all pass** —
+  it only breaks at runtime. On an unresolved first render the grid shows a
+  static "Loading week…" and the effect replaces the URL; it never paints a
+  wrong week.
+- **The two render decisions live in `week-grid.ts`, not in the JSX** —
+  `visibleBlocks` (which blocks a cell shows for a toggle state) and
+  `blockMarkers` (cancelled / pending / interleague). They are there so the
+  harness drives the SAME code the component calls rather than a copy; the
+  component has no second implementation. `fmtTimeRange` and `rendersStartOnly`
+  share one `hasUsableDuration` predicate for the same reason.
+- **Harness: `npm run sim:week-grid`** (`scripts/sim/week-grid-sim.ts`) — **81
+  assertions and 14 ANTI-VACUITY COUNTERS** over the real
+  `src/lib/schedule/week-grid.ts`, run three times under **UTC,
+  America/Los_Angeles and Pacific/Kiritimati**. It deliberately does NOT pin
+  `TZ=UTC` like the other sims: timezone independence is its headline
+  assertion, and every expected value is a literal so a result that shifts with
+  the host zone fails instead of quietly agreeing with itself.
+  **A ZERO COUNTER FAILS THE RUN.** Scenario R walks rows × days × blocks the
+  way the component does and counts what actually happened: cancelled blocks
+  rendered and hidden, a row surviving with only a cancelled game and the toggle
+  off (separately via the eligible arm and via the union arm), union-arm-only
+  rows, an empty eligible row, an away game dropped, an out-of-week game
+  dropped, pending and interleague blocks labelled, a start-only block, a
+  resolved end-time block, and a multi-block cell.
+  15 mutants: 14 killed by their own assertion or counter, 1 proven equivalent
+  (a UTC-anchored `weekDates` — UTC has no DST) with its genuinely unsafe
+  local-milliseconds sibling killed. **M14 (blockMarkers loses the pending
+  distinction) is killed ONLY by a vacuity counter** — that is what proves the
+  counters bite rather than decorate; don't delete them as noise.
+  **THREE assertions were found VACUOUS during the pass** and the fixtures were
+  rewritten around them: the out-of-week game had to move to a weekday no
+  in-week game occupied, the tied-start pair had to be supplied in REVERSE id
+  order because V8's stable sort satisfied the tiebreak assertion without the
+  tiebreak, and the union arm needed a venue whose ONLY game is cancelled before
+  a `countsAsScheduledGame`-style filter there could be caught. Don't undo any
+  of those fixture details; each exists so a mutant has something real to kill.
+
 ## Bye line (division schedule panel)
 
 - **Lives on the division schedule panel ONLY** (`division-schedule-panel.tsx`)
@@ -806,8 +912,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   report actually-scheduled games (venue game-days, Sports Connect, Reports).
   The two carry mutual DRIFT-HAZARD comments naming each other; keep both, and
   keep them apart.
-- **Week bucketing is the THIRD consumer of `weekKeyFromIsoDate`** (alongside
-  Sports Connect `RoundNo` and the venue game-days derivation). Never invent a
+- **Week bucketing is one of FOUR consumers of `weekKeyFromIsoDate`** (alongside
+  Sports Connect `RoundNo`, the venue game-days derivation, and the
+  week-by-field view mode). Never invent a
   second week definition — wall-clock date substring only, never parse the
   instant (house convention; see the `game-days.ts` header).
 - **KNOWN GAP — reads `games`, NOT `playoff_games`.** `playoff_games` is a
