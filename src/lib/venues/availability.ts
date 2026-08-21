@@ -129,13 +129,54 @@ export function isVenueAvailable(
   startTimeHHMM: string,
   durationMin: number,
 ): boolean {
-  const w = availability[day];
-  if (!w) return false;
+  const b = dayWindowBounds(availability, day);
+  if (!b) return false;
   const startMin = parseHHMM(startTimeHHMM);
   const endMin = startMin + Math.max(0, durationMin);
-  const winStart = parseHHMM(w.start);
-  const winEnd = parseHHMM(w.end);
-  return startMin >= winStart && endMin <= winEnd;
+  return startMin >= b.startMin && endMin <= b.endMin;
+}
+
+/** This day's open window in minutes-from-midnight, or null when the venue is
+ *  CLOSED that day.
+ *
+ *  THE SINGLE DEFINITION OF "what window does this day have". Both
+ *  `isVenueAvailable` (does THIS start fit?) and `venueDayFit` (could ANY start
+ *  fit?) are expressed in terms of it, so the two can never disagree about a
+ *  day's bounds. Do not re-derive `parseHHMM(w.start)` at a call site. */
+export function dayWindowBounds(
+  availability: VenueAvailability,
+  day: DayKey,
+): { startMin: number; endMin: number } | null {
+  const w = availability[day];
+  if (!w) return null;
+  return { startMin: parseHHMM(w.start), endMin: parseHHMM(w.end) };
+}
+
+/**
+ * Why a venue can or cannot host a game of `durationMin` on this day AT ALL,
+ * independent of any particular start time.
+ *
+ * WHY THIS EXISTS. `isVenueAvailable` returns a single `false` for two
+ * completely different situations: the venue is CLOSED that day, and the venue
+ * is OPEN but its window is too short for the game's span. Those have different
+ * remedies — open some hours, versus widen the hours you already have — and
+ * collapsing them makes the picker tell an admin to add hours to a field that
+ * already has them. A confidently wrong instruction is worse than silence.
+ *
+ * "fits" means SOME start time in the window would satisfy `isVenueAvailable`;
+ * it does NOT mean any particular slot is free. Occupancy is a separate
+ * question asked later.
+ */
+export type VenueDayFit = "closed" | "too_short" | "fits";
+
+export function venueDayFit(
+  availability: VenueAvailability,
+  day: DayKey,
+  durationMin: number,
+): VenueDayFit {
+  const b = dayWindowBounds(availability, day);
+  if (!b) return "closed";
+  return b.endMin - b.startMin >= Math.max(0, durationMin) ? "fits" : "too_short";
 }
 
 // Admin-set: may practices be scheduled on this day? A day defaults to

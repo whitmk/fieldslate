@@ -54,6 +54,7 @@ import {
   DAY_KEYS,
   isMakeupDay,
   isVenueAvailable,
+  venueDayFit,
   type DayKey,
   type VenueAvailability,
 } from "@/lib/venues/availability";
@@ -237,6 +238,48 @@ export function candidateClearsSpan(
   return !spansOverlap(padded, occupied);
 }
 
+/**
+ * Why one DATE produced no slots.
+ *
+ * CAPTURED DURING THE BUILD, NEVER RECONSTRUCTED. Re-deriving the reason after
+ * the fact would mean a second copy of the eligibility logic that drifts from
+ * the first — the bug family this repo has been bitten by repeatedly. Each kind
+ * below is written at the exact `continue`/`if` that caused it.
+ *
+ * The three that the picker surfaces as configuration problems:
+ *   no_field         — case (a): nothing open and makeup-flagged that day.
+ *   window_too_short — case (b): a field IS open and flagged, but its window
+ *                      cannot fit this division's game span. Distinct from (a)
+ *                      because the remedy differs: widen the window you have,
+ *                      not open one you don't. Without this the picker sends an
+ *                      admin to add hours to a field that already has them.
+ *   occupied         — case (c): a field could have fitted, but every candidate
+ *                      was taken. Nothing is misconfigured; the day is full.
+ *
+ * `blackout` and `team_cap` are date-specific rather than configuration, and
+ * are reported separately so they are not mistaken for either.
+ */
+export type DayDiagnostic =
+  | { kind: "blackout" }
+  | { kind: "team_cap" }
+  | { kind: "no_field" }
+  | {
+      kind: "window_too_short";
+      /** The open-but-too-short fields, for a message that can name them. */
+      venues: { venueId: string; venueName: string; start: string; end: string }[];
+    }
+  | {
+      kind: "occupied";
+      /** Which check ate the candidates — so case (c) can say "already booked"
+       *  versus "your teams are already playing" without inventing a reason. */
+      venueBookingRejections: number;
+      teamRejections: number;
+    };
+
+/** Every date in the searched range that produced NO slots, keyed
+ *  "YYYY-MM-DD". A date that produced slots is absent. */
+export type DayDiagnostics = Map<string, DayDiagnostic>;
+
 export interface BuildAvailableSlotsParams {
   startDate: string;
   endDate: string;
@@ -290,6 +333,20 @@ export interface BuildAvailableSlotsParams {
  * stricter, safer reading and is what "fits inside the division window" means.
  */
 export function buildAvailableSlots(params: BuildAvailableSlotsParams): SlotOption[] {
+  return buildSlotsAndDiagnostics(params).slots;
+}
+
+/**
+ * The real implementation: candidate slots PLUS the per-date reason each empty
+ * day was empty.
+ *
+ * `buildAvailableSlots` above is a thin wrapper returning only `.slots`, kept so
+ * the existing sim and any slots-only caller are unaffected. There is ONE
+ * implementation — the wrapper cannot drift from it.
+ */
+export function buildSlotsAndDiagnostics(
+  params: BuildAvailableSlotsParams,
+): { slots: SlotOption[]; diagnostics: DayDiagnostics } {
   const {
     startDate, endDate, playingDays, dayWindows,
     earliestStart, latestStart, gameDuration, bufferMinutes,
@@ -342,6 +399,7 @@ export function buildAvailableSlots(params: BuildAvailableSlotsParams): SlotOpti
   const effectiveStart = startDate < today ? today : startDate;
 
   const slots: SlotOption[] = [];
+  const diagnostics: DayDiagnostics = new Map();
   const cur = new Date(effectiveStart + "T00:00:00");
   const end = new Date(endDate + "T00:00:00");
 
@@ -352,7 +410,16 @@ export function buildAvailableSlots(params: BuildAvailableSlotsParams): SlotOpti
     const playsToday = allowedDays.has(cur.getDay());
     const makeupToday = makeupWindowByDay.get(dayKey);
 
-    if ((playsToday || makeupToday) && !blackoutDates.has(date)) {
+    // Every date in range is classified. A date that yields slots is deleted
+    // from the map at the end of its iteration, so what remains is exactly the
+    // empty days with the reason recorded where it happened.
+    if (!playsToday && !makeupToday) {
+      // Case (a) at the day gate: the division does not play, and no candidate
+      // field is makeup-flagged. This is the Sunday case.
+      diagnostics.set(date, { kind: "no_field" });
+    } else if (blackoutDates.has(date)) {
+      diagnostics.set(date, { kind: "blackout" });
+    } else {
       // On a day the division PLAYS, nothing changes — the division window
       // governs even if some field is also makeup-flagged. Only a MAKEUP-ONLY
       // day switches to the venue-union bounds.
@@ -367,9 +434,40 @@ export function buildAvailableSlots(params: BuildAvailableSlotsParams): SlotOpti
       const homeDayCount = homeTeamDayCounts.get(date) ?? 0;
       const awayDayCount = awayTeamDayCounts.get(date) ?? 0;
 
-      if (homeDayCount < maxPerTeamDay && awayDayCount < maxPerTeamDay) {
+      if (homeDayCount >= maxPerTeamDay || awayDayCount >= maxPerTeamDay) {
+        diagnostics.set(date, { kind: "team_cap" });
+      } else {
         const homeSpans = homeTeamSpans.get(date) ?? [];
         const awaySpans = awayTeamSpans.get(date) ?? [];
+
+        // Which fields participate today, and can each host this span AT ALL?
+        // Asked once per date, before the time loop — `venueDayFit` separates
+        // "closed" from "open but too short", which `isVenueAvailable` cannot.
+        const participating = venueIds.filter((venueId) => {
+          const av = venueAvailability[venueId];
+          if (!av) return false;
+          return playsToday || isMakeupDay(av, dayKey);
+        });
+        const tooShort: { venueId: string; venueName: string; start: string; end: string }[] = [];
+        let anyFits = false;
+        for (const venueId of participating) {
+          const av = venueAvailability[venueId]!;
+          const fit = venueDayFit(av, dayKey, duration);
+          if (fit === "fits") anyFits = true;
+          else if (fit === "too_short") {
+            const w = av[dayKey]!;
+            tooShort.push({
+              venueId,
+              venueName: venueNames[venueId] ?? venueId,
+              start: w.start,
+              end: w.end,
+            });
+          }
+        }
+        // Counted during the walk, never inferred afterwards.
+        let venueBookingRejections = 0;
+        let teamRejections = 0;
+        const slotsBefore = slots.length;
 
         // Full span must fit inside the division window, so the last candidate
         // is the latest start whose game still ENDS by the close.
@@ -385,13 +483,13 @@ export function buildAvailableSlots(params: BuildAvailableSlotsParams): SlotOpti
           // not exact-timestamp: on a 15-minute grid a team's 10:00 game must
           // also block 10:15, which an equality check would have offered.
           const cand: OccupiedSpan = { startMin: timeMin, durationMin: duration };
-          if (homeSpans.some((s) => spansOverlap(cand, s))) continue;
-          if (awaySpans.some((s) => spansOverlap(cand, s))) continue;
+          if (homeSpans.some((s) => spansOverlap(cand, s))) { teamRejections++; continue; }
+          if (awaySpans.some((s) => spansOverlap(cand, s))) { teamRejections++; continue; }
 
           // Neither team may have a severity-'block' constraint window
           // covering this start time (0076).
-          if (violatesHardConstraint(constraintRules, homeTeamId, isoString)) continue;
-          if (violatesHardConstraint(constraintRules, awayTeamId, isoString)) continue;
+          if (violatesHardConstraint(constraintRules, homeTeamId, isoString)) { teamRejections++; continue; }
+          if (violatesHardConstraint(constraintRules, awayTeamId, isoString)) { teamRejections++; continue; }
 
           // Each venue: must be open for the full span (per venue.availability)
           // and free of overlapping games at this wall time.
@@ -411,7 +509,30 @@ export function buildAvailableSlots(params: BuildAvailableSlotsParams): SlotOpti
             );
             if (clear) {
               slots.push({ isoString, venueId, venueName: venueNames[venueId] ?? venueId, date });
+            } else {
+              venueBookingRejections++;
             }
+          }
+        }
+
+        if (slots.length === slotsBefore) {
+          // Nothing came out. Which gate closed?
+          //   anyFits  → a field could have hosted it, so the day is FULL (c).
+          //   tooShort → a field is open and flagged but cannot fit the span (b).
+          //   neither  → nothing open and flagged at all (a).
+          // Ordered so (c) wins over (b): if ANY field could have taken the
+          // game, the day is occupied, and telling the admin to widen a
+          // different field's window would be wrong.
+          if (anyFits) {
+            diagnostics.set(date, {
+              kind: "occupied",
+              venueBookingRejections,
+              teamRejections,
+            });
+          } else if (tooShort.length > 0) {
+            diagnostics.set(date, { kind: "window_too_short", venues: tooShort });
+          } else {
+            diagnostics.set(date, { kind: "no_field" });
           }
         }
       }
@@ -422,5 +543,5 @@ export function buildAvailableSlots(params: BuildAvailableSlotsParams): SlotOpti
 
   // Chronological, then venue name
   slots.sort((a, b) => a.isoString.localeCompare(b.isoString) || a.venueName.localeCompare(b.venueName));
-  return slots;
+  return { slots, diagnostics };
 }

@@ -2,12 +2,17 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { X, CloudRain, CalendarDays, Loader2, CheckCircle2, AlertTriangle, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
 import {
+  DAY_KEYS,
+  DAY_LABELS,
+  dayKeyFromIsoDate,
   parseAvailability,
+  type DayKey,
   type VenueAvailability,
 } from "@/lib/venues/availability";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
@@ -16,10 +21,12 @@ import {
   type TeamGameConstraintRow,
 } from "@/lib/schedule/team-constraints";
 import {
-  buildAvailableSlots,
+  buildSlotsAndDiagnostics,
   durationFromSettings,
   occupancyWindow,
   toMins,
+  type DayDiagnostic,
+  type DayDiagnostics,
   type OccupiedSpan,
   type SlotOption,
 } from "@/lib/schedule/reschedule-slots";
@@ -49,12 +56,157 @@ interface Props {
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
+
+// ── Empty-state explanation ───────────────────────────────────────────────────
+//
+// Diagnostics arrive PER DATE, which is the honest granularity — a blackout or a
+// team cap belongs to one date. But a season holds ~10 Sundays that all fail for
+// the identical reason, and ten identical rows is noise, so the rendering rolls
+// them up by DAY OF WEEK. A weekday appears only when EVERY one of its dates in
+// range produced nothing; the reason shown is the one that occurred most often.
+type DaySummary = {
+  day: DayKey;
+  diagnostic: DayDiagnostic;
+  dateCount: number;
+};
+
+function summarizeByWeekday(
+  diagnostics: DayDiagnostics,
+  slots: SlotOption[],
+): DaySummary[] {
+  const datesWithSlots = new Set(slots.map((s) => s.date));
+  const byDay = new Map<DayKey, DayDiagnostic[]>();
+  const dayHasSlots = new Set<DayKey>();
+
+  for (const date of datesWithSlots) dayHasSlots.add(dayKeyFromIsoDate(date));
+  for (const [date, d] of diagnostics) {
+    const day = dayKeyFromIsoDate(date);
+    const list = byDay.get(day);
+    if (list) list.push(d);
+    else byDay.set(day, [d]);
+  }
+
+  const out: DaySummary[] = [];
+  for (const day of DAY_KEYS) {
+    // A weekday that produced ANY slot is not an empty day — say nothing.
+    if (dayHasSlots.has(day)) continue;
+    const list = byDay.get(day);
+    if (!list || list.length === 0) continue;
+    const counts = new Map<string, number>();
+    for (const d of list) counts.set(d.kind, (counts.get(d.kind) ?? 0) + 1);
+    let topKind = list[0].kind;
+    let topN = 0;
+    for (const [kind, n] of counts) {
+      if (n > topN) { topN = n; topKind = kind as DayDiagnostic["kind"]; }
+    }
+    const representative = list.find((d) => d.kind === topKind) ?? list[0];
+    out.push({ day, diagnostic: representative, dateCount: list.length });
+  }
+  return out;
+}
+
+function fmt12(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h >= 12 ? "pm" : "am";
+  const h12 = h % 12 || 12;
+  return m === 0 ? `${h12}${period}` : `${h12}:${String(m).padStart(2, "0")}${period}`;
+}
+
+
+/** One weekday's explanation. Case (a) and (b) are actionable and link to the
+ *  Venues page; case (c) is informational, quieter, and deliberately has NO
+ *  link — nothing is misconfigured, the day is simply full. */
+function DiagnosticRow({ summary }: { summary: DaySummary }) {
+  const { day, diagnostic, dateCount } = summary;
+  const label = DAY_LABELS[day];
+  const dates = `${dateCount} ${dateCount === 1 ? "date" : "dates"}`;
+
+  if (diagnostic.kind === "occupied") {
+    // CASE (c). A field could have hosted the game; every candidate was taken.
+    const mostlyTeams =
+      diagnostic.teamRejections > diagnostic.venueBookingRejections;
+    return (
+      <div className="px-6 py-2.5">
+        <p className="text-xs text-gray-400">
+          <span className="font-medium text-gray-500">{label}</span> — no open
+          time on {dates}.{" "}
+          {mostlyTeams
+            ? "These teams are already playing at the times the fields are free."
+            : "The fields are open but already booked."}
+        </p>
+      </div>
+    );
+  }
+
+  if (diagnostic.kind === "window_too_short") {
+    // CASE (b). THE ONE THAT MATTERS MOST: the field IS open — sending the
+    // admin to "add hours" here would be a confidently wrong instruction.
+    const named = diagnostic.venues
+      .map((v) => `${v.venueName} is open ${fmt12(v.start)}–${fmt12(v.end)}`)
+      .join("; ");
+    return (
+      <div className="px-6 py-2.5">
+        <p className="text-xs text-amber-700">
+          <span className="font-medium">{label}</span> — {named}, which
+          isn&rsquo;t long enough for this game.
+        </p>
+        <Link
+          href="/dashboard/venues"
+          className="text-xs text-[#22C55E] underline underline-offset-2"
+        >
+          Widen the hours on the Venues page
+        </Link>
+      </div>
+    );
+  }
+
+  if (diagnostic.kind === "blackout") {
+    return (
+      <div className="px-6 py-2.5">
+        <p className="text-xs text-gray-400">
+          <span className="font-medium text-gray-500">{label}</span> — blacked
+          out ({dates}).
+        </p>
+      </div>
+    );
+  }
+
+  if (diagnostic.kind === "team_cap") {
+    return (
+      <div className="px-6 py-2.5">
+        <p className="text-xs text-gray-400">
+          <span className="font-medium text-gray-500">{label}</span> — one of
+          these teams already has a game that day ({dates}).
+        </p>
+      </div>
+    );
+  }
+
+  // CASE (a). Nothing open and flagged for makeups that day.
+  return (
+    <div className="px-6 py-2.5">
+      <p className="text-xs text-amber-700">
+        <span className="font-medium">{label}</span> — no field is open and
+        marked for makeups.
+      </p>
+      <Link
+        href="/dashboard/venues"
+        className="text-xs text-[#22C55E] underline underline-offset-2"
+      >
+        Mark a field &ldquo;Makeup&rdquo; on the Venues page
+      </Link>
+    </div>
+  );
+}
+
 export function RainoutRescheduleModal({
   gameId, homeTeamId, awayTeamId, homeTeamName, awayTeamName,
   divisionId, leagueId, onClose, onRescheduled, buildLogMessage,
 }: Props) {
   const router = useRouter();
   const [slots, setSlots] = useState<SlotOption[]>([]);
+  const [diagnostics, setDiagnostics] = useState<DayDiagnostics>(new Map());
+
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [picked, setPicked] = useState<SlotOption | null>(null);
@@ -301,7 +453,7 @@ export function RainoutRescheduleModal({
       (rulesRaw ?? []) as TeamGameConstraintRow[],
     );
 
-    const available = buildAvailableSlots({
+    const { slots: available, diagnostics: dayDiagnostics } = buildSlotsAndDiagnostics({
       startDate: div.start_date,
       endDate: div.end_date,
       playingDays,
@@ -326,6 +478,7 @@ export function RainoutRescheduleModal({
     });
 
     setSlots(available);
+    setDiagnostics(dayDiagnostics);
     setLoading(false);
   }
 
@@ -360,6 +513,7 @@ export function RainoutRescheduleModal({
   }
 
   // Group slots by date for display
+  const daySummaries = summarizeByWeekday(diagnostics, slots);
   const grouped = new Map<string, SlotOption[]>();
   for (const s of slots) {
     if (!grouped.has(s.date)) grouped.set(s.date, []);
@@ -476,13 +630,21 @@ export function RainoutRescheduleModal({
               </button>
             </div>
           ) : slots.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-              <CalendarDays className="h-6 w-6 text-gray-200" />
-              <p className="text-sm font-medium text-[#0C1F3F]">No open slots found</p>
-              <p className="text-xs text-gray-400">
-                All remaining dates are fully booked, blacked out, or outside the season window.
-                Try adding venues or extending the season end date.
-              </p>
+            /* Replaces a single global sentence that guessed at the cause and
+               offered lever advice ("try adding venues or extending the season
+               end date") for a picker that had no rejection tally behind it.
+               Every line below is the reason recorded where it happened. */
+            <div>
+              <div className="flex flex-col items-center gap-2 px-6 pb-4 pt-10 text-center">
+                <CalendarDays className="h-6 w-6 text-gray-200" />
+                <p className="text-sm font-medium text-[#0C1F3F]">No open slots found</p>
+                <p className="text-xs text-gray-400">Here&rsquo;s what closed each day.</p>
+              </div>
+              <div className="divide-y divide-gray-50 border-t border-gray-50">
+                {daySummaries.map((sm) => (
+                  <DiagnosticRow key={sm.day} summary={sm} />
+                ))}
+              </div>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
@@ -520,6 +682,23 @@ export function RainoutRescheduleModal({
                   </div>
                 </div>
               ))}
+
+              {/* Days that produced nothing still get their reason — a list
+                  with Saturdays in it must still explain the empty Fridays. */}
+              {daySummaries.length > 0 && (
+                <div className="bg-gray-50/40">
+                  <div className="px-6 py-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                      Other days
+                    </p>
+                  </div>
+                  <div className="divide-y divide-gray-50">
+                    {daySummaries.map((sm) => (
+                      <DiagnosticRow key={sm.day} summary={sm} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
