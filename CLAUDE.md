@@ -548,6 +548,34 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   at `[INV] placement moved` — the line that was supposed to catch it. When a
   mutant targets assertion X, deliberately construct it so nothing before X
   can fire.
+- **THE GENERATOR SHUFFLES WITH `Math.random` (`generate-schedule.ts` ~:165),
+  so two runs of the SAME fixture differ from each other.** Any golden
+  comparison of generator output must therefore pin the seed before it compares
+  anything — and must separately assert that the pinning WORKS (two identical
+  runs under one seed agree), or the golden can pass for the wrong reason
+  instead of failing for one.
+  **The failure mode is the mirror of a vacuous assertion, and just as silent
+  about the property under test.** An unpinned golden compares shuffle NOISE:
+  it fails on every run, for a reason that has nothing to do with the thing
+  being proven, and a red line that is always red tells you nothing. A golden
+  that fails for an unrelated reason is exactly as uninformative as one that
+  passes without checking. Cost real time on the 2026-08-21 makeup-days run
+  before it was diagnosed. Live example of the pinned form:
+  `scripts/sim/makeup-days-sim.ts` (seeded xorshift32, same seed both sides,
+  plus the pin-check assertion).
+- **"What CALLS this" is not "what REACHES this" — ask the second question.**
+  A shared function or component has direct callers AND entry paths, and the
+  counts are not the same. On 2026-08-21 the caller enumeration for
+  `buildAvailableSlots` returned the correct answer — ONE production caller —
+  while the number of render paths that could reach it was SEVEN, four of them
+  ungated for a case nobody had reasoned about (see "RainoutRescheduleModal has
+  seven render paths" under the reschedule picker). The caller count was true
+  and reassuring and did not describe the blast radius.
+  **Standing review question for any shared component or shared function:
+  enumerate the render sites and entry points, not just the direct callers,
+  and check each one's gating separately.** A grep for the function name will
+  not surface this; a grep for the COMPONENT name is a different search with a
+  different answer.
 
 ## Complete reads — row limits and silent truncation
 
@@ -1467,6 +1495,35 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
      a venue does NOT block a 3:30 game offer there.
   3. ~~The venue-occupancy read is org-wide and unpaginated~~ — **CLOSED
      2026-07-30**, see "Occupancy read scope" below. The other two stand.
+- **KNOWN DEFECT — `RainoutRescheduleModal` HAS SEVEN RENDER PATHS AND FOUR OF
+  THEM ARE UNGATED FOR INTERLEAGUE.** Documented, not fixed (2026-08-21).
+  - Gated on interleague: `schedule-list.tsx` and `schedule-calendar.tsx` (both
+    `rescheduleGame.away_team_id &&`), and `division-schedule-panel.tsx` (the
+    button itself is `canReschedule && !game.interleague_org_id`).
+  - NOT gated: `log-rainout-modal.tsx`, `rained-out-stat-card.tsx`,
+    `upcoming-games-list.tsx`, `conflict-stat-card.tsx`.
+  - **`log-rainout-modal` is the live route.** Its games query is scoped by
+    `home_team_id` + `status='scheduled'` with NO interleague filter, so an
+    interleague game can be listed, marked rained out, and taken straight into
+    the picker.
+  - **The type system is being told a falsehood, which is why `tsc` never
+    caught it.** All four ungated sites declare `away_team_id: string` while
+    the column is genuinely nullable — one arrives through an
+    `as unknown as RainedOutGame[]` cast (`leagues/[id]/page.tsx` ~:328), one
+    is forced with a `!` assertion (`division-schedule-panel.tsx` ~:1522).
+  - **SECOND-ORDER, and the part that actually bites:** with `away_team_id`
+    null at runtime the picker's away-team span checks, per-day caps and
+    constraint lookups all match nothing and pass silently — so an interleague
+    game gets a LAXER slot search than a normal game, with no error anywhere.
+  - `away_team_id IS NULL` is an EXACT proxy for interleague in production: 66
+    interleague games, all 66 null; zero non-interleague games with a null away
+    team (verified 2026-08-21).
+  - **All of this PREDATES makeup days.** Makeup days widened the day set that
+    path operates over; they did not create the reachability. Do not attribute
+    it to that feature when fixing it.
+  - The PARTNER-facing interleague reschedule is unaffected and never touches
+    this function — it uses `RescheduleRequestModal`, a free-text date/venue
+    form with no slot computation.
 - **Occupancy read scope — DATE-BOUNDED, NEVER SEASON-BOUNDED, and paginated.**
   `occupancyWindow(startDate, endDate)` in `reschedule-slots.ts` supplies the
   bounds for both of the picker's `games` reads.
@@ -1683,6 +1740,23 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   the mobile day view has no edit affordance (its venue cards are
   whole-row `<button>` tap targets; nesting an edit button would be
   invalid HTML). Phone users edit venues on the Venues page.
+- **PER-DAY VENUE FLAGS ARE ORG-SCOPED AND HAVE NO EXPIRY.** `venues` has no
+  `league_id`, so both `practice` and `makeup` persist across every season with
+  no per-season override and no expiry — a field flagged makeup-Friday for Fall
+  Ball is still flagged in Spring, when the schedule shape may be completely
+  different. **The two flags differ in CONSEQUENCE when stale:** a stale
+  `practice` flag schedules a practice somewhere plausible, while a stale
+  `makeup` flag offers GAME slots for a season that may not want weekday games
+  at all. Neither is a bug; the second is worth saying out loud in any UI copy
+  that sets it.
+- **Practice and Makeup both appear on days the division actually plays, until
+  a schedule exists.** Both checkboxes are suppressed on DERIVED game days
+  (`>= 2` distinct weeks with real games — see `game-days.ts`), and before a
+  season is generated there ARE no derived game days, so the controls show on
+  Saturday for a Saturday league. Harmless (the day is already offered either
+  way) but confusing, and the card already carries an empty-state note about
+  it. **Do not "fix" this for one flag only** — the quirk is identical for both
+  and they must stay consistent.
 
 ## Locations (venue → park/complex hierarchy)
 
