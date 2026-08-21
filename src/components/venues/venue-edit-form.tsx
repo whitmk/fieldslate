@@ -28,17 +28,17 @@ const FULL_DAY: Record<DayKey, string> = {
 
 type AvailabilityDraft = Record<
   DayKey,
-  { open: boolean; start: string; end: string; practice: boolean }
+  { open: boolean; start: string; end: string; practice: boolean; makeup: boolean }
 >;
 
 const DEFAULT_DRAFT: AvailabilityDraft = {
-  Mo: { open: false, start: "17:00", end: "21:00", practice: true },
-  Tu: { open: false, start: "17:00", end: "21:00", practice: true },
-  We: { open: false, start: "17:00", end: "21:00", practice: true },
-  Th: { open: false, start: "17:00", end: "21:00", practice: true },
-  Fr: { open: false, start: "17:00", end: "21:00", practice: true },
-  Sa: { open: false, start: "08:00", end: "19:00", practice: true },
-  Su: { open: false, start: "09:00", end: "17:00", practice: true },
+  Mo: { open: false, start: "17:00", end: "21:00", practice: true, makeup: false },
+  Tu: { open: false, start: "17:00", end: "21:00", practice: true, makeup: false },
+  We: { open: false, start: "17:00", end: "21:00", practice: true, makeup: false },
+  Th: { open: false, start: "17:00", end: "21:00", practice: true, makeup: false },
+  Fr: { open: false, start: "17:00", end: "21:00", practice: true, makeup: false },
+  Sa: { open: false, start: "08:00", end: "19:00", practice: true, makeup: false },
+  Su: { open: false, start: "09:00", end: "17:00", practice: true, makeup: false },
 };
 
 function draftFromAvailability(av: VenueAvailability): AvailabilityDraft {
@@ -47,17 +47,32 @@ function draftFromAvailability(av: VenueAvailability): AvailabilityDraft {
     const w = av[key];
     // parseAvailability defaults a missing `practice` to true, so existing
     // venues open every day as practice-usable — unchanged from before.
-    if (w) draft[key] = { open: true, start: w.start, end: w.end, practice: w.practice !== false };
+    // `practice` absent means TRUE, `makeup` absent means FALSE — the two
+    // defaults are inverted on purpose; see parseAvailability.
+    if (w)
+      draft[key] = {
+        open: true,
+        start: w.start,
+        end: w.end,
+        practice: w.practice !== false,
+        makeup: w.makeup === true,
+      };
     else draft[key] = { ...DEFAULT_DRAFT[key], open: false };
   }
   return draft;
 }
 
+/** WHOLESALE WRITER — read before adding a key to the availability jsonb.
+ *  Each day is rebuilt as a FRESH LITERAL, so any key not named here is
+ *  DESTROYED on the next venue save. A new flag must be added in all three of
+ *  `AvailabilityDraft`, `draftFromAvailability` and here, or it survives
+ *  exactly until someone edits the venue. */
 function draftToAvailability(draft: AvailabilityDraft): VenueAvailability {
   const out: VenueAvailability = {};
   for (const key of DAY_KEYS) {
     const d = draft[key];
-    if (d.open) out[key] = { start: d.start, end: d.end, practice: d.practice };
+    if (d.open)
+      out[key] = { start: d.start, end: d.end, practice: d.practice, makeup: d.makeup };
   }
   return out;
 }
@@ -136,12 +151,25 @@ export function VenueEditForm({
     }));
   }
 
+  function toggleMakeup(key: DayKey) {
+    setDraft((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], makeup: !prev[key].makeup },
+    }));
+  }
+
   function copyMondayToWeekdays() {
     setDraft((prev) => {
       const mon = prev.Mo;
       const next = { ...prev };
       for (const key of ["Tu", "We", "Th", "Fr"] as DayKey[]) {
-        next[key] = { open: mon.open, start: mon.start, end: mon.end, practice: mon.practice };
+        next[key] = {
+        open: mon.open,
+        start: mon.start,
+        end: mon.end,
+        practice: mon.practice,
+        makeup: mon.makeup,
+      };
       }
       return next;
     });
@@ -157,13 +185,21 @@ export function VenueEditForm({
     }
     // Forced purpose: an open day must be usable for something. Game days are
     // derived (may be false pre-generation), so an open day that is neither
-    // practice-usable nor a derived game day is purposeless — block the save.
+    // practice-usable, nor a makeup day, nor a derived game day is purposeless.
+    //
+    // MAKEUP COUNTS AS A PURPOSE — without this clause the guard rejects
+    // exactly the configuration this feature exists to create: a field opened
+    // on a weekday for rained-out games only, with Practice deliberately off.
     const purposeless = DAY_KEYS.filter(
-      (k) => draft[k].open && !draft[k].practice && !derivedGameDays.has(k),
+      (k) =>
+        draft[k].open &&
+        !draft[k].practice &&
+        !draft[k].makeup &&
+        !derivedGameDays.has(k),
     );
     if (purposeless.length > 0) {
       setError(
-        `${purposeless.map((k) => DAY_LABELS[k]).join(", ")} ${purposeless.length === 1 ? "is" : "are"} open but not usable for anything — check Practice, or uncheck the day.`,
+        `${purposeless.map((k) => DAY_LABELS[k]).join(", ")} ${purposeless.length === 1 ? "is" : "are"} open but not usable for anything — check Practice or Makeup, or uncheck the day.`,
       );
       return;
     }
@@ -227,6 +263,13 @@ export function VenueEditForm({
               unchecked are closed. &ldquo;Practice&rdquo; controls whether
               practices can be scheduled that day; game days are read-only and
               come from the schedule.
+            </p>
+            <p className="mt-1 text-xs text-gray-500">
+              &ldquo;Makeup&rdquo; lets rained-out games be rescheduled onto
+              this field that day, using <em>this field&rsquo;s</em> hours
+              rather than the division&rsquo;s usual playing hours. Fields are
+              shared across every season, so a makeup day stays set until you
+              change it here.
             </p>
           </div>
           <button
@@ -293,6 +336,25 @@ export function VenueEditForm({
                         className="h-4 w-4 cursor-pointer rounded border-gray-300 text-[#22C55E] focus:ring-[#22C55E]/30 disabled:cursor-default"
                       />
                       Practice
+                    </label>
+                  )}
+                  {!isGameDay && (
+                    <label
+                      className={`flex items-center gap-1.5 text-xs font-medium ${d.open ? "cursor-pointer text-[#0C1F3F]" : "text-gray-400"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        // Same closed-day treatment as Practice above: a closed
+                        // day renders unchecked and disabled so it can never
+                        // read as a live makeup day. The underlying draft flag
+                        // is inert either way — draftToAvailability writes
+                        // nothing for a closed day.
+                        checked={d.open && d.makeup}
+                        disabled={!d.open}
+                        onChange={() => toggleMakeup(k)}
+                        className="h-4 w-4 cursor-pointer rounded border-gray-300 text-[#22C55E] focus:ring-[#22C55E]/30 disabled:cursor-default"
+                      />
+                      Makeup
                     </label>
                   )}
                 </div>

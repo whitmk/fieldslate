@@ -41,7 +41,14 @@ const JS_TO_DAY: Record<number, DayKey> = {
 // `practice` key) stay practice-usable exactly as before — no migration and no
 // behavior change until an admin unchecks a day. Only the venue path reads or
 // writes it; the game generator and interleague gate read start/end only.
-export type DayWindow = { start: string; end: string; practice?: boolean };
+export type DayWindow = {
+  start: string;
+  end: string;
+  practice?: boolean;
+  /** Admin-set: may a RAINED-OUT game be rescheduled onto this field on this
+   *  day? See `isMakeupDay` for the deliberately inverted default. */
+  makeup?: boolean;
+};
 export type VenueAvailability = Partial<Record<DayKey, DayWindow>>;
 
 // Permissive: any unknown jsonb shape coerces to a clean availability map.
@@ -64,7 +71,16 @@ export function parseAvailability(raw: unknown): VenueAvailability {
     // Absent/non-boolean `practice` defaults to true — pre-existing venues have
     // no key and must stay practice-usable (backward compatible, no migration).
     const practice = typeof wr.practice === "boolean" ? wr.practice : true;
-    out[key] = { start, end, practice };
+    // MIRROR IMAGE OF `practice`, DELIBERATELY. Absent/non-boolean `makeup`
+    // defaults to FALSE: a day is not a makeup day unless an admin said so.
+    // `practice` defaults TRUE because every pre-existing venue was already
+    // practice-usable and must stay that way; `makeup` is a brand-new
+    // capability, so silence must mean "no". Getting this backwards would turn
+    // every open weekday at every venue into a makeup day the moment this
+    // shipped. The two defaults are opposite ON PURPOSE — do not "make them
+    // consistent".
+    const makeup = typeof wr.makeup === "boolean" ? wr.makeup : false;
+    out[key] = { start, end, practice, makeup };
   }
   return out;
 }
@@ -129,6 +145,25 @@ export function isVenueAvailable(
 export function isPracticeUsable(av: VenueAvailability, day: DayKey): boolean {
   const w = av[day];
   return !!w && w.practice !== false;
+}
+
+/**
+ * Admin-set: may a rained-out game be rescheduled onto this field on this day?
+ *
+ * Note the sense is the OPPOSITE of `isPracticeUsable` above: that one asks
+ * `!== false` (absent means yes), this one asks `=== true` (absent means no).
+ * See parseAvailability for why. A closed day is never a makeup day.
+ *
+ * PRACTICE AND MAKEUP ARE INDEPENDENT. A day may be both; they describe
+ * different activities and nothing in the product treats the combination as a
+ * conflict.
+ *
+ * This flag is read ONLY by the rainout reschedule picker. The game generator
+ * must never see it — see CLAUDE.md.
+ */
+export function isMakeupDay(av: VenueAvailability, day: DayKey): boolean {
+  const w = av[day];
+  return !!w && w.makeup === true;
 }
 
 // Validate a user-edited availability map (returned from the venue form).
