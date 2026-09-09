@@ -1,0 +1,28 @@
+-- Close the one grant 0088 missed on its own internal helper.
+--
+-- 0088's comment says build_game_occupancy_context "must not be independently
+-- reachable" — both public entry points gate BEFORE calling it (org membership
+-- on one, the reschedule token on the other). But 0088 only revoked from
+-- `public`, `anon` and `authenticated`. This project's
+-- `alter default privileges ... grant execute on functions` also hands EXECUTE
+-- to `dashboard_readonly`, so after 0088 the ungated builder was reachable by a
+-- role the migration believed it had locked out. The file said one thing and
+-- the live catalog did another.
+--
+-- NOT AN EXPOSURE, and worth stating precisely rather than overselling the fix:
+-- `dashboard_readonly` already holds SELECT on `games` directly, so calling the
+-- builder grants it nothing it could not already read. The reason to revoke is
+-- that the builder is deliberately UNGATED — it is the one function in this
+-- pair with no authorization check of its own, because its callers are supposed
+-- to be the only way in. A role that can call it bypasses both gates by
+-- definition, and "it happens to be a role we trust" is a weaker guarantee than
+-- "nothing but the two entry points can reach it".
+--
+-- This is a slice of the wider least-privilege backlog recorded in CLAUDE.md
+-- ("dashboard_readonly holds EXECUTE on functions it shouldn't"). That note
+-- argues the grants fail closed because the functions gate on `is_org_member`
+-- against `auth.uid()` and the dashboard connects with no JWT — TRUE of the
+-- gated functions, and NOT true of this one. Only this function is fixed here;
+-- the rest of the backlog is unchanged.
+
+revoke all on function public.build_game_occupancy_context(uuid, timestamptz) from dashboard_readonly;

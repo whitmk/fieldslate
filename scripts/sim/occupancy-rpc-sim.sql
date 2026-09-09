@@ -52,6 +52,7 @@ declare
   c_venue_null_empty   int := 0;
   c_date_scoped        int := 0;
   c_cancelled_excluded int := 0;
+  c_builder_sealed     int := 0;
 begin
   ---------------------------------------------------------------- fixtures
   select id into v_owner from profiles order by created_at limit 1;
@@ -242,13 +243,49 @@ begin
     fails := fails + 1; out := out || '[G5] FAIL authenticated CANNOT call its entry point' || chr(10);
   end if;
 
+  -- G6 is ROLE-AGNOSTIC ON PURPOSE, and it is the assertion that would have
+  -- caught 0088's miss. G1/G2 name `anon` and `authenticated` because those are
+  -- the roles 0088 thought to revoke — and that is exactly why they passed while
+  -- `dashboard_readonly` still held EXECUTE, granted by this project's
+  -- `alter default privileges ... grant execute on functions` rather than by any
+  -- migration. Naming roles can only ever catch the roles you already thought
+  -- of. This asserts the builder's ACL is EXACTLY {postgres}, so ANY future
+  -- grant to ANY role fails the run without anyone having to predict it.
+  -- Fixed by migration 0089.
+  if exists (
+    select 1
+      from pg_proc p
+      join pg_namespace ns on ns.oid = p.pronamespace
+      cross join lateral aclexplode(p.proacl) ae
+      join pg_roles r on r.oid = ae.grantee
+     where ns.nspname = 'public'
+       and p.proname = 'build_game_occupancy_context'
+       and ae.privilege_type = 'EXECUTE'
+       and r.rolname <> 'postgres'
+  ) then
+    fails := fails + 1;
+    out := out || '[G6] FAIL the UNGATED builder is EXECUTE-able by a role other than postgres: '
+                || coalesce((select string_agg(r.rolname, ',' order by r.rolname)
+                               from pg_proc p
+                               join pg_namespace ns on ns.oid = p.pronamespace
+                               cross join lateral aclexplode(p.proacl) ae
+                               join pg_roles r on r.oid = ae.grantee
+                              where ns.nspname = 'public'
+                                and p.proname = 'build_game_occupancy_context'
+                                and ae.privilege_type = 'EXECUTE'
+                                and r.rolname <> 'postgres'), '?') || chr(10);
+  else
+    c_builder_sealed := c_builder_sealed + 1;
+  end if;
+
   ---------------------------------------------------------------- anti-vacuity
   out := out || chr(10) || 'Anti-vacuity counters:' || chr(10);
-  out := out || format('  self_excluded=%s neighbour_returned=%s token_rejected=%s venue_null_empty=%s date_scoped=%s cancelled_excluded=%s',
+  out := out || format('  self_excluded=%s neighbour_returned=%s token_rejected=%s venue_null_empty=%s date_scoped=%s cancelled_excluded=%s builder_sealed=%s',
     c_self_excluded, c_neighbour_returned, c_token_rejected,
-    c_venue_null_empty, c_date_scoped, c_cancelled_excluded) || chr(10);
+    c_venue_null_empty, c_date_scoped, c_cancelled_excluded, c_builder_sealed) || chr(10);
   if c_self_excluded = 0 or c_neighbour_returned = 0 or c_token_rejected = 0
-     or c_venue_null_empty = 0 or c_date_scoped = 0 or c_cancelled_excluded = 0 then
+     or c_venue_null_empty = 0 or c_date_scoped = 0 or c_cancelled_excluded = 0
+     or c_builder_sealed = 0 then
     fails := fails + 1;
     out := out || 'FAIL a counter is ZERO — its assertion proved nothing' || chr(10);
   end if;
@@ -298,3 +335,21 @@ $harness$;
 -- emitted, never what is concluded from them. That half is
 -- `npm run sim:occupancy-gate` (5 mutants, all killed). Reading either file's
 -- green run as proof of the whole feature would be wrong.
+--
+-- Addendum 2026-09-09, after 0088 was applied for real: G6 was ADDED in
+-- response to a live-catalog finding, not written up front. 0088 revoked the
+-- builder from `public`/`anon`/`authenticated` and its own comment claimed the
+-- function was "not independently reachable" — but the applied catalog showed
+-- `dashboard_readonly` still holding EXECUTE, granted by this project's
+-- `alter default privileges`, never by a migration. G1 and G2 both passed
+-- while the claim was false, because they name the roles the migration author
+-- already had in mind.
+--
+-- That is the lesson worth keeping: a grant assertion that NAMES ROLES can only
+-- catch the roles you thought of. G6 asserts the ACL is exactly {postgres}, so
+-- any future grant to any role fails without anyone predicting it. Migration
+-- 0089 closes the grant; G6 is what stops it coming back.
+--
+-- Verified against the live catalog post-0089: builder ACL is exactly
+-- {postgres}; anon reaches only the token entry point; authenticated reaches
+-- its own entry point; all three prosrc md5s unchanged by the revoke.
