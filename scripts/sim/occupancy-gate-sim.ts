@@ -65,6 +65,7 @@ const counters = {
   authenticated_path_used: 0,
   per_game_duration_mattered: 0,
   arriving_buffer_mattered: 0,
+  keep_original_shape: 0,
 };
 
 // ── Fake Supabase client ─────────────────────────────────────────────────────
@@ -122,17 +123,25 @@ function ctx(opts: {
   };
 }
 
+// By DEFAULT the argument passed to the gate AGREES with the time the payload
+// echoes. That is not cosmetic: it is what keeps mutant M6 (read the caller's
+// own argument instead of the RPC's echo) from dying everywhere at once for the
+// unrelated reason that a dummy argument parses to NaN. With the two agreeing,
+// M6 is a no-op in every fixture EXCEPT C10, where they are deliberately made
+// to disagree — so M6 is caught by the assertion written for it and by nothing
+// else. See the "killed by the RIGHT assertion" rule in CLAUDE.md.
 async function run(
   payload: unknown,
-  args: Parameters<typeof gateRescheduleOccupancy>[1] = {
-    gameId: "GAME-UNDER-TEST",
-    scheduledAtIso: "x",
-  },
+  args?: Parameters<typeof gateRescheduleOccupancy>[1],
 ): Promise<{ result: OccupancyGateResult; calls: RpcCall[] }> {
+  const echoed = (payload as { scheduled_at?: string } | null)?.scheduled_at;
   const calls: RpcCall[] = [];
   const result = await gateRescheduleOccupancy(
     fakeClient({ kind: "data", payload }, calls),
-    args,
+    args ?? {
+      gameId: "GAME-UNDER-TEST",
+      scheduledAtIso: echoed ?? "2026-09-12T00:00:00",
+    },
   );
   return { result, calls };
 }
@@ -364,6 +373,35 @@ async function main() {
     counters.authenticated_path_used++;
   }
 
+  // ── C10 THE `keep_original` SHAPE. That action moves no time: it flips
+  //       pending_interleague -> scheduled and the check runs against the time
+  //       ALREADY ON THE ROW, which arrives as a raw Postgres timestamptz
+  //       ("2026-09-12 15:00:00+00" — space-separated, not "T"), not as the
+  //       normalized ISO the moving actions build.
+  //
+  //       The gate must read the RPC's ECHOED `scheduled_at`, never the
+  //       caller's raw argument. Proven by making the two DISAGREE: the caller
+  //       passes a time that would clear, the RPC echoes the time that clashes.
+  //       If the gate ever reads its own input instead, this flips to allowed.
+  {
+    console.log("C10 keep_original: the gate reads the RPC's echoed time, not its own argument");
+    const { result } = await run(
+      ctx({ at: "15:00", duration: 105, buffer: 30, occupied: [{ at: "13:00", duration: 120, label: "Cubs vs Reds" }] }),
+      // A raw timestamptz for a time that WOULD clear (23:00) — deliberately
+      // not the 15:00 the payload echoes.
+      { gameId: "GAME-UNDER-TEST", scheduledAtIso: "2026-09-12 23:00:00+00" },
+    );
+    ok(!result.ok, "C10a echoed 15:00 decides, not the passed 23:00");
+    if (!result.ok) counters.keep_original_shape++;
+
+    // And the same row genuinely clears when the ECHO says so.
+    const cleared = await run(
+      ctx({ at: "23:00", duration: 105, buffer: 30, occupied: [{ at: "13:00", duration: 120 }] }),
+      { gameId: "GAME-UNDER-TEST", scheduledAtIso: "2026-09-12 15:00:00+00" },
+    );
+    ok(cleared.result.ok, "C10b echoed 23:00 clears, though 15:00 was passed");
+  }
+
   // ── Anti-vacuity ───────────────────────────────────────────────────────────
   console.log("\nAnti-vacuity counters:");
   let zero = 0;
@@ -394,8 +432,8 @@ main().catch((e) => {
 // re-run, the FAILING ASSERTION NAME is recorded, then the file is restored and
 // the suite re-verified green.
 //
-// Run 2026-09-09 — baseline 38 assertions / 0 failures, all 10 counters
-// non-zero. 5 mutants, EVERY ONE killed by the assertion it was written for.
+// Run 2026-09-09 — baseline 40 assertions / 0 failures, all 11 counters
+// non-zero. 6 mutants, EVERY ONE killed by the assertion it was written for.
 //
 // This harness does NOT short-circuit: every assertion is evaluated on every
 // run. So where a mutant also trips assertions other than its target, the
@@ -440,7 +478,22 @@ main().catch((e) => {
 //       → collateral: C3b, C3d, C6b — fixtures whose occupant duration differs
 //         from the arriving one.
 //
-// After every mutant the file was restored and the suite re-verified: 38
+//   M6  Read the caller's own `scheduledAtIso` argument instead of the RPC's
+//       echoed `scheduled_at` (added with the `keep_original` commit).
+//       → target C10a AND C10b FAILED ✓, plus keep_original_shape 1 → 0.
+//         NOTHING ELSE failed.
+//       → THIS MUTANT WAS MIS-TARGETED ON ITS FIRST RUN and the fixture was
+//         corrected rather than the result accepted. The default `run()` used
+//         to pass a dummy `scheduledAtIso: "x"`, so M6 made every fixture
+//         compute NaN and the mutant died at C1 — a rejection assertion that
+//         says nothing about WHICH time was read. 6 assertions failed and C10
+//         was never the reason. `run()` now defaults the argument to the time
+//         the payload echoes, so the two agree everywhere except C10, where
+//         they are deliberately made to disagree. That is the whole point of
+//         the "killed by the RIGHT assertion" rule: the first run's tally read
+//         "killed" while the property under test was unproven.
+//
+// After every mutant the file was restored and the suite re-verified: 40
 // assertions, 0 failures, byte-identical to the backup.
 //
 // NOT COVERED HERE, by construction: self-exclusion, the token gate's raise,

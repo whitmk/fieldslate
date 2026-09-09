@@ -331,19 +331,30 @@ export async function POST(
     if (!gate.ok) {
       return NextResponse.json(gate.body, { status: gate.status });
     }
+  }
 
-    // Venue-OCCUPANCY gate. The hours check above only proves the field is
-    // OPEN; this proves it is not already TAKEN. Both run before the update so
-    // a rejection never leaves a partial write. Skipped automatically when the
-    // game has no venue_id (nothing to contend for) — that decision lives in
-    // the gate, keyed on the venue and not on is_away.
-    const occupancy = await gateRescheduleOccupancy(supabase, {
-      gameId: game.id,
-      scheduledAtIso: updatePayload.scheduled_at,
-    });
-    if (!occupancy.ok) {
-      return NextResponse.json(occupancy.body, { status: occupancy.status });
-    }
+  // Venue-OCCUPANCY gate. The hours check above only proves the field is OPEN;
+  // this proves it is not already TAKEN. Runs before the update so a rejection
+  // never leaves a partial write. Skipped automatically when the game has no
+  // venue_id (nothing to contend for) — that decision lives in the gate, keyed
+  // on the venue and not on is_away.
+  //
+  // THIS RUNS FOR `keep_original` TOO, which is why it sits OUTSIDE the
+  // `updatePayload.scheduled_at` branch above. `keep_original` moves no time —
+  // it flips pending_interleague -> scheduled — but that flip IS a placement:
+  // the game was only ever PROPOSED, and another game can have taken the field
+  // at that time while it sat pending. So the check runs against the time
+  // already on the row. (The hours gate stays scoped to the time-moving
+  // actions: the game's existing time was already validated against the venue's
+  // hours when it was created, and re-gating it here would start refusing
+  // resolves for hours that changed after the fact — a different decision.)
+  const occupancyIso = updatePayload.scheduled_at ?? game.scheduled_at;
+  const occupancy = await gateRescheduleOccupancy(supabase, {
+    gameId: game.id,
+    scheduledAtIso: occupancyIso,
+  });
+  if (!occupancy.ok) {
+    return NextResponse.json(occupancy.body, { status: occupancy.status });
   }
 
   const { error: updateErr } = await supabase
