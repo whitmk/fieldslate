@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
+import { gateRescheduleOccupancy } from "@/lib/venues/occupancy-gate";
 import { SITE_URL } from "@/lib/site";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 
@@ -329,6 +330,19 @@ export async function POST(
     });
     if (!gate.ok) {
       return NextResponse.json(gate.body, { status: gate.status });
+    }
+
+    // Venue-OCCUPANCY gate. The hours check above only proves the field is
+    // OPEN; this proves it is not already TAKEN. Both run before the update so
+    // a rejection never leaves a partial write. Skipped automatically when the
+    // game has no venue_id (nothing to contend for) — that decision lives in
+    // the gate, keyed on the venue and not on is_away.
+    const occupancy = await gateRescheduleOccupancy(supabase, {
+      gameId: game.id,
+      scheduledAtIso: updatePayload.scheduled_at,
+    });
+    if (!occupancy.ok) {
+      return NextResponse.json(occupancy.body, { status: occupancy.status });
     }
   }
 

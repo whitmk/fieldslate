@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
+import { gateRescheduleOccupancy } from "@/lib/venues/occupancy-gate";
 import { SITE_URL } from "@/lib/site";
 import {
   validateVenueName,
@@ -160,6 +161,21 @@ export async function POST(
       if (!gate.ok) {
         return NextResponse.json(gate.body, { status: gate.status });
       }
+    }
+
+    // Venue-OCCUPANCY gate. This caller is ANONYMOUS — `anon` has no grant on
+    // `games`, so occupancy cannot be read directly here and the check goes
+    // through a security-definer RPC gated on the token itself. Only the token
+    // is passed: the RPC derives both the game and the proposed time from the
+    // request row, so no caller-supplied game id exists to enumerate with.
+    // Unlike the hours gate above (which is best-effort and skips when its
+    // lookup fails), this one FAILS CLOSED — a bad token raises inside the RPC
+    // and lands as a rejection, never as "the field is free".
+    const occupancy = await gateRescheduleOccupancy(supabase, {
+      token: params.token,
+    });
+    if (!occupancy.ok) {
+      return NextResponse.json(occupancy.body, { status: occupancy.status });
     }
 
     const { data, error } = await supabase.rpc(

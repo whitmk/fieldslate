@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
+import { gateRescheduleOccupancy } from "@/lib/venues/occupancy-gate";
 import { SITE_URL } from "@/lib/site";
 import {
   validateVenueName,
@@ -87,6 +88,9 @@ export async function POST(
       league_id: string;
       interleague_org_id: string | null;
       is_away: boolean;
+      // Selected so the occupancy gate can tell "no field to contend for"
+      // (null) from "a real field" — the gate keys on this, not on is_away.
+      venue_id: string | null;
       scheduled_at: string;
       external_team_name: string | null;
       proposed_venue_name: string | null;
@@ -102,7 +106,7 @@ export async function POST(
       `id, game_id, proposed_scheduled_at, proposed_venue_name, status,
        requested_by_user_id,
        game:games(
-         id, league_id, interleague_org_id, is_away, scheduled_at,
+         id, league_id, interleague_org_id, is_away, venue_id, scheduled_at,
          external_team_name, proposed_venue_name,
          home_team:teams!home_team_id(name, division:divisions(name)),
          interleague_org:interleague_orgs(name),
@@ -167,6 +171,19 @@ export async function POST(
     });
     if (!acceptGate.ok) {
       return NextResponse.json(acceptGate.body, { status: acceptGate.status });
+    }
+
+    // Venue-OCCUPANCY gate: the hours check above proves the field is OPEN at
+    // newIso; this proves it is not already TAKEN. Runs before the update so a
+    // rejection never leaves a partial write.
+    const acceptOccupancy = await gateRescheduleOccupancy(supabase, {
+      gameId: req.game.id,
+      scheduledAtIso: newIso,
+    });
+    if (!acceptOccupancy.ok) {
+      return NextResponse.json(acceptOccupancy.body, {
+        status: acceptOccupancy.status,
+      });
     }
 
     const { error: updGameErr } = await supabase
