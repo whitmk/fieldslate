@@ -21,6 +21,7 @@ import {
   buildSlotsAndDiagnostics,
   durationFromSettings,
   occupancyWindow,
+  occupiedBlame,
   summarizeByWeekday,
   toMins,
   type DayDiagnostics,
@@ -72,14 +73,17 @@ function fmt12(hhmm: string): string {
  *  Venues page; case (c) is informational, quieter, and deliberately has NO
  *  link — nothing is misconfigured, the day is simply full. */
 function DiagnosticRow({ summary }: { summary: DaySummary }) {
-  const { day, diagnostic, dateCount } = summary;
+  const { day, diagnostic, dateCount, reasonsOnDay } = summary;
   const label = DAY_LABELS[day];
   const dates = `${dateCount} ${dateCount === 1 ? "date" : "dates"}`;
+  // A weekday with SEVERAL reasons shows each with its own count, so reasons
+  // that normally print none carry one then. A single-reason weekday renders
+  // exactly as it always did.
+  const countSuffix = reasonsOnDay > 1 ? ` (${dates})` : "";
 
   if (diagnostic.kind === "occupied") {
     // CASE (c). A field could have hosted the game; every candidate was taken.
-    const mostlyTeams =
-      diagnostic.teamRejections > diagnostic.venueBookingRejections;
+    const mostlyTeams = occupiedBlame(diagnostic) === "teams";
     return (
       <div className="px-6 py-2.5">
         <p className="text-xs text-gray-400">
@@ -103,7 +107,7 @@ function DiagnosticRow({ summary }: { summary: DaySummary }) {
       <div className="px-6 py-2.5">
         <p className="text-xs text-amber-700">
           <span className="font-medium">{label}</span> — {named}, which
-          isn&rsquo;t long enough for this game.
+          isn&rsquo;t long enough for this game{countSuffix}.
         </p>
         <Link
           href="/dashboard/venues"
@@ -127,9 +131,10 @@ function DiagnosticRow({ summary }: { summary: DaySummary }) {
           <span className="font-medium">{label}</span> —{" "}
           {governedBy === "division"
             ? tooShort
-              ? `this division's game window is ${fmt12(w.start)}–${fmt12(w.end)}, which isn't long enough for a ${durationMin}-minute game.`
-              : `this division's game window (${fmt12(w.start)}–${fmt12(w.end)}) doesn't line up with the field hours for a ${durationMin}-minute game.`
-            : `no start time fits a ${durationMin}-minute game inside the makeup fields' hours.`}
+              ? `this division's game window is ${fmt12(w.start)}–${fmt12(w.end)}, which isn't long enough for a ${durationMin}-minute game`
+              : `this division's game window (${fmt12(w.start)}–${fmt12(w.end)}) doesn't line up with the field hours for a ${durationMin}-minute game`
+            : `no start time fits a ${durationMin}-minute game inside the makeup fields' hours`}
+          {countSuffix}.
         </p>
       </div>
     );
@@ -162,7 +167,7 @@ function DiagnosticRow({ summary }: { summary: DaySummary }) {
     <div className="px-6 py-2.5">
       <p className="text-xs text-amber-700">
         <span className="font-medium">{label}</span> — no field is open and
-        marked for makeups.
+        marked for makeups{countSuffix}.
       </p>
       <Link
         href="/dashboard/venues"
@@ -616,8 +621,8 @@ export function RainoutRescheduleModal({
                 <p className="text-xs text-gray-400">Here&rsquo;s what closed each day.</p>
               </div>
               <div className="divide-y divide-gray-50 border-t border-gray-50">
-                {daySummaries.map((sm) => (
-                  <DiagnosticRow key={sm.day} summary={sm} />
+                {daySummaries.map((sm, i) => (
+                  <DiagnosticRow key={`${sm.day}:${i}`} summary={sm} />
                 ))}
               </div>
             </div>
@@ -668,8 +673,8 @@ export function RainoutRescheduleModal({
                     </p>
                   </div>
                   <div className="divide-y divide-gray-50">
-                    {daySummaries.map((sm) => (
-                      <DiagnosticRow key={sm.day} summary={sm} />
+                    {daySummaries.map((sm, i) => (
+                      <DiagnosticRow key={`${sm.day}:${i}`} summary={sm} />
                     ))}
                   </div>
                 </div>

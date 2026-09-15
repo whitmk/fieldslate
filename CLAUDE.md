@@ -1410,7 +1410,16 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     venue-booking rejection.
   `blackout` and `team_cap` are reported separately — date facts, not config.
   The weekday roll-up of these is `summarizeByWeekday` in `reschedule-slots.ts`,
-  shared by both pickers (moved verbatim from the rainout modal).
+  shared by both pickers. **It emits ONE ENTRY PER DISTINCT REASON PER WEEKDAY,
+  each with its own count** (2026-09-15). It used to print only the most common
+  reason, credited with every empty date of the weekday — live: "Mets already has
+  a game that day (7 dates)" for 5 team-cap Wednesdays plus 2 where only AA's
+  5pm–5pm window blocked a free team. The hidden minority reasons were the
+  actionable ones. A "reason" is what a surface PRINTS (`reasonKey`: `occupied`
+  splits by `occupiedBlame`, the window kinds by the window they name). Reasons
+  that print no count get one when their weekday has several (`reasonsOnDay > 1`);
+  a single-reason weekday renders exactly as before (differential-proven over
+  26,000 fixtures). Do not collapse it back — mutant RU1 in sim:interleague-picker.
 - **`dayWindowBounds` is the SINGLE definition of a day's window.** Both
   `isVenueAvailable` (does THIS start fit?) and `venueDayFit` (could ANY start
   fit?) are expressed in terms of it so they cannot drift. Never re-derive
@@ -2024,10 +2033,20 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     Tuesdays, Thursdays, Fridays or Sundays."
   Plus whole-picker states: unconfigured field, division without dates, and
   "season has no dates left to schedule".
+  A weekday with several reasons gets one line per reason, each with its own
+  count (e.g. "Wednesdays — Mets already has a game that day (5 dates)" and
+  "Wednesdays — AA's game window that day is 5pm–5pm, … (2 dates)").
+- **The no-times header follows the reasons present (`emptyHeadline`).** Field-side
+  only (closed / too short / booked) → "No open times at {field} this season.";
+  team-side only (team cap / team occupied) → "No open times for {team} this
+  season."; any mix, or division/season-side reasons (day window, blackout) →
+  "No open times this season." Never blames the field when a team-side reason is
+  present. It used to name the field regardless.
 - **A gate refusal renders INSIDE the modal** (it used to land in the page
   behind the overlay). The route's message already names what is in the way.
-- **Harness: `npm run sim:interleague-picker`** (TZ=UTC) — 84 assertions, 19
-  anti-vacuity counters (each empty-day reason, the live zero-length window,
+- **Harness: `npm run sim:interleague-picker`** (TZ=UTC) — 103 assertions, 25
+  anti-vacuity counters (the roll-up/header addendum added 19 assertions, 6
+  counters and 6 mutants, RU1–RU6; figures below are the original run's) (each empty-day reason, the live zero-length window,
   the away and no-venue branches, every fail-closed read, makeup stripping),
   10 mutants each killed at its own assertion (occupancy filter removed,
   buffer removed, buffer fallback diverged, empty states collapsed, makeup not

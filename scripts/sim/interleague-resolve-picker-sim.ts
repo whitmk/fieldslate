@@ -22,6 +22,7 @@ import {
   assemblePickerInputs,
   buildResolvePicker,
   emptyDayLines,
+  headlineBlame,
   resolveEditMode,
   stripMakeup,
   type EmptyDayLine,
@@ -67,6 +68,12 @@ const counters = {
   failClosedReads: 0,
   makeupFlagStripped: 0,
   seasonOver: 0,
+  multiReasonWeekday: 0,
+  headlineField: 0,
+  headlineTeam: 0,
+  headlineNeutralMixed: 0,
+  headlineNeutralOther: 0,
+  occupiedBlameSplit: 0,
 };
 
 // ── Fixture builder ───────────────────────────────────────────────────────────
@@ -449,6 +456,104 @@ async function main() {
     assert(!build().seasonOver, "[OVER] a live season is not over");
   }
 
+  // ══ ROLL-UP — every reason per weekday, each with its own count ═══════════
+  console.log("MULTI  Mets vs Greys, live data: one weekday, several reasons");
+  {
+    // Live rows (2026-09-15): the Mets' other AA games in the window, the
+    // league's blackouts, today = Sep 15. The game being proposed is excluded
+    // from its own team read, as loadPickerReads does.
+    const mets = [
+      "2026-09-02 17:00:00+00", "2026-09-09 17:00:00+00", "2026-09-16 17:00:00+00", "2026-09-19 11:30:00+00",
+      "2026-09-23 17:00:00+00", "2026-09-26 09:00:00+00", "2026-09-30 17:00:00+00", "2026-10-03 09:00:00+00",
+      "2026-10-10 09:00:00+00", "2026-10-14 17:00:00+00", "2026-10-17 09:00:00+00", "2026-10-24 09:00:00+00",
+      "2026-10-28 17:00:00+00",
+    ].map((at) => game(at));
+    const settings = { ...AA_SETTINGS, max_games_per_team_per_day: 1 };
+    const b = buildResolvePicker(
+      reads({ settings, teamGames: mets, blackouts: ["2026-09-07", "2026-09-12", "2026-10-31"] }),
+      { ...CTX, homeTeamName: "Mets" },
+    );
+    if (!b.ok) throw new Error("fixture refused");
+    const texts = b.lines.map((l) => `${l.dayLabel ?? "-"} — ${l.text}`);
+    const expected = [
+      "Wednesdays — Mets already has a game that day (5 dates).",
+      "Wednesdays — AA's game window that day is 5pm–5pm, which isn't long enough for a 90-minute game (2 dates).",
+      "Saturdays — Mets already has a game that day (6 dates).",
+      "Saturdays — blacked out (1 date).",
+      "- — AA doesn't play on Mondays, Tuesdays, Thursdays, Fridays or Sundays.",
+    ];
+    assert(
+      JSON.stringify(texts) === JSON.stringify(expected),
+      `[MR1] every reason per weekday with its OWN count (got ${JSON.stringify(texts)})`,
+    );
+    assert(
+      !texts.some((t) => t.includes("(7 dates)")),
+      "[MR2] no reason is credited with the whole weekday's 7 dates",
+    );
+    const wedCounts = summarizeByWeekday(b.diagnostics, b.slots).filter((x) => x.day === "We");
+    assert(
+      wedCounts.length === 2 && wedCounts.every((x) => x.reasonsOnDay === 2) &&
+        wedCounts.reduce((a, x) => a + x.dateCount, 0) === 7,
+      "[MR3] Wednesday's reasons add up to its 7 evaluated dates, and each knows it shares the day",
+    );
+    if (wedCounts.length > 1) counters.multiReasonWeekday++;
+    assert(b.slots.length === 0 && b.emptyHeadline === "No open times this season.", `[H1] team-side + division/season-side → neutral header (got ${b.emptyHeadline})`);
+    if (headlineBlame(b.lines) === "neutral") counters.headlineNeutralMixed++;
+    assert(!b.emptyHeadline.includes("jennings"), "[H1b] the field is NOT blamed when team-side reasons are present");
+  }
+
+  console.log("HEADLINE  field-only / team-only / other-only");
+  {
+    const one = { start: "2026-09-19", end: "2026-09-26", settings: { ...AA_SETTINGS, playing_days: ["Sa"] } };
+
+    const closed = build({ ...one, hours: { ...JENNINGS_HOURS, Sa: undefined } });
+    assert(closed.emptyHeadline === "No open times at jennings this season.", `[H2] field closed only → names the field (got ${closed.emptyHeadline})`);
+    if (headlineBlame(closed.lines) === "field") counters.headlineField++;
+
+    const booked = build({ ...one, venueGames: [game("2026-09-19 08:00:00+00", 660), game("2026-09-26 08:00:00+00", 660)] });
+    assert(booked.emptyHeadline === "No open times at jennings this season.", `[H3] booked only → names the field (got ${booked.emptyHeadline})`);
+
+    const capped = build({ ...one, teamGames: [game("2026-09-19 18:00:00+00", 60), game("2026-09-26 18:00:00+00", 60)] });
+    assert(capped.emptyHeadline === "No open times for Mariners this season.", `[H4] team cap only → names the team, not the field (got ${capped.emptyHeadline})`);
+    if (headlineBlame(capped.lines) === "team") counters.headlineTeam++;
+
+    const black = build({ ...one, blackouts: ["2026-09-19", "2026-09-26"] });
+    assert(black.emptyHeadline === "No open times this season.", `[H5] blackout only → neutral (got ${black.emptyHeadline})`);
+    if (headlineBlame(black.lines) === "neutral") counters.headlineNeutralOther++;
+
+    const fieldAndTeam = build({
+      ...one,
+      venueGames: [game("2026-09-19 08:00:00+00", 660)],
+      teamGames: [game("2026-09-26 18:00:00+00", 60)],
+    });
+    assert(fieldAndTeam.emptyHeadline === "No open times this season.", `[H6] field-side + team-side on different dates → neutral (got ${fieldAndTeam.emptyHeadline})`);
+    const multiSat = fieldAndTeam.lines.filter((l) => l.dayLabel === "Saturdays").map((l) => l.text);
+    assert(
+      JSON.stringify(multiSat) === JSON.stringify([
+        "jennings is already booked at every time that fits (1 date).",
+        "Mariners already has a game that day (1 date).",
+      ]),
+      `[MR4] a tie keeps the earliest date's reason first (got ${JSON.stringify(multiSat)})`,
+    );
+  }
+
+  console.log("ROLLUP-UNIT  occupied splits by who is blamed");
+  {
+    const diags = new Map<string, import("@/lib/schedule/reschedule-slots").DayDiagnostic>([
+      ["2026-09-19", { kind: "occupied", venueBookingRejections: 5, teamRejections: 1 }],
+      ["2026-09-26", { kind: "occupied", venueBookingRejections: 0, teamRejections: 9 }],
+      ["2026-10-03", { kind: "occupied", venueBookingRejections: 4, teamRejections: 0 }],
+    ]);
+    const sum = summarizeByWeekday(diags, []);
+    assert(
+      sum.length === 2 && sum[0].dateCount === 2 && sum[0].diagnostic === diags.get("2026-09-19") && sum[1].dateCount === 1,
+      `[MR5] booked (2) and team-blamed (1) occupied Saturdays are two reasons (got ${JSON.stringify(sum.map((x) => [x.dateCount, x.reasonsOnDay]))})`,
+    );
+    if (sum.length === 2) counters.occupiedBlameSplit++;
+    const single = summarizeByWeekday(new Map([["2026-09-19", { kind: "blackout" as const }], ["2026-09-26", { kind: "blackout" as const }]]), []);
+    assert(single.length === 1 && single[0].dateCount === 2 && single[0].reasonsOnDay === 1, "[MR6] a single-reason weekday is one entry with the full count");
+  }
+
   // ── Counters ────────────────────────────────────────────────────────────────
   console.log("counters:", JSON.stringify(counters));
   for (const [name, n] of Object.entries(counters)) {
@@ -526,3 +631,29 @@ void main();
 // model the projected-key embed or `.or()` on games; the embed was validated
 // against live PostgREST (42501, not PGRST100/PGRST200) and the component only
 // shapes each query's {data, error} into the reads this sim drives.
+//
+// Addendum 2026-09-15 — honest weekday roll-up + reason-derived header.
+// +19 assertions ([MR1–MR6], [H1–H6]) and 6 counters; baseline 103 PASS.
+// Criterion unchanged: killed only at the assertion written for it.
+//
+//  RU1 ★ Restore the single-reason roll-up (most common reason, credited with
+//      every empty date of the weekday)
+//      → KILLED at [MR1] (the live Mets lines revert to "(7 dates)"), [MR2],
+//        [MR3], plus multiReasonWeekday/headlineNeutralMixed/occupiedBlameSplit = 0.
+//        [H1]/[H6] also fail: the hidden reasons were what made those neutral.
+//  RU2 Header always blames the field           → [H1][H1b][H4][H5][H6]
+//  RU3 Multi-reason lines lose their per-reason counts → [MR1] only
+//  RU4 reasonKey ignores who an occupied day is blamed on → [MR5] + occupiedBlameSplit=0
+//  RU5 Team-side reasons counted as field-side  → [H4][H6] + headlineTeam=0
+//  RU6 Ties ordered latest-first instead of earliest date → [MR4] only
+//
+// Rainout modal unchanged except where previously wrong — differential (not
+// committed; scratchpad): the pre-change summarizeByWeekday (git HEAD) vs this
+// one over the builder's diagnostics for 20,000 seeded 2-week fixtures (123,534
+// empty weekdays) and 6,000 8-week fixtures (36,746; up to 4 reasons on one
+// weekday). Every weekday with ONE reason: identical representative and count
+// (112,998 + 27,842). Every weekday with SEVERAL: the old single row was wrong;
+// the new per-reason counts sum exactly to the old total and the old reason's
+// own count is smaller than what the old row claimed (10,536 + 8,904). 0
+// mismatches. DiagnosticRow's text depends only on (diagnostic, dateCount,
+// reasonsOnDay), and reasonsOnDay = 1 renders the pre-change text.

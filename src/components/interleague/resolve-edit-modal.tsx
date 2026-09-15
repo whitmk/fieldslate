@@ -500,7 +500,7 @@ export function ResolveEditModal({
                       {build.seasonOver
                         ? `${build.divisionName}'s season has no dates left to schedule.`
                         : build.slots.length === 0
-                        ? `No open times at ${build.fieldName} this season.`
+                        ? build.emptyHeadline
                         : `${build.slots.length} open time${build.slots.length !== 1 ? "s" : ""} at ${build.fieldName} — pick one`}
                     </p>
                   </div>

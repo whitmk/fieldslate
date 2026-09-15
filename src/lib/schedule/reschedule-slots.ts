@@ -598,48 +598,88 @@ export function buildSlotsAndDiagnostics(
 // team cap belongs to one date. But a season holds ~10 Sundays that all fail for
 // the identical reason, and ten identical rows is noise, so the rendering rolls
 // them up by DAY OF WEEK. A weekday appears only when EVERY one of its dates in
-// range produced nothing; the reason shown is the one that occurred most often.
+// range produced nothing.
 //
-// Moved here VERBATIM from rainout-reschedule-modal.tsx (2026-09-14) so the
-// interleague resolve picker shares it. Byte-for-byte the same body; the
-// pre-move copy was proven equivalent over a seeded differential run.
+// ONE ENTRY PER DISTINCT REASON PER WEEKDAY, EACH WITH ITS OWN COUNT (2026-09-15).
+// The previous roll-up picked the most common reason and reported it with the
+// count of EVERY empty date of that weekday — "Mets already has a game that day
+// (7 dates)" for 6 team-cap Saturdays and 1 blackout, and for 5 team-cap
+// Wednesdays plus 2 where the team was free and only the division's 5pm–5pm
+// window blocked it. The minority reasons vanished, and they were the actionable
+// ones. Do not collapse back to a single reason per weekday (mutant RU1 in
+// sim:interleague-picker).
+//
+// A "reason" is what a surface would PRINT, not just the kind (reasonKey):
+// occupied splits by who is to blame (booked field vs the teams), and the two
+// window kinds split by the window they name — two dates share a count only if
+// they would render the same sentence. Order within a weekday: most dates first,
+// ties by the earliest date that had the reason.
+//
+// Moved here from rainout-reschedule-modal.tsx (2026-09-14); both pickers use it.
 export type DaySummary = {
   day: DayKey;
+  /** Representative of THIS reason: the earliest date that had it. */
   diagnostic: DayDiagnostic;
+  /** Dates of this weekday that had THIS reason. */
   dateCount: number;
+  /** Distinct reasons this weekday had. 1 means this entry is the whole weekday. */
+  reasonsOnDay: number;
 };
+
+/** Who an `occupied` day is blamed on. The single rule both pickers render. */
+export function occupiedBlame(d: { teamRejections: number; venueBookingRejections: number }): "teams" | "booked" {
+  return d.teamRejections > d.venueBookingRejections ? "teams" : "booked";
+}
+
+/** Two diagnostics share a key exactly when a surface would print the same reason. */
+export function reasonKey(d: DayDiagnostic): string {
+  switch (d.kind) {
+    case "occupied":
+      return `occupied:${occupiedBlame(d)}`;
+    case "window_too_short":
+      return `window_too_short:${d.venues
+        .map((v) => `${v.venueId}@${v.start}-${v.end}`)
+        .sort()
+        .join("|")}`;
+    case "day_window_too_short":
+      return `day_window_too_short:${d.governedBy}:${d.window.start}-${d.window.end}:${d.durationMin}`;
+    default:
+      return d.kind;
+  }
+}
 
 export function summarizeByWeekday(
   diagnostics: DayDiagnostics,
   slots: SlotOption[],
 ): DaySummary[] {
   const datesWithSlots = new Set(slots.map((s) => s.date));
-  const byDay = new Map<DayKey, DayDiagnostic[]>();
   const dayHasSlots = new Set<DayKey>();
-
   for (const date of datesWithSlots) dayHasSlots.add(dayKeyFromIsoDate(date));
-  for (const [date, d] of diagnostics) {
+
+  // Chronological: the builder inserts dates in order, so the first diagnostic
+  // seen for a reason is its earliest date.
+  const byDay = new Map<DayKey, Map<string, { diagnostic: DayDiagnostic; count: number; order: number }>>();
+  let order = 0;
+  for (const [date, d] of [...diagnostics].sort(([a], [b]) => a.localeCompare(b))) {
     const day = dayKeyFromIsoDate(date);
-    const list = byDay.get(day);
-    if (list) list.push(d);
-    else byDay.set(day, [d]);
+    let reasons = byDay.get(day);
+    if (!reasons) byDay.set(day, (reasons = new Map()));
+    const key = reasonKey(d);
+    const r = reasons.get(key);
+    if (r) r.count++;
+    else reasons.set(key, { diagnostic: d, count: 1, order: order++ });
   }
 
   const out: DaySummary[] = [];
   for (const day of DAY_KEYS) {
     // A weekday that produced ANY slot is not an empty day — say nothing.
     if (dayHasSlots.has(day)) continue;
-    const list = byDay.get(day);
-    if (!list || list.length === 0) continue;
-    const counts = new Map<string, number>();
-    for (const d of list) counts.set(d.kind, (counts.get(d.kind) ?? 0) + 1);
-    let topKind = list[0].kind;
-    let topN = 0;
-    for (const [kind, n] of counts) {
-      if (n > topN) { topN = n; topKind = kind as DayDiagnostic["kind"]; }
+    const reasons = byDay.get(day);
+    if (!reasons || reasons.size === 0) continue;
+    const sorted = [...reasons.values()].sort((a, b) => b.count - a.count || a.order - b.order);
+    for (const r of sorted) {
+      out.push({ day, diagnostic: r.diagnostic, dateCount: r.count, reasonsOnDay: sorted.length });
     }
-    const representative = list.find((d) => d.kind === topKind) ?? list[0];
-    out.push({ day, diagnostic: representative, dateCount: list.length });
   }
   return out;
 }

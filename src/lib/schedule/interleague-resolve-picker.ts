@@ -50,6 +50,7 @@ import {
 import {
   buildSlotsAndDiagnostics,
   durationFromSettings,
+  occupiedBlame,
   summarizeByWeekday,
   toMins,
   type BuildAvailableSlotsParams,
@@ -263,6 +264,9 @@ export type PickerBuild =
        *  today. Every examined date yields slots or a diagnostic, so an empty
        *  result with no diagnostics can only mean this. */
       seasonOver: boolean;
+      /** Header for a picker with no times, derived from the reasons present
+       *  (emptyHeadline). Meaningful only when slots is empty. */
+      emptyHeadline: string;
     };
 
 export function buildResolvePicker(reads: PickerReads, ctx: PickerContext): PickerBuild {
@@ -283,6 +287,7 @@ export function buildResolvePicker(reads: PickerReads, ctx: PickerContext): Pick
     diagnostics,
     lines,
     seasonOver: slots.length === 0 && diagnostics.size === 0,
+    emptyHeadline: emptyHeadline(lines, { fieldName: a.fieldName, teamName: ctx.homeTeamName }),
   };
 }
 
@@ -346,8 +351,12 @@ export function emptyDayLines(
   const notPlaying: DayKey[] = [];
   const lines: EmptyDayLine[] = [];
 
-  for (const { day, diagnostic: d, dateCount } of summaries) {
-    const base = { key: day, dayLabel: DAY_PLURAL[day] };
+  for (const [i, { day, diagnostic: d, dateCount, reasonsOnDay }] of summaries.entries()) {
+    const base = { key: `${day}:${i}`, dayLabel: DAY_PLURAL[day] };
+    // A weekday can now carry several reasons (summarizeByWeekday), each with
+    // its own count. Reasons that print no count on their own carry one when
+    // they share the weekday, so every figure on screen is that reason's own.
+    const n = reasonsOnDay > 1 ? ` (${dates(dateCount)})` : "";
 
     if (d.kind === "no_field") {
       // The builder records no_field at the day gate for a day the division
@@ -356,15 +365,15 @@ export function emptyDayLines(
       if (!plays.has(day)) { notPlaying.push(day); continue; }
       lines.push({
         ...base, kind: "field_closed", tone: "config", venuesLink: true,
-        text: `${ctx.fieldName} is closed that day.`,
+        text: `${ctx.fieldName} is closed that day${n}.`,
       });
     } else if (d.kind === "window_too_short") {
       const w = d.venues[0];
       lines.push({
         ...base, kind: "field_too_short", tone: "config", venuesLink: true,
         text: w
-          ? `${ctx.fieldName} is open ${fmt12(w.start)}–${fmt12(w.end)}, which isn't long enough for this game.`
-          : `${ctx.fieldName}'s hours that day aren't long enough for this game.`,
+          ? `${ctx.fieldName} is open ${fmt12(w.start)}–${fmt12(w.end)}, which isn't long enough for this game${n}.`
+          : `${ctx.fieldName}'s hours that day aren't long enough for this game${n}.`,
       });
     } else if (d.kind === "day_window_too_short") {
       const { window: w, durationMin } = d;
@@ -373,13 +382,13 @@ export function emptyDayLines(
         ...base, kind: "day_window_too_short", tone: "config", venuesLink: false,
         text:
           d.governedBy !== "division"
-            ? `no start time fits a ${durationMin}-minute game in ${ctx.fieldName}'s hours.`
+            ? `no start time fits a ${durationMin}-minute game in ${ctx.fieldName}'s hours${n}.`
             : windowTooShort
-              ? `${ctx.divisionName}'s game window that day is ${fmt12(w.start)}–${fmt12(w.end)}, which isn't long enough for a ${durationMin}-minute game.`
-              : `${ctx.divisionName}'s game window that day (${fmt12(w.start)}–${fmt12(w.end)}) doesn't overlap ${ctx.fieldName}'s hours enough for a ${durationMin}-minute game.`,
+              ? `${ctx.divisionName}'s game window that day is ${fmt12(w.start)}–${fmt12(w.end)}, which isn't long enough for a ${durationMin}-minute game${n}.`
+              : `${ctx.divisionName}'s game window that day (${fmt12(w.start)}–${fmt12(w.end)}) doesn't overlap ${ctx.fieldName}'s hours enough for a ${durationMin}-minute game${n}.`,
       });
     } else if (d.kind === "occupied") {
-      const team = d.teamRejections > d.venueBookingRejections;
+      const team = occupiedBlame(d) === "teams";
       lines.push({
         ...base, kind: team ? "occupied_team" : "occupied_booked", tone: "info", venuesLink: false,
         text: team
@@ -400,6 +409,8 @@ export function emptyDayLines(
   }
 
   if (notPlaying.length > 0) {
+    // (A non-playing weekday is classified at the builder's day gate, so it only
+    // ever carries no_field — one entry per such weekday.)
     // Five identical "doesn't play" rows are noise; one sentence says it.
     lines.push({
       key: "not-playing", dayLabel: null, kind: "not_playing_day", tone: "info", venuesLink: false,
@@ -407,4 +418,39 @@ export function emptyDayLines(
     });
   }
   return lines;
+}
+
+// ── Header for a picker with no times ───────────────────────────────────────
+//
+// "No open times at {field} this season" used to be printed whatever the
+// reasons were — blaming the field when every blocker was the team's own games.
+// The header now follows the reasons actually present:
+//   field-side only (closed, hours too short, already booked)  → names the field
+//   team-side only  (team already playing / capped)            → names the team
+//   anything else   (a mix, or division/season-side: the day's game window,
+//                    a blackout)                                → neutral
+// Never blames the field when any team-side reason is present. The merged
+// "doesn't play on …" line is structural and is not a reason here.
+
+const FIELD_SIDE: EmptyDayLine["kind"][] = ["field_closed", "field_too_short", "occupied_booked"];
+const TEAM_SIDE: EmptyDayLine["kind"][] = ["occupied_team", "team_cap"];
+
+export type HeadlineBlame = "field" | "team" | "neutral";
+
+export function headlineBlame(lines: EmptyDayLine[]): HeadlineBlame {
+  const kinds = lines.map((l) => l.kind).filter((k) => k !== "not_playing_day");
+  if (kinds.length === 0) return "neutral";
+  if (kinds.every((k) => FIELD_SIDE.includes(k))) return "field";
+  if (kinds.every((k) => TEAM_SIDE.includes(k))) return "team";
+  return "neutral";
+}
+
+export function emptyHeadline(
+  lines: EmptyDayLine[],
+  ctx: { fieldName: string; teamName: string },
+): string {
+  const blame = headlineBlame(lines);
+  if (blame === "field") return `No open times at ${ctx.fieldName} this season.`;
+  if (blame === "team") return `No open times for ${ctx.teamName} this season.`;
+  return "No open times this season.";
 }
