@@ -27,6 +27,7 @@ import {
   ResolveEditModal,
   type ResolveEditGame,
 } from "@/components/interleague/resolve-edit-modal";
+import { openHostProposal, proposalRound } from "@/lib/interleague/negotiation";
 import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
 import type { Plan } from "@/lib/plan/limits";
 
@@ -56,7 +57,22 @@ type CounterProposedGame = ResolveEditGame & {
     division: { id: string; name: string; locked: boolean | null } | null;
   } | null;
   league: { name: string; season: string | null } | null;
+  /** Every request row on the game (0091): the host's proposals and the
+   *  partner's counter-backs, pending and past. */
+  requests: {
+    id: string;
+    status: string;
+    requested_by_user_id: string | null;
+    proposed_scheduled_at: string;
+    proposed_venue_name: string | null;
+    created_at: string;
+  }[] | null;
 };
+
+/** What a negotiation step reports about its email. A step whose email did not
+ *  send leaves the other league with no way in, so the page says so and, when
+ *  it has one, shows the link to pass on by hand. */
+type NegotiationNotice = { message: string; link?: string };
 
 type PendingRescheduleRequest = {
   id: string;
@@ -629,6 +645,8 @@ export function InterleaguePageClient({
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<CounterProposedGame | null>(null);
+  const [proposeTarget, setProposeTarget] = useState<CounterProposedGame | null>(null);
+  const [negotiationNotice, setNegotiationNotice] = useState<NegotiationNotice | null>(null);
   const [declineTarget, setDeclineTarget] = useState<CounterProposedGame | null>(null);
   const [reschedRequests, setReschedRequests] = useState<PendingRescheduleRequest[]>([]);
   const [reschedBusyId, setReschedBusyId] = useState<string | null>(null);
@@ -727,6 +745,7 @@ export function InterleaguePageClient({
               `id, league_id, home_team_id, venue_id, scheduled_at,
                proposed_scheduled_at, proposed_venue_name, external_team_name, is_away,
                home_team:teams!home_team_id(name, division:divisions(id, name, locked)),
+               requests:interleague_reschedule_requests(id, status, requested_by_user_id, proposed_scheduled_at, proposed_venue_name, created_at),
                venue:venues(name),
                interleague_org:interleague_orgs(name),
                league:leagues!inner(name, season, owner_id)`
@@ -754,6 +773,10 @@ export function InterleaguePageClient({
             .eq("status", "pending")
             .is("requested_by_user_id", null)
             .eq("game.league_id", seasonId)
+            // A partner's counter-back on a game NOT YET AGREED is handled in
+            // the counter-proposed list (it is mirrored into games.proposed_*,
+            // 0091), never here — this list is for moving confirmed games.
+            .neq("game.status", "pending_interleague")
             .order("created_at", { ascending: false })
         : Promise.resolve({ data: [] as unknown[] }),
     ]);
@@ -862,11 +885,57 @@ export function InterleaguePageClient({
     }
   }
 
+  function noticeFromEmail(
+    data: { email?: { sent: boolean; error?: string; respond_url?: string } },
+    orgName: string,
+  ) {
+    if (data.email && !data.email.sent) {
+      setNegotiationNotice({
+        message: `Saved, but the email to ${orgName} didn't send${data.email.error ? ` (${data.email.error})` : ""}. They won't know until you tell them.`,
+        link: data.email.respond_url,
+      });
+    }
+  }
+
+  async function proposeTime(
+    game: CounterProposedGame,
+    payload: { scheduled_at: string; venue_name?: string },
+  ) {
+    setResolvingId(game.id);
+    setResolveError(null);
+    setNegotiationNotice(null);
+    try {
+      const res = await fetch(
+        `/api/interleague/games/${encodeURIComponent(game.id)}/reschedule`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setResolveError(data.error ?? "Failed to send your proposal.");
+        setResolvingId(null);
+        return false;
+      }
+      noticeFromEmail(data, game.interleague_org?.name ?? "the other league");
+      await loadAll();
+      setResolvingId(null);
+      return true;
+    } catch (err) {
+      setResolveError(err instanceof Error ? err.message : "Network error. Please try again.");
+      setResolvingId(null);
+      return false;
+    }
+  }
+
   async function resolveGame(
     gameId: string,
     payload:
-      | { action: "accept_proposal" | "keep_original" | "decline" }
+      | { action: "accept_proposal" | "keep_original" | "decline" | "withdraw_proposal" }
       | { action: "edit"; scheduled_at: string; venue_name?: string },
+    orgName = "the other league",
   ) {
     setResolvingId(gameId);
     setResolveError(null);
@@ -885,6 +954,7 @@ export function InterleaguePageClient({
         setResolvingId(null);
         return false;
       }
+      noticeFromEmail(data, orgName);
       await loadAll();
       setResolvingId(null);
       return true;
@@ -1180,6 +1250,23 @@ export function InterleaguePageClient({
                 {resolveError}
               </p>
             )}
+            {negotiationNotice && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <p>{negotiationNotice.message}</p>
+                {negotiationNotice.link && (
+                  <p className="mt-1 break-all text-xs">
+                    Their link to respond: <span className="font-mono">{negotiationNotice.link}</span>
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setNegotiationNotice(null)}
+                  className="mt-1 text-xs underline underline-offset-2"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
             <div className="overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm">
               <table className="w-full text-sm">
                 <thead>
@@ -1203,6 +1290,10 @@ export function InterleaguePageClient({
                     // one locked division must not disable the others' rows.
                     const rowLocked = !!g.home_team?.division?.locked;
                     const rowLockedReason = `${g.home_team?.division?.name ?? "This division"} is locked. Unlock it to resolve interleague games.`;
+                    const requests = g.requests ?? [];
+                    const myProposal = openHostProposal(requests);
+                    const round = proposalRound(requests.length);
+                    const waitingReason = `You proposed a different time — waiting on ${orgName}. Withdraw it first to settle the time yourself.`;
                     return (
                       <tr key={g.id} className="hover:bg-amber-50/40">
                         <td className="px-5 py-3.5">
@@ -1219,6 +1310,11 @@ export function InterleaguePageClient({
                           )}
                         </td>
                         <td className="px-5 py-3.5 text-gray-700">
+                          {round > 1 && (
+                            <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                              Round {round}
+                            </div>
+                          )}
                           {g.proposed_scheduled_at && (
                             <div>
                               <span className="font-medium text-amber-700">Time:</span>{" "}
@@ -1231,6 +1327,13 @@ export function InterleaguePageClient({
                               {g.proposed_venue_name}
                             </div>
                           )}
+                          {myProposal && (
+                            <div className="mt-2 rounded bg-blue-50 px-2 py-1 text-xs text-blue-800">
+                              <span className="font-medium">You proposed:</span>{" "}
+                              {fmtDateTime(myProposal.proposed_scheduled_at)}
+                              <div className="text-blue-600">Waiting on {orgName}</div>
+                            </div>
+                          )}
                         </td>
                         <td className="px-5 py-3.5 text-gray-500">
                           {fmtDateTime(g.scheduled_at)}
@@ -1239,13 +1342,15 @@ export function InterleaguePageClient({
                         <td className="px-5 py-3.5">
                           <div className="flex flex-wrap justify-end gap-1.5">
                             <button
-                              disabled={busy || !canAcceptProposal || rowLocked}
+                              disabled={busy || !canAcceptProposal || rowLocked || !!myProposal}
                               onClick={() =>
-                                resolveGame(g.id, { action: "accept_proposal" })
+                                resolveGame(g.id, { action: "accept_proposal" }, orgName)
                               }
                               title={
                                 rowLocked
                                   ? rowLockedReason
+                                  : myProposal
+                                  ? waitingReason
                                   : canAcceptProposal
                                   ? "Apply their proposed time"
                                   : "No time proposal on this game"
@@ -1256,18 +1361,45 @@ export function InterleaguePageClient({
                               Accept proposal
                             </button>
                             <button
-                              disabled={busy || rowLocked}
-                              title={rowLocked ? rowLockedReason : undefined}
+                              disabled={busy || rowLocked || !!myProposal}
+                              title={rowLocked ? rowLockedReason : myProposal ? waitingReason : undefined}
                               onClick={() =>
-                                resolveGame(g.id, { action: "keep_original" })
+                                resolveGame(g.id, { action: "keep_original" }, orgName)
                               }
                               className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-[#0C1F3F] disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               Keep original
                             </button>
+                            {myProposal ? (
+                              <button
+                                disabled={busy || rowLocked}
+                                title={rowLocked ? rowLockedReason : `Take back the time you sent ${orgName}`}
+                                onClick={() => {
+                                  setNegotiationNotice(null);
+                                  void resolveGame(g.id, { action: "withdraw_proposal" }, orgName);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <RotateCw className="h-3 w-3" />
+                                Withdraw my proposal
+                              </button>
+                            ) : (
+                              <button
+                                disabled={busy || rowLocked}
+                                title={rowLocked ? rowLockedReason : `Send ${orgName} a different time; the game stays unconfirmed until they answer`}
+                                onClick={() => {
+                                  setResolveError(null);
+                                  setProposeTarget(g);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <Send className="h-3 w-3" />
+                                Propose a different time
+                              </button>
+                            )}
                             <button
-                              disabled={busy || rowLocked}
-                              title={rowLocked ? rowLockedReason : undefined}
+                              disabled={busy || rowLocked || !!myProposal}
+                              title={rowLocked ? rowLockedReason : myProposal ? waitingReason : "Set the time yourself and confirm the game"}
                               onClick={() => {
                                 setResolveError(null);
                                 setEditTarget(g);
@@ -1446,10 +1578,24 @@ export function InterleaguePageClient({
               action: "edit",
               scheduled_at,
               venue_name,
-            });
+            }, editTarget.interleague_org?.name ?? "the other league");
             if (ok) setEditTarget(null);
           }}
           onClose={() => setEditTarget(null)}
+        />
+      )}
+
+      {proposeTarget && (
+        <ResolveEditModal
+          purpose="propose"
+          game={proposeTarget}
+          busy={resolvingId === proposeTarget.id}
+          error={resolveError}
+          onSave={async ({ scheduled_at, venue_name }) => {
+            const ok = await proposeTime(proposeTarget, { scheduled_at, venue_name });
+            if (ok) setProposeTarget(null);
+          }}
+          onClose={() => setProposeTarget(null)}
         />
       )}
 

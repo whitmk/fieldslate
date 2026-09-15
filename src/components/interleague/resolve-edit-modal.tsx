@@ -62,6 +62,11 @@ export type ResolveEditGame = {
 };
 
 interface ResolveEditModalProps {
+  /** "edit" (default) SETS the time and confirms the game.
+   *  "propose" SENDS the time to the partner league; the game stays
+   *  unconfirmed until they answer (0091). Same picker, same fallbacks —
+   *  only the framing and the destination differ. */
+  purpose?: "edit" | "propose";
   game: ResolveEditGame;
   busy: boolean;
   /** The resolve route's refusal, shown INSIDE the modal so a gate rejection
@@ -187,6 +192,7 @@ async function loadPickerReads(game: ResolveEditGame): Promise<PickerReads> {
 }
 
 export function ResolveEditModal({
+  purpose = "edit",
   game,
   busy,
   error,
@@ -196,6 +202,8 @@ export function ResolveEditModal({
 }: ResolveEditModalProps) {
   const mode = resolveEditMode(game);
   const orgName = game.interleague_org?.name ?? "the other league";
+  const proposing = purpose === "propose";
+  const submitLabel = proposing ? `Send to ${orgName}` : "Confirm game";
   const teamName = game.home_team?.name ?? "Your team";
 
   // Free-typed state, seeded from the proposal if there is one, else original.
@@ -291,7 +299,9 @@ export function ResolveEditModal({
       >
         <div className="flex flex-shrink-0 items-start justify-between border-b border-gray-100 px-6 py-4">
           <div>
-            <h2 className="text-base font-semibold text-[#0C1F3F]">Edit and confirm</h2>
+            <h2 className="text-base font-semibold text-[#0C1F3F]">
+              {proposing ? "Propose a different time" : "Edit and confirm"}
+            </h2>
             <p className="mt-0.5 text-xs text-gray-500">
               {teamName}{" "}
               <span className="mx-1 font-bold uppercase tracking-wider text-gray-400">
@@ -305,6 +315,12 @@ export function ResolveEditModal({
                 They proposed {fmtGameDate(game.proposed_scheduled_at)} at{" "}
                 {fmtGameTime(game.proposed_scheduled_at)}
                 {game.proposed_venue_name ? ` · ${game.proposed_venue_name}` : ""}
+              </p>
+            )}
+            {proposing && (
+              <p className="mt-1 text-xs text-gray-500">
+                {orgName} gets an email to accept it, suggest another time, or
+                decline. The game stays unconfirmed until they answer.
               </p>
             )}
           </div>
@@ -406,7 +422,7 @@ export function ResolveEditModal({
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
                 >
                   {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {busy ? "Saving…" : "Confirm game"}
+                  {busy ? (proposing ? "Sending…" : "Saving…") : submitLabel}
                 </button>
               </div>
             </div>
@@ -415,7 +431,7 @@ export function ResolveEditModal({
           <div className="flex flex-col gap-5 px-6 py-6">
             <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                Confirm this time
+                {proposing ? `Send this time to ${orgName}` : "Confirm this time"}
               </p>
               <p className="mt-2 text-base font-semibold text-[#0C1F3F]">
                 {fmtGameDate(picked.isoString)} at {fmtGameTime(picked.isoString)}
@@ -438,7 +454,7 @@ export function ResolveEditModal({
                 disabled={busy}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#22C55E] py-2.5 text-sm font-semibold text-white hover:bg-[#16a34a] disabled:opacity-60"
               >
-                {busy ? <><Loader2 className="h-4 w-4 animate-spin" />Saving…</> : "Confirm game"}
+                {busy ? <><Loader2 className="h-4 w-4 animate-spin" />{proposing ? "Sending…" : "Saving…"}</> : submitLabel}
               </button>
             </div>
           </div>

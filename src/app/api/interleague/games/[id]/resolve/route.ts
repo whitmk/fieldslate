@@ -5,10 +5,17 @@ import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
 import { gateRescheduleOccupancy } from "@/lib/venues/occupancy-gate";
 import { SITE_URL } from "@/lib/site";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
+import {
+  openHostProposal,
+  partnerRowsOnResolve,
+  resolveRefusal,
+  type RequestLite,
+} from "@/lib/interleague/negotiation";
+import { hostWithdrewEmail } from "@/lib/interleague/negotiation-emails";
 
 export const runtime = "nodejs";
 
-type Action = "accept_proposal" | "keep_original" | "edit" | "decline";
+type Action = "accept_proposal" | "keep_original" | "edit" | "decline" | "withdraw_proposal";
 
 type GameRow = {
   id: string;
@@ -29,7 +36,8 @@ function isAction(s: unknown): s is Action {
     s === "accept_proposal" ||
     s === "keep_original" ||
     s === "edit" ||
-    s === "decline"
+    s === "decline" ||
+    s === "withdraw_proposal"
   );
 }
 
@@ -173,6 +181,83 @@ export async function POST(
       },
       { status: 409 },
     );
+  }
+
+  // ── Outstanding proposals on this game (0091) ───────────────────────────
+  // The host's own outstanding "different time" blocks every action that
+  // would SET the time (resolveRefusal); the partner's outstanding counter-back
+  // is closed by those actions (partnerRowsOnResolve). FAIL CLOSED: an
+  // unreadable list could hide a proposal the partner is still considering.
+  const { data: reqRowsRaw, error: reqRowsErr } = await supabase
+    .from("interleague_reschedule_requests")
+    .select("id, status, requested_by_user_id, proposed_scheduled_at")
+    .eq("game_id", game.id);
+  if (reqRowsErr || !reqRowsRaw) {
+    return NextResponse.json(
+      { error: "We couldn't check this game's outstanding proposals, so nothing was changed. Please try again." },
+      { status: 500 },
+    );
+  }
+  const reqRows = reqRowsRaw as (RequestLite & { id: string; proposed_scheduled_at: string })[];
+  const partnerName = game.interleague_org?.name ?? "the other league";
+  const refusal = resolveRefusal(action, reqRows, partnerName);
+  if (refusal) {
+    return NextResponse.json({ error: refusal }, { status: 409 });
+  }
+
+  // Withdraw the host's own outstanding proposal. The game stays pending with
+  // the partner's proposal standing; the partner is told, and the token they
+  // hold now shows "already resolved".
+  if (action === "withdraw_proposal") {
+    const open = openHostProposal(reqRows)!;
+    const { error: wErr } = await supabase
+      .from("interleague_reschedule_requests")
+      .update({ status: "declined" } as never)
+      .eq("id", open.id)
+      .eq("status", "pending");
+    if (wErr) {
+      return NextResponse.json({ error: wErr.message }, { status: 500 });
+    }
+    const { data: inv } = await supabase
+      .from("interleague_invites")
+      .select("recipient_email, schedule_token")
+      .eq("interleague_org_id", game.interleague_org_id)
+      .eq("season_id", game.league_id)
+      .eq("status", "accepted")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const invite = inv as { recipient_email: string; schedule_token: string | null } | null;
+    const { data: ownerRaw } = await supabase
+      .from("profiles")
+      .select("org_name, full_name, email")
+      .eq("id", game.league.owner_id)
+      .maybeSingle();
+    const owner = ownerRaw as { org_name: string | null; full_name: string | null; email: string | null } | null;
+    const hostLeague = owner?.org_name?.trim() || owner?.full_name?.trim() || owner?.email || "The host league";
+    if (!invite?.recipient_email) {
+      return NextResponse.json({
+        ok: true,
+        email: { sent: false, error: `No contact email is on file for ${partnerName}.` },
+      });
+    }
+    const mail = hostWithdrewEmail({
+      hostLeague,
+      game: {
+        matchup: `${game.external_team_name ?? "Your team"} vs ${game.home_team?.name ?? "TBD"}`,
+        division: game.home_team?.division?.name ?? "—",
+        field: game.is_away ? game.proposed_venue_name : game.venue ? qualifiedVenueLabel(game.venue) : null,
+        originalIso: game.scheduled_at,
+        partnerProposalIso: game.proposed_scheduled_at,
+      },
+      withdrawnIso: open.proposed_scheduled_at,
+      scheduleToken: invite.schedule_token,
+    });
+    const sent = await sendEmail(invite.recipient_email, mail.subject, mail.html, mail.text);
+    return NextResponse.json({
+      ok: true,
+      email: sent.ok ? { sent: true } : { sent: false, error: sent.error },
+    });
   }
 
   // Decline branches out entirely — the row is deleted and the email is different.
@@ -355,6 +440,22 @@ export async function POST(
   });
   if (!occupancy.ok) {
     return NextResponse.json(occupancy.body, { status: occupancy.status });
+  }
+
+  // Close the partner's outstanding counter-back BEFORE settling the time. If
+  // the game update below then fails, the game is still pending with the
+  // partner's proposal standing in games.proposed_* — consistent. The reverse
+  // order could leave a pending partner row on a game already scheduled.
+  const partnerRowStatus = partnerRowsOnResolve(action);
+  const partnerOpen = reqRows.filter((r) => r.status === "pending" && r.requested_by_user_id === null);
+  if (partnerRowStatus && partnerOpen.length > 0) {
+    const { error: closeErr } = await supabase
+      .from("interleague_reschedule_requests")
+      .update({ status: partnerRowStatus } as never)
+      .in("id", partnerOpen.map((r) => r.id));
+    if (closeErr) {
+      return NextResponse.json({ error: closeErr.message }, { status: 500 });
+    }
   }
 
   const { error: updateErr } = await supabase

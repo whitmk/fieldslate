@@ -23,6 +23,7 @@ import { ScheduleGameActions } from "@/components/interleague/schedule-game-acti
 import {
   canRequestReschedule,
   confirmedGameBadge,
+  confirmedRespondHref,
   counteredGameLines,
   hostLeagueLabel,
   type RecipientConfirmedGame,
@@ -207,11 +208,33 @@ function CounteredRow({
       <p className="text-xs text-gray-500">
         {game.division.name} · {orgName}
       </p>
-      <p className="text-sm font-medium text-amber-800">{lines.yourProposal}</p>
-      <p className="text-xs text-gray-400">{lines.original}</p>
-      <span className="mt-1 inline-flex w-fit items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-        {lines.status}
-      </span>
+      {lines.hostProposal && (
+        <p className="text-sm font-semibold text-blue-800">{lines.hostProposal}</p>
+      )}
+      <p className={`text-sm ${lines.hostProposal ? "text-gray-500" : "font-medium text-amber-800"}`}>
+        {lines.yourProposal}
+      </p>
+      <p className="text-xs text-gray-400">
+        {lines.original}
+        {lines.round > 1 ? ` · Round ${lines.round}` : ""}
+      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <span
+          className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+            lines.waitingOnYou ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700"
+          }`}
+        >
+          {lines.status}
+        </span>
+        {lines.respondHref && (
+          <a
+            href={lines.respondHref}
+            className="inline-flex items-center rounded-lg bg-[#22C55E] px-3 py-1 text-xs font-semibold text-white hover:bg-[#16a34a]"
+          >
+            Respond
+          </a>
+        )}
+      </div>
     </div>
   );
 }
@@ -241,6 +264,7 @@ function GameRow({
       ? game.proposed_venue_name ?? "Your venue"
       : "TBD";
   const badge = confirmedGameBadge(game.status);
+  const respondHref = confirmedRespondHref(game);
 
   return (
     <div
@@ -289,6 +313,14 @@ function GameRow({
           <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700">
             {badge}
           </span>
+        )}
+        {respondHref && (
+          <a
+            href={respondHref}
+            className="inline-flex items-center rounded-lg bg-[#22C55E] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#16a34a]"
+          >
+            Respond
+          </a>
         )}
         {canRequestReschedule(game, nowMs) && (
           <ScheduleGameActions

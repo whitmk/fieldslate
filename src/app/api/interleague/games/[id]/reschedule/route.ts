@@ -8,6 +8,27 @@ import {
   validateVenueName,
   validateNote,
 } from "@/lib/validation/text-length";
+import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
+import { gateRescheduleOccupancy } from "@/lib/venues/occupancy-gate";
+import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
+import { decideHostProposal, proposalRound, type RequestLite } from "@/lib/interleague/negotiation";
+import { hostProposalEmail, respondUrl } from "@/lib/interleague/negotiation-emails";
+
+// Two branches, decided by decideHostProposal (src/lib/interleague/negotiation.ts):
+//
+//   status 'scheduled'            → the ORIGINAL reschedule request on a confirmed
+//                                   game. Unchanged: free-text venue gate, request
+//                                   row, game flipped to reschedule_pending, the
+//                                   existing email.
+//   status 'pending_interleague'  → "Propose a different time" on a game the
+//   (with a partner response)       partner counter-proposed. The game STAYS
+//                                   pending_interleague (never reschedule_pending —
+//                                   countsAsScheduledGame does not list it). Runs the
+//                                   division-lock gate, the venue-hours gate and the
+//                                   0088 occupancy gate on the proposed time, closes
+//                                   the partner's own outstanding counter-back, and
+//                                   CHECKS the email result: the partner's only way
+//                                   to answer is the link in that email.
 
 export const runtime = "nodejs";
 
@@ -99,23 +120,25 @@ export async function POST(
     scheduled_at: string;
     external_team_name: string | null;
     proposed_venue_name: string | null;
+    proposed_scheduled_at: string | null;
+    venue_id: string | null;
     home_team: {
       name: string;
-      division: { name: string; settings: unknown } | null;
+      division: { name: string; settings: unknown; locked: boolean | null } | null;
     } | null;
     interleague_org: { name: string } | null;
     league: { id: string; name: string; season: string | null; owner_id: string } | null;
-    venue: { name: string } | null;
+    venue: { name: string; location: { name: string } | null } | null;
   };
   const { data: gameRaw, error: gameErr } = await supabase
     .from("games")
     .select(
       `id, league_id, interleague_org_id, is_away, status, scheduled_at,
-       external_team_name, proposed_venue_name,
-       home_team:teams!home_team_id(name, division:divisions(name, settings)),
+       external_team_name, proposed_venue_name, proposed_scheduled_at, venue_id,
+       home_team:teams!home_team_id(name, division:divisions(name, settings, locked)),
        interleague_org:interleague_orgs(name),
        league:leagues(id, name, season, owner_id),
-       venue:venues(name)`,
+       venue:venues(name, location:locations(name))`,
     )
     .eq("id", params.id)
     .single();
@@ -136,17 +159,32 @@ export async function POST(
       { status: 400 },
     );
   }
-  if (game.status !== "scheduled") {
-    return NextResponse.json(
-      { error: "This game can't be rescheduled right now." },
-      { status: 409 },
-    );
+  const partnerName = game.interleague_org?.name ?? "the other league";
+
+  // Outstanding requests matter only to the pending branch; the scheduled
+  // branch never read them and still doesn't. FAIL CLOSED: an unreadable list
+  // could hide a proposal already out with the partner.
+  let requests: (RequestLite & { id: string })[] = [];
+  if (game.status === "pending_interleague") {
+    const { data: reqRows, error: reqRowsErr } = await supabase
+      .from("interleague_reschedule_requests")
+      .select("id, status, requested_by_user_id")
+      .eq("game_id", game.id);
+    if (reqRowsErr || !reqRows) {
+      return NextResponse.json(
+        { error: "We couldn't check this game's outstanding proposals, so nothing was sent. Please try again." },
+        { status: 500 },
+      );
+    }
+    requests = reqRows as (RequestLite & { id: string })[];
   }
-  if (new Date(game.scheduled_at).getTime() <= Date.now()) {
-    return NextResponse.json(
-      { error: "This game is in the past." },
-      { status: 409 },
-    );
+
+  const decision = decideHostProposal(game, requests, normalized, Date.now(), partnerName);
+  if (!decision.ok) {
+    return NextResponse.json({ error: decision.error }, { status: decision.status });
+  }
+  if (decision.branch === "pending_counter") {
+    return proposeOnPendingGame({ supabase, user, game, requests, normalized, venueName, note, partnerName });
   }
 
   // ── Venue-hours gate ─────────────────────────────────────────────────────
@@ -301,4 +339,144 @@ export async function POST(
   }
 
   return NextResponse.json({ ok: true, request_id: reqRow.id });
+}
+
+// ── Pending branch: "Propose a different time" ──────────────────────────────
+
+async function proposeOnPendingGame(p: {
+  supabase: ReturnType<typeof createClient>;
+  user: { id: string; email?: string | null };
+  game: {
+    id: string;
+    league_id: string;
+    interleague_org_id: string | null;
+    is_away: boolean;
+    scheduled_at: string;
+    external_team_name: string | null;
+    proposed_venue_name: string | null;
+    proposed_scheduled_at: string | null;
+    home_team: { name: string; division: { name: string; locked: boolean | null } | null } | null;
+    league: { owner_id: string } | null;
+    venue: { name: string; location: { name: string } | null } | null;
+  };
+  requests: (RequestLite & { id: string })[];
+  normalized: string;
+  venueName: string;
+  note: string;
+  partnerName: string;
+}) {
+  const { supabase, user, game, requests, normalized, venueName, note, partnerName } = p;
+
+  // Schedule lock: the same actor-based gate the resolve route applies. A host
+  // proposal is our side of interleague on this division.
+  if (game.home_team?.division?.locked) {
+    const divName = game.home_team.division.name ?? "This game's division";
+    return NextResponse.json(
+      { error: `${divName} is locked. Unlock it on the division's schedule panel to change interleague games.` },
+      { status: 409 },
+    );
+  }
+
+  // Away games (the partner hosts) must name a field; home games keep ours.
+  const proposedVenue = game.is_away ? venueName || game.proposed_venue_name || "" : "";
+  if (game.is_away && !proposedVenue) {
+    return NextResponse.json({ error: "Away games need the host field's name." }, { status: 400 });
+  }
+
+  // Venue-hours gate, then the 0088 occupancy gate, on the PROPOSED time —
+  // exactly as the respond route's accept does. Both skip a game with no field
+  // of ours (keyed inside each gate).
+  const hours = await gateRescheduleVenue(supabase, {
+    gameId: game.id,
+    scheduledAtIso: normalized,
+    proposedVenueName: game.is_away ? proposedVenue : null,
+  });
+  if (!hours.ok) return NextResponse.json(hours.body, { status: hours.status });
+  const occupancy = await gateRescheduleOccupancy(supabase, { gameId: game.id, scheduledAtIso: normalized });
+  if (!occupancy.ok) return NextResponse.json(occupancy.body, { status: occupancy.status });
+
+  // The partner's own outstanding counter-back is answered by this proposal.
+  const partnerOpen = requests.filter((r) => r.status === "pending" && r.requested_by_user_id === null);
+  if (partnerOpen.length > 0) {
+    const { error: closeErr } = await supabase
+      .from("interleague_reschedule_requests")
+      .update({ status: "declined" } as never)
+      .in("id", partnerOpen.map((r) => r.id));
+    if (closeErr) return NextResponse.json({ error: closeErr.message }, { status: 500 });
+  }
+
+  const { data: reqRow, error: insertErr } = await supabase
+    .from("interleague_reschedule_requests")
+    .insert([
+      {
+        game_id: game.id,
+        requested_by_user_id: user.id,
+        proposed_scheduled_at: normalized,
+        proposed_venue_name: game.is_away ? proposedVenue : null,
+        note: note || null,
+      },
+    ])
+    .select("id, token")
+    .single();
+  if (insertErr || !reqRow) {
+    return NextResponse.json({ error: insertErr?.message ?? "Failed to send your proposal." }, { status: 500 });
+  }
+  // The game is deliberately NOT updated: it stays pending_interleague.
+
+  const round = proposalRound(requests.length + 1);
+  const link = respondUrl(reqRow.token);
+
+  const [{ data: inviteRow }, { data: ownerProfile }] = await Promise.all([
+    supabase
+      .from("interleague_invites")
+      .select("recipient_email")
+      .eq("interleague_org_id", game.interleague_org_id ?? "")
+      .eq("season_id", game.league_id)
+      .eq("status", "accepted")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("org_name, full_name, email")
+      .eq("id", game.league?.owner_id ?? "")
+      .maybeSingle(),
+  ]);
+  const recipientEmail = (inviteRow as { recipient_email: string } | null)?.recipient_email ?? null;
+  const owner = ownerProfile as { org_name: string | null; full_name: string | null; email: string | null } | null;
+  const hostLeague =
+    owner?.org_name?.trim() || owner?.full_name?.trim() || owner?.email || user.email || "The host league";
+
+  if (!recipientEmail) {
+    return NextResponse.json({
+      ok: true,
+      request_id: reqRow.id,
+      round,
+      email: { sent: false, error: `No contact email is on file for ${partnerName}.`, respond_url: link },
+    });
+  }
+
+  const mail = hostProposalEmail({
+    hostLeague,
+    game: {
+      matchup: `${game.external_team_name ?? "Your team"} vs ${game.home_team?.name ?? "TBD"}`,
+      division: game.home_team?.division?.name ?? "—",
+      field: game.is_away ? proposedVenue : game.venue ? qualifiedVenueLabel(game.venue) : null,
+      originalIso: game.scheduled_at,
+      partnerProposalIso: game.proposed_scheduled_at,
+    },
+    proposedIso: normalized,
+    note: note || null,
+    round,
+    requestToken: reqRow.token,
+  });
+  const sent = await sendEmail(recipientEmail, mail.subject, mail.html, mail.text);
+  return NextResponse.json({
+    ok: true,
+    request_id: reqRow.id,
+    round,
+    email: sent.ok
+      ? { sent: true }
+      : { sent: false, error: sent.error ?? "The email didn't send.", respond_url: link },
+  });
 }

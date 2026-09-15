@@ -16,6 +16,7 @@ import {
   canRequestReschedule,
   confirmedGameBadge,
   counteredEmailSection,
+  confirmedRespondHref,
   counteredGameLines,
   hostLeagueLabel,
   type RecipientConfirmedGame,
@@ -45,6 +46,8 @@ const counters = {
   rescheduleWithheldPending: 0,
   rescheduleWithheldPast: 0,
   emailCounteredRows: 0,
+  waitingOnYouRendered: 0,
+  waitingOnHostRendered: 0,
 };
 
 const NOW = Date.parse("2026-09-15T12:00:00Z");
@@ -144,6 +147,34 @@ console.log("COUNTERED  what the recipient sees for a game they countered");
   assert(!homeVenueNoise.yourProposal.includes("ignored"), "[K6] a HOME game never shows a free-typed partner venue");
 }
 
+// ── Host sent a different time back (0091) ───────────────────────────────────
+console.log("NEGOTIATION  waiting on the host vs waiting on you");
+{
+  const waitingHost = counteredGameLines(counteredHome, "SRALL");
+  assert(!waitingHost.waitingOnYou && waitingHost.respondHref === null && waitingHost.hostProposal === null, "[N1] no host proposal → waiting on the host, no Respond");
+  assert(waitingHost.round === 1, "[N2] round 1 before any request row");
+  if (!waitingHost.waitingOnYou) counters.waitingOnHostRendered++;
+
+  const withHost: RecipientCounteredGame = {
+    ...counteredHome,
+    proposal_count: 1,
+    open_host_proposal: {
+      token: "tok/1", proposed_scheduled_at: "2026-09-26T09:00:00+00:00",
+      proposed_venue_name: null, note: null, created_at: "2026-09-15T12:00:00+00:00",
+    },
+  };
+  const n = counteredGameLines(withHost, "SRALL");
+  assert(n.waitingOnYou && n.status === "SRALL suggested a different time — waiting on you", `[N3] host proposal → waiting on YOU (got ${n.status})`);
+  assert(n.hostProposal === "SRALL suggested Sat, Sep 26 at 9:00 AM", `[N4] names the host's time (got ${n.hostProposal})`);
+  assert(n.respondHref === "/reschedule/tok%2F1", `[N5] Respond links the host request's token, encoded (got ${n.respondHref})`);
+  assert(n.yourProposal === "You proposed Tue, Sep 29 at 5:00 PM", "[N6] the partner's own standing proposal is still shown");
+  assert(n.round === 2, "[N7] round advances with each request row");
+  if (n.waitingOnYou) counters.waitingOnYouRendered++;
+
+  assert(confirmedRespondHref(confirmed({ status: "reschedule_pending", open_host_proposal: withHost.open_host_proposal })) === "/reschedule/tok%2F1", "[N8] a confirmed game with a host request offers Respond");
+  assert(confirmedRespondHref(confirmed({ status: "reschedule_pending", open_host_proposal: null })) === null, "[N9] a partner-initiated request (no token emitted) offers no Respond");
+}
+
 // ── Invite page accepted screen ───────────────────────────────────────────────
 console.log("INVITE  accepted screen");
 {
@@ -210,3 +241,11 @@ process.exit(failures === 0 ? 0 : 1);
 //  RM5 away proposal loses its field          → [K4][K5] (+[E3])
 //  RM6 partner venue shown on HOME games      → [K6] only
 //  RM7 host label prefers email over org_name → [L1][L2]
+//
+// Addendum 2026-09-15 (commit 2, host counter — 0091 emits open_host_proposal):
+// 11 assertions [N1–N9] + 2 counters added; baseline 42 PASS.
+//  RM8  host proposal ignored (page always says waiting on the host)
+//                                            → [N3][N4][N5] + waitingOnYouRendered=0
+//  RM9  Respond link not URL-encoded         → [N5] only (N8 drives the separate
+//                                              confirmedRespondHref, untouched)
+//  RM10 round ignores request rows           → [N7] only

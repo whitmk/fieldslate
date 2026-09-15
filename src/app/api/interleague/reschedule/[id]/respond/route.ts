@@ -4,6 +4,7 @@ import { sendEmail } from "@/lib/email";
 import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
 import { gateRescheduleOccupancy } from "@/lib/venues/occupancy-gate";
 import { SITE_URL } from "@/lib/site";
+import { gameStatusAfterHostDecline } from "@/lib/interleague/negotiation";
 import {
   validateVenueName,
   validateNote,
@@ -92,6 +93,7 @@ export async function POST(
       // (null) from "a real field" — the gate keys on this, not on is_away.
       venue_id: string | null;
       scheduled_at: string;
+      status: string;
       external_team_name: string | null;
       proposed_venue_name: string | null;
       home_team: { name: string; division: { name: string } | null } | null;
@@ -106,7 +108,7 @@ export async function POST(
       `id, game_id, proposed_scheduled_at, proposed_venue_name, status,
        requested_by_user_id,
        game:games(
-         id, league_id, interleague_org_id, is_away, venue_id, scheduled_at,
+         id, league_id, interleague_org_id, is_away, venue_id, scheduled_at, status,
          external_team_name, proposed_venue_name,
          home_team:teams!home_team_id(name, division:divisions(name)),
          interleague_org:interleague_orgs(name),
@@ -192,6 +194,11 @@ export async function POST(
         scheduled_at: newIso,
         proposed_venue_name: req.proposed_venue_name ?? req.game.proposed_venue_name,
         status: "scheduled",
+        // The game is agreed, so no proposal stays on it. Clears a partner's
+        // stale counter on a pending_interleague game; on a confirmed game the
+        // column is already null, so this is a no-op there. Mirrors
+        // accept_reschedule_request_by_token (0091).
+        proposed_scheduled_at: null,
       } as never)
       .eq("id", req.game.id);
     if (updGameErr) {
@@ -247,10 +254,14 @@ export async function POST(
       .select("id", { count: "exact", head: true })
       .eq("game_id", req.game.id)
       .eq("status", "pending");
-    if (!pendingLeft) {
+    // BRANCHED on game status (gameStatusAfterHostDecline): a pending_interleague
+    // game is left alone — setting it 'scheduled' would confirm a time the
+    // partner never agreed to. Confirmed games behave exactly as before.
+    const nextStatus = gameStatusAfterHostDecline(req.game.status, pendingLeft ?? 0);
+    if (nextStatus) {
       await supabase
         .from("games")
-        .update({ status: "scheduled" } as never)
+        .update({ status: nextStatus } as never)
         .eq("id", req.game.id);
     }
 

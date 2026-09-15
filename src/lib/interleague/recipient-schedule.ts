@@ -17,9 +17,20 @@ export type ConfirmedStatus = "scheduled" | "reschedule_pending";
 
 export type RecipientVenue = { name: string; location: { name: string } | null } | null;
 
+/** The host's outstanding proposal on a game (0091), with the token the
+ *  partner answers it through. Only host-authored requests are emitted. */
+export type OpenHostProposal = {
+  token: string;
+  proposed_scheduled_at: string;
+  proposed_venue_name: string | null;
+  note: string | null;
+  created_at: string;
+} | null;
+
 export type RecipientConfirmedGame = {
   id: string;
   status: ConfirmedStatus;
+  open_host_proposal?: OpenHostProposal;
   scheduled_at: string;
   is_away: boolean;
   external_team_name: string | null;
@@ -32,6 +43,9 @@ export type RecipientConfirmedGame = {
 export type RecipientCounteredGame = {
   id: string;
   status: "pending_interleague";
+  open_host_proposal?: OpenHostProposal;
+  /** Request rows exchanged on the game (0091); round = this + 1. */
+  proposal_count?: number;
   scheduled_at: string;
   proposed_scheduled_at: string | null;
   proposed_venue_name: string | null;
@@ -79,19 +93,49 @@ function when(iso: string): string {
   return `${fmtGameDate(iso)} at ${fmtGameTime(iso)}`;
 }
 
-/** The lines shown for one countered game. */
+/** The lines shown for one countered game.
+ *
+ *  Two states, and the page must never blur them:
+ *    waiting on the HOST — the partner's proposal is standing, nothing to do;
+ *    waiting on YOU      — the host sent a different time back (0091); the
+ *                          partner answers it through `respondHref`.
+ */
 export function counteredGameLines(
   game: RecipientCounteredGame,
   hostLabel: string,
-): { yourProposal: string; original: string; status: string } {
+): {
+  yourProposal: string;
+  original: string;
+  status: string;
+  hostProposal: string | null;
+  respondHref: string | null;
+  round: number;
+  waitingOnYou: boolean;
+} {
   const parts: string[] = [];
   if (game.proposed_scheduled_at) parts.push(when(game.proposed_scheduled_at));
   if (game.is_away && game.proposed_venue_name) parts.push(game.proposed_venue_name);
+  const open = game.open_host_proposal ?? null;
+  const hostParts: string[] = [];
+  if (open) {
+    hostParts.push(when(open.proposed_scheduled_at));
+    if (game.is_away && open.proposed_venue_name) hostParts.push(open.proposed_venue_name);
+  }
   return {
     yourProposal: parts.length > 0 ? `You proposed ${parts.join(" · ")}` : "You proposed a change",
     original: `Originally ${when(game.scheduled_at)}`,
-    status: `Waiting on ${hostLabel} to respond`,
+    status: open ? `${hostLabel} suggested a different time — waiting on you` : `Waiting on ${hostLabel} to respond`,
+    hostProposal: open ? `${hostLabel} suggested ${hostParts.join(" · ")}` : null,
+    respondHref: open ? `/reschedule/${encodeURIComponent(open.token)}` : null,
+    round: (game.proposal_count ?? 0) + 1,
+    waitingOnYou: !!open,
   };
+}
+
+/** A confirmed game with a host request outstanding: where the partner answers. */
+export function confirmedRespondHref(game: RecipientConfirmedGame): string | null {
+  const open = game.open_host_proposal ?? null;
+  return open ? `/reschedule/${encodeURIComponent(open.token)}` : null;
 }
 
 /** Body of the invite page's "already accepted" screen. */
