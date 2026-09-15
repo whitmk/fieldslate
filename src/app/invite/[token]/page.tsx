@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { InviteForm, type PendingGame } from "@/components/interleague/invite-form";
 import { InviteHeader, InviteFooter } from "@/components/interleague/invite-shell";
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import { acceptedInviteBody } from "@/lib/interleague/recipient-schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +15,12 @@ type InvitePayload = {
     created_at: string;
     updated_at: string;
     recipient_email: string;
+    /** 0090: this invite's own live-schedule token; null until accepted. */
+    schedule_token?: string | null;
   };
   scheduled_game_count: number;
+  /** 0090: games the recipient countered that the host hasn't resolved. */
+  countered_game_count?: number;
   sender: { full_name: string | null; email: string | null } | null;
   org: { id: string; name: string } | null;
   season: {
@@ -65,13 +70,29 @@ export default async function PublicInvitePage({
   // A revisited link gets an honest status screen — telling someone who
   // already responded "invite not found" only restarts the phone-tag loop
   // between the two leagues. Genuinely invalid tokens still 404-style below.
+  // Accepting an invite that countered some games still marks it accepted, so
+  // this screen is where a partner lands when they revisit the link to check
+  // on those games. It must point them at the live schedule, which lists the
+  // countered games and where each stands (migration 0090) — not leave them at
+  // a dead end.
   if (payload.invite.status === "accepted") {
-    const n = payload.scheduled_game_count;
+    const scheduleToken = payload.invite.schedule_token ?? null;
     return (
       <InviteStatusScreen
         icon="accepted"
         title="This invitation has already been accepted"
-        body={`This invitation was accepted on ${fmtDate(payload.invite.updated_at)}. ${n} game${n === 1 ? " is" : "s are"} scheduled. The live schedule link from your confirmation email always shows the latest version — or ask ${senderName} to resend it.`}
+        body={acceptedInviteBody({
+          acceptedOn: fmtDate(payload.invite.updated_at),
+          scheduledCount: payload.scheduled_game_count,
+          counteredCount: payload.countered_game_count ?? 0,
+          hostLabel: senderName,
+          hasScheduleLink: !!scheduleToken,
+        })}
+        link={
+          scheduleToken
+            ? { href: `/schedule/${encodeURIComponent(scheduleToken)}`, label: "View your live schedule" }
+            : undefined
+        }
       />
     );
   }
@@ -139,10 +160,12 @@ function InviteStatusScreen({
   icon,
   title,
   body,
+  link,
 }: {
   icon: "accepted" | "declined" | "superseded";
   title: string;
   body: string;
+  link?: { href: string; label: string };
 }) {
   const iconEl =
     icon === "accepted" ? (
@@ -167,6 +190,14 @@ function InviteStatusScreen({
           {iconEl}
           <h1 className="text-lg font-semibold text-[#0C1F3F]">{title}</h1>
           <p className="mt-2 text-sm text-gray-500">{body}</p>
+          {link && (
+            <a
+              href={link.href}
+              className="mt-5 inline-flex items-center rounded-lg bg-[#22C55E] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a]"
+            >
+              {link.label}
+            </a>
+          )}
         </div>
       </main>
       <InviteFooter />

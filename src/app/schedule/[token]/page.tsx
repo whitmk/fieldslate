@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   CalendarDays,
   Check,
+  Hourglass,
   Mail,
   MapPin,
   Printer,
@@ -19,25 +20,31 @@ import {
   Users,
 } from "lucide-react";
 import { ScheduleGameActions } from "@/components/interleague/schedule-game-actions";
+import {
+  canRequestReschedule,
+  confirmedGameBadge,
+  counteredGameLines,
+  hostLeagueLabel,
+  type RecipientConfirmedGame,
+  type RecipientCounteredGame,
+  type RecipientSender,
+} from "@/lib/interleague/recipient-schedule";
 
 export const dynamic = "force-dynamic";
 
-type Game = {
-  id: string;
-  scheduled_at: string;
-  is_away: boolean;
-  external_team_name: string | null;
-  proposed_venue_name: string | null;
-  home_team: { name: string };
-  division: { name: string };
-  venue: { name: string; location: { name: string } | null } | null;
-};
+type Game = RecipientConfirmedGame;
 
+// Shape of get_interleague_schedule_by_token (migration 0090). `games` holds
+// CONFIRMED games (scheduled or reschedule_pending); `countered_games` holds
+// games this league answered with a different time that the host has not
+// resolved. `countered_games` is optional only so a payload from before 0090
+// still renders.
 type SchedulePayload = {
-  sender: { full_name: string | null; email: string | null } | null;
+  sender: RecipientSender;
   org: { name: string } | null;
   season: { name: string; season: string | null } | null;
   games: Game[];
+  countered_games?: RecipientCounteredGame[];
 };
 
 const MONTH_LABEL_OPTS: Intl.DateTimeFormatOptions = {
@@ -78,6 +85,9 @@ export default async function PublicSchedulePage({
       : payload.season.name
     : "this season";
   const orgName = payload.org?.name ?? "your league";
+  const hostLabel = hostLeagueLabel(payload.sender);
+  const countered = payload.countered_games ?? [];
+  const nowMs = Date.now();
 
   // Group games by month for readability.
   const grouped = new Map<string, Game[]>();
@@ -95,6 +105,32 @@ export default async function PublicSchedulePage({
       <main className="flex-1">
         <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
           <UpsellCard />
+
+          {countered.length > 0 && (
+            <section className="mt-8">
+              <div className="mb-3 flex items-center gap-2">
+                <Hourglass className="h-4 w-4 text-amber-600" />
+                <h2 className="text-base font-semibold text-[#0C1F3F]">
+                  Waiting on {hostLabel} ({countered.length})
+                </h2>
+              </div>
+              <p className="mb-3 text-xs text-gray-500">
+                You proposed a different time for these games. They aren&rsquo;t
+                confirmed until {hostLabel} responds.
+              </p>
+              <div className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
+                {countered.map((game, idx) => (
+                  <CounteredRow
+                    key={game.id}
+                    game={game}
+                    orgName={orgName}
+                    hostLabel={hostLabel}
+                    isLast={idx === countered.length - 1}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
 
           <section className="mt-8">
             <div className="mb-3 flex items-center gap-2">
@@ -123,6 +159,7 @@ export default async function PublicSchedulePage({
                           orgName={orgName}
                           isLast={idx === arr.length - 1}
                           scheduleToken={params.token}
+                          nowMs={nowMs}
                         />
                       ))}
                     </div>
@@ -143,16 +180,54 @@ export default async function PublicSchedulePage({
   );
 }
 
+function CounteredRow({
+  game,
+  orgName,
+  hostLabel,
+  isLast,
+}: {
+  game: RecipientCounteredGame;
+  orgName: string;
+  hostLabel: string;
+  isLast: boolean;
+}) {
+  const lines = counteredGameLines(game, hostLabel);
+  const theirTeam = game.external_team_name ?? "Your team";
+  return (
+    <div
+      className={`flex flex-col gap-1 px-5 py-4 ${isLast ? "" : "border-b border-amber-50"}`}
+    >
+      <p className="truncate text-sm font-semibold text-[#0C1F3F]">
+        {theirTeam}
+        <span className="mx-1.5 text-xs font-bold uppercase tracking-wider text-gray-400">
+          vs
+        </span>
+        {game.home_team.name}
+      </p>
+      <p className="text-xs text-gray-500">
+        {game.division.name} · {orgName}
+      </p>
+      <p className="text-sm font-medium text-amber-800">{lines.yourProposal}</p>
+      <p className="text-xs text-gray-400">{lines.original}</p>
+      <span className="mt-1 inline-flex w-fit items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+        {lines.status}
+      </span>
+    </div>
+  );
+}
+
 function GameRow({
   game,
   orgName,
   isLast,
   scheduleToken,
+  nowMs,
 }: {
   game: Game;
   orgName: string;
   isLast: boolean;
   scheduleToken: string;
+  nowMs: number;
 }) {
   const ourTeam = game.home_team.name;
   const theirTeam = game.external_team_name ?? "TBD";
@@ -165,7 +240,7 @@ function GameRow({
     : game.is_away
       ? game.proposed_venue_name ?? "Your venue"
       : "TBD";
-  const isFuture = new Date(game.scheduled_at).getTime() > Date.now();
+  const badge = confirmedGameBadge(game.status);
 
   return (
     <div
@@ -210,7 +285,12 @@ function GameRow({
           <MapPin className="h-3 w-3" />
           {venueName}
         </span>
-        {isFuture && (
+        {badge && (
+          <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700">
+            {badge}
+          </span>
+        )}
+        {canRequestReschedule(game, nowMs) && (
           <ScheduleGameActions
             scheduleToken={scheduleToken}
             game={{

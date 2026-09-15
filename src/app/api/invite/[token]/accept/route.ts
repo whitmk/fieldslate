@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { SITE_URL } from "@/lib/site";
+import {
+  counteredEmailSection,
+  type RecipientCounteredGame,
+} from "@/lib/interleague/recipient-schedule";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   validateVenueName,
@@ -51,6 +55,8 @@ type SchedulePayload = {
   org: { name: string } | null;
   season: { name: string; season: string | null } | null;
   games: ScheduleGame[];
+  /** 0090: games this recipient countered that the host hasn't resolved. */
+  countered_games?: RecipientCounteredGame[];
 };
 
 function escapeHtml(s: string): string {
@@ -293,6 +299,10 @@ function buildRecipientConfirmationEmail(params: {
   seasonLabelDisplay: string;
   games: ScheduleGame[];
   counteredCount: number;
+  /** The countered games themselves, so the email names them. The count above
+   *  comes from the accept RPC and stays the source for the wording; if the
+   *  list is empty (a read failed) the email falls back to count-only. */
+  counteredGames: RecipientCounteredGame[];
   scheduleUrl: string;
 }): { html: string; text: string; subject: string } {
   const {
@@ -301,8 +311,10 @@ function buildRecipientConfirmationEmail(params: {
     seasonLabelDisplay,
     games,
     counteredCount,
+    counteredGames,
     scheduleUrl,
   } = params;
+  const counteredSection = counteredEmailSection(counteredGames, senderOrgName);
 
   const subject = `Your interleague schedule with ${senderOrgName}`;
 
@@ -353,9 +365,9 @@ function buildRecipientConfirmationEmail(params: {
         counteredCount > 0
           ? `<p style="margin:0 0 18px;padding:10px 14px;background:#fef3c7;border-left:3px solid #d97706;border-radius:4px;color:#92400e;font-size:13px;">
         ${counteredCount} of your responses suggested a different time —
-        ${escapeHtml(senderOrgName)} will review and confirm those separately.
-        You&apos;ll see them on the live schedule once resolved.
-      </p>`
+        ${escapeHtml(senderOrgName)} will review and respond to those separately.
+        Your live schedule shows them and where each one stands.
+      </p>${counteredSection.html}`
           : ""
       }
 
@@ -400,8 +412,9 @@ function buildRecipientConfirmationEmail(params: {
         ]),
     "",
     counteredCount > 0
-      ? `${counteredCount} of your responses suggested a different time — ${senderOrgName} will review and confirm those separately.`
+      ? `${counteredCount} of your responses suggested a different time — ${senderOrgName} will review and respond to those separately. Your live schedule shows them and where each one stands.`
       : "",
+    counteredSection.text,
     "",
     `View live schedule: ${scheduleUrl}`,
     "Bookmark this link to always see the latest schedule.",
@@ -520,6 +533,7 @@ export async function POST(
     );
     const scheduleData = (scheduleRaw as SchedulePayload | null) ?? null;
     const games: ScheduleGame[] = scheduleData?.games ?? [];
+    const counteredGames: RecipientCounteredGame[] = scheduleData?.countered_games ?? [];
 
     const { html, text, subject } = buildRecipientConfirmationEmail({
       senderOrgName: senderDisplay,
@@ -527,6 +541,7 @@ export async function POST(
       seasonLabelDisplay,
       games,
       counteredCount: result.countered,
+      counteredGames,
       scheduleUrl,
     });
 
