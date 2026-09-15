@@ -24,7 +24,13 @@ import {
   resolveRefusal,
   type RequestLite,
 } from "@/lib/interleague/negotiation";
-import { hostProposalEmail, hostWithdrewEmail } from "@/lib/interleague/negotiation-emails";
+import {
+  hostProposalEmail,
+  hostWithdrewEmail,
+  partnerAnsweredEmail,
+  resolvedEmail,
+} from "@/lib/interleague/negotiation-emails";
+import { respondPageCopy } from "@/lib/interleague/recipient-schedule";
 
 if (new Date("2026-08-15T00:00:00Z").getTimezoneOffset() !== 0) {
   console.error("Run with TZ=UTC (npm run sim:host-counter).");
@@ -51,6 +57,10 @@ const counters = {
   scheduledDeclineReleased: 0,
   hostRowAttributed: 0,
   partnerRowAttributed: 0,
+  resolveEmailsDistinct: 0,
+  pendingRespondCopy: 0,
+  confirmedRespondCopy: 0,
+  partnerDeclinedPending: 0,
 };
 
 const NOW = Date.parse("2026-09-15T12:00:00Z");
@@ -201,6 +211,77 @@ console.log("EMAIL  wording for a game not yet agreed");
   assert(!esc.html.includes("<b>x</b>") && !esc.html.includes("<i>") && esc.html.includes("S&amp;L"), "[E10] html is escaped");
 }
 
+// ── Commit 3: resolve emails split, partner answers, respond page copy ───────
+console.log("WORDING  resolve emails / partner answers / respond page");
+{
+  const noUrls = (t: string) => t.replace(/https?:\/\/\S+?(?=["<\s]|$)/g, "");
+  const game = {
+    matchup: "Bob vs Mariners",
+    division: "AA",
+    field: "jennings",
+    originalIso: "2026-09-09T17:00:00+00:00",
+    partnerProposalIso: "2026-09-29T17:00:00+00:00",
+  };
+  const mk = (action: "accept_proposal" | "keep_original" | "edit", finalIso: string) =>
+    resolvedEmail({ action, hostLeague: "SRALL", game, finalIso, scheduleToken: "sched-9" });
+  const acc = mk("accept_proposal", "2026-09-29T17:00:00+00:00");
+  const keep = mk("keep_original", "2026-09-09T17:00:00+00:00");
+  const edit = mk("edit", "2026-09-26T11:00:00+00:00");
+
+  // W1: the three outcomes are three different emails, not one.
+  const subjects = new Set([acc.subject, keep.subject, edit.subject]);
+  const titles = new Set([acc.text.split("\n")[0], keep.text.split("\n")[0], edit.text.split("\n")[0]]);
+  assert(subjects.size === 3 && titles.size === 3, `[W1] accept / keep / edit produce three distinct emails (subjects: ${[...subjects].join(" | ")})`);
+  if (subjects.size === 3) counters.resolveEmailsDistinct++;
+  assert(acc.subject === "Confirmed at your time: Bob vs Mariners" && acc.text.includes("the time you proposed"), "[W2] accept says it was THEIR time");
+  assert(keep.subject === "Confirmed at the original time: Bob vs Mariners" && keep.text.includes("You proposed: Tue, Sep 29, 2026, 5:00 PM"), "[W3] keep says the original time won and shows what they proposed");
+  assert(edit.subject === "Confirmed at a new time: Bob vs Mariners" && edit.text.includes("not the one you proposed and not the one first offered") && edit.text.includes("First offered: Wed, Sep 9, 2026, 5:00 PM"), "[W4] edit says it is a third time and shows both others");
+  for (const [name, m] of [["accept", acc], ["keep", keep], ["edit", edit]] as const) {
+    assert(m.text.includes("https://www.thefieldslate.com/schedule/sched-9") && m.html.includes('href="https://www.thefieldslate.com/schedule/sched-9"'), `[W5] ${name} email links the live schedule`);
+    assert(!/has been resolved|final details/i.test(m.text + m.html), `[W6] ${name} email no longer says "resolved" / "final details"`);
+  }
+  const noLink = resolvedEmail({ action: "edit", hostLeague: "SRALL", game, finalIso: "2026-09-26T11:00:00+00:00", scheduleToken: null });
+  assert(!noLink.html.includes("/schedule/"), "[W7] no schedule token → no broken link");
+
+  // Partner answers on a PENDING game → to the host.
+  const declined = partnerAnsweredEmail({
+    answer: "declined", partnerName: "QA-Riverside YB", matchup: "Mariners vs Bob", division: "AA",
+    hostTimeIso: "2026-09-26T09:00:00+00:00", partnerTimeIso: "2026-09-29T17:00:00+00:00", note: null,
+  });
+  const dText = noUrls(`${declined.subject}\n${declined.html}\n${declined.text}`);
+  assert(declined.text.includes("still isn't confirmed") && declined.text.includes("Their proposal: Tue, Sep 29, 2026, 5:00 PM"), "[W8] a decline on a pending game says it is still unconfirmed and their proposal stands");
+  assert(!/stays at|current time|reschedul/i.test(dText), "[W9] it never says the game stays at a time, or calls it a reschedule");
+  if (declined.text.includes("still isn't confirmed")) counters.partnerDeclinedPending++;
+  const accepted = partnerAnsweredEmail({
+    answer: "accepted", partnerName: "QA-Riverside YB", matchup: "Mariners vs Bob", division: "AA",
+    hostTimeIso: "2026-09-26T09:00:00+00:00", partnerTimeIso: null, note: null,
+  });
+  assert(accepted.subject === "QA-Riverside YB accepted your time: Mariners vs Bob" && accepted.text.includes("is confirmed for Sat, Sep 26, 2026, 9:00 AM"), "[W10] accept → confirmed at the host's time");
+  const countered = partnerAnsweredEmail({
+    answer: "countered", partnerName: "QA-Riverside YB", matchup: "Mariners vs Bob", division: "AA",
+    hostTimeIso: "2026-09-26T09:00:00+00:00", partnerTimeIso: "2026-10-03T09:00:00+00:00", note: "Saturdays only",
+  });
+  assert(countered.text.includes("Their new time: Sat, Oct 3, 2026, 9:00 AM") && countered.text.includes("Note: Saturdays only") && countered.text.includes("Counter-proposed games"), "[W11] counter → their new time, the note, and where to act");
+
+  // Respond page copy.
+  const pendingCopy = respondPageCopy({ pending: true, senderName: "Whit", round: 2 });
+  assert(pendingCopy.declineLabel === "Decline — keep my proposal" && pendingCopy.done.decline.message.includes("still isn't confirmed"), "[W12] pending: decline means keep MY proposal, game still unconfirmed");
+  assert(!/move|reschedul|original time|stays at/i.test(JSON.stringify(pendingCopy)), "[W13] pending copy never talks about moving/rescheduling or staying at a time");
+  assert(pendingCopy.intro.includes("(round 2)") && pendingCopy.currentLabel === "Your proposal", "[W14] pending shows the round and labels the partner's own proposal");
+  counters.pendingRespondCopy++;
+  const confirmedCopy = respondPageCopy({ pending: false, senderName: "Whit", round: 1 });
+  // W15: the confirmed-game page is UNCHANGED — the exact pre-change strings.
+  assert(
+    confirmedCopy.intro === "Whit is asking to move this interleague game. Review the change and either accept, propose a different time, or decline." &&
+      confirmedCopy.acceptLabel === "Accept change" && confirmedCopy.counterLabel === "Counter-propose" &&
+      confirmedCopy.declineLabel === "Decline change" && confirmedCopy.counterSubmitLabel === "Send counter-proposal" &&
+      confirmedCopy.done.decline.message === "Whit has been notified. The game stays at its original time." &&
+      confirmedCopy.done.accept.title === "Change accepted" && confirmedCopy.done.counter.title === "Counter-proposal sent",
+    "[W15] a confirmed game's respond page reads exactly as before",
+  );
+  counters.confirmedRespondCopy++;
+}
+
 console.log("counters:", JSON.stringify(counters));
 for (const [k, n] of Object.entries(counters)) {
   assertions++;
@@ -235,3 +316,13 @@ process.exit(failures === 0 ? 0 : 1);
 // link's path is /reschedule/[token], so the raw email text contains
 // "reschedul" inside a URL. URLs are now stripped before the wording check;
 // NM8 proves the check still bites on the visible wording.
+//
+// Addendum 2026-09-15 (commit 3 — emails and wording). +23 assertions [W1–W15]
+// and 4 counters; baseline 71 PASS. 5 mutants, each killed at its own line:
+//  WM1 resolve emails collapsed back into one            → [W1][W3][W4] + resolveEmailsDistinct=0
+//  WM2 resolve emails lose the live-schedule link         → [W5]×3 only
+//  WM3 pending decline email says "stays at its current time"
+//                                                         → [W8][W9] + partnerDeclinedPending=0
+//  WM4 pending respond page reuses the confirmed-game copy → [W12][W13][W14]
+//  WM5 confirmed-game respond page wording changed         → [W15] only — the
+//      "confirmed path reads exactly as before" pin

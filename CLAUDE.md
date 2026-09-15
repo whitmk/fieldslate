@@ -51,7 +51,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0089.** The repo files are the record, not the
+  **Latest migration: 0091.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -2044,6 +2044,122 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   live AA proposal for Tue 2026-09-29 would pass both gates. The picker never
   offers such a day.
 
+## Interleague negotiation (partner visibility + host counter)
+
+Migrations 0090 (partner visibility) and 0091 (host counter), both applied
+2026-09-15 with md5(prosrc) verified against the repo files.
+
+- **A partner can always see a game they countered (0090).** Accepting an invite
+  marks it `accepted` even when some games were only countered, and the live
+  schedule used to return only `status = 'scheduled'`, so a partner lost every
+  view of a countered game until the host acted. **Deliberately NOT fixed by
+  changing the invite's status** — that would ripple through the 0074/0075
+  supersede rules, the dashboard badge and schedule_token issuance.
+  - `get_interleague_schedule_by_token` emits `countered_games` =
+    `pending_interleague AND external_team_name IS NOT NULL` (that column is set
+    on a pending game only by the invite's counter branch) and includes
+    `reschedule_pending` in `games` with a `status` key — a confirmed game with a
+    change outstanding also used to vanish at the moment the partner was asked
+    about it. Unanswered pending games and `cancelled` games stay hidden.
+    **Open, not decided:** a rained-out (cancelled) confirmed game still
+    disappears from the partner's schedule.
+  - `get_interleague_invite_by_token` emits the invite's own `schedule_token`
+    (null until accepted) so the "already accepted" screen links the schedule.
+  - All partner-facing wording lives in `src/lib/interleague/recipient-schedule.ts`.
+    Harnesses: `scripts/sim/recipient-schedule-rpc-sim.sql` +
+    `npm run sim:recipient-schedule`.
+  - Minor: the invite page names the host by person (its RPC's sender has no
+    `org_name`); the schedule page names the league.
+- **"Propose a different time" (0091).** On a counter-proposed game the host can
+  send a time back instead of confirming one. **The game stays
+  `pending_interleague` until someone agrees — never `reschedule_pending`**:
+  `countsAsScheduledGame` lists pending as not-a-real-game and does not know
+  reschedule_pending, so flipping would start counting an unagreed game in
+  exports/reports. Reuses `interleague_reschedule_requests`.
+- **THE MODEL for a pending game — one place per fact, keep it that way:**
+  `games.proposed_*` = the PARTNER's newest proposal; a pending request with a
+  user = the HOST's outstanding proposal (awaiting partner); a pending request
+  without a user = the partner's counter-back (awaiting host), MIRRORED into
+  `games.proposed_*` in the same statement so "Accept proposal" applies the
+  latest time. Past rows are history. Decisions:
+  `src/lib/interleague/negotiation.ts`; emails: `negotiation-emails.ts`.
+- **The three token-function fixes — do not undo any:**
+  1. `decline_reschedule_request_by_token` — BRANCHED: never sets a
+     `pending_interleague` game to `scheduled` (that CONFIRMED the original time
+     the partner had rejected). Mirrored in the host respond route via
+     `gameStatusAfterHostDecline`. Confirmed games unchanged — proven by running
+     the pre-0091 bodies on twin fixtures.
+  2. `accept_reschedule_request_by_token` — SHARED: clears
+     `proposed_scheduled_at` (no-op on confirmed games, where it is always null).
+     Same in the host respond route's accept.
+  3. **Token guard, SHARED in accept/decline/counter:** a reschedule token may
+     act ONLY on a host-authored request (`request_not_actionable_by_token`).
+     Tokens are only ever emailed for host rows, so no reachable flow changed —
+     but without the guard a leaked partner-row token could accept the
+     partner's own request or counter it with wrong attribution. Behind the
+     guard, "a token counter is the partner" is true by construction.
+- **Statuses each creation path accepts (widened deliberately):**
+  `/api/interleague/games/[id]/reschedule` — `scheduled` (unchanged: flips to
+  reschedule_pending, same wording) OR `pending_interleague` WITH a partner
+  response (new: stays pending; lock gate, hours gate and 0088 occupancy gate
+  on the proposed time; closes the partner's open counter-back; refuses a second
+  host proposal). `create_reschedule_request_by_schedule_token` (partner) —
+  still `scheduled` only; a partner answers a pending game through the host's
+  token, never by opening a request.
+- **Resolve refuses `accept_proposal` / `keep_original` / `edit` while a host
+  proposal is outstanding** (`resolveRefusal`); `decline` stays allowed (the
+  partner is emailed). New `withdraw_proposal` is the way out — without it a
+  silent partner would deadlock the host. Resolve closes the partner's open
+  counter-back (accepted / declined) BEFORE setting the time, so a failed game
+  update leaves a consistent pending game.
+- **Emails say what happened, and negotiation sends are CHECKED.** Resolve's one
+  "has been resolved / final details" email became three (`resolvedEmail`: your
+  time / the original time / a new time) with the live-schedule link. Resolve
+  (all actions incl. decline and withdraw) and the host proposal return
+  `email: {sent, error, respond_url?}`; the dashboard shows a banner with the
+  partner's respond link when a send fails. **Not checked, stated:** partner →
+  host emails from the token respond route (the host still sees the state on the
+  dashboard, which refetches on focus) and the host respond route for confirmed
+  games (pre-existing).
+- **Pending-game wording never says "reschedule"** (the harness strips URLs —
+  `/reschedule/[token]` is a path, not wording). `/reschedule/[token]` switches
+  copy on `game.status` (`respondPageCopy`); a confirmed game's page reads
+  exactly as before (pinned by assertion W15).
+- **Round count, no hard cap (decided 2026-09-15).** Round = request rows + 1,
+  shown to the host (from round 2), on the partner's schedule and respond pages
+  and in the host-proposal email. End states: either side accepts; host Keep
+  original / Edit (host prerogative, emailed with explicit wording); host Decline
+  (deletes, emailed); host Withdraw (back to the host's decision). **Cost:**
+  nothing forces convergence — a negotiation can run to season end, the game is
+  excluded from exports/reports throughout, and regenerate would wipe it. A hard
+  cap would need a terminal action (auto-keep? auto-decline?) that commits or
+  deletes a game neither side chose, which is worse than a visible count. Adding
+  one later is a count check in `decideHostProposal` + the counter RPC.
+- **KNOWN, NOT FIXED — deleting a game mid-negotiation is silent.** Regenerate's
+  delete clause (`status.neq.scheduled,…`) and `delete_game_if_unblocked` (which
+  permits `pending_interleague`) both remove a pending game with an open request;
+  the request CASCADES and the partner's token just shows "no longer active", no
+  email. **What should happen:** regenerate should skip (or refuse over)
+  pending games carrying a partner response; single delete of a game with an
+  open request should go through the resolve Decline path (which emails) or at
+  least disclose and email. Deletion behaviour deliberately unchanged here.
+- **KNOWN, NOT FIXED — regenerate deletes an ACCEPTED game in
+  `reschedule_pending`**, contradicting 0079's rule that accepted interleague
+  games are never silently deleted. Zero live rows.
+- **Also noted, not fixed:** the host reschedule route's `scheduled` branch has
+  no division-lock gate and no occupancy gate (hours only when a free-typed
+  venue name matches ours); the host respond route has no lock gate; the token
+  counter path runs no occupancy gate (the host's later accept does).
+- **Live drift closed:** before 0091 the live accept/decline/counter bodies were
+  0039's with every in-body comment stripped (md5 matched exactly) — the 0079
+  failure class. 0091 re-applied them from the repo text.
+- **Harnesses:** `scripts/sim/host-counter-rpc-sim.sql` (SQL; each pass is a
+  rolled-back sub-transaction; 6 mutants killed at D1/A1/G1c/C1/R2/D2; the
+  scheduled path proven against pg_temp copies of the old bodies) and
+  `npm run sim:host-counter` (71 assertions, 13 counters, 14 mutants). Neither
+  drives the routes' Supabase calls; the new embed/filter shapes were validated
+  against live PostgREST.
+
 ## Officials / umpires
 
 - **Schema map:** `umpires` roster is per-season (0023, `season_id` NOT NULL);
@@ -2280,6 +2396,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   left alone — details under "Interleague counter-proposal picker".
 - **Resolve route / accept-proposal can save onto a non-playing day** (Finding
   C, same section). Neither server gate checks the division's playing days.
+- **Deleting / regenerating a game mid-negotiation is silent**, and regenerate
+  deletes accepted `reschedule_pending` games — see "Interleague negotiation".
 
 - **Dead-column cleanup (backlog, no reader/writer).** `divisions.practice_venue_id`
   (no UI picker anywhere, 1 live row) and `venues.venue_type` (read/written

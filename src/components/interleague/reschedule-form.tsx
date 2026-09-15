@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, ArrowRight, Check, Loader2, MapPin, X } from "lucide-react";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import { respondPageCopy } from "@/lib/interleague/recipient-schedule";
 
 export type RescheduleRequestPayload = {
   request: {
@@ -16,6 +17,11 @@ export type RescheduleRequestPayload = {
   sender: { full_name: string | null; email: string | null } | null;
   game: {
     id: string;
+    /** 0091: pending_interleague = a game not yet agreed; the page wording
+     *  and what "decline" means both change. */
+    status?: string;
+    /** 0091: the partner's own standing proposal on a pending game. */
+    proposed_scheduled_at?: string | null;
     scheduled_at: string;
     is_away: boolean;
     external_team_name: string | null;
@@ -26,6 +32,8 @@ export type RescheduleRequestPayload = {
     interleague_org: { name: string } | null;
   };
   season: { name: string; season: string | null };
+  /** 0091: request rows on the game; round = this + 1. */
+  proposal_count?: number;
 };
 
 interface Props {
@@ -50,6 +58,12 @@ export function RescheduleForm({ token, payload }: Props) {
   // Recipient sees the matchup from their perspective. is_away on our side
   // means they're hosting (HOME for them).
   const recipientIsHome = game.is_away;
+  const pending = game.status === "pending_interleague";
+  const copy = respondPageCopy({ pending, senderName, round: (payload.proposal_count ?? 0) + 1 });
+  // On a pending game the left card is the partner's OWN proposal (falling back
+  // to the first-offered time when they only proposed a field).
+  const leftIso = pending ? game.proposed_scheduled_at ?? game.scheduled_at : game.scheduled_at;
+  const leftLabel = pending && !game.proposed_scheduled_at ? "First offered" : copy.currentLabel;
   const matchup = `${game.external_team_name ?? "Your team"} vs ${game.home_team.name}`;
 
   const currentVenue =
@@ -97,14 +111,14 @@ export function RescheduleForm({ token, payload }: Props) {
 
   if (done) {
     const titles = {
-      accept: "Change accepted",
-      decline: "Change declined",
-      counter: "Counter-proposal sent",
+      accept: copy.done.accept.title,
+      decline: copy.done.decline.title,
+      counter: copy.done.counter.title,
     };
     const messages = {
-      accept: `${senderName} has been notified. The game has been moved to the new time.`,
-      decline: `${senderName} has been notified. The game stays at its original time.`,
-      counter: `${senderName} will review your proposal and confirm.`,
+      accept: copy.done.accept.message,
+      decline: copy.done.decline.message,
+      counter: copy.done.counter.message,
     };
     return (
       <div className="rounded-2xl border border-[#22C55E]/30 bg-white p-8 text-center shadow-sm">
@@ -137,10 +151,10 @@ export function RescheduleForm({ token, payload }: Props) {
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              Current
+              {leftLabel}
             </p>
             <p className="mt-1 text-sm font-semibold text-[#0C1F3F]">
-              {fmtGameDate(game.scheduled_at)}, {fmtGameTime(game.scheduled_at)}
+              {fmtGameDate(leftIso)}, {fmtGameTime(leftIso)}
             </p>
             <p className="mt-1 inline-flex items-center gap-1 text-xs text-gray-500">
               <MapPin className="h-3 w-3" />
@@ -149,7 +163,7 @@ export function RescheduleForm({ token, payload }: Props) {
           </div>
           <div className="rounded-xl border-2 border-amber-300 bg-amber-50/60 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-              Proposed
+              {copy.proposedLabel}
             </p>
             <p className="mt-1 text-sm font-semibold text-[#0C1F3F]">
               {fmtGameDate(request.proposed_scheduled_at)},{" "}
@@ -188,7 +202,7 @@ export function RescheduleForm({ token, payload }: Props) {
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
         >
           {busy === "accept" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-          Accept change
+          {copy.acceptLabel}
         </button>
         <button
           type="button"
@@ -197,7 +211,7 @@ export function RescheduleForm({ token, payload }: Props) {
           className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
         >
           <ArrowRight className="h-4 w-4" />
-          Counter-propose
+          {copy.counterLabel}
         </button>
         <button
           type="button"
@@ -206,7 +220,7 @@ export function RescheduleForm({ token, payload }: Props) {
           className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:border-red-300 hover:text-red-500 disabled:opacity-50"
         >
           {busy === "decline" ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
-          Decline change
+          {copy.declineLabel}
         </button>
       </div>
 
@@ -301,7 +315,7 @@ export function RescheduleForm({ token, payload }: Props) {
                   className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-600 disabled:opacity-50"
                 >
                   {busy === "counter" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  Send counter-proposal
+                  {copy.counterSubmitLabel}
                 </button>
               </div>
             </form>
@@ -319,7 +333,7 @@ export function RescheduleNotFound({ message }: { message?: string }) {
         <AlertTriangle className="h-5 w-5 text-yellow-500" />
       </div>
       <h1 className="text-lg font-semibold text-[#0C1F3F]">
-        Reschedule request not available
+        This link is no longer active
       </h1>
       <p className="mt-2 text-sm text-gray-500">
         {message ??

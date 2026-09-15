@@ -194,3 +194,58 @@ export function counteredEmailSection(
   ].join("\n");
   return { html, text };
 }
+
+// ── /reschedule/[token] page wording ─────────────────────────────────────────
+//
+// That page was written for moving a CONFIRMED game ("asking to move this
+// interleague game", "Accept change", "Decline change — the game stays at its
+// original time"). On a game not yet agreed (0091) every one of those lines is
+// wrong: nothing is scheduled to move, and declining does NOT keep the original
+// time — it keeps the partner's own proposal standing.
+
+export type RespondPageCopy = {
+  intro: string;
+  currentLabel: string;
+  proposedLabel: string;
+  acceptLabel: string;
+  counterLabel: string;
+  declineLabel: string;
+  counterSubmitLabel: string;
+  done: Record<"accept" | "decline" | "counter", { title: string; message: string }>;
+};
+
+export function respondPageCopy(p: { pending: boolean; senderName: string; round: number }): RespondPageCopy {
+  const s = p.senderName;
+  if (!p.pending) {
+    return {
+      intro: `${s} is asking to move this interleague game. Review the change and either accept, propose a different time, or decline.`,
+      currentLabel: "Current",
+      proposedLabel: "Proposed",
+      acceptLabel: "Accept change",
+      counterLabel: "Counter-propose",
+      declineLabel: "Decline change",
+      counterSubmitLabel: "Send counter-proposal",
+      done: {
+        accept: { title: "Change accepted", message: `${s} has been notified. The game has been moved to the new time.` },
+        decline: { title: "Change declined", message: `${s} has been notified. The game stays at its original time.` },
+        counter: { title: "Counter-proposal sent", message: `${s} will review your proposal and confirm.` },
+      },
+    };
+  }
+  return {
+    intro: `${s} can't make the time you proposed and suggested a different one. This game isn't confirmed yet${
+      p.round > 1 ? ` (round ${p.round})` : ""
+    }. Accept their time, suggest another, or decline and keep your own proposal in front of them.`,
+    currentLabel: "Your proposal",
+    proposedLabel: `${s}'s time`,
+    acceptLabel: "Accept this time",
+    counterLabel: "Suggest another time",
+    declineLabel: "Decline — keep my proposal",
+    counterSubmitLabel: "Send my time",
+    done: {
+      accept: { title: "Game confirmed", message: `${s} has been notified. The game is confirmed at their time.` },
+      decline: { title: "Declined", message: `${s} has been notified. The game still isn't confirmed — your own proposal is back in front of them.` },
+      counter: { title: "Your time was sent", message: `${s} has been notified. The game stays unconfirmed until they answer.` },
+    },
+  };
+}

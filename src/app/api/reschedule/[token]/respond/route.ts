@@ -4,6 +4,7 @@ import { sendEmail } from "@/lib/email";
 import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
 import { gateRescheduleOccupancy } from "@/lib/venues/occupancy-gate";
 import { SITE_URL } from "@/lib/site";
+import { partnerAnsweredEmail } from "@/lib/interleague/negotiation-emails";
 import {
   validateVenueName,
   validateNote,
@@ -84,6 +85,9 @@ function rpcError(msg: string) {
     return { status: 409, error: "This reschedule request has already been resolved." };
   if (msg.includes("invalid_proposal"))
     return { status: 400, error: "Provide a valid proposed date and time." };
+  // 0091: a token may only answer a request the host sent.
+  if (msg.includes("request_not_actionable_by_token"))
+    return { status: 409, error: "This link can't be used to answer this request." };
   return { status: 500, error: msg || "Failed to submit response." };
 }
 
@@ -188,6 +192,7 @@ export async function POST(
       return NextResponse.json({ error: e.error }, { status: e.status });
     }
     type Result = {
+      was_pending?: boolean;
       old_scheduled_at: string;
       new_scheduled_at: string;
       proposed_venue_name: string | null;
@@ -203,7 +208,22 @@ export async function POST(
       season_label: string | null;
     };
     const r = data as Result | null;
-    if (r && r.sender_email) {
+    if (r && r.sender_email && r.was_pending) {
+      // A game that was never agreed: "reschedule" wording would be wrong.
+      const orgName = r.org_name ?? "the other league";
+      const mail = partnerAnsweredEmail({
+        answer: "accepted",
+        partnerName: orgName,
+        matchup: r.is_away
+          ? `${r.home_team} AT ${orgName}${r.external_team ? ` (${r.external_team})` : ""}`
+          : `${r.home_team} vs ${r.external_team ?? "TBD"}`,
+        division: r.division ?? "—",
+        hostTimeIso: r.new_scheduled_at,
+        partnerTimeIso: null,
+        note: null,
+      });
+      await sendEmail(r.sender_email, mail.subject, mail.html, mail.text);
+    } else if (r && r.sender_email) {
       const orgName = r.org_name ?? "the recipient";
       const matchup = r.is_away
         ? `${r.home_team} AT ${orgName}${r.external_team ? ` (${r.external_team})` : ""}`
@@ -231,6 +251,9 @@ export async function POST(
   }
 
   if (body.action === "decline") {
+    // Read the host's proposed time BEFORE declining (the read is by token and
+    // still resolves once declined, but the RPC does not return it).
+    const declineCtx = await gameIdForToken(supabase, params.token);
     const { data, error } = await supabase.rpc(
       // @ts-expect-error — RPC isn't in generated types
       "decline_reschedule_request_by_token",
@@ -241,6 +264,8 @@ export async function POST(
       return NextResponse.json({ error: e.error }, { status: e.status });
     }
     type Result = {
+      was_pending?: boolean;
+      standing_proposal?: string | null;
       game_scheduled_at: string;
       is_away: boolean;
       home_team: string;
@@ -251,7 +276,23 @@ export async function POST(
       division: string | null;
     };
     const r = data as Result | null;
-    if (r && r.sender_email) {
+    if (r && r.sender_email && r.was_pending) {
+      // Declining on a game never agreed leaves it pending (0091) with the
+      // partner's own proposal standing — NOT "stays at its current time".
+      const orgName = r.org_name ?? "the other league";
+      const mail = partnerAnsweredEmail({
+        answer: "declined",
+        partnerName: orgName,
+        matchup: r.is_away
+          ? `${r.home_team} AT ${orgName}${r.external_team ? ` (${r.external_team})` : ""}`
+          : `${r.home_team} vs ${r.external_team ?? "TBD"}`,
+        division: r.division ?? "—",
+        hostTimeIso: declineCtx?.proposedScheduledAt ?? r.game_scheduled_at,
+        partnerTimeIso: r.standing_proposal ?? null,
+        note: null,
+      });
+      await sendEmail(r.sender_email, mail.subject, mail.html, mail.text);
+    } else if (r && r.sender_email) {
       const orgName = r.org_name ?? "the recipient";
       const matchup = r.is_away
         ? `${r.home_team} AT ${orgName}${r.external_team ? ` (${r.external_team})` : ""}`
@@ -324,6 +365,7 @@ export async function POST(
     return NextResponse.json({ error: e.error }, { status: e.status });
   }
   type Result = {
+    was_pending?: boolean;
     proposed_scheduled_at: string;
     proposed_venue_name: string | null;
     note: string | null;
@@ -336,7 +378,21 @@ export async function POST(
     division: string | null;
   };
   const r = data as Result | null;
-  if (r && r.sender_email) {
+  if (r && r.sender_email && r.was_pending) {
+    const orgName = r.org_name ?? "the other league";
+    const mail = partnerAnsweredEmail({
+      answer: "countered",
+      partnerName: orgName,
+      matchup: r.is_away
+        ? `${r.home_team} AT ${orgName}${r.external_team ? ` (${r.external_team})` : ""}`
+        : `${r.home_team} vs ${r.external_team ?? "TBD"}`,
+      division: r.division ?? "—",
+      hostTimeIso: counterCtx?.proposedScheduledAt ?? r.proposed_scheduled_at,
+      partnerTimeIso: r.proposed_scheduled_at,
+      note: r.note,
+    });
+    await sendEmail(r.sender_email, mail.subject, mail.html, mail.text);
+  } else if (r && r.sender_email) {
     const orgName = r.org_name ?? "the recipient";
     const matchup = r.is_away
       ? `${r.home_team} AT ${orgName}${r.external_team ? ` (${r.external_team})` : ""}`

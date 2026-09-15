@@ -11,7 +11,7 @@ import {
   resolveRefusal,
   type RequestLite,
 } from "@/lib/interleague/negotiation";
-import { hostWithdrewEmail } from "@/lib/interleague/negotiation-emails";
+import { hostWithdrewEmail, resolvedEmail } from "@/lib/interleague/negotiation-emails";
 
 export const runtime = "nodejs";
 
@@ -341,10 +341,19 @@ export async function POST(
         .filter((l) => l !== "")
         .join("\n");
 
-      await sendEmail(recipientEmail, subject, html, text);
+      const sent = await sendEmail(recipientEmail, subject, html, text);
+      // CHECKED: the game is already removed; if this email didn't go, the
+      // partner has no way to learn it, so the host is told to tell them.
+      return NextResponse.json({
+        ok: true,
+        email: sent.ok ? { sent: true } : { sent: false, error: sent.error },
+      });
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      email: { sent: false, error: `No contact email is on file for ${partnerName}.` },
+    });
   }
 
   // Build the update based on action.
@@ -466,88 +475,57 @@ export async function POST(
     return NextResponse.json({ error: updateErr.message }, { status: 500 });
   }
 
-  // Notification email to the recipient (best-effort).
-  // Pull the most recent accepted invite for this org+season for the email.
+  // Notification email to the partner. ONE email per outcome (resolvedEmail):
+  // it used to be a single "Confirmed … your counter-proposal has been
+  // resolved" message for accept_proposal, keep_original AND edit, with no
+  // link — so a partner whose time was rejected in favour of a brand-new one
+  // was told only that things were "resolved". Now it says which happened and
+  // links the live schedule. The send is CHECKED: the time is already saved,
+  // and a partner who never hears about it has no other way to find out.
   const { data: inviteRow } = await supabase
     .from("interleague_invites")
-    .select("recipient_email")
+    .select("recipient_email, schedule_token")
     .eq("interleague_org_id", game.interleague_org_id)
     .eq("season_id", game.league_id)
     .eq("status", "accepted")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-
-  const recipientEmail = inviteRow?.recipient_email ?? null;
-
-  if (recipientEmail) {
-    const orgName = game.interleague_org?.name ?? "your league";
-    const ourTeam = game.home_team?.name ?? "Our team";
-    const theirTeam = game.external_team_name ?? "Your team";
-    const division = game.home_team?.division?.name ?? "";
-    const finalIso = updatePayload.scheduled_at ?? game.scheduled_at;
-    const finalVenue = game.is_away
-      ? (updatePayload.proposed_venue_name ?? game.proposed_venue_name ?? "your venue")
-      : (game.venue ? qualifiedVenueLabel(game.venue) : "TBD");
-    const matchup = game.is_away
-      ? `${ourTeam} AT ${orgName} (${theirTeam})`
-      : `${ourTeam} vs ${theirTeam}`;
-    const seasonLabel = game.league?.season
-      ? `${game.league.name} · ${game.league.season}`
-      : game.league?.name ?? "the season";
-
-    const subject = `Confirmed: ${matchup} on ${fmtIso(finalIso)}`;
-
-    const html = `<!doctype html>
-<html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;background:#f6f7f9;margin:0;padding:24px;">
-  <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-    <div style="background:#0C1F3F;padding:24px 28px;">
-      <img src="${SITE_URL}/brand/lockup-email-dark-2x.png" alt="FieldSlate" width="160" height="36" style="display:block;border:0;outline:none;text-decoration:none;" />
-      <p style="margin:2px 0 0;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Game confirmed</p>
-    </div>
-    <div style="padding:28px;">
-      <h1 style="margin:0 0 12px;font-size:20px;color:#0C1F3F;">
-        ${escapeHtml(matchup)}
-      </h1>
-      <p style="margin:0 0 12px;color:#4b5563;font-size:14px;">
-        Your counter-proposal for the ${escapeHtml(seasonLabel)} season has been resolved.
-        The final details are below.
-      </p>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;margin:14px 0 0;border:1px solid #eee;border-radius:6px;overflow:hidden;">
-        <tbody>
-          <tr><td style="padding:8px 12px;border-bottom:1px solid #eee;color:#6b7280;width:30%;">Division</td><td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(division || "—")}</td></tr>
-          <tr><td style="padding:8px 12px;border-bottom:1px solid #eee;color:#6b7280;">Date &amp; time</td><td style="padding:8px 12px;border-bottom:1px solid #eee;font-weight:600;">${escapeHtml(fmtIso(finalIso))}</td></tr>
-          <tr><td style="padding:8px 12px;color:#6b7280;">Venue</td><td style="padding:8px 12px;">${escapeHtml(finalVenue)}</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div style="padding:18px 28px;border-top:1px solid #f3f4f6;background:#fafafa;">
-      <p style="margin:0;color:#9ca3af;font-size:11px;">
-        FieldSlate · Scheduling for youth sports leagues.
-      </p>
-      <p style="margin:8px 0 0;color:#9ca3af;font-size:11px;line-height:1.5;">
-        Curious about FieldSlate for your own league?
-        <a href="${SITE_URL}/signup?promo=INTERLEAGUE&amp;utm_source=invite&amp;utm_medium=email" style="color:#22C55E;text-decoration:none;font-weight:600;">Try your first season for 20% off</a>.
-      </p>
-    </div>
-  </div>
-</body></html>`;
-
-    const text = [
-      `${matchup} — confirmed`,
-      "",
-      `Date & time: ${fmtIso(finalIso)}`,
-      `Venue: ${finalVenue}`,
-      division ? `Division: ${division}` : "",
-      "",
-      "— FieldSlate",
-      `Curious about FieldSlate for your own league? Try your first season for 20% off: ${SITE_URL}/signup?promo=INTERLEAGUE`,
-    ]
-      .filter((l) => l !== "")
-      .join("\n");
-
-    await sendEmail(recipientEmail, subject, html, text);
+  const invite = inviteRow as { recipient_email: string; schedule_token: string | null } | null;
+  if (!invite?.recipient_email) {
+    return NextResponse.json({
+      ok: true,
+      email: { sent: false, error: `No contact email is on file for ${partnerName}.` },
+    });
   }
 
-  return NextResponse.json({ ok: true });
+  const { data: ownerRaw } = await supabase
+    .from("profiles")
+    .select("org_name, full_name, email")
+    .eq("id", game.league.owner_id)
+    .maybeSingle();
+  const owner = ownerRaw as { org_name: string | null; full_name: string | null; email: string | null } | null;
+  const hostLeague = owner?.org_name?.trim() || owner?.full_name?.trim() || owner?.email || "The host league";
+
+  const finalIso = updatePayload.scheduled_at ?? game.scheduled_at;
+  const mail = resolvedEmail({
+    action,
+    hostLeague,
+    game: {
+      matchup: `${game.external_team_name ?? "Your team"} vs ${game.home_team?.name ?? "TBD"}`,
+      division: game.home_team?.division?.name ?? "—",
+      field: game.is_away
+        ? (updatePayload.proposed_venue_name ?? game.proposed_venue_name ?? null)
+        : game.venue ? qualifiedVenueLabel(game.venue) : null,
+      originalIso: game.scheduled_at,
+      partnerProposalIso: game.proposed_scheduled_at,
+    },
+    finalIso,
+    scheduleToken: invite.schedule_token,
+  });
+  const sent = await sendEmail(invite.recipient_email, mail.subject, mail.html, mail.text);
+  return NextResponse.json({
+    ok: true,
+    email: sent.ok ? { sent: true } : { sent: false, error: sent.error },
+  });
 }

@@ -317,12 +317,11 @@ export function ResolveEditModal({
                 {game.proposed_venue_name ? ` · ${game.proposed_venue_name}` : ""}
               </p>
             )}
-            {proposing && (
-              <p className="mt-1 text-xs text-gray-500">
-                {orgName} gets an email to accept it, suggest another time, or
-                decline. The game stays unconfirmed until they answer.
-              </p>
-            )}
+            <p className="mt-1 text-xs text-gray-500">
+              {proposing
+                ? `${orgName} gets an email to accept it, suggest another time, or decline. The game stays unconfirmed until they answer.`
+                : `This confirms the game at the time you choose. ${orgName} is emailed the new time; they aren't asked to agree. To ask them instead, use "Propose a different time".`}
+            </p>
           </div>
           <button
             type="button"
@@ -342,8 +341,8 @@ export function ResolveEditModal({
             {mode === "away_free_typed" && (
               <p className="text-sm text-gray-600">
                 This game is at {orgName}&rsquo;s field. We don&rsquo;t have their
-                hours or bookings, so enter the date, time and field you&rsquo;ve
-                agreed with them.
+                hours or bookings, so enter the date, time and field{" "}
+                {proposing ? "you want to suggest" : "you\u2019ve agreed with them"}.
               </p>
             )}
             {mode === "no_venue_free_typed" && (

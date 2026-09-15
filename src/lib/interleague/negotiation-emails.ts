@@ -172,3 +172,119 @@ export function hostWithdrewEmail(p: {
     text: textOf({ title, intro, rows, link: link ? `Your schedule: ${link}` : undefined }),
   };
 }
+
+// ── Resolve (host settles the time) → to the PARTNER ────────────────────────
+//
+// Replaces ONE "Confirmed … your counter-proposal has been resolved" email that
+// covered three different outcomes with no link. The partner is told WHICH
+// thing happened, because the three mean very different things to them:
+//   accept_proposal — their own time was accepted
+//   keep_original   — their time was not; the game is at the time first offered
+//   edit            — their time was not, and neither is the original: the host
+//                     chose a third time the partner never saw
+
+export type ResolveEmailAction = "accept_proposal" | "keep_original" | "edit";
+
+export function resolvedEmail(p: {
+  action: ResolveEmailAction;
+  hostLeague: string;
+  game: NegotiationGame;
+  finalIso: string;
+  scheduleToken: string | null;
+}): EmailParts {
+  const { hostLeague, game } = p;
+  const when = fmtWhen(p.finalIso);
+  let subject: string;
+  let title: string;
+  let intro: string;
+  let footnote: string | undefined;
+  if (p.action === "accept_proposal") {
+    subject = `Confirmed at your time: ${game.matchup}`;
+    title = `${hostLeague} accepted your proposed time`;
+    intro = `${game.matchup} (${game.division}) is confirmed for ${when} — the time you proposed.`;
+  } else if (p.action === "keep_original") {
+    subject = `Confirmed at the original time: ${game.matchup}`;
+    title = `${hostLeague} kept the original time`;
+    intro = `${hostLeague} couldn't make the time you proposed, so ${game.matchup} (${game.division}) is confirmed at the time first offered: ${when}.`;
+    footnote = "If that time doesn't work for you, you can request a change from your live schedule.";
+  } else {
+    subject = `Confirmed at a new time: ${game.matchup}`;
+    title = `${hostLeague} confirmed a different time`;
+    intro = `${hostLeague} couldn't make the time you proposed and confirmed ${game.matchup} (${game.division}) for ${when} — a new time, not the one you proposed and not the one first offered.`;
+    footnote = "If this time doesn't work for you, you can request a change from your live schedule.";
+  }
+  const rows: Row[] = [
+    { label: "Confirmed for", value: when, strong: true },
+    ...(game.field ? [{ label: "Field", value: game.field }] : []),
+    ...(p.action !== "accept_proposal" && game.partnerProposalIso
+      ? [{ label: "You proposed", value: fmtWhen(game.partnerProposalIso) }]
+      : []),
+    ...(p.action === "edit" ? [{ label: "First offered", value: fmtWhen(game.originalIso) }] : []),
+  ];
+  const link = p.scheduleToken ? scheduleUrl(p.scheduleToken) : null;
+  return {
+    subject,
+    html: layout({
+      kicker: "Game confirmed",
+      title,
+      intro,
+      rows,
+      button: link ? { href: link, label: "View your live schedule" } : undefined,
+      footnote,
+    }),
+    text: textOf({ title, intro, rows, link: link ? `Your live schedule: ${link}` : undefined, footnote }),
+  };
+}
+
+// ── The partner answered the host's time on a PENDING game → to the HOST ────
+//
+// Used only when the token function reports `was_pending`. Answers on a
+// confirmed game keep their existing "Reschedule …" emails, unchanged.
+
+export type PartnerAnswer = "accepted" | "declined" | "countered";
+
+export function partnerAnsweredEmail(p: {
+  answer: PartnerAnswer;
+  partnerName: string;
+  /** Host's view of the matchup ("{our team} vs {their team}"). */
+  matchup: string;
+  division: string;
+  hostTimeIso: string;
+  /** accepted: null. declined: the partner's proposal that still stands.
+   *  countered: the partner's NEW time. */
+  partnerTimeIso: string | null;
+  note: string | null;
+}): EmailParts {
+  const { partnerName, matchup, division } = p;
+  let subject: string;
+  let title: string;
+  let intro: string;
+  const rows: Row[] = [];
+  if (p.answer === "accepted") {
+    subject = `${partnerName} accepted your time: ${matchup}`;
+    title = `${partnerName} accepted your time`;
+    intro = `${matchup} (${division}) is confirmed for ${fmtWhen(p.hostTimeIso)}.`;
+    rows.push({ label: "Confirmed for", value: fmtWhen(p.hostTimeIso), strong: true });
+  } else if (p.answer === "declined") {
+    subject = `${partnerName} declined your suggested time: ${matchup}`;
+    title = `${partnerName} declined your suggested time`;
+    intro = `${matchup} (${division}) still isn't confirmed.${
+      p.partnerTimeIso ? ` Their own proposal still stands.` : ""
+    } Accept it, keep the original, set a time, or suggest another from Counter-proposed games on your dashboard.`;
+    rows.push({ label: "Your suggested time", value: fmtWhen(p.hostTimeIso) });
+    if (p.partnerTimeIso) rows.push({ label: "Their proposal", value: fmtWhen(p.partnerTimeIso), strong: true });
+  } else {
+    subject = `${partnerName} suggested another time: ${matchup}`;
+    title = `${partnerName} suggested another time`;
+    intro = `${matchup} (${division}) still isn't confirmed. Review their time in Counter-proposed games on your dashboard.`;
+    if (p.partnerTimeIso) rows.push({ label: "Their new time", value: fmtWhen(p.partnerTimeIso), strong: true });
+    rows.push({ label: "Your suggested time", value: fmtWhen(p.hostTimeIso) });
+    if (p.note) rows.push({ label: "Note", value: p.note });
+  }
+  const link = dashboardUrl();
+  return {
+    subject,
+    html: layout({ kicker: "Interleague game", title, intro, rows, button: { href: link, label: "Open Interleague dashboard" } }),
+    text: textOf({ title, intro, rows, link: `Dashboard: ${link}` }),
+  };
+}

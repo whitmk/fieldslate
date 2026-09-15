@@ -5,6 +5,7 @@ import {
   type RescheduleRequestPayload,
 } from "@/components/interleague/reschedule-form";
 import { InviteHeader, InviteFooter } from "@/components/interleague/invite-shell";
+import { respondPageCopy } from "@/lib/interleague/recipient-schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export default async function PublicReschedulePage({
   if (payload.request.status !== "pending") {
     return (
       <Shell>
-        <RescheduleNotFound message="This reschedule request has already been resolved." />
+        <RescheduleNotFound message="This has already been answered or withdrawn. Your live schedule shows where the game stands now." />
       </Shell>
     );
   }
@@ -51,8 +52,11 @@ export default async function PublicReschedulePage({
       <main className="flex-1">
         <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6 lg:px-8">
           <p className="mb-4 text-sm text-gray-500">
-            {senderName} is asking to move this interleague game. Review the
-            change and either accept, propose a different time, or decline.
+            {respondPageCopy({
+              pending: payload.game.status === "pending_interleague",
+              senderName,
+              round: (payload.proposal_count ?? 0) + 1,
+            }).intro}
           </p>
           <RescheduleForm token={params.token} payload={payload} />
         </div>

@@ -1695,7 +1695,7 @@ export function InterleaguePageClient({
                 onClick={async () => {
                   const ok = await resolveGame(declineTarget.id, {
                     action: "decline",
-                  });
+                  }, declineTarget.interleague_org?.name ?? "the other league");
                   if (ok) setDeclineTarget(null);
                 }}
                 disabled={resolvingId === declineTarget.id}
