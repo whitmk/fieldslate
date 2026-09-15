@@ -38,11 +38,23 @@
 //       does exactly that, and the final Saturday then offers its FULL grid —
 //       slots directly on top of both real games.
 //
+//   F9  CASE (d) — "occupied" REQUIRES REJECTIONS. The live AA shape: a
+//       division whose Wednesday window is 17:00–17:00 (zero length) at a field
+//       open 17:00–21:00. The field's hours fit a 90-minute game, so the old
+//       classifier reported the day "occupied" — "already booked" — with zero
+//       rejections behind it. It must now be `day_window_too_short`. F9b covers
+//       the non-zero sibling (window 10–12, field 13–17: the two never
+//       intersect), F9c pins that a GENUINELY full day still reads "occupied",
+//       F9d that team rejections at times no field could host do not count as
+//       candidates, and F9e (the mirror) that team rejections at times a field
+//       COULD host do. Mutant M13 restores `if (anyFits) occupied`.
+//
 // Plus: F6 team real-span occupancy (a team's 10:00 game blocks 10:15 on the
 // fine grid — the hole the 15-minute grid would otherwise open).
 
 import {
   buildAvailableSlots,
+  buildSlotsAndDiagnostics,
   candidateClearsSpan,
   spansOverlap,
   durationFromSettings,
@@ -82,6 +94,11 @@ const counters = {
   offeredSlots: 0,           // total slots offered across all fixtures
   scopeExcludedRows: 0,      // rows the occupancy date-scope correctly dropped
   scopeKeptFinalDay: 0,      // final-day rows the scope correctly KEPT
+  zeroLengthWindowCaseD: 0,  // F9: a 17:00–17:00 division window classified as (d)
+  nonIntersectingCaseD: 0,   // F9b: a non-empty window that misses the field hours
+  genuineOccupiedKept: 0,    // F9c: a truly booked day still classified as (c)
+  teamOnlyUnhostableCaseD: 0, // F9d: team rejections at unhostable times → (d), not (c)
+  teamFilledOccupied: 0,     // F9e: team rejections at HOSTABLE times → still (c)
 };
 
 // ── Fixture builder ───────────────────────────────────────────────────────────
@@ -470,6 +487,112 @@ console.log("\nF8  occupancy scope: a final-day game stays in scope and still bl
   assert(midSeason.length > 4 && midSeason[0] === "10:00", "F8: an unbooked in-scope date still offers its full grid");
 }
 
+// ══ F9 — CASE (d): "occupied" only when real candidates were rejected ═════════
+console.log("\nF9  case (d): zero-length division window is NOT 'already booked'");
+{
+  // 2026-09-16 is a Wednesday. The live AA division: We window 17:00–17:00,
+  // 90-minute games, 60-minute buffer, at a field open We 17:00–21:00.
+  const WED = "2026-09-16";
+  const aa = (over: Partial<BuildAvailableSlotsParams> = {}) =>
+    baseParams({
+      startDate: WED,
+      endDate: WED,
+      playingDays: ["We"],
+      dayWindows: { We: { start: "17:00", end: "17:00" } },
+      gameDuration: 90,
+      bufferMinutes: 60,
+      venueAvailability: { [VENUE]: parseAvailability({ We: { start: "17:00", end: "21:00" } }) },
+      ...over,
+    });
+
+  const r = buildSlotsAndDiagnostics(aa());
+  const d = r.diagnostics.get(WED);
+  assert(r.slots.length === 0, "F9: zero-length window offers no slots");
+  assert(
+    d?.kind === "day_window_too_short",
+    `F9: 17:00–17:00 window at a field open 17:00–21:00 → day_window_too_short (got ${d?.kind})`,
+  );
+  assert(d?.kind !== "occupied", "F9: it is NOT reported as occupied / 'already booked'");
+  if (d?.kind === "day_window_too_short") {
+    counters.zeroLengthWindowCaseD++;
+    assert(
+      d.window.start === "17:00" && d.window.end === "17:00" && d.governedBy === "division" && d.durationMin === 90,
+      "F9: (d) carries the division's real window, who governs it, and the span",
+    );
+  }
+
+  // F9b — a non-empty division window that never intersects the field's hours.
+  const rb = buildSlotsAndDiagnostics(
+    aa({
+      dayWindows: { We: { start: "10:00", end: "12:00" } },
+      venueAvailability: { [VENUE]: parseAvailability({ We: { start: "13:00", end: "17:00" } }) },
+    }),
+  );
+  const db = rb.diagnostics.get(WED);
+  assert(
+    db?.kind === "day_window_too_short",
+    `F9b: window 10–12 vs field 13–17 → day_window_too_short (got ${db?.kind})`,
+  );
+  if (db?.kind === "day_window_too_short") counters.nonIntersectingCaseD++;
+
+  // F9c — a GENUINELY full day still reads occupied, with rejections behind it.
+  const rc = buildSlotsAndDiagnostics(
+    aa({
+      dayWindows: { We: { start: "17:00", end: "21:00" } },
+      venueBookings: new Map([[`${VENUE}:${WED}`, [{ startMin: 17 * 60, durationMin: 240 }]]]),
+    }),
+  );
+  const dc = rc.diagnostics.get(WED);
+  assert(dc?.kind === "occupied", `F9c: a field booked all evening → still occupied (got ${dc?.kind})`);
+  if (dc?.kind === "occupied") {
+    counters.genuineOccupiedKept++;
+    assert(dc.venueBookingRejections > 0, "F9c: occupied carries the booking rejections it saw");
+  }
+
+  // F9d — the team already plays at 10:00 and the division window (10–12) never
+  // meets the field's hours (13–17). Team rejections happened, but at times no
+  // field could host: that is still (d), not "these teams are already playing".
+  const rd = buildSlotsAndDiagnostics(
+    aa({
+      dayWindows: { We: { start: "10:00", end: "12:00" } },
+      venueAvailability: { [VENUE]: parseAvailability({ We: { start: "13:00", end: "17:00" } }) },
+      maxPerTeamDay: 2,
+      homeTeamSpans: new Map([[WED, [{ startMin: 600, durationMin: 120 }]]]),
+    }),
+  );
+  const dd = rd.diagnostics.get(WED);
+  assert(
+    dd?.kind === "day_window_too_short",
+    `F9d: team rejections at unhostable times do not make the day occupied (got ${dd?.kind})`,
+  );
+  if (dd?.kind === "day_window_too_short") counters.teamOnlyUnhostableCaseD++;
+
+  // F9e — the mirror of F9d. Window and field both 17:00–21:00, nothing booked,
+  // but the home team plays all evening. Every hostable time is rejected by the
+  // team, so real candidates existed: this IS occupied ("these teams are already
+  // playing"). Exists for mutant M15, which counts candidates only after the
+  // team checks pass.
+  const re = buildSlotsAndDiagnostics(
+    aa({
+      dayWindows: { We: { start: "17:00", end: "21:00" } },
+      maxPerTeamDay: 2,
+      homeTeamSpans: new Map([[WED, [{ startMin: 17 * 60, durationMin: 240 }]]]),
+    }),
+  );
+  const de = re.diagnostics.get(WED);
+  assert(
+    de?.kind === "occupied",
+    `F9e: team playing through every hostable time → occupied, not (d) (got ${de?.kind})`,
+  );
+  if (de?.kind === "occupied") {
+    counters.teamFilledOccupied++;
+    assert(
+      de.teamRejections > 0 && de.venueBookingRejections === 0,
+      "F9e: occupied is attributed to the team, not to bookings",
+    );
+  }
+}
+
 // ── Anti-vacuity gate ────────────────────────────────────────────────────────
 console.log("\nAnti-vacuity counters");
 for (const [name, n] of Object.entries(counters)) {
@@ -567,3 +690,37 @@ process.exit(failures === 0 ? 0 : 1);
 //      → KILLED at F8 "midnight on the FIRST day is IN scope".
 //
 // All 13 killed at their own assertion. Suite re-verified green after revert.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ADDENDUM 2026-09-14 — case (d), "occupied" requires rejections. Same criterion.
+// The venue loop now iterates a per-time `hostable` list (fields open for the
+// whole span) computed before the team checks; M8 above therefore now lives in
+// that filter and is re-proven as M14.
+//
+// M13  ★ Collapse (d) back into (c) — the pre-change classifier:
+//        if (anyFits) { occupied }   (instead of `if (candidatePairs > 0)`)
+//      → KILLED at F9 "17:00–17:00 window … → day_window_too_short (got
+//        occupied)" + F9 "it is NOT reported as occupied", F9b and F9d, with
+//        the three (d) counters at zero. This is the live AA Wednesday bug.
+//
+// M14  Hostable ignores the field's hours (`hostable = participating`)
+//      → KILLED at F4 "venue close truncates independently of the division
+//        window" (the old M8 kill line) + F9b "window 10–12 vs field 13–17".
+//
+// M15  Count candidates only AFTER the team checks pass (increment moved below
+//      the team `continue`s)
+//      → KILLED at F9e "team playing through every hostable time → occupied"
+//        — and nothing else. F9e exists solely for this mutant.
+//
+// M15a Never count candidates (increment deleted)
+//      → KILLED at F9c "a field booked all evening → still occupied" + F9e, and
+//        sim:makeup-days "CASE (c): all booked → occupied".
+//
+// Differential proof (not committed; scratchpad script): the pre-change builder
+// and this one run over 20,000 seeded random fixtures (253,429 dated
+// diagnostics, 267,496 offered slots). Offered slots: byte-identical in every
+// fixture. Diagnostics: identical on every date EXCEPT 28,063 that moved
+// `occupied` → `day_window_too_short`, and on every one of those the old
+// diagnostic carried ZERO venue-booking rejections (26,753 had no rejections of
+// any kind; 1,310 had only team rejections at times no field could host). That
+// is the complete behavior change: nothing moved except days that were wrong.

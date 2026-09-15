@@ -253,8 +253,24 @@ export function candidateClearsSpan(
  *                      because the remedy differs: widen the window you have,
  *                      not open one you don't. Without this the picker sends an
  *                      admin to add hours to a field that already has them.
- *   occupied         — case (c): a field could have fitted, but every candidate
- *                      was taken. Nothing is misconfigured; the day is full.
+ *   occupied         — case (c): at least one real candidate (a start time the
+ *                      day's window allows, at a field open for the whole span)
+ *                      existed, and every one was rejected by a booking, a team
+ *                      conflict or a team constraint. Nothing is misconfigured;
+ *                      the day is full.
+ *   day_window_too_short
+ *                    — case (d): a field's own hours COULD fit the game, but no
+ *                      start time on the day's window put the whole span inside
+ *                      those hours — so there was never a candidate to reject.
+ *                      The live shape: a division whose Wednesday window is
+ *                      17:00–17:00 at a field open 17:00–21:00. Before (d)
+ *                      existed that day was reported as (c), "already booked",
+ *                      with ZERO rejections behind it — a confidently wrong
+ *                      message on a day nothing was booked.
+ *
+ * (c) REQUIRES REJECTIONS. "occupied" is written only when the walk produced a
+ * candidate; a field that fits in principle is not enough. Do not collapse (d)
+ * back into (c) — mutant M13 in sim:reschedule-slots does exactly that.
  *
  * `blackout` and `team_cap` are date-specific rather than configuration, and
  * are reported separately so they are not mistaken for either.
@@ -267,6 +283,16 @@ export type DayDiagnostic =
       kind: "window_too_short";
       /** The open-but-too-short fields, for a message that can name them. */
       venues: { venueId: string; venueName: string; start: string; end: string }[];
+    }
+  | {
+      kind: "day_window_too_short";
+      /** The window the time loop walked, "HH:MM". On a playing day this is the
+       *  DIVISION's window for that weekday; on a makeup-only day it is the
+       *  union of the makeup-flagged fields' hours (see `governedBy`). */
+      window: { start: string; end: string };
+      governedBy: "division" | "makeup_union";
+      /** The placing game's span, so a message can say why it did not fit. */
+      durationMin: number;
     }
   | {
       kind: "occupied";
@@ -467,6 +493,10 @@ export function buildSlotsAndDiagnostics(
         // Counted during the walk, never inferred afterwards.
         let venueBookingRejections = 0;
         let teamRejections = 0;
+        // (time, field) pairs that were REAL candidates: inside the day's window
+        // AND inside that field's hours for the whole span. Case (c) "occupied"
+        // is only true when at least one existed — see DayDiagnostic.
+        let candidatePairs = 0;
         const slotsBefore = slots.length;
 
         // Full span must fit inside the division window, so the last candidate
@@ -478,6 +508,18 @@ export function buildSlotsAndDiagnostics(
         ) {
           const wallTime = minsToHHMM(timeMin);
           const isoString = `${date}T${wallTime}:00`;
+
+          // Which fields could host this start for the whole span? Asked BEFORE
+          // the team checks (all pure) so a team rejection at a time no field
+          // could host is not mistaken for a real candidate. This changes no
+          // offered slot and no rejection count — it only feeds candidatePairs.
+          // On a MAKEUP-ONLY day only the flagged fields participate: a field
+          // that merely happens to be open that day was never offered for
+          // rained-out games. On a playing day every field participates.
+          const hostable = participating.filter((venueId) =>
+            isVenueAvailable(venueAvailability[venueId]!, dayKey, wallTime, duration),
+          );
+          candidatePairs += hostable.length;
 
           // Neither team may already be playing across this span. Real-span,
           // not exact-timestamp: on a 15-minute grid a team's 10:00 game must
@@ -491,18 +533,8 @@ export function buildSlotsAndDiagnostics(
           if (violatesHardConstraint(constraintRules, homeTeamId, isoString)) { teamRejections++; continue; }
           if (violatesHardConstraint(constraintRules, awayTeamId, isoString)) { teamRejections++; continue; }
 
-          // Each venue: must be open for the full span (per venue.availability)
-          // and free of overlapping games at this wall time.
-          for (const venueId of venueIds) {
-            const av = venueAvailability[venueId];
-            if (!av) continue;
-            // On a MAKEUP-ONLY day only the flagged fields participate: a field
-            // that merely happens to be open that day was never offered for
-            // rained-out games. On a playing day every field participates as
-            // before.
-            if (!playsToday && !isMakeupDay(av, dayKey)) continue;
-            if (!isVenueAvailable(av, dayKey, wallTime, duration)) continue;
-
+          // Each hostable venue must be free of overlapping games at this time.
+          for (const venueId of hostable) {
             const booked = venueBookings.get(`${venueId}:${date}`) ?? [];
             const clear = booked.every((occ) =>
               candidateClearsSpan(timeMin, duration, buffer, occ),
@@ -517,17 +549,30 @@ export function buildSlotsAndDiagnostics(
 
         if (slots.length === slotsBefore) {
           // Nothing came out. Which gate closed?
-          //   anyFits  → a field could have hosted it, so the day is FULL (c).
-          //   tooShort → a field is open and flagged but cannot fit the span (b).
-          //   neither  → nothing open and flagged at all (a).
+          //   candidatePairs > 0 → real candidates existed and all were
+          //                        rejected, so the day is FULL (c).
+          //   anyFits            → a field's hours fit the span, but no start
+          //                        on the day's window landed inside them —
+          //                        never a candidate to reject (d).
+          //   tooShort           → a field is open and flagged but cannot fit
+          //                        the span (b).
+          //   neither            → nothing open and flagged at all (a).
           // Ordered so (c) wins over (b): if ANY field could have taken the
           // game, the day is occupied, and telling the admin to widen a
-          // different field's window would be wrong.
-          if (anyFits) {
+          // different field's window would be wrong. (d) sits between them
+          // for the same reason — the fitting field is the one that matters.
+          if (candidatePairs > 0) {
             diagnostics.set(date, {
               kind: "occupied",
               venueBookingRejections,
               teamRejections,
+            });
+          } else if (anyFits) {
+            diagnostics.set(date, {
+              kind: "day_window_too_short",
+              window: { start: minsToHHMM(earliest), end: minsToHHMM(latest) },
+              governedBy: playsToday ? "division" : "makeup_union",
+              durationMin: duration,
             });
           } else if (tooShort.length > 0) {
             diagnostics.set(date, { kind: "window_too_short", venues: tooShort });

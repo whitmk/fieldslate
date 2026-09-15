@@ -160,6 +160,26 @@ function DiagnosticRow({ summary }: { summary: DaySummary }) {
     );
   }
 
+  if (diagnostic.kind === "day_window_too_short") {
+    // CASE (d). A field's hours could fit the game, but no start time on the
+    // day's window lands inside them. Before (d) existed this rendered as case
+    // (c), "already booked", with nothing booked.
+    const { window: w, governedBy, durationMin } = diagnostic;
+    const tooShort = toMins(w.end) - toMins(w.start) < durationMin;
+    return (
+      <div className="px-6 py-2.5">
+        <p className="text-xs text-amber-700">
+          <span className="font-medium">{label}</span> —{" "}
+          {governedBy === "division"
+            ? tooShort
+              ? `this division's game window is ${fmt12(w.start)}–${fmt12(w.end)}, which isn't long enough for a ${durationMin}-minute game.`
+              : `this division's game window (${fmt12(w.start)}–${fmt12(w.end)}) doesn't line up with the field hours for a ${durationMin}-minute game.`
+            : `no start time fits a ${durationMin}-minute game inside the makeup fields' hours.`}
+        </p>
+      </div>
+    );
+  }
+
   if (diagnostic.kind === "blackout") {
     return (
       <div className="px-6 py-2.5">
