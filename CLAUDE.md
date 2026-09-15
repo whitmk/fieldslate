@@ -51,7 +51,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0087.** The repo files are the record, not the
+  **Latest migration: 0089.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -1338,8 +1338,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 
 - **`venues.availability` gains a per-day `makeup?` boolean** — sibling to
   `practice`, same jsonb, no schema change. It means "rained-out games may be
-  rescheduled onto this field on this day". Read by the rainout reschedule
-  picker and NOTHING else.
+  rescheduled onto this field on this day". Honored by the rainout reschedule
+  picker and NOTHING else. (The interleague counter-proposal picker reads it
+  only to CLEAR it — `stripMakeup` — because a counter-proposal is not a
+  rainout; see "Interleague counter-proposal picker".)
 - **`makeup` DEFAULTS FALSE. `practice` DEFAULTS TRUE. The two are opposite ON
   PURPOSE — do not "make them consistent".** `practice` defaults true because
   every pre-existing venue was already practice-usable and must stay so;
@@ -1381,18 +1383,34 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   is not a derived game day. Open Friday + Practice off + Makeup on is exactly
   what an admin needs here. `makeup` now counts as a purpose. If you add a
   third kind of day-purpose, add it to that guard too.
-- **THREE EMPTY-STATE CASES, NOT TWO.** `isVenueAvailable` returns one `false`
-  for two different situations, so the picker separates them via `venueDayFit`
-  (closed / too_short / fits):
+- **FOUR EMPTY-STATE CASES (three until 2026-09-14).** `isVenueAvailable`
+  returns one `false` for two different situations, so the picker separates
+  them via `venueDayFit` (closed / too_short / fits):
   - `no_field` — nothing open and makeup-flagged. Links to the Venues page.
   - `window_too_short` — a field IS open and flagged but cannot fit the span.
     **This is the one that matters**: without it a too-short window renders as
     `no_field` and tells the admin to add hours to a field that already has
     them. Names the field and its real hours. Mutant M7 collapses it and dies.
-  - `occupied` — a field could have hosted it; everything is taken.
-    Informational, quieter, NO link. Ordered BEFORE `too_short`: if any field
-    could have taken the game, the day is full.
+  - `occupied` — REAL candidates existed (a start inside the day's window at a
+    field open for the whole span) and every one was rejected by a booking, a
+    team game or a team constraint. Informational, quieter, NO link. Ordered
+    BEFORE `too_short`: if any field could have taken the game, the day is full.
+  - `day_window_too_short` (added 2026-09-14) — a field's hours COULD fit the
+    span, but no start on the day's window landed inside them, so there was
+    never a candidate to reject. Carries the window, `governedBy`
+    (`division` | `makeup_union`) and the span. **Before it existed this was
+    reported as `occupied` — "already booked" — with zero rejections behind
+    it.** Live trigger: SRALL Fall 2026 AA's Wednesday window is 17:00–17:00
+    at a field open 17:00–21:00, so the rainout picker told admins every
+    Wednesday was booked. **`occupied` REQUIRES rejections; never collapse
+    this back** (mutant M13 in `sim:reschedule-slots`; M7 in
+    `sim:interleague-picker`). Differential proof over 20,000 seeded fixtures:
+    offered slots byte-identical, and the only diagnostics that moved were
+    28,063 `occupied` → `day_window_too_short`, none carrying a single
+    venue-booking rejection.
   `blackout` and `team_cap` are reported separately — date facts, not config.
+  The weekday roll-up of these is `summarizeByWeekday` in `reschedule-slots.ts`,
+  shared by both pickers (moved verbatim from the rainout modal).
 - **`dayWindowBounds` is the SINGLE definition of a day's window.** Both
   `isVenueAvailable` (does THIS start fit?) and `venueDayFit` (could ANY start
   fit?) are expressed in terms of it so they cannot drift. Never re-derive
@@ -1928,6 +1946,104 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `interleague_orgs.field_count` (the schedule generator caps same-day away
   games per partner org).
 
+## Interleague counter-proposal picker
+
+- **The "Edit" action on a counter-proposed game (`/dashboard/interleague`)
+  opens on a PICKER of real available times, not a free-typed field**
+  (2026-09-14). Component: `src/components/interleague/resolve-edit-modal.tsx`;
+  assembly, fail-closed decisions and every empty-day sentence:
+  `src/lib/schedule/interleague-resolve-picker.ts` (pure, sim-driven). Slots
+  come from `buildSlotsAndDiagnostics` — the rainout picker's model. **Do NOT
+  use `findFreeSlot`** (conflict-resolver-modal.tsx) here or anywhere new: it
+  reads the legacy earliest/latest band and honors neither per-day windows nor
+  makeup days.
+- **THIS REVERSES THE JULY RULE FOR THIS SURFACE ONLY.** Manual surfaces stayed
+  free-typed as the human-override escape hatch; that still holds for Add Game
+  and the conflict resolver's manual move (warn-with-override). It does NOT
+  hold here, because an interleague game has ANOTHER LEAGUE on the other end:
+  a guessed time that bounces off the gate costs the partner a round trip, and
+  a time that lands is an email to them. The free-typed field survives only as
+  a secondary last resort behind "Enter a time manually", below the list — an
+  admin must choose it deliberately. Typed times go through the same gates.
+- **ONE FIELD: the game's current venue.** The resolve route writes
+  `scheduled_at` and NEVER `venue_id`, and both server gates
+  (`gateRescheduleVenue`, `gateRescheduleOccupancy`) read the venue off the
+  stored row. Offering another field would save the time while the gates
+  tested the OLD field — a wrong answer dressed as a feature. It is also the
+  field the partner was told. Offering other fields means changing the route,
+  both gates and the 0088 RPC (which takes no venue argument) together.
+- **AWAY GAMES ARE FREE-TYPED BY DESIGN, not as a fallback.** Mode is keyed on
+  `venue_id` (null ⇒ no field of ours), NEVER `is_away` — same key as the
+  occupancy gate. A null venue is the partner's field: we have neither its
+  hours nor its bookings, so there are no times we could honestly call
+  "available", and a time-only picker would label guesses. The form carries a
+  line saying so. (Live: 24/24 away games have null venue_id.)
+- **NO MAKEUP DAYS.** Flags are cleared (`stripMakeup`) before the build — the
+  flag means "a rained-out game may move here" and a counter-proposal is not a
+  rainout. A non-playing weekday therefore reads as "AA doesn't play on …".
+- **Our team only.** `away_team_id` is null on every interleague game, so the
+  partner team's checks match nothing; team constraints are home-team-only for
+  interleague (see Team game constraints).
+- **The picker must never offer a time the gate refuses.** Duration is
+  `durationFromSettings`, buffer is the occupancy gate's own `bufferFromRaw`
+  (exported for this; body unchanged), occupancy scope matches the 0088 RPC
+  (same field, not self, not cancelled, pending_interleague included,
+  date-bounded never league-bounded, `fetchAllRows`). The picker is STRICTER
+  than the server — it also enforces playing days, the division window, our
+  team's other games and constraints — so it can hide times the server allows.
+  `sim:interleague-picker` runs the real `gateRescheduleOccupancy` over every
+  in-window grid time and requires exact agreement.
+- **KNOWN, NOT FIXED — the gate resolves a missing buffer to 0.** The 0088 RPC
+  emits `buffer_minutes` as JSON `null` when a division has none, and
+  `bufferFromRaw(null)` is `Number(null)` = 0 — not the 15 its own comment
+  says it mirrors. The picker reads the raw setting (`undefined` → 15), so it
+  is stricter in that case (safe direction). Unreachable live: every division
+  sets `buffer_minutes`. The sim pins the current gate behavior as `[KNOWN]`;
+  fixing the gate flips that assertion — update it and this bullet together.
+- **EVERY READ FAILS CLOSED** — division, field, blackout dates, games at the
+  field, our team's games, constraints. An error (even one arriving WITH
+  partial rows) renders "Couldn't load …, so no times are shown" + Retry, never
+  an empty list. A skipped read is the `NOT_ATTEMPTED` placeholder, which is an
+  ERROR so reaching it still fails closed.
+- **Empty days, exact wording** (per weekday, only when every date of that
+  weekday produced nothing; "config" lines amber, "info" lines grey):
+  - field closed: "{Field} is closed that day." (+ Venues link)
+  - field too short: "{Field} is open 9am–10am, which isn't long enough for
+    this game." (+ Venues link)
+  - day window too short: "{Division}'s game window that day is 5pm–5pm, which
+    isn't long enough for a 90-minute game." — or, when the window is long
+    enough but misses the field's hours: "{Division}'s game window that day
+    (6am–8am) doesn't overlap {Field}'s hours enough for a 90-minute game."
+  - occupied (bookings): "{Field} is already booked at every time that fits
+    (N dates)."
+  - occupied (team): "{Team} already has a game or a scheduling block at every
+    time {Field} is free (N dates)."
+  - blackout: "blacked out (N dates)." · team cap: "{Team} already has a game
+    that day (N dates)."
+  - non-playing days merge into ONE line: "{Division} doesn't play on Mondays,
+    Tuesdays, Thursdays, Fridays or Sundays."
+  Plus whole-picker states: unconfigured field, division without dates, and
+  "season has no dates left to schedule".
+- **A gate refusal renders INSIDE the modal** (it used to land in the page
+  behind the overlay). The route's message already names what is in the way.
+- **Harness: `npm run sim:interleague-picker`** (TZ=UTC) — 84 assertions, 19
+  anti-vacuity counters (each empty-day reason, the live zero-length window,
+  the away and no-venue branches, every fail-closed read, makeup stripping),
+  10 mutants each killed at its own assertion (occupancy filter removed,
+  buffer removed, buffer fallback diverged, empty states collapsed, makeup not
+  stripped, venueGames error fails open, mode keyed on is_away, case (d)
+  collapsed, NaN duration, blackout error swallowed). It does NOT exercise the
+  Supabase queries themselves (the fake client doesn't model the projected-key
+  embed); the embed was validated against live PostgREST.
+- **Rainout modal issues noticed, NOT fixed (separate work):** it swallows the
+  `blackout_dates` read error (a failed read offers blacked-out dates), and it
+  computes `Number(s.game_duration ?? 90)` / `Number(s.buffer_minutes ?? 15)`,
+  which are NaN for a non-numeric setting. This picker does neither.
+- **Finding C, NOT fixed:** a typed edit (or Accept proposal) can still save a
+  day the division doesn't play — neither server gate checks playing days. The
+  live AA proposal for Tue 2026-09-29 would pass both gates. The picker never
+  offers such a day.
+
 ## Officials / umpires
 
 - **Schema map:** `umpires` roster is per-season (0023, `season_id` NOT NULL);
@@ -2102,7 +2218,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `team_constraint` (CHECK extended in 0077); the rainout reschedule modal
   and the resolver's auto-move `findFreeSlot` are pick-from-valid surfaces,
   so blocked slots are FILTERED out with no override path — keep that
-  asymmetry. `prefer` hits render live amber notices on Add Game and the
+  asymmetry. (The interleague counter-proposal Edit is ALSO pick-from-valid
+  since 2026-09-14, with a deliberately subordinate free-typed fallback — see
+  "Interleague counter-proposal picker" for why that surface left the
+  free-typed camp while Add Game and the manual move stay in it.) `prefer` hits render live amber notices on Add Game and the
   resolver move form and are deliberately recorded NOWHERE. Message wording
   comes from the shared `formatConstraintRule` — don't hand-write rule
   descriptions. Rules fetch: once per modal-open in the resolver (all teams
@@ -2154,6 +2273,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   input value to the DB.
 
 ## Open items
+
+- **Rainout reschedule modal: swallowed `blackout_dates` error + NaN-prone
+  duration/buffer parsing; occupancy gate: null buffer resolves to 0.** All
+  three found 2026-09-14 during the interleague picker work and deliberately
+  left alone — details under "Interleague counter-proposal picker".
+- **Resolve route / accept-proposal can save onto a non-playing day** (Finding
+  C, same section). Neither server gate checks the division's playing days.
 
 - **Dead-column cleanup (backlog, no reader/writer).** `divisions.practice_venue_id`
   (no UI picker anywhere, 1 live row) and `venues.venue_type` (read/written
