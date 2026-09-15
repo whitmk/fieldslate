@@ -52,6 +52,7 @@
 
 import {
   DAY_KEYS,
+  dayKeyFromIsoDate,
   isMakeupDay,
   isVenueAvailable,
   venueDayFit,
@@ -589,4 +590,56 @@ export function buildSlotsAndDiagnostics(
   // Chronological, then venue name
   slots.sort((a, b) => a.isoString.localeCompare(b.isoString) || a.venueName.localeCompare(b.venueName));
   return { slots, diagnostics };
+}
+
+// ── Weekday roll-up of empty days ─────────────────────────────────────────────
+//
+// Diagnostics arrive PER DATE, which is the honest granularity — a blackout or a
+// team cap belongs to one date. But a season holds ~10 Sundays that all fail for
+// the identical reason, and ten identical rows is noise, so the rendering rolls
+// them up by DAY OF WEEK. A weekday appears only when EVERY one of its dates in
+// range produced nothing; the reason shown is the one that occurred most often.
+//
+// Moved here VERBATIM from rainout-reschedule-modal.tsx (2026-09-14) so the
+// interleague resolve picker shares it. Byte-for-byte the same body; the
+// pre-move copy was proven equivalent over a seeded differential run.
+export type DaySummary = {
+  day: DayKey;
+  diagnostic: DayDiagnostic;
+  dateCount: number;
+};
+
+export function summarizeByWeekday(
+  diagnostics: DayDiagnostics,
+  slots: SlotOption[],
+): DaySummary[] {
+  const datesWithSlots = new Set(slots.map((s) => s.date));
+  const byDay = new Map<DayKey, DayDiagnostic[]>();
+  const dayHasSlots = new Set<DayKey>();
+
+  for (const date of datesWithSlots) dayHasSlots.add(dayKeyFromIsoDate(date));
+  for (const [date, d] of diagnostics) {
+    const day = dayKeyFromIsoDate(date);
+    const list = byDay.get(day);
+    if (list) list.push(d);
+    else byDay.set(day, [d]);
+  }
+
+  const out: DaySummary[] = [];
+  for (const day of DAY_KEYS) {
+    // A weekday that produced ANY slot is not an empty day — say nothing.
+    if (dayHasSlots.has(day)) continue;
+    const list = byDay.get(day);
+    if (!list || list.length === 0) continue;
+    const counts = new Map<string, number>();
+    for (const d of list) counts.set(d.kind, (counts.get(d.kind) ?? 0) + 1);
+    let topKind = list[0].kind;
+    let topN = 0;
+    for (const [kind, n] of counts) {
+      if (n > topN) { topN = n; topKind = kind as DayDiagnostic["kind"]; }
+    }
+    const representative = list.find((d) => d.kind === topKind) ?? list[0];
+    out.push({ day, diagnostic: representative, dateCount: list.length });
+  }
+  return out;
 }

@@ -8,11 +8,8 @@ import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
 import {
-  DAY_KEYS,
   DAY_LABELS,
-  dayKeyFromIsoDate,
   parseAvailability,
-  type DayKey,
   type VenueAvailability,
 } from "@/lib/venues/availability";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
@@ -24,9 +21,10 @@ import {
   buildSlotsAndDiagnostics,
   durationFromSettings,
   occupancyWindow,
+  summarizeByWeekday,
   toMins,
-  type DayDiagnostic,
   type DayDiagnostics,
+  type DaySummary,
   type OccupiedSpan,
   type SlotOption,
 } from "@/lib/schedule/reschedule-slots";
@@ -59,51 +57,8 @@ interface Props {
 
 // ── Empty-state explanation ───────────────────────────────────────────────────
 //
-// Diagnostics arrive PER DATE, which is the honest granularity — a blackout or a
-// team cap belongs to one date. But a season holds ~10 Sundays that all fail for
-// the identical reason, and ten identical rows is noise, so the rendering rolls
-// them up by DAY OF WEEK. A weekday appears only when EVERY one of its dates in
-// range produced nothing; the reason shown is the one that occurred most often.
-type DaySummary = {
-  day: DayKey;
-  diagnostic: DayDiagnostic;
-  dateCount: number;
-};
-
-function summarizeByWeekday(
-  diagnostics: DayDiagnostics,
-  slots: SlotOption[],
-): DaySummary[] {
-  const datesWithSlots = new Set(slots.map((s) => s.date));
-  const byDay = new Map<DayKey, DayDiagnostic[]>();
-  const dayHasSlots = new Set<DayKey>();
-
-  for (const date of datesWithSlots) dayHasSlots.add(dayKeyFromIsoDate(date));
-  for (const [date, d] of diagnostics) {
-    const day = dayKeyFromIsoDate(date);
-    const list = byDay.get(day);
-    if (list) list.push(d);
-    else byDay.set(day, [d]);
-  }
-
-  const out: DaySummary[] = [];
-  for (const day of DAY_KEYS) {
-    // A weekday that produced ANY slot is not an empty day — say nothing.
-    if (dayHasSlots.has(day)) continue;
-    const list = byDay.get(day);
-    if (!list || list.length === 0) continue;
-    const counts = new Map<string, number>();
-    for (const d of list) counts.set(d.kind, (counts.get(d.kind) ?? 0) + 1);
-    let topKind = list[0].kind;
-    let topN = 0;
-    for (const [kind, n] of counts) {
-      if (n > topN) { topN = n; topKind = kind as DayDiagnostic["kind"]; }
-    }
-    const representative = list.find((d) => d.kind === topKind) ?? list[0];
-    out.push({ day, diagnostic: representative, dateCount: list.length });
-  }
-  return out;
-}
+// The per-date diagnostics are rolled up by weekday via `summarizeByWeekday`
+// (reschedule-slots.ts), shared with the interleague resolve picker.
 
 function fmt12(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);

@@ -53,7 +53,10 @@ type DB = SupabaseClient<Database>;
  *  duration fallback so both live in one place rather than at call sites. */
 const DEFAULT_BUFFER_MINS = 15;
 
-function bufferFromRaw(raw: unknown): number {
+/** Exported so the interleague resolve picker applies the IDENTICAL buffer
+ *  fallback this gate applies — the picker must never offer a time the gate
+ *  would reject. Behavior unchanged; only the `export` keyword was added. */
+export function bufferFromRaw(raw: unknown): number {
   const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_BUFFER_MINS;
 }

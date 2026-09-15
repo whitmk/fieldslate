@@ -23,6 +23,10 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { InterleagueOrg, InterleagueInvite } from "@/types/database";
 import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
+import {
+  ResolveEditModal,
+  type ResolveEditGame,
+} from "@/components/interleague/resolve-edit-modal";
 import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
 import type { Plan } from "@/lib/plan/limits";
 
@@ -45,19 +49,12 @@ type SentInviteRow = InterleagueInvite & {
   org: { name: string } | null;
 };
 
-type CounterProposedGame = {
-  id: string;
-  scheduled_at: string;
+type CounterProposedGame = ResolveEditGame & {
   proposed_scheduled_at: string;
-  proposed_venue_name: string | null;
-  external_team_name: string | null;
-  is_away: boolean;
   home_team: {
     name: string;
-    division: { name: string; locked: boolean | null } | null;
+    division: { id: string; name: string; locked: boolean | null } | null;
   } | null;
-  venue: { name: string } | null;
-  interleague_org: { name: string } | null;
   league: { name: string; season: string | null } | null;
 };
 
@@ -554,124 +551,6 @@ function SendInviteModal({ org, season, onSent, onCapHit, onClose }: SendInviteM
   );
 }
 
-// ── Resolve / edit modal for counter-proposed games ───────────────────────────
-
-interface ResolveEditModalProps {
-  game: CounterProposedGame;
-  busy: boolean;
-  onSave: (payload: { scheduled_at: string; venue_name?: string }) => void;
-  onClose: () => void;
-}
-
-function ResolveEditModal({ game, busy, onSave, onClose }: ResolveEditModalProps) {
-  // Seed from proposal if there is one, else original.
-  const [datetime, setDatetime] = useState<string>(
-    isoToDatetimeLocal(game.proposed_scheduled_at ?? game.scheduled_at),
-  );
-  const [venueName, setVenueName] = useState<string>(
-    game.proposed_venue_name ?? game.venue?.name ?? "",
-  );
-
-  const isAway = game.is_away;
-  const canSave =
-    !!datetime &&
-    !busy &&
-    (!isAway || venueName.trim().length > 0);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={(e) => e.target === e.currentTarget && !busy && onClose()}
-    >
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <div>
-            <h2 className="text-base font-semibold text-[#0C1F3F]">Edit and confirm</h2>
-            <p className="mt-0.5 text-xs text-gray-500">
-              {game.home_team?.name ?? "—"}{" "}
-              <span className="mx-1 font-bold uppercase tracking-wider text-gray-400">
-                {isAway ? "AT" : "vs"}
-              </span>
-              {game.interleague_org?.name ?? "Other org"}
-              {game.external_team_name ? ` (${game.external_team_name})` : ""}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!canSave) return;
-            onSave({
-              scheduled_at: datetimeLocalToWallClockIso(datetime),
-              venue_name: isAway ? venueName.trim() : undefined,
-            });
-          }}
-          className="flex flex-col gap-4 px-6 py-5"
-        >
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">
-              Date &amp; time <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="datetime-local"
-              value={datetime}
-              onChange={(e) => setDatetime(e.target.value)}
-              required
-              className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-            />
-            <p className="text-[11px] text-gray-400">
-              Use the time as it will appear on the schedule (no timezone conversion).
-            </p>
-          </div>
-
-          {isAway && (
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-600">
-                Venue (host org) <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={venueName}
-                onChange={(e) => setVenueName(e.target.value)}
-                required
-                placeholder="e.g. Riverside Field A"
-                className="h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-              />
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={busy}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!canSave}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
-            >
-              {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {busy ? "Saving…" : "Confirm game"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 // ── Sent invite status badge ──────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
@@ -708,15 +587,6 @@ function fmtDateTime(iso: string): string {
   const period = hour >= 12 ? "PM" : "AM";
   const h12 = hour % 12 || 12;
   return `${dateStr}, ${h12}:${String(min).padStart(2, "0")} ${period}`;
-}
-
-function isoToDatetimeLocal(iso: string): string {
-  return iso.substring(0, 16);
-}
-
-function datetimeLocalToWallClockIso(local: string): string {
-  if (!local) return "";
-  return `${local}:00+00:00`;
 }
 
 function fmtSentDate(iso: string): string {
@@ -854,9 +724,9 @@ export function InterleaguePageClient({
         ? supabase
             .from("games")
             .select(
-              `id, scheduled_at, proposed_scheduled_at, proposed_venue_name,
-               external_team_name, is_away,
-               home_team:teams!home_team_id(name, division:divisions(name, locked)),
+              `id, league_id, home_team_id, venue_id, scheduled_at,
+               proposed_scheduled_at, proposed_venue_name, external_team_name, is_away,
+               home_team:teams!home_team_id(name, division:divisions(id, name, locked)),
                venue:venues(name),
                interleague_org:interleague_orgs(name),
                league:leagues!inner(name, season, owner_id)`
@@ -1570,6 +1440,7 @@ export function InterleaguePageClient({
         <ResolveEditModal
           game={editTarget}
           busy={resolvingId === editTarget.id}
+          error={resolveError}
           onSave={async ({ scheduled_at, venue_name }) => {
             const ok = await resolveGame(editTarget.id, {
               action: "edit",
