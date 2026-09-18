@@ -39,6 +39,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Status source:
   `curl https://api.github.com/repos/whitmk/fieldslate/commits/<sha>/status`
   (no `gh` installed).
+- **Vercel can silently drop a push.** A push that never gets a Vercel
+  deployment shows as a GitHub status stuck at `pending` with ZERO statuses
+  and zero check runs — not a slow build. Remedy: push a trivial follow-up
+  commit to re-fire the webhook; it deploys the tip, carrying the skipped
+  commit. Confirm the SHA on the Vercel dashboard, not only the status API.
+  (Happened 2026-09-15 with `a102f8c`; also reported earlier, ~2026-07-22.)
 - **Canonical domain is `https://www.thefieldslate.com` (with www).** The bare
   domain 307-redirects to www; Stripe webhooks and Supabase auth callbacks are
   configured against www only, so links that land users (or mail-client image
