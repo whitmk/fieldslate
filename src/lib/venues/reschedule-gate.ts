@@ -61,10 +61,28 @@ export async function gateRescheduleVenue(
       p_proposed_venue_name: proposedVenueName ?? null,
     },
   );
+  // FAIL CLOSED. This used to `return { ok: true }` on a read failure, which
+  // told every caller "the field's hours are fine" on the strength of a check
+  // that never ran — and the save went through.
+  //
+  // WHY NO venue_id / is_away CARVE-OUT HERE, unlike gateRescheduleOccupancy.
+  // That gate's RPC returns a real context for a venue-less game, so it must
+  // key its skip on `venue_id` explicitly. This RPC
+  // (get_game_venue_context_for_gate) returns null in exactly ONE case: the
+  // game row does not exist. Every legitimate shape comes back as an object and
+  // is skipped INSIDE the gate below — an away game via `is_away`, a venue-less
+  // game via a null `existing_venue`, an unmatched free-text label via a null
+  // `matched_venue`. So nothing legitimate travels through this branch, and a
+  // blanket refusal here cannot block a save that should have succeeded.
   if (error || !data) {
-    // RPC failure shouldn't block the request — let the endpoint's own
-    // game-existence check produce the right error. We just skip the gate.
-    return { ok: true };
+    return {
+      ok: false,
+      status: 500,
+      body: {
+        error:
+          "We couldn't check the field's hours, so the change wasn't saved. Please try again.",
+      },
+    };
   }
   const ctx = data as VenueContext;
 

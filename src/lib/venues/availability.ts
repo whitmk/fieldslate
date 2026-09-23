@@ -274,7 +274,10 @@ export type VenueGateResult =
   | { ok: true }
   | {
       ok: false;
-      status: 400;
+      /** 400 — the proposal itself is bad (venue shut, unconfigured hours).
+       *  500 — the CHECK could not run, so the caller must refuse rather than
+       *  assume the hours are fine (gateRescheduleVenue's fail-closed branch). */
+      status: 400 | 500;
       body: { error: string; venue?: string; day?: string; proposed_time?: string; venue_hours?: string };
     };
 
