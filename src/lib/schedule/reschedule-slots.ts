@@ -70,11 +70,43 @@ export const SLOT_GRID_MINUTES = 15;
  *  historical `game_duration ?? 90`. */
 export const DEFAULT_GAME_DURATION_MINS = 90;
 
+/** Why a slot is an exception to the division's normal rules. Present ONLY on
+ *  slots an override surfaced, so a surface can mark them and never let them
+ *  blend in with normal offers. */
+export type SlotException = "off_day" | "second_game";
+
 export interface SlotOption {
   isoString: string; // "YYYY-MM-DDTHH:MM:SS"
   venueId: string;
   venueName: string;
   date: string; // "YYYY-MM-DD"
+  /** OMITTED ENTIRELY on a normal slot — not an empty array. With both
+   *  overrides off the builder's output is byte-identical to the pre-override
+   *  tree, which the seeded differential in sim:picker-overrides pins. */
+  exceptions?: SlotException[];
+}
+
+/**
+ * Admin-chosen relaxations, both OFF by default (an absent object is off).
+ *
+ * Each lifts exactly ONE gate and nothing else: venue hours and occupancy, the
+ * arriving team's buffer, blackout dates, the team's own games and its
+ * team_game_constraints all still apply under both. Server-side nothing rejects
+ * what these surface — neither reschedule gate reads playing_days, and no route,
+ * gate or DB function reads max_games_per_team_per_day (verified 2026-09-23), so
+ * the picker cannot offer a time the server would refuse.
+ */
+export interface SlotOverrides {
+  /** Offer days the division does not normally play. On such a day the VENUE's
+   *  hours govern — the division's `playing_days`/`day_windows` are not
+   *  consulted for it. That is the settled makeup-day semantic, reused here
+   *  with a wider eligibility test (any field OPEN that day, not only
+   *  makeup-flagged ones) rather than a parallel branch. */
+  includeNonPlayingDays?: boolean;
+  /** Lift the per-day team cap. The team still cannot play two games that
+   *  OVERLAP — that is the span check, not this gate — and venue buffer still
+   *  separates games on the same field. */
+  allowSecondGameSameDay?: boolean;
 }
 
 /** An occupied wall-clock span on one calendar date, in minutes-from-midnight.
@@ -291,7 +323,12 @@ export type DayDiagnostic =
        *  DIVISION's window for that weekday; on a makeup-only day it is the
        *  union of the makeup-flagged fields' hours (see `governedBy`). */
       window: { start: string; end: string };
-      governedBy: "division" | "makeup_union";
+      /** "makeup_union" = the makeup-flagged fields' hours; "override_union" =
+       *  the hours of every field open that day, which only the
+       *  includeNonPlayingDays override can produce. A new value rather than a
+       *  rename of "makeup_union", so output with the overrides off is
+       *  unchanged. */
+      governedBy: "division" | "makeup_union" | "override_union";
       /** The placing game's span, so a message can say why it did not fit. */
       durationMin: number;
     }
@@ -336,6 +373,8 @@ export interface BuildAvailableSlotsParams {
   /** Injectable "today" (YYYY-MM-DD) so the sim is deterministic. Defaults to
    *  the real local clock, matching production behavior. */
   today?: string;
+  /** Absent = today's behavior exactly. See SlotOverrides. */
+  overrides?: SlotOverrides;
 }
 
 /**
@@ -383,6 +422,10 @@ export function buildSlotsAndDiagnostics(
     homeTeamId, awayTeamId, constraintRules,
   } = params;
 
+  // Both default OFF. Read once so every gate below reads the same value.
+  const includeNonPlayingDays = params.overrides?.includeNonPlayingDays === true;
+  const allowSecondGameSameDay = params.overrides?.allowSecondGameSameDay === true;
+
   const allowedDays = new Set(playingDays.map((d) => DAY_TO_JS[d]));
   const duration = Math.max(1, Number(gameDuration));
   const buffer = Math.max(0, Number(bufferMinutes) || 0);
@@ -406,19 +449,39 @@ export function buildSlotsAndDiagnostics(
   // stay on :00/:15/:30/:45 — but a venue opening at, say, 16:20 would anchor
   // the grid there and offer 16:20/16:35/16:50. That is not new behavior (a
   // division window opening at 16:20 does the same today), just newly reachable.
+  //
+  // THE OVERRIDE REUSES THIS EXACT MECHANISM. `includeNonPlayingDays` only
+  // widens which fields count as candidates on a non-playing day: a
+  // makeup-flagged field, or — under the override — any field OPEN that day.
+  // Bounds, per-venue narrowing and the grid are untouched, which is why the
+  // override needed no new branch. On a makeup day WITH the override on, the
+  // union therefore widens to every open field (a deliberate decision: the
+  // admin asked for the wider search), while with it off the makeup day
+  // behaves exactly as it always has.
+  const offDayWindowByDay = new Map<DayKey, { startMin: number; endMin: number }>();
+  /** The pre-override union: makeup-flagged fields only. Kept even when the
+   *  override is on, because it is the exact definition of "this slot would
+   *  have been offered anyway" — see the per-slot flag below. */
   const makeupWindowByDay = new Map<DayKey, { startMin: number; endMin: number }>();
   for (const day of DAY_KEYS) {
-    let lo = Number.POSITIVE_INFINITY;
-    let hi = Number.NEGATIVE_INFINITY;
+    let lo = Number.POSITIVE_INFINITY, hi = Number.NEGATIVE_INFINITY;
+    let mLo = Number.POSITIVE_INFINITY, mHi = Number.NEGATIVE_INFINITY;
     for (const venueId of venueIds) {
       const av = venueAvailability[venueId];
-      if (!av || !isMakeupDay(av, day)) continue;
+      if (!av) continue;
       const w = av[day];
       if (!w) continue;
+      const flagged = isMakeupDay(av, day);
+      if (flagged) {
+        mLo = Math.min(mLo, toMins(w.start));
+        mHi = Math.max(mHi, toMins(w.end));
+      }
+      if (!flagged && !includeNonPlayingDays) continue;
       lo = Math.min(lo, toMins(w.start));
       hi = Math.max(hi, toMins(w.end));
     }
-    if (lo <= hi) makeupWindowByDay.set(day, { startMin: lo, endMin: hi });
+    if (mLo <= mHi) makeupWindowByDay.set(day, { startMin: mLo, endMin: mHi });
+    if (lo <= hi) offDayWindowByDay.set(day, { startMin: lo, endMin: hi });
   }
 
   // Start from today (no point scheduling in the past)
@@ -435,12 +498,32 @@ export function buildSlotsAndDiagnostics(
 
     const dayKey = JS_TO_DAY[cur.getDay()] as DayKey;
     const playsToday = allowedDays.has(cur.getDay());
+    const offDayToday = offDayWindowByDay.get(dayKey);
     const makeupToday = makeupWindowByDay.get(dayKey);
+
+    // IS THIS PARTICULAR SLOT ONE THE OVERRIDE SURFACED? Per SLOT, not per day.
+    // A makeup day is offered with the override off, so its slots are not
+    // exceptions — but with the override ON that same day WIDENS to every open
+    // field and the whole of their hours, and those extra (field, time) pairs
+    // ARE new. Flagging the day as a whole would let them blend in with the
+    // pre-existing makeup offers, which is exactly what the flags exist to
+    // prevent. A slot is pre-existing iff its field is makeup-flagged AND its
+    // full span fits the makeup union the toggle-off loop would have walked.
+    const isOverrideSlot = (venueId: string, timeMin: number): boolean => {
+      if (playsToday) return false;
+      const av = venueAvailability[venueId];
+      if (!av || !isMakeupDay(av, dayKey)) return true;
+      return (
+        !makeupToday ||
+        timeMin < makeupToday.startMin ||
+        timeMin + duration > makeupToday.endMin
+      );
+    };
 
     // Every date in range is classified. A date that yields slots is deleted
     // from the map at the end of its iteration, so what remains is exactly the
     // empty days with the reason recorded where it happened.
-    if (!playsToday && !makeupToday) {
+    if (!playsToday && !offDayToday) {
       // Case (a) at the day gate: the division does not play, and no candidate
       // field is makeup-flagged. This is the Sunday case.
       diagnostics.set(date, { kind: "no_field" });
@@ -453,17 +536,31 @@ export function buildSlotsAndDiagnostics(
       const win = dayWindows[dayKey];
       const earliest = playsToday
         ? toMins(win?.start ?? earliestStart ?? "09:00")
-        : makeupToday!.startMin;
+        : offDayToday!.startMin;
       const latest = playsToday
         ? toMins(win?.end ?? latestStart ?? "17:00")
-        : makeupToday!.endMin;
+        : offDayToday!.endMin;
 
       const homeDayCount = homeTeamDayCounts.get(date) ?? 0;
       const awayDayCount = awayTeamDayCounts.get(date) ?? 0;
+      // At the cap the team is already playing today. The override offers the
+      // date anyway and marks what it offers; the overlap check below still
+      // stops two games at once.
+      const atTeamCap = homeDayCount >= maxPerTeamDay || awayDayCount >= maxPerTeamDay;
 
-      if (homeDayCount >= maxPerTeamDay || awayDayCount >= maxPerTeamDay) {
+      if (atTeamCap && !allowSecondGameSameDay) {
         diagnostics.set(date, { kind: "team_cap" });
       } else {
+        // The cap is a per-DATE fact; the off-day flag is per SLOT (above).
+        const isSecondGameDay = atTeamCap;
+        const exceptionsFor = (venueId: string, timeMin: number): SlotException[] | undefined => {
+          const offDay = isOverrideSlot(venueId, timeMin);
+          if (!offDay && !isSecondGameDay) return undefined; // normal slot: no key at all
+          return [
+            ...(offDay ? (["off_day"] as const) : []),
+            ...(isSecondGameDay ? (["second_game"] as const) : []),
+          ];
+        };
         const homeSpans = homeTeamSpans.get(date) ?? [];
         const awaySpans = awayTeamSpans.get(date) ?? [];
 
@@ -473,7 +570,10 @@ export function buildSlotsAndDiagnostics(
         const participating = venueIds.filter((venueId) => {
           const av = venueAvailability[venueId];
           if (!av) return false;
-          return playsToday || isMakeupDay(av, dayKey);
+          // On a playing day every field participates. Off a playing day only
+          // makeup-flagged fields do — unless the override is on, when any
+          // field with hours that day does.
+          return playsToday || isMakeupDay(av, dayKey) || (includeNonPlayingDays && !!av[dayKey]);
         });
         const tooShort: { venueId: string; venueName: string; start: string; end: string }[] = [];
         let anyFits = false;
@@ -541,7 +641,11 @@ export function buildSlotsAndDiagnostics(
               candidateClearsSpan(timeMin, duration, buffer, occ),
             );
             if (clear) {
-              slots.push({ isoString, venueId, venueName: venueNames[venueId] ?? venueId, date });
+              const exceptions = exceptionsFor(venueId, timeMin);
+              slots.push({
+                isoString, venueId, venueName: venueNames[venueId] ?? venueId, date,
+                ...(exceptions ? { exceptions } : {}),
+              });
             } else {
               venueBookingRejections++;
             }
@@ -572,7 +676,11 @@ export function buildSlotsAndDiagnostics(
             diagnostics.set(date, {
               kind: "day_window_too_short",
               window: { start: minsToHHMM(earliest), end: minsToHHMM(latest) },
-              governedBy: playsToday ? "division" : "makeup_union",
+              governedBy: playsToday
+                ? "division"
+                : includeNonPlayingDays
+                  ? "override_union"
+                  : "makeup_union",
               durationMin: duration,
             });
           } else if (tooShort.length > 0) {

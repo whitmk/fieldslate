@@ -29,7 +29,8 @@ import { AlertTriangle, CalendarDays, ChevronRight, Loader2, X } from "lucide-re
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
-import { occupancyWindow, type SlotOption } from "@/lib/schedule/reschedule-slots";
+import { occupancyWindow, type SlotOption, type SlotOverrides } from "@/lib/schedule/reschedule-slots";
+import { SlotExceptionChips, SlotOverrideToggles } from "@/components/schedule/slot-overrides";
 import {
   NOT_ATTEMPTED,
   buildResolvePicker,
@@ -219,16 +220,40 @@ export function ResolveEditModal({
   const [loading, setLoading] = useState(mode === "picker" && !initialBuild);
   const [manual, setManual] = useState(false);
   const [picked, setPicked] = useState<SlotOption | null>(null);
+  // Both off by default. Flipping one re-runs the picker; the reads are
+  // unchanged by the overrides (they are bounded by the division's dates and
+  // the field, never by weekday), so this is the same six reads, not more.
+  const [overrides, setOverrides] = useState<SlotOverrides>({});
+  // The reads are kept so a toggle rebuilds from the SAME rows instead of
+  // refetching: the overrides change no query (every read is bounded by the
+  // division's dates and this one field, never by weekday). The rainout modal
+  // holds the builder's params for the same reason.
+  const [reads, setReads] = useState<PickerReads | null>(null);
 
-  const load = useCallback(async () => {
+  const buildWith = useCallback((r: PickerReads, o: SlotOverrides) => {
+    setBuild(
+      buildResolvePicker(r, {
+        gameId: game.id,
+        homeTeamId: game.home_team_id,
+        homeTeamName: teamName,
+        ...(o.includeNonPlayingDays || o.allowSecondGameSameDay ? { overrides: o } : {}),
+      }),
+    );
+  }, [game.id, game.home_team_id, teamName]);
+
+  const load = useCallback(async (nextOverrides: SlotOverrides) => {
     setLoading(true);
     try {
-      const reads = await loadPickerReads(game);
+      const fresh = await loadPickerReads(game);
+      setReads(fresh);
       setBuild(
-        buildResolvePicker(reads, {
+        buildResolvePicker(fresh, {
           gameId: game.id,
           homeTeamId: game.home_team_id,
           homeTeamName: teamName,
+          ...(nextOverrides.includeNonPlayingDays || nextOverrides.allowSecondGameSameDay
+            ? { overrides: nextOverrides }
+            : {}),
         }),
       );
     } catch (e) {
@@ -244,8 +269,20 @@ export function ResolveEditModal({
   }, [game, teamName]);
 
   useEffect(() => {
-    if (mode === "picker" && !initialBuild) void load();
+    if (mode === "picker" && !initialBuild) void load(overrides);
+    // `overrides` is applied through handleOverrides, not this effect — a
+    // toggle must not re-run the initial load twice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, initialBuild, load]);
+
+  function handleOverrides(next: SlotOverrides) {
+    setOverrides(next);
+    setPicked(null);
+    // Rebuild from the rows already in hand; only a picker that never loaded
+    // (an initialBuild handed in by the page) needs to fetch.
+    if (reads) buildWith(reads, next);
+    else void load(next);
+  }
 
   const isAway = game.is_away;
   const proposalKey = game.proposed_scheduled_at
@@ -478,7 +515,7 @@ export function ResolveEditModal({
                   {build.reason === "read_failed" && (
                     <button
                       type="button"
-                      onClick={() => void load()}
+                      onClick={() => void load(overrides)}
                       className="text-sm text-[#22C55E] underline underline-offset-2"
                     >
                       Retry
@@ -495,6 +532,12 @@ export function ResolveEditModal({
                 </div>
               ) : (
                 <div className="divide-y divide-gray-50">
+                  <SlotOverrideToggles
+                    value={overrides}
+                    onChange={handleOverrides}
+                    divisionLabel={build.divisionName}
+                    disabled={loading}
+                  />
                   <div className="px-6 py-3">
                     <p className="text-xs text-gray-400">
                       {build.seasonOver
@@ -534,6 +577,7 @@ export function ResolveEditModal({
                                     Their proposal
                                   </span>
                                 )}
+                                <SlotExceptionChips exceptions={slot.exceptions} />
                               </span>
                               <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-300" />
                             </button>

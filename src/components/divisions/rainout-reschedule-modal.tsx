@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { X, CloudRain, CalendarDays, Loader2, CheckCircle2, AlertTriangle, ChevronRight } from "lucide-react";
@@ -26,10 +26,13 @@ import {
   toMins,
   type DayDiagnostics,
   type DaySummary,
+  type BuildAvailableSlotsParams,
   type OccupiedSpan,
   type SlotOption,
+  type SlotOverrides,
 } from "@/lib/schedule/reschedule-slots";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { SlotExceptionChips, SlotOverrideToggles } from "@/components/schedule/slot-overrides";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -72,7 +75,16 @@ function fmt12(hhmm: string): string {
 /** One weekday's explanation. Case (a) and (b) are actionable and link to the
  *  Venues page; case (c) is informational, quieter, and deliberately has NO
  *  link — nothing is misconfigured, the day is simply full. */
-function DiagnosticRow({ summary }: { summary: DaySummary }) {
+function DiagnosticRow({
+  summary,
+  includeNonPlayingDays,
+}: {
+  summary: DaySummary;
+  /** With the override on, a non-playing day was EVALUATED — the makeup flag is
+   *  no longer what decides whether it is offered, so copy that names makeups
+   *  (and the "Mark a field Makeup" link) would be wrong. */
+  includeNonPlayingDays: boolean;
+}) {
   const { day, diagnostic, dateCount, reasonsOnDay } = summary;
   const label = DAY_LABELS[day];
   const dates = `${dateCount} ${dateCount === 1 ? "date" : "dates"}`;
@@ -133,7 +145,9 @@ function DiagnosticRow({ summary }: { summary: DaySummary }) {
             ? tooShort
               ? `this division's game window is ${fmt12(w.start)}–${fmt12(w.end)}, which isn't long enough for a ${durationMin}-minute game`
               : `this division's game window (${fmt12(w.start)}–${fmt12(w.end)}) doesn't line up with the field hours for a ${durationMin}-minute game`
-            : `no start time fits a ${durationMin}-minute game inside the makeup fields' hours`}
+            : governedBy === "override_union"
+              ? `no start time fits a ${durationMin}-minute game inside the open fields' hours`
+              : `no start time fits a ${durationMin}-minute game inside the makeup fields' hours`}
           {countSuffix}.
         </p>
       </div>
@@ -162,18 +176,25 @@ function DiagnosticRow({ summary }: { summary: DaySummary }) {
     );
   }
 
-  // CASE (a). Nothing open and flagged for makeups that day.
+  // CASE (a). Nothing open that day. With the override off that means nothing
+  // open AND flagged for makeups, and the fix is to flag one; with it on the
+  // flag is irrelevant and the field is simply shut, so neither the wording nor
+  // the link may mention makeups.
   return (
     <div className="px-6 py-2.5">
       <p className="text-xs text-amber-700">
-        <span className="font-medium">{label}</span> — no field is open and
-        marked for makeups{countSuffix}.
+        <span className="font-medium">{label}</span> —{" "}
+        {includeNonPlayingDays
+          ? `no field is open that day${countSuffix}.`
+          : `no field is open and marked for makeups${countSuffix}.`}
       </p>
       <Link
         href="/dashboard/venues"
         className="text-xs text-[#22C55E] underline underline-offset-2"
       >
-        Mark a field &ldquo;Makeup&rdquo; on the Venues page
+        {includeNonPlayingDays
+          ? "Set field hours on the Venues page"
+          : "Mark a field \u201cMakeup\u201d on the Venues page"}
       </Link>
     </div>
   );
@@ -184,8 +205,13 @@ export function RainoutRescheduleModal({
   divisionId, leagueId, onClose, onRescheduled, buildLogMessage,
 }: Props) {
   const router = useRouter();
-  const [slots, setSlots] = useState<SlotOption[]>([]);
-  const [diagnostics, setDiagnostics] = useState<DayDiagnostics>(new Map());
+  // The builder's inputs are held, not its output: flipping an override
+  // recomputes from the SAME reads. The overrides change no query — every read
+  // here is bounded by the division's date window and its venues, never by
+  // weekday — so widening the search costs one rebuild, not a refetch.
+  const [builderParams, setBuilderParams] = useState<BuildAvailableSlotsParams | null>(null);
+  const [overrides, setOverrides] = useState<SlotOverrides>({});
+  const [divisionName, setDivisionName] = useState("this division");
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -207,7 +233,7 @@ export function RainoutRescheduleModal({
     // 1. Division settings + dates
     const { data: divRaw, error: divErr } = await supabase
       .from("divisions")
-      .select("start_date, end_date, settings")
+      .select("name, start_date, end_date, settings")
       .eq("id", divisionId)
       .single();
 
@@ -217,7 +243,7 @@ export function RainoutRescheduleModal({
       return;
     }
 
-    const div = divRaw as { start_date: string; end_date: string; settings: Record<string, unknown> };
+    const div = divRaw as { name: string; start_date: string; end_date: string; settings: Record<string, unknown> };
     if (!div.start_date || !div.end_date) {
       setLoadError("Division is missing start or end date.");
       setLoading(false);
@@ -433,7 +459,8 @@ export function RainoutRescheduleModal({
       (rulesRaw ?? []) as TeamGameConstraintRow[],
     );
 
-    const { slots: available, diagnostics: dayDiagnostics } = buildSlotsAndDiagnostics({
+    setDivisionName(div.name || "this division");
+    setBuilderParams({
       startDate: div.start_date,
       endDate: div.end_date,
       playingDays,
@@ -457,8 +484,6 @@ export function RainoutRescheduleModal({
       constraintRules,
     });
 
-    setSlots(available);
-    setDiagnostics(dayDiagnostics);
     setLoading(false);
   }
 
@@ -491,6 +516,15 @@ export function RainoutRescheduleModal({
     setDone(true);
     setConfirming(false);
   }
+
+  // Recomputed whenever the inputs or the overrides change. With both
+  // overrides off this is byte-identical to what the builder returned before
+  // they existed (sim:picker-overrides pins it over 2000 seeded fixtures).
+  const { slots, diagnostics } = useMemo(() => {
+    if (!builderParams) return { slots: [] as SlotOption[], diagnostics: new Map() as DayDiagnostics };
+    const on = overrides.includeNonPlayingDays || overrides.allowSecondGameSameDay;
+    return buildSlotsAndDiagnostics(on ? { ...builderParams, overrides } : builderParams);
+  }, [builderParams, overrides]);
 
   // Group slots by date for display
   const daySummaries = summarizeByWeekday(diagnostics, slots);
@@ -615,6 +649,11 @@ export function RainoutRescheduleModal({
                end date") for a picker that had no rejection tally behind it.
                Every line below is the reason recorded where it happened. */
             <div>
+              <SlotOverrideToggles
+                value={overrides}
+                onChange={(next) => { setOverrides(next); setPicked(null); }}
+                divisionLabel={divisionName}
+              />
               <div className="flex flex-col items-center gap-2 px-6 pb-4 pt-10 text-center">
                 <CalendarDays className="h-6 w-6 text-gray-200" />
                 <p className="text-sm font-medium text-[#0C1F3F]">No open slots found</p>
@@ -622,12 +661,21 @@ export function RainoutRescheduleModal({
               </div>
               <div className="divide-y divide-gray-50 border-t border-gray-50">
                 {daySummaries.map((sm, i) => (
-                  <DiagnosticRow key={`${sm.day}:${i}`} summary={sm} />
+                  <DiagnosticRow
+                    key={`${sm.day}:${i}`}
+                    summary={sm}
+                    includeNonPlayingDays={overrides.includeNonPlayingDays === true}
+                  />
                 ))}
               </div>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
+              <SlotOverrideToggles
+              value={overrides}
+              onChange={(next) => { setOverrides(next); setPicked(null); }}
+              divisionLabel={divisionName}
+              />
               {/* Slot count header */}
               <div className="px-6 py-3">
                 <p className="text-xs text-gray-400">
@@ -655,6 +703,7 @@ export function RainoutRescheduleModal({
                             {fmtGameTime(slot.isoString)}
                           </span>
                           <span className="text-sm font-medium text-[#0C1F3F]">{slot.venueName}</span>
+                          <SlotExceptionChips exceptions={slot.exceptions} />
                         </div>
                         <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-300" />
                       </button>
@@ -674,7 +723,11 @@ export function RainoutRescheduleModal({
                   </div>
                   <div className="divide-y divide-gray-50">
                     {daySummaries.map((sm, i) => (
-                      <DiagnosticRow key={`${sm.day}:${i}`} summary={sm} />
+                      <DiagnosticRow
+                    key={`${sm.day}:${i}`}
+                    summary={sm}
+                    includeNonPlayingDays={overrides.includeNonPlayingDays === true}
+                  />
                     ))}
                   </div>
                 </div>

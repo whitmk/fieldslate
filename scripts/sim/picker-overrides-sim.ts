@@ -30,18 +30,33 @@
 //   M4  A no-longer-blocking reason still listed             → [SHRINK-*]
 // Applied to the real source, run, reverted; results in MUTATION LOG below.
 //
-// MUTATION LOG (2026-09-23):
-//   M1  `overrides?.includeNonPlayingDays` read as `true` in the day gate.
-//       Dies at [DIFF-rainout] and [DIFF-interleague] — the default path starts
-//       offering off-day slots that the golden does not contain.
-//   M2  The cap gate's `allowSecondGame` read as `true`. Dies at the same two
-//       differential assertions (team_cap dates start producing slots).
-//   M3  The slot push drops `exceptions`. Dies at [FLAG-off-day] and
-//       [FLAG-second-game]; the differential stays GREEN, which is the point —
-//       only the flag assertions can catch it.
+// MUTATION LOG (2026-09-23) — all four applied to the REAL source, run, then
+// reverted and the suite re-verified green:
+//   M1  `includeNonPlayingDays` forced true in the builder. Dies at
+//       [DIFF-rainout] and [DIFF-interleague] (first drift at seed 1) — the
+//       default path starts offering off-day slots the golden does not have.
+//       It also trips the FLAG-* assertions, which is expected: with the gate
+//       lifted unconditionally, "both toggles off" output now carries flags.
+//       The differential is the assertion it was written for and it fires.
+//   M2  `allowSecondGameSameDay` forced true. Same two differential
+//       assertions, same reason (team_cap dates start producing slots).
+//   M3  The slot push drops `exceptions` (always undefined). The DIFFERENTIAL
+//       STAYS GREEN — verified, no DIFF failure in that run — and it dies at
+//       [FLAG-only-override] / [FLAG-off-day] / [FLAG-second-game] plus the
+//       flag counters. That is the point of those assertions: nothing else in
+//       the suite can see a silently unmarked override slot.
 //   M4  `emptyDayLines` keeps emitting the "doesn't play on …" line when the
-//       days were evaluated. Dies at [SHRINK-not-playing]; the differential
-//       stays green because with the toggle off the line is still correct.
+//       days were evaluated. Dies at [SHRINK-not-playing] ALONE; the
+//       differential stays green because with the toggle off that line is
+//       still correct.
+//
+// A FIFTH DEFECT THE SUITE CAUGHT DURING THE BUILD, worth keeping in mind:
+// the off-day flag was first computed PER DAY (a makeup day is pre-existing,
+// so unflagged). But with the override on, a makeup day WIDENS to every open
+// field and the whole of their hours, and those extra (field, time) pairs are
+// genuinely new — they were rendering as normal offers.
+// [FLAG-only-override] failed, and the flag became per SLOT: pre-existing iff
+// the field is makeup-flagged AND the span fits the makeup union.
 //
 // TZ=UTC is mandatory: every fixture date is a literal wall-clock string.
 
@@ -51,7 +66,7 @@ import {
   type BuildAvailableSlotsParams,
   type DayDiagnostics,
   type OccupiedSpan,
-  type SlotOption,
+  type SlotOverrides,
 } from "../../src/lib/schedule/reschedule-slots";
 import {
   buildResolvePicker,
@@ -106,7 +121,6 @@ function rng(seed: number) {
 }
 
 const DAY_KEYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] as const;
-type DK = (typeof DAY_KEYS)[number];
 
 function pad2(n: number) { return String(n).padStart(2, "0"); }
 function hhmm(mins: number) { return `${pad2(Math.floor(mins / 60))}:${pad2(mins % 60)}`; }
@@ -329,3 +343,164 @@ const fixtures = Array.from({ length: FIXTURE_COUNT }, (_, i) => makeFixture(i +
     assert(interBad === -1, `[DIFF-interleague] byte-identical to the pre-change tree${interBad === -1 ? "" : ` (first drift: seed ${fixtures[interBad]!.seed})`}`);
   }
 }
+
+// ── Behavior under each toggle combination ──────────────────────────────────
+//
+// Run every fixture through all four combinations and assert the properties
+// that the differential (which only ever sees "both off") cannot see.
+{
+  console.log("Behavior: all four toggle combinations over every fixture");
+  const COMBOS: { label: string; o: SlotOverrides }[] = [
+    { label: "off/off", o: {} },
+    { label: "offday",  o: { includeNonPlayingDays: true } },
+    { label: "second",  o: { allowSecondGameSameDay: true } },
+    { label: "both",    o: { includeNonPlayingDays: true, allowSecondGameSameDay: true } },
+  ];
+
+  let growthSeen = 0;          // a toggle strictly added slots
+  let normalSlotsHaveNoKey = true;
+  let flaggedOnlyOnOverride = true;
+  let offDayOnPlayingDay = 0;  // must stay 0: never flag a day the division plays
+  let capRespectedWhenOff = 0; // must stay 0
+  let offDayWhenOff = 0;       // must stay 0
+  let teamCapListedWhenLifted = 0; // must stay 0
+  let notPlayingListedWhenLifted = 0; // must stay 0
+
+  for (const f of fixtures) {
+    const plays = new Set(f.params.playingDays);
+    const dayOf = (date: string) =>
+      (["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] as const)[new Date(date + "T00:00:00Z").getUTCDay()]!;
+
+    const byCombo = new Map<string, ReturnType<typeof rainoutOutput>>();
+    for (const c of COMBOS) byCombo.set(c.label, rainoutOutput(f, Object.keys(c.o).length ? c.o : undefined));
+
+    const off = byCombo.get("off/off")!;
+    if (off.slots.length) counters.offOffSlots++;
+    if (byCombo.get("offday")!.slots.length) counters.offDayOnSlots++;
+    if (byCombo.get("second")!.slots.length) counters.secondGameOnSlots++;
+    if (byCombo.get("both")!.slots.length) counters.bothOnSlots++;
+
+    // With the toggles OFF nothing may carry a flag, and no off-day may appear.
+    for (const s of off.slots) {
+      if ("exceptions" in s) normalSlotsHaveNoKey = false;
+      if (!plays.has(dayOf(s.date))) {
+        // A makeup-flagged day is legitimately offered with the toggle off —
+        // and must stay UNFLAGGED (decision: it is not an override slot).
+        if ((s as { exceptions?: unknown }).exceptions) offDayWhenOff++;
+        else counters.makeupUnflagged++;
+      }
+    }
+
+    for (const c of COMBOS) {
+      const out = byCombo.get(c.label)!;
+      if (out.slots.length > off.slots.length) growthSeen++;
+
+      for (const s of out.slots) {
+        const ex = s.exceptions ?? [];
+        if (ex.includes("off_day")) {
+          counters.offDayFlagged++;
+          if (plays.has(dayOf(s.date))) offDayOnPlayingDay++;
+          if (!c.o.includeNonPlayingDays) flaggedOnlyOnOverride = false;
+        }
+        if (ex.includes("second_game")) {
+          counters.secondGameFlagged++;
+          if (!c.o.allowSecondGameSameDay) flaggedOnlyOnOverride = false;
+        }
+        if (ex.length === 2) counters.bothFlagged++;
+        // A slot on a day the division does NOT play, surfaced while the
+        // override is on, is either a makeup day (unflagged, pre-existing) or
+        // an override day (flagged). It can never be silently normal AND new.
+        if (c.o.includeNonPlayingDays && !plays.has(dayOf(s.date)) && ex.length === 0) {
+          const wasOffered = off.slots.some((o) => o.isoString === s.isoString && o.venueId === s.venueId);
+          if (!wasOffered) flaggedOnlyOnOverride = false;
+        }
+      }
+
+      // Lifted gates must not still be reported as reasons.
+      for (const [, d] of out.diagnostics) {
+        if (c.o.allowSecondGameSameDay && d.kind === "team_cap") teamCapListedWhenLifted++;
+      }
+    }
+
+    // The reason list must SHRINK (never grow) as gates are lifted.
+    const offReasons = off.diagnostics.length;
+    const bothReasons = byCombo.get("both")!.diagnostics.length;
+    if (bothReasons < offReasons) counters.reasonsShrank++;
+    if (bothReasons > offReasons) capRespectedWhenOff++; // reuse as "grew" detector
+
+    // The interleague surface drops the "doesn't play on …" line when the days
+    // were evaluated.
+    const inter = interleagueOutput(f, { includeNonPlayingDays: true }) as { ok: boolean; lines?: { kind: string }[] };
+    if (inter.ok && inter.lines?.some((l) => l.kind === "not_playing_day")) notPlayingListedWhenLifted++;
+  }
+
+  assert(normalSlotsHaveNoKey, "[FLAG-absent] with both toggles off, no slot carries an `exceptions` key at all");
+  assert(offDayWhenOff === 0, "[FLAG-makeup] a makeup-day slot offered with the toggles off stays unflagged");
+  assert(flaggedOnlyOnOverride, "[FLAG-only-override] a flag appears only under the toggle that surfaced the slot");
+  assert(offDayOnPlayingDay === 0, "[FLAG-off-day] `off_day` never lands on a day the division plays");
+  assert(counters.offDayFlagged > 0, "[FLAG-off-day] override days produce flagged slots");
+  assert(counters.secondGameFlagged > 0, "[FLAG-second-game] cap-lifted dates produce flagged slots");
+  assert(growthSeen > 0, "[GROW] a toggle strictly added slots on some fixture");
+  assert(teamCapListedWhenLifted === 0, "[SHRINK-team-cap] `team_cap` is never reported once the cap is lifted");
+  assert(notPlayingListedWhenLifted === 0, "[SHRINK-not-playing] the \"doesn't play on …\" line disappears once the days are included");
+  assert(capRespectedWhenOff === 0, "[SHRINK-monotonic] lifting a gate never ADDS an empty-day reason");
+}
+
+// ── Everything else still applies under both overrides ──────────────────────
+{
+  console.log("Invariants: the other constraints survive both overrides");
+  let checked = 0;
+  let blackoutOffered = 0;
+  let outsideVenueHours = 0;
+  let overlappedTeamGame = 0;
+  let overlappedBooking = 0;
+
+  for (const f of fixtures) {
+    const out = rainoutOutput(f, { includeNonPlayingDays: true, allowSecondGameSameDay: true });
+    for (const s of out.slots) {
+      checked++;
+      if (f.params.blackoutDates.has(s.date)) blackoutOffered++;
+
+      const startMin = toMinutes(s.isoString.substring(11, 16));
+      const dur = f.params.gameDuration;
+      const av = f.params.venueAvailability[s.venueId]!;
+      const day = (["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] as const)[
+        new Date(s.date + "T00:00:00Z").getUTCDay()
+      ]!;
+      const w = av[day];
+      if (!w || startMin < toMinutes(w.start) || startMin + dur > toMinutes(w.end)) outsideVenueHours++;
+
+      for (const t of f.params.homeTeamSpans.get(s.date) ?? []) {
+        if (startMin < t.startMin + t.durationMin && t.startMin < startMin + dur) overlappedTeamGame++;
+      }
+      for (const b of f.params.venueBookings.get(`${s.venueId}:${s.date}`) ?? []) {
+        const buf = f.params.bufferMinutes;
+        if (startMin - buf < b.startMin + b.durationMin && b.startMin < startMin + dur + buf) overlappedBooking++;
+      }
+    }
+  }
+
+  assert(checked > 0, "[INV] the both-on run produced slots to check");
+  assert(blackoutOffered === 0, "[INV-blackout] no slot on a blackout date");
+  assert(outsideVenueHours === 0, "[INV-venue-hours] every slot fits inside its field's hours for that day");
+  assert(overlappedTeamGame === 0, "[INV-team-overlap] no slot overlaps a game the team already plays");
+  assert(overlappedBooking === 0, "[INV-buffer] no slot violates the buffer around an existing booking");
+}
+
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h! * 60 + m!;
+}
+
+// ── Counters ───────────────────────────────────────────────────────────────
+console.log("\nCoverage counters:");
+for (const [name, n] of Object.entries(counters)) {
+  console.log(`  ${name}: ${n}`);
+  assert(n > 0, `[COUNTER] ${name} fired at least once`);
+}
+
+if (failures) {
+  console.error(`\n${failures} FAILURE(S)`);
+  process.exit(1);
+}
+console.log("\nAll checks passed.");

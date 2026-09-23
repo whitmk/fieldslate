@@ -58,6 +58,7 @@ import {
   type DaySummary,
   type OccupiedSpan,
   type SlotOption,
+  type SlotOverrides,
 } from "@/lib/schedule/reschedule-slots";
 import {
   constraintsFromRows,
@@ -133,6 +134,11 @@ export type PickerContext = {
   homeTeamName: string;
   /** Injectable "today" for the sim; production uses the builder's clock. */
   today?: string;
+  /** Admin-chosen relaxations, both off by default. Passed straight to the
+   *  builder; the only thing this module does with them is word the empty-day
+   *  lines correctly (a day the override EVALUATED must not be reported as a
+   *  day the division doesn't play). */
+  overrides?: SlotOverrides;
 };
 
 export type AssembleResult =
@@ -244,6 +250,7 @@ export function assemblePickerInputs(reads: PickerReads, ctx: PickerContext): As
     awayTeamId: "",
     constraintRules: constraintsFromRows(reads.constraints.data),
     ...(ctx.today ? { today: ctx.today } : {}),
+    ...(ctx.overrides ? { overrides: ctx.overrides } : {}),
   };
 
   return { ok: true, params, fieldName, divisionName: div.name };
@@ -278,6 +285,7 @@ export function buildResolvePicker(reads: PickerReads, ctx: PickerContext): Pick
     divisionName: a.divisionName,
     teamName: ctx.homeTeamName,
     playingDays: a.params.playingDays,
+    includeNonPlayingDays: ctx.overrides?.includeNonPlayingDays === true,
   });
   return {
     ok: true,
@@ -345,7 +353,14 @@ function joinOr(items: string[]): string {
 
 export function emptyDayLines(
   summaries: DaySummary[],
-  ctx: { fieldName: string; divisionName: string; teamName: string; playingDays: string[] },
+  ctx: {
+    fieldName: string; divisionName: string; teamName: string; playingDays: string[];
+    /** When the override is on, a non-playing weekday was EVALUATED, so
+     *  "{division} doesn't play on Mondays" is no longer why it is empty — the
+     *  field being shut is. Without this the picker would keep printing a
+     *  reason the admin has just lifted. */
+    includeNonPlayingDays?: boolean;
+  },
 ): EmptyDayLine[] {
   const plays = new Set(ctx.playingDays);
   const notPlaying: DayKey[] = [];
@@ -362,7 +377,7 @@ export function emptyDayLines(
       // The builder records no_field at the day gate for a day the division
       // does not play, and for a playing day the one field is shut. With
       // makeup flags stripped, playing-day membership is what separates them.
-      if (!plays.has(day)) { notPlaying.push(day); continue; }
+      if (!plays.has(day) && !ctx.includeNonPlayingDays) { notPlaying.push(day); continue; }
       lines.push({
         ...base, kind: "field_closed", tone: "config", venuesLink: true,
         text: `${ctx.fieldName} is closed that day${n}.`,

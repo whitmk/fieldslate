@@ -1599,6 +1599,65 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     panel, both CSV exports, `fetchSportsConnectGames`, and the five
     venue-keyed generator reads. Same exposure, separate backlog; see
     "Complete reads".
+- **Override toggles — two, both OFF by default, shared by BOTH pickers
+  (2026-09-23).** `SlotOverrides` on `BuildAvailableSlotsParams`:
+  `includeNonPlayingDays` lifts the playing-day gate ONLY, and
+  `allowSecondGameSameDay` lifts the per-day team cap ONLY. Everything else
+  still applies under both — venue hours, occupancy, the arriving team's
+  buffer, blackout dates, the team's own games, `team_game_constraints`. An
+  ABSENT overrides object is today's behavior exactly; that is what makes the
+  differential possible, so never make a toggle default on.
+- **The off-day semantic is the MAKEUP-DAY semantic, reused.** On a
+  non-playing day the VENUE's hours govern (`day_windows`/`playing_days` are
+  not consulted), via the same union-of-open-fields bound the makeup path
+  already used — the only change is which fields are eligible (any field OPEN
+  that day, not just makeup-flagged ones). No parallel branch, and
+  `spansOverlap` / `candidateClearsSpan` / the 15-minute grid are untouched.
+- **THE EXCEPTION FLAG IS PER SLOT, NEVER PER DAY — this was a real defect the
+  harness caught.** A makeup-flagged day is offered with the overrides OFF, so
+  its slots are not exceptions; but with `includeNonPlayingDays` ON that same
+  day WIDENS to every open field and the whole of their hours, and those extra
+  (field, time) pairs ARE new. A per-day rule let them render as normal offers.
+  A slot is pre-existing iff its field is makeup-flagged AND its full span fits
+  the makeup-only union; anything else on a non-playing day carries `off_day`.
+  `exceptions` is OMITTED entirely on a normal slot — not an empty array.
+- **Chips are `Off day` and `2nd game`, and must read on their own** (a long
+  list scrolls the toggle label out of view), so each carries a `title`
+  spelling the exception out. Both chips and both toggles live in ONE shared
+  component, `src/components/schedule/slot-overrides.tsx`, rendered by the
+  rainout modal and the interleague resolve picker — same one-component rule as
+  `VenueEditForm`. Never hand-write an override chip or label at a call site.
+- **`governedBy` gained `"override_union"`** rather than renaming
+  `"makeup_union"`, so toggle-off output is unchanged. Surfaces must not name
+  makeups when it is set: the rainout modal's case-(a) copy and its
+  "Mark a field Makeup" link switch to open-field wording, and
+  `emptyDayLines` takes `includeNonPlayingDays` so an EVALUATED non-playing day
+  prints "the field is closed that day" instead of "{division} doesn't play on
+  Mondays". A lifted gate must never still be listed as a reason.
+- **Nothing server-side rejects what these surface (verified 2026-09-23).**
+  Neither `gateRescheduleVenue` (it checks the venue's hours FOR THAT WEEKDAY,
+  which an off-day slot satisfies) nor `gateRescheduleOccupancy` reads
+  `playing_days`, and `max_games_per_team_per_day` is read by no route, gate or
+  DB function at all. Re-check both before adding a gate that could refuse what
+  the picker offers.
+- **Cost is the list, not the compute.** Measured 2026-09-23 on the real
+  builder: AA's interleague picker 270 slots / 0.32ms with both off → 538 /
+  0.69ms with off-days on; the rainout modal at 4 fields 1,232 / 0.87ms →
+  2,352 / 2.59ms; a 365-day 12-field stress case 22,032 slots / 47ms. **Reads
+  do not change at all** — both surfaces bound their queries by the division's
+  date window and venue ids, never by weekday, so a toggle costs one rebuild
+  (the rainout modal holds the builder's INPUTS in state for exactly this) and
+  no refetch. **PAGINATION CANDIDATE:** the rainout modal already renders 1,232
+  rows in its widest live case today and the toggles roughly double it. That is
+  a pre-existing property of that surface; it was deliberately not addressed
+  here.
+- **Harness: `npm run sim:picker-overrides`** — the load-bearing proof is a
+  SEEDED DIFFERENTIAL over 2,000 fixtures: with both toggles off, BOTH
+  surfaces' full output (slots, diagnostics, weekday roll-up, lines, headline)
+  must hash-match a golden RECORDED FROM THE PRE-CHANGE TREE (commit `4eb9b9d`,
+  before the builder was touched). **If it fails, the override leaked into the
+  default path — fix the leak, do not re-record.** Plus 4 mutants each dying at
+  its own assertion and 9 anti-vacuity counters. Read its mutation log first.
 - **Harness: `npm run sim:reschedule-slots`** (TZ=UTC mandatory) — 61
   assertions, 8 anti-vacuity counters, **13 mutants all killed BY THEIR OWN
   assertion** (2026-07-30). Read its mutation log before touching any of this:
