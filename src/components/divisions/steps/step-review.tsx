@@ -16,6 +16,7 @@ import {
   type NewDivisionPlannedGame,
   type ScheduleConflict,
 } from "@/lib/schedule/generate-schedule";
+import { preservedSummary } from "@/lib/schedule/preserved-games";
 import {
   detectSeasonCoachConflicts,
   coachConflictTouchesDivision,
@@ -130,6 +131,8 @@ type RegenResult = {
   // Non-null = the post-write field-conflict check couldn't run, so conflicts
   // are UNKNOWN rather than zero. Must never render as "no conflicts".
   conflictsUnavailable?: string | null;
+  /** Verbatim sentence naming interleague games the regenerate KEPT. */
+  preservedNote?: string | null;
   savedDivisionId: string;
 };
 
@@ -670,6 +673,7 @@ export function StepReview({
       result.shortfallSummary = gameRes.shortfallSummary;
       result.conflicts = gameRes.conflicts;
       result.conflictsUnavailable = gameRes.conflictsUnavailable;
+      result.preservedNote = preservedSummary(gameRes.preservedGames);
       await logActivity(
         leagueId,
         divId,
@@ -817,6 +821,14 @@ export function StepReview({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {regenResult.preservedNote && (
+          // Neutral, not a warning: nothing went wrong, but the admin must be
+          // told which interleague games survived the regenerate and why.
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+            <p className="text-sm text-gray-600">{regenResult.preservedNote}</p>
           </div>
         )}
 

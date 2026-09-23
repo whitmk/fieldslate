@@ -1193,6 +1193,68 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `npm run sim:generator-failclosed` — assertions D1 (under-subtract) and D2
   (over-subtract) are the ONLY thing pinning the two together.** The function's
   own header carries the same warning; keep both.
+- **REGENERATE NO LONGER DELETES A LIVE INTERLEAGUE NEGOTIATION (2026-09-23).**
+  The delete preserved games that are `scheduled` AND interleague; a
+  `pending_interleague` game was NOT preserved, so a regenerate deleted it, the
+  `interleague_reschedule_requests` row CASCADED away, and the partner's respond
+  link died showing "This link is no longer active … reach out to the league
+  admin" — who no longer had a record of it either. No email to either side, and
+  on their live schedule page the game simply vanished. **THE DOCUMENTED RULE
+  CHANGED:** `sim:generator-failclosed`'s D3 assertion used to read "a pending
+  interleague game is cleared". It is now split — `D3-pendingIL-untouched`
+  (still cleared) and `D3-protected` (preserved). That flip is the fix, not an
+  assertion loosened to make a build pass.
+- **`isProtectedInterleagueGame` is the single predicate.** It protects a
+  `pending_interleague` game the partner has TOUCHED — they countered
+  (`external_team_name`), their proposed time is on the row
+  (`proposed_scheduled_at`), or ANY `interleague_reschedule_requests` row
+  exists — plus every accepted game in `reschedule_pending` (restoring 0079's
+  rule that accepted interleague games are never silently deleted). An
+  UNTOUCHED pending game is still cleared: it is an unanswered proposal, and
+  keeping it would let a dead invite strand a row.
+  **The request table is READ, never inferred.** A host proposal currently
+  implies a partner counter (so `external_team_name` would be set), but that is
+  an inference about the order routes are called, not a property of the data.
+  **ANY request row counts, not just a pending one** — over-preserving leaves a
+  game the admin can still remove deliberately through resolve Decline (which
+  emails the partner); under-preserving destroys a conversation.
+- **PRESERVE AND REPORT, NEVER REFUSE.** A schedule lock refuses the whole
+  regenerate, which is right because an admin lifts a lock in one click. A
+  negotiation cannot be cleared in one click — nothing forces it to converge —
+  so refusing would leave the division unregenerable until the partner replies.
+  `ScheduleResult.preservedGames` rides every result and all four surfaces
+  (panel, generate-all modal, setup step, wizard review) render
+  `preservedSummary()` VERBATIM — never hand-write that sentence, same rule as
+  `shortfallSummary`. A game that survives a regenerate unannounced is the
+  silent half of the bug.
+- **THE SLOT HAZARD — this is what makes the two predicate copies matter now.**
+  A preserved game keeps its slot, so the pre-loads must STOP subtracting it.
+  `protectedIds` is computed once and passed to BOTH the delete
+  (`.not("id","in",…)`, applied only when non-empty so an ordinary regenerate
+  issues the identical statement) and every `willBeClearedByRegenerate` call. If
+  the two drift in the TS direction, the game survives and the generator places
+  a new game ON TOP of it with no error anywhere — mutant M4, caught only by
+  `[D-no-double-book]`.
+- **Both protection reads FAIL CLOSED**, before the delete: an unreadable
+  request table aborts the whole regenerate rather than treating a live
+  negotiation as untouched.
+- **Harness: `npm run sim:regenerate-pending-guard`** — drives the real
+  generator against the fake client; 31 assertions, 5 counters, 4 mutants each
+  dying at its own assertion. **Read its mutation log:** M3 first "survived" by
+  CRASHING the run, which printed a stack trace and hid the four failures it had
+  already recorded. The sim now tolerates missing rows in the later block and
+  prints collected failures on a rejection. A thrown error is not a pass and not
+  a clean kill.
+- **`delete_game_if_unblocked` HAS THE SAME HOLE AND IS DELIBERATELY NOT FIXED
+  HERE — and the two are NOT coupled.** That RPC permits deleting a
+  `pending_interleague` game so a dead invite can't strand a row, which means it
+  will also delete one mid-negotiation. Closing it is SQL (a new migration, a
+  new block reason, the SQL-harness standard). **Deferring is safe because a
+  partner's decline goes through the token RPC, not this one**, so tightening
+  `delete_game_if_unblocked` later does NOT require touching the 0082 lock
+  trigger's matching `pending_interleague` carve-out. Do not assume the trigger
+  and that RPC have to move together on THIS question — the rule that they must
+  agree is about the lock carve-out, not about negotiation protection.
 - **Post-write reads can't fail closed by aborting, so they report UNKNOWN.**
   The cross-division conflict check runs after the insert. On error it now sets
   `ScheduleResult.conflictsUnavailable` (a plain-English message) and returns an
@@ -2547,8 +2609,13 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   left alone — details under "Interleague counter-proposal picker".
 - **Resolve route / accept-proposal can save onto a non-playing day** (Finding
   C, same section). Neither server gate checks the division's playing days.
-- **Deleting / regenerating a game mid-negotiation is silent**, and regenerate
-  deletes accepted `reschedule_pending` games — see "Interleague negotiation".
+- **Single-game delete mid-negotiation is still silent.**
+  `delete_game_if_unblocked` permits deleting a `pending_interleague` game, so
+  it will remove one with an open partner request; the request cascades and the
+  partner's link dies with no email. REGENERATE no longer does this (2026-09-23,
+  see "Generator reads fail CLOSED"), and the two are not coupled — a partner
+  decline goes through the token RPC, so this RPC can be tightened on its own
+  without touching the 0082 lock trigger's carve-out. Next one to do.
 
 - **Dead-column cleanup (backlog, no reader/writer).** `divisions.practice_venue_id`
   (no UI picker anywhere, 1 live row) and `venues.venue_type` (read/written

@@ -27,6 +27,7 @@
     "sim:recipient-schedule": "TZ=UTC npx tsx scripts/sim/recipient-schedule-sim.ts",
     "sim:interleague-picker": "TZ=UTC npx tsx scripts/sim/interleague-resolve-picker-sim.ts",
     "sim:wizard-day-windows": "npx tsx scripts/sim/wizard-day-windows-sim.ts",
+    "sim:regenerate-pending-guard": "TZ=UTC npx tsx scripts/sim/regenerate-pending-guard-sim.ts",
     "sim:picker-overrides": "TZ=UTC npx tsx scripts/sim/picker-overrides-sim.ts",
     "sim:week-grid": "TZ=UTC npx tsx scripts/sim/week-grid-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/week-grid-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/week-grid-sim.ts"
   },

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { generateSchedule } from "@/lib/schedule/generate-schedule";
+import { preservedSummary } from "@/lib/schedule/preserved-games";
 import { fetchDivisionLocks } from "@/lib/schedule/division-lock";
 import {
   detectSeasonCoachConflicts,
@@ -71,6 +72,8 @@ type RunStatus =
       preferMissCount: number;
       // Rendered VERBATIM — never hand-write a shortfall sentence here.
       shortfallSummary: string | null;
+      /** Verbatim sentence naming interleague games the regenerate KEPT. */
+      preservedNote: string | null;
       conflictGameCount: number;
       // Non-null = conflicts UNKNOWN, not zero. See ScheduleResult.
       conflictsUnavailable: string | null;
@@ -295,6 +298,7 @@ export function GenerateAllModal({
             constraintBlockedCount: res.constraintBlockedCount,
             preferMissCount: res.preferMissCount,
             shortfallSummary: res.shortfallSummary,
+            preservedNote: preservedSummary(res.preservedGames),
             conflictGameCount: res.conflicts.reduce(
               (n, c) => n + c.games.length,
               0,
@@ -374,6 +378,11 @@ export function GenerateAllModal({
         tone: "warn",
         text: s.shortfallSummary ? `${head} ${s.shortfallSummary}` : head,
       };
+    }
+    // Kept games are reported even on a fully successful run — the admin is
+    // about to wonder why a game they did not expect is still there.
+    if (s.preservedNote) {
+      return { tone: "note", text: `${p.name}: ${s.preservedNote}` };
     }
     if (s.preferMissCount > 0) {
       return {

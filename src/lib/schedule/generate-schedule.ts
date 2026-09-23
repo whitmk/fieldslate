@@ -37,6 +37,7 @@ import {
   type DivisionSettings,
   type Slot,
 } from "./slots";
+import type { PreservedGame } from "./preserved-games";
 export { buildSlots, buildPlayingDates };
 
 // ─── Public result types ───────────────────────────────────────────────────────
@@ -71,6 +72,11 @@ export type ScheduleResult =
       // Non-null means conflicts are UNKNOWN, not zero; every surface that
       // renders a conflict count must say so rather than showing 0.
       conflictsUnavailable: string | null;
+      // Interleague games this regenerate REFUSED to delete: a live
+      // negotiation, or an accepted game with a change outstanding. Surfaces
+      // render preservedSummary() verbatim — a game that survives a regenerate
+      // unannounced is the silent half of the bug this prevents.
+      preservedGames: PreservedGame[];
     }
   | { success: false; error: string };
 
@@ -106,11 +112,62 @@ export interface ScheduleConflict {
 // regenerate that quietly drops games.
 
 export type ClearablePredicateRow = {
+  id?: string | null;
   league_id: string | null;
   home_team_id: string | null;
   status: string | null;
   interleague_org_id: string | null;
 };
+
+/** The columns that decide protection, plus the one fact that needs a join. */
+export type ProtectableGameRow = {
+  status: string | null;
+  interleague_org_id: string | null;
+  external_team_name: string | null;
+  proposed_scheduled_at: string | null;
+  /** True when `interleague_reschedule_requests` holds ANY row for this game.
+   *  READ, never inferred — see the note below. */
+  hasRescheduleRequest: boolean;
+};
+
+/**
+ * True when a regenerate must NOT delete this interleague game.
+ *
+ * TWO REASONS, and they are different:
+ *
+ *  1. A `pending_interleague` game the partner has TOUCHED — they countered
+ *     (`external_team_name`), a proposal of theirs is on the row
+ *     (`proposed_scheduled_at`), or a reschedule request exists. That is a live
+ *     negotiation: deleting it cascades the request away and kills the
+ *     partner's link silently. An UNTOUCHED pending game is just an unanswered
+ *     proposal and stays deletable, which is what keeps a dead invite from
+ *     stranding a row.
+ *  2. An ACCEPTED game in `reschedule_pending`. 0079's rule is that accepted
+ *     interleague games are never silently deleted; the old predicate deleted
+ *     these purely because their status is not 'scheduled'.
+ *
+ * WHY `hasRescheduleRequest` IS READ, NOT INFERRED. A host proposal on a
+ * pending game currently requires a partner response first, so
+ * `external_team_name` would already be set — but that is an inference about
+ * the order routes are called, not an invariant of the data. The generator
+ * reads the request table instead, and any read failure aborts before the
+ * delete.
+ *
+ * ANY request row counts, not just a pending one. A closed row still means the
+ * partner was emailed a link about this game; over-preserving keeps a game the
+ * admin can still remove deliberately through the resolve flow (which emails
+ * them), while under-preserving destroys a conversation.
+ */
+export function isProtectedInterleagueGame(row: ProtectableGameRow): boolean {
+  if (row.interleague_org_id === null) return false;
+  if (row.status === "reschedule_pending") return true;
+  if (row.status !== "pending_interleague") return false;
+  return (
+    row.external_team_name !== null ||
+    row.proposed_scheduled_at !== null ||
+    row.hasRescheduleRequest
+  );
+}
 
 /**
  * True when the regenerate delete would remove this row.
@@ -119,14 +176,23 @@ export type ClearablePredicateRow = {
  *   .eq("league_id", leagueId)
  *   .in("home_team_id", teamIds)
  *   .or("status.neq.scheduled,interleague_org_id.is.null")
+ *   .not("id", "in", "(<protectedIds>)")      // only when the set is non-empty
+ *
+ * `protectedIds` is computed ONCE per run with isProtectedInterleagueGame and
+ * passed to both the delete and every pre-load subtraction. That sharing is the
+ * point: a preserved game keeps its slot, so the pre-loads must STOP
+ * subtracting it or the generator places a new game on top of a game it just
+ * decided to protect.
  */
 export function willBeClearedByRegenerate(
   row: ClearablePredicateRow,
   leagueId: string,
   teamIds: Set<string>,
+  protectedIds: ReadonlySet<string>,
 ): boolean {
   if (row.league_id !== leagueId) return false;
   if (!row.home_team_id || !teamIds.has(row.home_team_id)) return false;
+  if (row.id && protectedIds.has(row.id)) return false;
   // Preserved: accepted interleague games (scheduled AND carrying an org).
   return row.status !== "scheduled" || row.interleague_org_id === null;
 }
@@ -1132,7 +1198,7 @@ export async function generateSchedule(
   const { data: existingGamesRaw, error: venueReadErr } = await supabase
     .from("games")
     .select(
-      "venue_id, scheduled_at, league_id, home_team_id, status, interleague_org_id",
+      "id, venue_id, scheduled_at, league_id, home_team_id, status, interleague_org_id",
     )
     .in("venue_id", venueIds);
   if (venueReadErr) {
@@ -1149,7 +1215,7 @@ export async function generateSchedule(
   const { data: preservedRaw, error: preservedReadErr } = await supabase
     .from("games")
     .select(
-      "home_team_id, scheduled_at, league_id, status, interleague_org_id",
+      "id, home_team_id, scheduled_at, league_id, status, interleague_org_id, external_team_name, proposed_scheduled_at",
     )
     .in("home_team_id", teamIds);
   if (preservedReadErr) {
@@ -1161,6 +1227,77 @@ export async function generateSchedule(
     };
   }
 
+  // ── 8a-i. Which interleague games must SURVIVE this regenerate ──────────────
+  //
+  // Computed BEFORE every subtraction below and before the delete, because both
+  // depend on it: a protected game keeps its slot, so the pre-loads must treat
+  // it as occupied (they do, by NOT subtracting it) and the delete must skip it.
+  // Two reads feed it, and BOTH fail closed — an unreadable request table would
+  // otherwise make a live negotiation look untouched and delete it.
+  const protectedCandidates = ((preservedRaw ?? []) as Array<{
+    id: string;
+    home_team_id: string | null;
+    scheduled_at: string;
+    league_id: string | null;
+    status: string | null;
+    interleague_org_id: string | null;
+    external_team_name: string | null;
+    proposed_scheduled_at: string | null;
+  }>).filter(
+    (g) =>
+      g.league_id === div.league_id &&
+      !!g.home_team_id &&
+      clearableTeamIds.has(g.home_team_id) &&
+      g.interleague_org_id !== null &&
+      (g.status === "pending_interleague" || g.status === "reschedule_pending"),
+  );
+
+  const gamesWithRequests = new Set<string>();
+  if (protectedCandidates.length > 0) {
+    const { data: reqRaw, error: reqErr } = await supabase
+      .from("interleague_reschedule_requests")
+      .select("game_id")
+      .in("game_id", protectedCandidates.map((g) => g.id));
+    if (reqErr) {
+      return {
+        success: false,
+        error:
+          `Couldn't check whether any interleague game is mid-negotiation: ${reqErr.message}. ` +
+          `Nothing was changed — the existing schedule is untouched. Try again.`,
+      };
+    }
+    for (const r of (reqRaw ?? []) as Array<{ game_id: string }>) {
+      gamesWithRequests.add(r.game_id);
+    }
+  }
+
+  const preservedGames: PreservedGame[] = [];
+  const protectedIds = new Set<string>();
+  for (const g of protectedCandidates) {
+    if (
+      !isProtectedInterleagueGame({
+        status: g.status,
+        interleague_org_id: g.interleague_org_id,
+        external_team_name: g.external_team_name,
+        proposed_scheduled_at: g.proposed_scheduled_at,
+        hasRescheduleRequest: gamesWithRequests.has(g.id),
+      })
+    ) {
+      continue;
+    }
+    protectedIds.add(g.id);
+    preservedGames.push({
+      id: g.id,
+      scheduledAt: g.scheduled_at,
+      opponentLabel:
+        g.external_team_name ??
+        orgNames.get(g.interleague_org_id ?? "") ??
+        "the other league",
+      reason:
+        g.status === "reschedule_pending" ? "accepted_reschedule_pending" : "live_negotiation",
+    });
+  }
+
   // Per-org per-date away count: any existing away game against one of this
   // division's orgs (across the league — even other divisions) counts against
   // that org's field_count for the day. Only needed when there are orgs.
@@ -1169,7 +1306,7 @@ export async function generateSchedule(
     const { data: existingAwayRaw, error: awayReadErr } = await supabase
       .from("games")
       .select(
-        "interleague_org_id, scheduled_at, league_id, home_team_id, status",
+        "id, interleague_org_id, scheduled_at, league_id, home_team_id, status",
       )
       .eq("league_id", div.league_id)
       .eq("is_away", true)
@@ -1195,6 +1332,7 @@ export async function generateSchedule(
           { ...g, interleague_org_id: g.interleague_org_id },
           div.league_id,
           clearableTeamIds,
+          protectedIds,
         )
       ) {
         continue;
@@ -1216,7 +1354,7 @@ export async function generateSchedule(
     status: string | null;
     interleague_org_id: string | null;
   }>) {
-    if (willBeClearedByRegenerate(g, div.league_id, clearableTeamIds)) continue;
+    if (willBeClearedByRegenerate(g, div.league_id, clearableTeamIds, protectedIds)) continue;
     const date = g.scheduled_at.substring(0, 10);
     const vKey = `${g.venue_id}:${date}`;
     const mins = timeToMinutes(g.scheduled_at.substring(11, 16));
@@ -1242,7 +1380,7 @@ export async function generateSchedule(
     status: string | null;
     interleague_org_id: string | null;
   }>) {
-    if (willBeClearedByRegenerate(g, div.league_id, clearableTeamIds)) continue;
+    if (willBeClearedByRegenerate(g, div.league_id, clearableTeamIds, protectedIds)) continue;
     const iso = g.scheduled_at.substring(0, 19);
     const date = g.scheduled_at.substring(0, 10);
     teamTimes.get(g.home_team_id)?.add(iso);
@@ -1259,12 +1397,19 @@ export async function generateSchedule(
   // (status='scheduled' AND interleague_org_id IS NOT NULL) so the recipient's
   // confirmed bookings aren't wiped — willBeClearedByRegenerate above mirrors
   // this exact predicate and must be changed with it.
-  const { error: delErr } = await supabase
+  let deleteQuery = supabase
     .from("games")
     .delete()
     .eq("league_id", div.league_id)
     .in("home_team_id", teamIds)
     .or("status.neq.scheduled,interleague_org_id.is.null");
+  // The second clause of the mirrored predicate. Applied only when there is
+  // something to protect, so an ordinary regenerate issues the identical
+  // statement it always did.
+  if (protectedIds.size > 0) {
+    deleteQuery = deleteQuery.not("id", "in", `(${[...protectedIds].join(",")})`);
+  }
+  const { error: delErr } = await deleteQuery;
 
   // HARD return, not a warning. This was a console.warn that fell through to
   // the insert below — so a failed clear produced a schedule ON TOP of the old
@@ -1388,6 +1533,7 @@ export async function generateSchedule(
       constraintBlockedCount: plan.constraintBlockedCount,
       preferMissCount: plan.preferMissCount,
       shortfallSummary,
+      preservedGames,
       conflicts: [],
       conflictsUnavailable:
         `The schedule was created, but the field-conflict check couldn't run: ` +
@@ -1419,6 +1565,7 @@ export async function generateSchedule(
     constraintBlockedCount: plan.constraintBlockedCount,
     preferMissCount: plan.preferMissCount,
     shortfallSummary,
+    preservedGames,
     conflicts,
     conflictsUnavailable: null,
   };
@@ -2107,7 +2254,7 @@ export async function finishSchedule(
     // conflictsUnavailable is null, not a message: nothing was written, so an
     // empty conflicts list is a true statement about this run rather than an
     // unearned all-clear.
-    return { success: true, gamesCreated: 0, unscheduledCount: 0, constraintBlockedCount: 0, preferMissCount: 0, shortfallSummary: null, conflicts: [], conflictsUnavailable: null };
+    return { success: true, gamesCreated: 0, unscheduledCount: 0, constraintBlockedCount: 0, preferMissCount: 0, shortfallSummary: null, conflicts: [], conflictsUnavailable: null, preservedGames: [] };
   }
 
   // Build intra-division matchups by cycling round-robin rounds:
@@ -2507,6 +2654,8 @@ export async function finishSchedule(
       constraintBlockedCount: constraintBlockedFinish,
       preferMissCount: preferMissFinish,
       shortfallSummary,
+      // finishSchedule has no delete, so nothing can be preserved from one.
+      preservedGames: [],
       conflicts: [],
       conflictsUnavailable:
         `The games were added, but the field-conflict check couldn't run: ` +
@@ -2534,6 +2683,8 @@ export async function finishSchedule(
     constraintBlockedCount: constraintBlockedFinish,
     preferMissCount: preferMissFinish,
     shortfallSummary,
+    // finishSchedule has no delete, so nothing can be preserved from one.
+    preservedGames: [],
     conflicts,
     conflictsUnavailable: null,
   };

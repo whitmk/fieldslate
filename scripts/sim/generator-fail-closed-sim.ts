@@ -379,12 +379,16 @@ async function run() {
   // ══ D3. The predicate itself, directly ═══════════════════════════════════
   {
     const ours = new Set([teamId(0), teamId(1)]);
+    /** Most of D3 is about league/team/status scoping, where nothing is
+     *  protected. The protection arm has its own assertion below. */
+    const NO_PROTECTED = new Set<string>();
     ok(
       "D3-intra",
       willBeClearedByRegenerate(
         { league_id: LEAGUE_ID, home_team_id: teamId(0), status: "scheduled", interleague_org_id: null },
         LEAGUE_ID,
         ours,
+        NO_PROTECTED,
       ),
       "a plain scheduled game of ours is cleared",
     );
@@ -394,17 +398,34 @@ async function run() {
         { league_id: LEAGUE_ID, home_team_id: teamId(0), status: "scheduled", interleague_org_id: "org-1" },
         LEAGUE_ID,
         ours,
+        NO_PROTECTED,
       ),
       "an ACCEPTED interleague game is preserved",
     );
+    // RULE CHANGED 2026-09-23 — this assertion used to read "a pending
+    // interleague game is cleared", which was the documented behavior and the
+    // bug: a pending game mid-negotiation was deleted, cascading the partner's
+    // reschedule request and killing their link silently. An UNTOUCHED pending
+    // game is still cleared (below); a protected one is not (D3-protected).
     ok(
-      "D3-pendingIL",
+      "D3-pendingIL-untouched",
       willBeClearedByRegenerate(
-        { league_id: LEAGUE_ID, home_team_id: teamId(0), status: "pending_interleague", interleague_org_id: "org-1" },
+        { id: "g-untouched", league_id: LEAGUE_ID, home_team_id: teamId(0), status: "pending_interleague", interleague_org_id: "org-1" },
         LEAGUE_ID,
         ours,
+        NO_PROTECTED,
       ),
-      "a pending interleague game is cleared",
+      "an UNTOUCHED pending interleague game is still cleared",
+    );
+    ok(
+      "D3-protected",
+      !willBeClearedByRegenerate(
+        { id: "g-live", league_id: LEAGUE_ID, home_team_id: teamId(0), status: "pending_interleague", interleague_org_id: "org-1" },
+        LEAGUE_ID,
+        ours,
+        new Set(["g-live"]),
+      ),
+      "a pending interleague game in the protected set is preserved",
     );
     ok(
       "D3-foreignTeam",
@@ -412,6 +433,7 @@ async function run() {
         { league_id: LEAGUE_ID, home_team_id: "team-foreign", status: "scheduled", interleague_org_id: null },
         LEAGUE_ID,
         ours,
+        NO_PROTECTED,
       ),
       "another division's game is never cleared",
     );
@@ -421,6 +443,7 @@ async function run() {
         { league_id: "other-league", home_team_id: teamId(0), status: "scheduled", interleague_org_id: null },
         LEAGUE_ID,
         ours,
+        NO_PROTECTED,
       ),
       "another season's game is never cleared",
     );

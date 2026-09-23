@@ -14,6 +14,7 @@ import {
   finishSchedule,
   detectScheduleConflicts,
 } from "@/lib/schedule/generate-schedule";
+import { preservedSummary } from "@/lib/schedule/preserved-games";
 import type { ScheduleConflict } from "@/lib/schedule/generate-schedule";
 import {
   detectSeasonCoachConflicts,
@@ -448,7 +449,17 @@ export function DivisionSchedulePanel({
       const preferNote = res.preferMissCount > 0
         ? ` · ${res.preferMissCount} game${res.preferMissCount === 1 ? "" : "s"} placed outside team preferences`
         : "";
-      setResult({ type: "success", message: `${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled${shortfallNote}${preferNote}` });
+      // Games the regenerate refused to delete. Rendered VERBATIM from the
+      // shared helper — never hand-write this sentence (same rule as
+      // shortfallSummary). A game that survives a regenerate unannounced is the
+      // silent half of the bug the guard exists to prevent.
+      const keptNote = preservedSummary(res.preservedGames);
+      setResult({
+        type: "success",
+        message:
+          `${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled${shortfallNote}${preferNote}` +
+          (keptNote ? ` · ${keptNote}` : ""),
+      });
       console.log("[logActivity] before call: schedule_generated (handleGenerate)");
       const _r1 = await logActivity(leagueId, divisionId, "schedule_generated",
         `${divisionName} schedule generated — ${res.gamesCreated} game${res.gamesCreated === 1 ? "" : "s"} scheduled`);

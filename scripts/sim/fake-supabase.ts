@@ -23,6 +23,10 @@ export type Db = {
   division_interleague_games: Row[];
   interleague_orgs: Row[];
   team_game_constraints: Row[];
+  /** Optional in fixtures: the generator reads it only when the division has a
+   *  pending/reschedule_pending interleague game to check. FakeClient defaults
+   *  it to [] so existing sims need no edit. */
+  interleague_reschedule_requests?: Row[];
 };
 
 export type DbError = { message: string } | null;
@@ -201,11 +205,24 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
   }
 
   not(column: string, op: string, value: unknown): this {
-    if (op !== "is" || value !== null) {
-      throw new Error(`fake client: unsupported not(${column}, ${op}, ${String(value)})`);
+    if (op === "is" && value === null) {
+      this.filters.push((r) => r[column] != null);
+      return this;
     }
-    this.filters.push((r) => r[column] != null);
-    return this;
+    // PostgREST `not.in` — the regenerate delete uses it to spare the
+    // interleague games it must not destroy. Value arrives as "(id1,id2)".
+    if (op === "in" && typeof value === "string") {
+      const inner = value.trim().replace(/^\(/, "").replace(/\)$/, "");
+      const set = new Set(
+        inner
+          .split(",")
+          .map((v) => v.trim().replace(/^"(.*)"$/, "$1"))
+          .filter((v) => v.length > 0),
+      );
+      this.filters.push((r) => !set.has(String(r[column])));
+      return this;
+    }
+    throw new Error(`fake client: unsupported not(${column}, ${op}, ${String(value)})`);
   }
 
   order(column: string, opts?: { ascending?: boolean }): this {
@@ -245,7 +262,7 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
       const keyed = `${table}.${node.target}${node.fkHint ? "!" + node.fkHint : ""}`;
       const rel = RELATIONS[keyed] ?? RELATIONS[`${table}.${node.target}`];
       if (!rel) throw new Error(`fake client: no relation for ${keyed}`);
-      const children = this.fake.db[rel.table].filter((c) => rel.match(parent, c));
+      const children = this.fake.rows(rel.table).filter((c) => rel.match(parent, c));
       out[node.alias] =
         children.length > 0
           ? this.resolveEmbeds(children[0], node.children, rel.table)
@@ -273,7 +290,7 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
     }
 
     if (this.write?.kind === "delete") {
-      const keep = this.fake.db[this.table].filter(
+      const keep = this.fake.rows(this.table).filter(
         (r) => !this.filters.every((f) => f(r)),
       );
       this.fake.db[this.table] = keep;
@@ -281,12 +298,12 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
     }
     if (this.write?.kind === "insert") {
       for (const row of this.write.rows ?? []) {
-        this.fake.db[this.table].push({ id: this.fake.nextId("row"), ...row });
+        this.fake.rows(this.table).push({ id: this.fake.nextId("row"), ...row });
       }
       return { data: null, error: null };
     }
 
-    let rows = this.fake.db[this.table].filter((r) =>
+    let rows = this.fake.rows(this.table).filter((r) =>
       this.filters.every((f) => f(r)),
     );
     if (this.orderBy) {
@@ -345,7 +362,9 @@ export class FakeClient {
    *  which is what stops an abort assertion from passing vacuously. */
   faultHits: number[] = [];
 
-  constructor(public db: Db) {}
+  constructor(public db: Db) {
+    this.db.interleague_reschedule_requests ??= [];
+  }
 
   /** Returns the fault that should fail this read, or null. */
   matchReadFault(table: keyof Db, selectCols: string): ReadFault | null {
@@ -364,6 +383,13 @@ export class FakeClient {
   injectReadFault(f: ReadFault): void {
     this.readFaults.push(f);
     this.faultHits.push(0);
+  }
+
+  /** Rows for a table, defaulting an absent optional table to []. Keeps the
+   *  optional `interleague_reschedule_requests` key from forcing every existing
+   *  fixture to declare it. */
+  rows(t: keyof Db): Row[] {
+    return (this.db[t] ??= []);
   }
 
   nextId(prefix: string): string {

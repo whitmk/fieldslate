@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { generateSchedule } from "@/lib/schedule/generate-schedule";
+import { preservedSummary } from "@/lib/schedule/preserved-games";
 import { fetchDivisionLocks } from "@/lib/schedule/division-lock";
 import { getDivisionGameCounts } from "@/lib/schedule/division-game-counts";
 import {
@@ -56,6 +57,8 @@ type RunStatus =
       // Non-null = conflicts are UNKNOWN (the post-write check couldn't run),
       // which must never render as "0 conflicts". See ScheduleResult.
       conflictsUnavailable: string | null;
+      /** Verbatim sentence naming interleague games the regenerate KEPT. */
+      preservedNote: string | null;
     }
   | { state: "failed"; error: string }
   // A live re-count just before generating found this division already has
@@ -226,6 +229,7 @@ export function SetupGenerateStep({
           constraintBlockedCount: res.constraintBlockedCount,
           preferMissCount: res.preferMissCount,
           shortfallSummary: res.shortfallSummary,
+          preservedNote: preservedSummary(res.preservedGames),
           conflictGameCount: res.conflicts.reduce(
             (n, c) => n + c.games.length,
             0,
@@ -282,6 +286,10 @@ export function SetupGenerateStep({
           divisionId: d.id,
           text: status.shortfallSummary ? `${head} ${status.shortfallSummary}` : head,
         });
+      }
+      if (status.preservedNote) {
+        // Reported on every run that kept something, success or not.
+        lines.push({ divisionId: d.id, text: `${d.name}: ${status.preservedNote}` });
       }
       if (status.conflictsUnavailable) {
         // Unknown, not zero — say so rather than staying silent, which would
