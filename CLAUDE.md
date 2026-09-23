@@ -39,12 +39,25 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Status source:
   `curl https://api.github.com/repos/whitmk/fieldslate/commits/<sha>/status`
   (no `gh` installed).
-- **Vercel can silently drop a push.** A push that never gets a Vercel
-  deployment shows as a GitHub status stuck at `pending` with ZERO statuses
-  and zero check runs — not a slow build. Remedy: push a trivial follow-up
-  commit to re-fire the webhook; it deploys the tip, carrying the skipped
-  commit. Confirm the SHA on the Vercel dashboard, not only the status API.
-  (Happened 2026-09-15 with `a102f8c`; also reported earlier, ~2026-07-22.)
+- **Vercel silently drops a push often enough to plan for — THREE occurrences,
+  two of them nine days apart.** A dropped push gets no deployment at all: the
+  GitHub status sits at `pending` with ZERO statuses and zero check runs, which
+  is NOT what a slow build looks like (a real build posts a `Vercel` /
+  `pending` status with a deployment URL within seconds). The dashboard is the
+  only reliable check — the status API cannot distinguish "dropped" from
+  "queued", so **confirm the SHA on the dashboard, never the API alone**.
+  - **The pattern, consistent all three times:** the drop affects ONE push, and
+    the NEXT push deploys the tip and carries the skipped commit with it. The
+    dropped SHA never gets a deployment of its own and its status stays
+    `pending` forever; that is expected, not a second failure.
+  - **Remedy:** push a trivial follow-up commit (a docs line is fine), then
+    confirm the new SHA on the dashboard. Its build contains the skipped
+    commit, since that commit is its parent.
+  - Occurrences: `a102f8c` (2026-09-15), `275563d` (2026-09-23), plus one
+    reported earlier, ~2026-07-22. **If it happens a fourth time, stop
+    absorbing it and check the repo's webhook delivery log in GitHub settings
+    (Settings → Webhooks → Recent Deliveries) for the failing delivery** — two
+    drops in nine days is a broken integration, not bad luck.
 - **Canonical domain is `https://www.thefieldslate.com` (with www).** The bare
   domain 307-redirects to www; Stripe webhooks and Supabase auth callbacks are
   configured against www only, so links that land users (or mail-client image
