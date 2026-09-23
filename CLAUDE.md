@@ -2359,10 +2359,37 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
 - **KNOWN, NOT FIXED — regenerate deletes an ACCEPTED game in
   `reschedule_pending`**, contradicting 0079's rule that accepted interleague
   games are never silently deleted. Zero live rows.
-- **Also noted, not fixed:** the host reschedule route's `scheduled` branch has
-  no division-lock gate and no occupancy gate (hours only when a free-typed
-  venue name matches ours); the host respond route has no lock gate; the token
-  counter path runs no occupancy gate (the host's later accept does).
+- **WHICH PATH GETS WHICH GATE — the rule, settled 2026-09-23. A future session
+  will look at the partner counter, see no occupancy gate and think it found a
+  hole; it is deliberate.**
+  1. **Every path that WRITES a time gates occupancy** — both accept paths
+     (`reschedule/[id]/respond` accept, resolve's `accept_proposal`).
+  2. **A HOST-SIDE proposal gates too**, even though it writes no time: the
+     admin is ours, and proposing a time our own field cannot take costs the
+     partner a round trip and an email. Both branches of
+     `games/[id]/reschedule` now do.
+  3. **A PARTNER-SIDE proposal gates HOURS ONLY, never occupancy** — the token
+     counter and `schedule/[token]/reschedule`. Three reasons: it writes no
+     time (the host's later accept is gated); an occupancy refusal names the
+     conflicting booking, which would leak our schedule to an anonymous token
+     holder; and occupancy now is not occupancy at acceptance, so it would
+     refuse proposals the host could still accept.
+  4. **Lock gates are HOST-SIDE ONLY**, via `lockRefusal`
+     (`lib/interleague/lock-gate.ts`). Refusing an anonymous partner strands
+     someone who cannot act on the error — the same reason the 0082 trigger
+     lets a partner decline under a lock.
+  The lock gates on `games/[id]/reschedule` (scheduled branch) and
+  `reschedule/[id]/respond` closed 2026-09-23; neither is covered by the
+  trigger, whose allowlist permits every column those paths write, so the route
+  gate is the only enforcement. Harness: `npm run sim:reschedule-gate-gaps`.
+- **`gateRescheduleVenue` FAILS CLOSED (2026-09-23)** — it used to
+  `return { ok: true }` on a read error, i.e. "the hours are fine" from a check
+  that never ran. **It needs no `venue_id` carve-out and must not gain one:**
+  `get_game_venue_context_for_gate` returns null in exactly one case, a
+  missing game row. Away games, venue-less games and unmatched free-text labels
+  come back as real objects and are skipped INSIDE the gate. That is the
+  opposite of `gateRescheduleOccupancy`, whose RPC returns a real context for a
+  venue-less game and therefore keys its skip on `venue_id` explicitly.
 - **Live drift closed:** before 0091 the live accept/decline/counter bodies were
   0039's with every in-body comment stripped (md5 matched exactly) — the 0079
   failure class. 0091 re-applied them from the repo text.
@@ -2609,6 +2636,8 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   left alone — details under "Interleague counter-proposal picker".
 - **Resolve route / accept-proposal can save onto a non-playing day** (Finding
   C, same section). Neither server gate checks the division's playing days.
+  (The lock, hours and occupancy gaps alongside it closed 2026-09-23 — see
+  "WHICH PATH GETS WHICH GATE" under Interleague negotiation.)
 - **Single-game delete mid-negotiation is still silent.**
   `delete_game_if_unblocked` permits deleting a `pending_interleague` game, so
   it will remove one with an open partner request; the request cascades and the

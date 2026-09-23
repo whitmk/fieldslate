@@ -32,6 +32,17 @@
  *       [B-resolve-byte-identical] — the whole point of that assertion.
  *   M4  The lock gate deleted from the scheduled branch of the reschedule
  *       route. Dies at [C-reschedule-lock] (the weak check — see above).
+ *   M5  The occupancy gate deleted from the scheduled branch. Dies at
+ *       [C-reschedule-occupancy] (same caveat).
+ *
+ * BOTH C MUTANTS WERE WRONG ON THE FIRST PASS, and the fix is worth knowing.
+ * The branch slice ran to END OF FILE, so it also covered proposeOnPendingGame
+ * — which calls both gates. M5 therefore SURVIVED: the occupancy call it
+ * deleted was still "found", in the other branch. M4 appeared to die, but only
+ * because it removed the marker comment the slice started from, so indexOf
+ * returned -1 and the slice collapsed — it died for the wrong reason. The slice
+ * is now bounded at the helper and a missing marker fails [C-bounds] on its
+ * own. A source grep that matches the wrong region is worse than no grep.
  */
 
 import { gateRescheduleVenue } from "../../src/lib/venues/reschedule-gate";
@@ -188,14 +199,46 @@ function groupC() {
   const tokenRespond = read("src/app/api/reschedule/[token]/respond/route.ts");
   const tokenPropose = read("src/app/api/schedule/[token]/reschedule/route.ts");
 
-  const scheduledBranch = reschedule.slice(reschedule.indexOf("// ── Schedule lock ──"));
+  // BOUNDING THIS SLICE IS THE WHOLE DIFFICULTY. The file holds BOTH branches:
+  // the scheduled branch inside POST, and proposeOnPendingGame below it, which
+  // has called both gates since 0091. A slice that runs to end-of-file matches
+  // the pending branch's calls and passes no matter what the scheduled branch
+  // does — M5 survived exactly that way on the first mutation pass. So bound it
+  // at the helper, and treat a missing marker as a FAILURE rather than letting
+  // indexOf(-1) quietly reshape the slice (which is how M4 first "died": the
+  // marker vanished with the code, not the call).
+  const branchStart = reschedule.indexOf("export async function POST(");
+  const branchEnd = reschedule.indexOf("async function proposeOnPendingGame(");
+  assert(
+    branchStart >= 0 && branchEnd > branchStart,
+    "[C-bounds] the scheduled branch could be located in the file",
+  );
+  const scheduledBranch =
+    branchStart >= 0 && branchEnd > branchStart ? reschedule.slice(branchStart, branchEnd) : "";
   assert(scheduledBranch.includes("lockRefusal("), "[C-reschedule-lock] the scheduled branch calls the lock gate");
+  assert(
+    scheduledBranch.includes("gateRescheduleOccupancy("),
+    "[C-reschedule-occupancy] the scheduled branch calls the occupancy gate",
+  );
   assert(respond.includes("lockRefusal("), "[C-respond-lock] the host respond route calls the lock gate");
 
   // HOST-SIDE ONLY. A token route must never gain a lock gate: refusing an
   // anonymous partner strands someone who cannot act on the error.
   assert(!tokenRespond.includes("lockRefusal("), "[C-token-respond-no-lock] the partner respond route has NO lock gate");
   assert(!tokenPropose.includes("lockRefusal("), "[C-token-propose-no-lock] the partner propose route has NO lock gate");
+
+  // THE RULE, pinned: a path that writes no time and belongs to the PARTNER
+  // gates hours only. Occupancy there would leak our bookings to an anonymous
+  // caller and would refuse proposals the host could still accept later.
+  const counterBranch = tokenRespond.slice(tokenRespond.indexOf("  // counter"));
+  assert(
+    !counterBranch.includes("gateRescheduleOccupancy("),
+    "[C-counter-no-occupancy] the partner counter path stays occupancy-free by design",
+  );
+  assert(
+    !tokenPropose.includes("gateRescheduleOccupancy("),
+    "[C-token-propose-no-occupancy] the partner propose path stays occupancy-free by design",
+  );
 }
 
 async function main() {

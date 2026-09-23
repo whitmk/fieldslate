@@ -227,6 +227,28 @@ export async function POST(
     }
   }
 
+  // ── Occupancy gate ───────────────────────────────────────────────────────
+  // The hours check above proves our field is OPEN at the proposed time; this
+  // proves it is not already TAKEN. The pending branch has run it since 0091;
+  // this branch never did.
+  //
+  // WHY A PROPOSAL IS GATED AT ALL — THE RULE, so a future change keeps the
+  // line in the same place:
+  //   * every path that WRITES a time gates occupancy (both accept paths do);
+  //   * a HOST-SIDE proposal gates too, because the admin is ours and a time
+  //     our own field cannot take costs the partner a round trip and an email;
+  //   * a PARTNER-SIDE proposal gates HOURS ONLY — never occupancy. It writes
+  //     no time, its refusal would leak our bookings to an anonymous token
+  //     holder, and occupancy now is not occupancy at the host's later accept.
+  // The gate keys its own skip on venue_id, so an away game needs no branch.
+  const occupancy = await gateRescheduleOccupancy(supabase, {
+    gameId: game.id,
+    scheduledAtIso: normalized,
+  });
+  if (!occupancy.ok) {
+    return NextResponse.json(occupancy.body, { status: occupancy.status });
+  }
+
   // Create the request row, then flip the game.
   const { data: reqRow, error: insertErr } = await supabase
     .from("interleague_reschedule_requests")
