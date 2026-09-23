@@ -32,7 +32,13 @@ export type LockedAction =
   | "add"
   | "delete"
   | "move"
-  | "deleteTeam";
+  | "deleteTeam"
+  // The two interleague route gates (see lib/interleague/lock-gate.ts). Their
+  // sentences moved HERE from inline literals in the routes; `resolveInterleague`
+  // is the string the resolve route already shipped and must stay byte-identical
+  // (pinned by [B-resolve-byte-identical] in sim:reschedule-gate-gaps).
+  | "resolveInterleague"
+  | "rescheduleInterleague";
 
 const ACTION_REASON: Record<LockedAction, string> = {
   generate: "Unlock it to regenerate the schedule.",
@@ -41,6 +47,10 @@ const ACTION_REASON: Record<LockedAction, string> = {
   delete: "Unlock it to delete a game.",
   move: "Unlock it to move this game.",
   deleteTeam: "Unlock it to delete a team.",
+  resolveInterleague:
+    "Unlock it on the division's schedule panel to resolve interleague games. Rainouts and reschedules still work while it's locked.",
+  rescheduleInterleague:
+    "Unlock it to propose a new time for interleague games.",
 };
 
 /** The one place the locked-surface sentence is written. */

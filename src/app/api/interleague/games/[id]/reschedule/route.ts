@@ -10,6 +10,7 @@ import {
 } from "@/lib/validation/text-length";
 import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
 import { gateRescheduleOccupancy } from "@/lib/venues/occupancy-gate";
+import { lockRefusal } from "@/lib/interleague/lock-gate";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import { decideHostProposal, proposalRound, type RequestLite } from "@/lib/interleague/negotiation";
 import { hostProposalEmail, respondUrl } from "@/lib/interleague/negotiation-emails";
@@ -186,6 +187,20 @@ export async function POST(
   if (decision.branch === "pending_counter") {
     return proposeOnPendingGame({ supabase, user, game, requests, normalized, venueName, note, partnerName });
   }
+
+  // ── Schedule lock ────────────────────────────────────────────────────────
+  // The pending branch has gated on this since 0091; the scheduled branch never
+  // did. Proposing a new time is our own admin acting on a locked division, and
+  // the 0082 trigger permits every write this branch makes (a `status` update
+  // plus a row in another table), so this route gate is the only enforcement.
+  const lock = lockRefusal(
+    {
+      divisionName: game.home_team?.division?.name ?? null,
+      locked: game.home_team?.division?.locked ?? null,
+    },
+    "rescheduleInterleague",
+  );
+  if (lock) return NextResponse.json(lock.body, { status: lock.status });
 
   // ── Venue-hours gate ─────────────────────────────────────────────────────
   // The endpoint accepts `venue_name` as free text — the proposed venue
@@ -368,14 +383,18 @@ async function proposeOnPendingGame(p: {
   const { supabase, user, game, requests, normalized, venueName, note, partnerName } = p;
 
   // Schedule lock: the same actor-based gate the resolve route applies. A host
-  // proposal is our side of interleague on this division.
-  if (game.home_team?.division?.locked) {
-    const divName = game.home_team.division.name ?? "This game's division";
-    return NextResponse.json(
-      { error: `${divName} is locked. Unlock it on the division's schedule panel to change interleague games.` },
-      { status: 409 },
-    );
-  }
+  // proposal is our side of interleague on this division. Wording now comes
+  // from division-lock.ts — this branch's sentence CHANGES (it used to say
+  // "to change interleague games"), which is deliberate: both host-proposal
+  // branches now say the same thing, because they are the same action.
+  const pendingLock = lockRefusal(
+    {
+      divisionName: game.home_team?.division?.name ?? null,
+      locked: game.home_team?.division?.locked ?? null,
+    },
+    "rescheduleInterleague",
+  );
+  if (pendingLock) return NextResponse.json(pendingLock.body, { status: pendingLock.status });
 
   // Away games (the partner hosts) must name a field; home games keep ours.
   const proposedVenue = game.is_away ? venueName || game.proposed_venue_name || "" : "";

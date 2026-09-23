@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
 import { gateRescheduleOccupancy } from "@/lib/venues/occupancy-gate";
+import { lockRefusal } from "@/lib/interleague/lock-gate";
 import { SITE_URL } from "@/lib/site";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
@@ -173,15 +174,17 @@ export async function POST(
   // completely (it is the only one the UI uses), but it is NOT a database
   // guarantee the way blocked INSERTs and DELETEs are. A caller issuing the
   // same UPDATE directly under RLS would still succeed.
-  if (game.home_team?.division?.locked) {
-    const divName = game.home_team.division.name ?? "This game's division";
-    return NextResponse.json(
-      {
-        error: `${divName} is locked. Unlock it on the division's schedule panel to resolve interleague games. Rainouts and reschedules still work while it's locked.`,
-      },
-      { status: 409 },
-    );
-  }
+  // Wording lives in division-lock.ts with every other locked sentence; this
+  // refactor is byte-identical to the literal that used to sit here, pinned by
+  // [B-resolve-byte-identical] in sim:reschedule-gate-gaps.
+  const resolveLock = lockRefusal(
+    {
+      divisionName: game.home_team?.division?.name ?? null,
+      locked: game.home_team?.division?.locked ?? null,
+    },
+    "resolveInterleague",
+  );
+  if (resolveLock) return NextResponse.json(resolveLock.body, { status: resolveLock.status });
 
   // ── Outstanding proposals on this game (0091) ───────────────────────────
   // The host's own outstanding "different time" blocks every action that

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
 import { gateRescheduleOccupancy } from "@/lib/venues/occupancy-gate";
+import { lockRefusal } from "@/lib/interleague/lock-gate";
 import { SITE_URL } from "@/lib/site";
 import { gameStatusAfterHostDecline } from "@/lib/interleague/negotiation";
 import {
@@ -96,7 +97,7 @@ export async function POST(
       status: string;
       external_team_name: string | null;
       proposed_venue_name: string | null;
-      home_team: { name: string; division: { name: string } | null } | null;
+      home_team: { name: string; division: { name: string; locked: boolean | null } | null } | null;
       interleague_org: { name: string } | null;
       league: { id: string; name: string; season: string | null; owner_id: string } | null;
       venue: { name: string } | null;
@@ -110,7 +111,7 @@ export async function POST(
        game:games(
          id, league_id, interleague_org_id, is_away, venue_id, scheduled_at, status,
          external_team_name, proposed_venue_name,
-         home_team:teams!home_team_id(name, division:divisions(name)),
+         home_team:teams!home_team_id(name, division:divisions(name, locked)),
          interleague_org:interleague_orgs(name),
          league:leagues(id, name, season, owner_id),
          venue:venues(name)
@@ -129,6 +130,19 @@ export async function POST(
   if (!req.game || !req.game.league) {
     return NextResponse.json({ error: "Not authorized." }, { status: 403 });
   }
+  // Schedule lock — HOST side. Accepting here writes the game's time, and every
+  // column it touches is in the 0082 trigger's allowlist, so this route gate is
+  // the only thing that stops our own admin changing a locked division's
+  // interleague game. The partner's token routes deliberately have no such gate.
+  const respondLock = lockRefusal(
+    {
+      divisionName: req.game.home_team?.division?.name ?? null,
+      locked: req.game.home_team?.division?.locked ?? null,
+    },
+    "rescheduleInterleague",
+  );
+  if (respondLock) return NextResponse.json(respondLock.body, { status: respondLock.status });
+
   if (req.status !== "pending") {
     return NextResponse.json(
       { error: "This request has already been resolved." },
