@@ -9,7 +9,8 @@ import { StepDates } from "./steps/step-dates";
 import { StepVenues } from "./steps/step-venues";
 import { StepCrossDivision } from "./steps/step-cross-division";
 import { StepReview } from "./steps/step-review";
-import type { PlayoffWizardData } from "./playoff-wizard-types";
+import type { PlayoffWizardData, PlayingDay } from "./playoff-wizard-types";
+import type { WindowStash } from "@/lib/divisions/day-window-toggle";
 
 const STEPS = [
   { label: "Division" },
@@ -47,6 +48,14 @@ export function PlayoffWizard({
     setData((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  // Windows removed by switching a day OFF in this session, so switching it
+  // back on restores the hours that were typed. Held HERE, not in the Dates
+  // step (only the current step is mounted), and deliberately outside
+  // PlayoffWizardData so it can never reach the saved playoff row. Same rule
+  // and same shared function as the division wizard — see
+  // lib/divisions/day-window-toggle.ts.
+  const [dayWindowStash, setDayWindowStash] = useState<WindowStash<PlayingDay>>({});
+
   const step0Valid = data.division_id !== "";
   const canAdvance = step === 0 ? step0Valid : true;
 
@@ -54,7 +63,13 @@ export function PlayoffWizard({
     <StepDivision key="division" data={data} update={update} leagueId={leagueId} />,
     <StepFormat key="format" data={data} update={update} />,
     <StepSeeding key="seeding" data={data} update={update} />,
-    <StepDates key="dates" data={data} update={update} />,
+    <StepDates
+      key="dates"
+      data={data}
+      update={update}
+      windowStash={dayWindowStash}
+      onWindowStashChange={setDayWindowStash}
+    />,
     <StepVenues key="venues" data={data} update={update} leagueId={leagueId} currentOrgId={currentOrgId} />,
     <StepCrossDivision key="cross" data={data} update={update} leagueId={leagueId} />,
     <StepReview key="review" data={data} leagueId={leagueId} onEdit={setStep} onComplete={onComplete} />,

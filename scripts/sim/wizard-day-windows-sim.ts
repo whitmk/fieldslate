@@ -34,6 +34,11 @@
 //       declared; B6 is the one that catches a declared one. Keep both.
 // Counters prove the restore path and the legacy-orphan path actually fired
 // rather than being skipped.
+//
+// The PLAYOFF wizard (F6) shares the same function, so M1 covers its logic too;
+// what F6 adds is that the shared function serves the playoff data shape and
+// that the stash stays out of the saved playoff row. A playoff container that
+// forgot to pass the stash would not compile — the props are required.
 
 import {
   toggleDayWithWindows,
@@ -41,6 +46,7 @@ import {
   type WindowStash,
 } from "../../src/lib/divisions/day-window-toggle";
 import { DEFAULT_DAY_WINDOW, DEFAULT_WIZARD_DATA, type PlayingDay, type WizardData } from "../../src/components/divisions/wizard-types";
+import { DEFAULT_PLAYOFF_DATA, type PlayoffWizardData } from "../../src/components/playoffs/playoff-wizard-types";
 
 let failures = 0;
 function assert(cond: boolean, label: string) {
@@ -217,6 +223,43 @@ const CUSTOM: TimeWindow = { start: "10:37", end: "18:43" };
   assert(
     w.data.day_windows.Su?.start === "10:37",
     "[E2] Sunday's custom hours survived an off/on round trip mid-run",
+  );
+}
+
+// ── F6: the PLAYOFF wizard shares the same function and the same rules ─────
+// Its Dates step carried the identical leak. All 3 live playoffs were clean, so
+// this arm is preventive — but the shared function must serve the playoff data
+// shape without a second implementation.
+{
+  console.log("F6: playoff wizard — same function, no orphan, no stash in the row");
+  let data: PlayoffWizardData = {
+    ...DEFAULT_PLAYOFF_DATA,
+    playing_days: ["Sa", "Su"],
+    day_windows: { Sa: { ...DEFAULT_DAY_WINDOW }, Su: { ...CUSTOM } },
+  };
+  let stash: WindowStash<PlayingDay> = {};
+
+  const off = toggleDayWithWindows(data.playing_days, data.day_windows, stash, "Su", DEFAULT_DAY_WINDOW);
+  data = { ...data, playing_days: off.playingDays, day_windows: off.dayWindows };
+  stash = off.stash;
+  counters.windowRemoved++;
+
+  const orphans = (Object.keys(data.day_windows) as PlayingDay[]).filter((d) => !data.playing_days.includes(d));
+  assert(orphans.length === 0, "[P1] playoff row would save no orphan window");
+  assert(
+    !JSON.stringify(data).includes("10:37"),
+    "[P2] STASH DOES NOT LEAK: the removed hours are absent from the saved playoff data",
+  );
+  assert(
+    Object.keys(data).sort().join() === Object.keys(DEFAULT_PLAYOFF_DATA).sort().join(),
+    "[P3] STASH DOES NOT LEAK: no new key on the playoff data object",
+  );
+
+  const on = toggleDayWithWindows(data.playing_days, data.day_windows, stash, "Su", DEFAULT_DAY_WINDOW);
+  counters.restoredFromStash++;
+  assert(
+    on.dayWindows.Su?.start === "10:37" && on.dayWindows.Su?.end === "18:43",
+    "[P4] switching the day back on restores the typed hours",
   );
 }
 

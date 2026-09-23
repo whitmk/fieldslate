@@ -7,10 +7,18 @@ import {
   DEFAULT_DAY_WINDOW,
 } from "@/components/divisions/wizard-types";
 import type { PlayoffWizardData, PlayingDay, DayWindowMap } from "../playoff-wizard-types";
+import {
+  toggleDayWithWindows, type WindowStash,
+} from "@/lib/divisions/day-window-toggle";
 
 interface Props {
   data: PlayoffWizardData;
   update: (patch: Partial<PlayoffWizardData>) => void;
+  /** Windows removed by switching a day off in THIS session. Owned by the
+   *  wizard container — only the current step is mounted — and deliberately
+   *  outside PlayoffWizardData, which is what gets saved. */
+  windowStash: WindowStash<PlayingDay>;
+  onWindowStashChange: (stash: WindowStash<PlayingDay>) => void;
 }
 
 function Toggle({
@@ -58,7 +66,7 @@ function TimeInput({
   );
 }
 
-export function StepDates({ data, update }: Props) {
+export function StepDates({ data, update, windowStash, onWindowStashChange }: Props) {
   const [expandedDays, setExpandedDays] = useState<Set<PlayingDay>>(() => {
     const s = new Set<PlayingDay>();
     for (const d of data.playing_days) s.add(d);
@@ -74,19 +82,20 @@ export function StepDates({ data, update }: Props) {
     });
   }
 
+  // Switching a day OFF removes its window too, so a saved playoff never
+  // carries hours for a day it does not play. The removed window goes to the
+  // session stash so switching the day back on restores the typed hours.
+  // Shared with the division wizard: lib/divisions/day-window-toggle.ts.
   function toggleDay(day: PlayingDay) {
-    const enabled = data.playing_days.includes(day);
-    if (enabled) {
-      update({ playing_days: data.playing_days.filter((d) => d !== day) });
-    } else {
-      const windows: DayWindowMap = { ...data.day_windows };
-      if (!windows[day]) windows[day] = { ...DEFAULT_DAY_WINDOW };
-      update({
-        playing_days: [...data.playing_days, day],
-        day_windows: windows,
-      });
-      setExpandedDays((prev) => new Set(prev).add(day));
-    }
+    const next = toggleDayWithWindows(
+      data.playing_days, data.day_windows, windowStash, day, DEFAULT_DAY_WINDOW,
+    );
+    update({
+      playing_days: next.playingDays,
+      day_windows: next.dayWindows as DayWindowMap,
+    });
+    onWindowStashChange(next.stash);
+    if (next.enabled) setExpandedDays((prev) => new Set(prev).add(day));
   }
 
   function updateWindow(
