@@ -26,6 +26,7 @@
     "sim:host-counter": "TZ=UTC npx tsx scripts/sim/host-counter-sim.ts",
     "sim:recipient-schedule": "TZ=UTC npx tsx scripts/sim/recipient-schedule-sim.ts",
     "sim:interleague-picker": "TZ=UTC npx tsx scripts/sim/interleague-resolve-picker-sim.ts",
+    "sim:wizard-day-windows": "npx tsx scripts/sim/wizard-day-windows-sim.ts",
     "sim:week-grid": "TZ=UTC npx tsx scripts/sim/week-grid-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/week-grid-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/week-grid-sim.ts"
   },
   "dependencies": {

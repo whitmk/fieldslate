@@ -1791,6 +1791,60 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   it. **Do not "fix" this for one flag only** — the quirk is identical for both
   and they must stay consistent.
 
+## Division wizard — game days and `day_windows`
+
+- **Switching a day OFF removes its `day_windows` entry. Never leave one
+  behind.** `toggleGameDay` used to drop the day from `playing_days` and keep
+  its window, so a division could carry hours for a day it does not play. All
+  toggle logic now lives in `src/lib/divisions/day-window-toggle.ts`
+  (`toggleDayWithWindows`), shared by the division wizard's Schedule step and
+  the playoff wizard's Dates step — never write a second toggle.
+- **Orphans were INERT, and that is why this was only a data-honesty fix.**
+  Every reader checks `playing_days` first: `buildSlots`/`buildPlayingDates`,
+  both pickers' `buildSlotsAndDiagnostics` (a non-playing day is either "doesn't
+  play" or a makeup day, and makeup days use the VENUE's hours), the playoff
+  bracket generator, the review summary, and the skip-reason diagnostics. **No
+  DB function reads `day_windows` at all.** The cost was that a forgotten window
+  is indistinguishable from a deliberate reservation — which made "is Sunday
+  reserved on purpose?" unanswerable. Note `dayWindowBounds`
+  (`lib/venues/availability.ts`) is about VENUE hours, a same-shaped map that
+  has nothing to do with a division's `day_windows`.
+- **Where the orphans came from:** `DEFAULT_WIZARD_DATA` seeds
+  `playing_days: ["Sa","Su"]` with a window for each, so every Saturday-only
+  division built in the wizard acquired a Sunday orphan. 15 existed in
+  production on 2026-09-23 (11 of 30 divisions) — captured with ids and hours in
+  `docs/orphan-day-windows-2026-09-23.md`. **No cleanup migration was written**;
+  that is a separate decision, and the record exists because only ONE orphan
+  (SRALL Majors, Sunday 10:00–18:00) carried hours a person typed.
+- **The session stash lives in the wizard CONTAINER and must never enter
+  `WizardData`.** Removing a window would otherwise discard hours the admin
+  typed, so it is stashed and restored if the day goes back on in the same
+  session. It sits in `division-wizard.tsx` / `playoff-wizard.tsx` state because
+  only the CURRENT step is mounted — state in the step dies on any trip to
+  Review and back. It is outside `WizardData` because that object is what the
+  review step saves AND what create-mode drafts write to localStorage; a stash
+  inside it would persist the very orphan being removed. Mutant M2 in the
+  harness is exactly that shortcut.
+- **Enable precedence — existing window, then stash, then default.** The first
+  arm is what keeps LEGACY orphans behaving as they always did: re-enabling a
+  day whose orphan is still in the saved settings restores those hours. **A
+  division that is never toggled saves byte-identical settings**, so existing
+  orphans survive re-saves by design; only toggling that day off clears one.
+  Consequence to expect: after a save, hours no longer come back across
+  SESSIONS (the window is gone), only within one.
+- **Harness: `npm run sim:wizard-day-windows`** — drives the real
+  `toggleDayWithWindows`; 2 mutants applied to the real source and killed by
+  their own assertion, 4 anti-vacuity counters. Read its mutation log before
+  changing any of this; it records why B6 and B7 both have to stay.
+- **KNOWN, NOT FIXED — `playing_days` is stored in TOGGLE order, not week
+  order.** The review step derives the legacy `earliest_start`/`latest_start`
+  from `data.playing_days[0]`, which is the first day switched ON, not the
+  earliest weekday. A division toggled We-then-Sa stores Wednesday's window in
+  those legacy fields. Harmless today (every reader prefers `day_windows` and
+  falls back to the legacy pair only when a playing day has no window, which the
+  wizard cannot produce), but do not read "first playing day" as "earliest
+  weekday" anywhere new.
+
 ## Locations (venue → park/complex hierarchy)
 
 - **The model.** A `locations` row (0085) is an org-scoped park/complex

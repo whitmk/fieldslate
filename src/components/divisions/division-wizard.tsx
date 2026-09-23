@@ -11,7 +11,8 @@ import { StepInterleague } from "./steps/step-interleague";
 import { StepCoaches } from "./steps/step-coaches";
 import { StepReview } from "./steps/step-review";
 import { WizardPreviewStep } from "./steps/wizard-preview-step";
-import { DEFAULT_WIZARD_DATA, type WizardData } from "./wizard-types";
+import { DEFAULT_WIZARD_DATA, type WizardData, type PlayingDay } from "./wizard-types";
+import type { WindowStash } from "@/lib/divisions/day-window-toggle";
 import type { Division } from "@/types/database";
 import { getOfficialTitle, getOfficialTitlePlural } from "@/lib/utils/official-title";
 import { isElite, isProPlus, type Plan } from "@/lib/plan/limits";
@@ -107,6 +108,15 @@ export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartD
     setData((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  // Game-day windows removed by switching a day OFF in this session, so
+  // switching it back on restores the admin's hours rather than the default.
+  // It lives HERE, not in the Schedule step, because only the current step is
+  // mounted — state in the step would be lost on any trip to another step. It
+  // is deliberately NOT part of `data`: that object is what the review step
+  // saves and what the draft below writes to localStorage, and a stash inside
+  // it would persist exactly the orphan window this mechanism removes.
+  const [dayWindowStash, setDayWindowStash] = useState<WindowStash<PlayingDay>>({});
+
   // Tier-gated steps render an upsell-preview instead of the real step for
   // non-entitled plans (Umpires = Elite, Interleague = Pro+). Clear any gated
   // values in CREATE mode — including stale localStorage drafts — so a skipped
@@ -198,7 +208,14 @@ export function DivisionWizard({ leagueId, leagueName, leagueSport, leagueStartD
       teamCount={teamCount}
       existingTeamCountInDivision={existingTeamCountInDivision}
     />,
-    <StepPlayingSchedule key="schedule" data={data} update={update} leagueId={leagueId} />,
+    <StepPlayingSchedule
+      key="schedule"
+      data={data}
+      update={update}
+      leagueId={leagueId}
+      windowStash={dayWindowStash}
+      onWindowStashChange={setDayWindowStash}
+    />,
     <StepFields key="fields" data={data} update={update} leagueId={leagueId} currentOrgId={currentOrgId} />,
     <StepFormat key="format" data={data} update={update} />,
     <StepCoaches key="coaches" data={data} update={update} leagueId={leagueId} />,
