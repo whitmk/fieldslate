@@ -89,6 +89,23 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   this is exactly what caused the comp-guard 42501/503 outage fixed by
   migration 0070 (every checkout returned 503 until the grant landed).
   service_role bypasses RLS but NOT table-level privileges.
+- **TIGHTENING A FUNCTION'S EXECUTE MEANS REVOKING FROM `public`, NOT FROM A
+  ROLE — a role-level revoke is a silent no-op.** Postgres grants EXECUTE on
+  every newly created function to `PUBLIC`, and `anon` / `authenticated` /
+  `dashboard_readonly` inherit it from there. So
+  `revoke execute on function … from anon;` RUNS CLEANLY AND CHANGES NOTHING:
+  `has_function_privilege('anon', …)` is still true afterwards. The working
+  form is revoke from `public`, then grant back the roles that genuinely need
+  it:
+  ```sql
+  revoke execute on function public.f(args) from public;
+  grant  execute on function public.f(args) to authenticated;
+  ```
+  **Always verify with `has_function_privilege` per role after applying** — the
+  no-op version leaves no error behind to notice. Found the hard way applying
+  0093. Related, still open: this project's default privileges hand EXECUTE on
+  every new function to `dashboard_readonly` (see "Open items"), so a new
+  function is broadly callable until a migration says otherwise.
 - **PostgREST silently caps every query at 1000 rows.** No error is raised —
   partial results are indistinguishable from complete ones. The exposure is
   widest on queries NOT scoped to a single season (org-wide / all-time
