@@ -4,6 +4,7 @@ import { AddGameButton } from "@/components/schedule/add-game-modal";
 import { DivisionFilter } from "@/components/schedule/division-filter";
 import { TeamFilter } from "@/components/schedule/team-filter";
 import { VenueFilter } from "@/components/schedule/venue-filter";
+import { LocationFilter } from "@/components/schedule/location-filter";
 import { HidePastToggle } from "@/components/schedule/hide-past-toggle";
 import {
   ViewModeToggle,
@@ -25,6 +26,16 @@ import {
   type WeekVenueInput,
 } from "@/lib/schedule/week-grid";
 import { byQualifiedVenueLabel } from "@/lib/venues/venue-label";
+import {
+  applyVenueScope,
+  effectiveVenueForLocation,
+  fetchLocationVenueIds,
+  locationOptionsFromVenues,
+  narrowWeekVenues,
+  venueOptionsForLocation,
+  type VenueOption,
+  type VenueScope,
+} from "@/lib/schedule/location-filter";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
@@ -86,6 +97,7 @@ export default async function SchedulePage({
     division?: string;
     team?: string;
     venue?: string;
+    location?: string;
     past?: string;
     mode?: string;
     month?: string;
@@ -103,6 +115,7 @@ export default async function SchedulePage({
   const selectedDivisionId = searchParams.division ?? "";
   const selectedTeamId = searchParams.team ?? "";
   const selectedVenueId = searchParams.venue ?? "";
+  const selectedLocationId = searchParams.location ?? "";
   const mode = parseMode(searchParams.mode);
   const month = parseMonth(searchParams.month);
   // NULL when absent or malformed, and deliberately never defaulted here: the
@@ -206,19 +219,23 @@ export default async function SchedulePage({
   // active division/team/past filters (matching how divisions/teams options
   // don't shrink as other filters narrow). Interleague away games carry a
   // null venue_id and are excluded here by design.
+  //
+  // The Location filter's options derive from this same set (location id rides
+  // the embed), so a location appears only if one of its venues has a game this
+  // season. Venues with no location contribute no location option.
   const { data: venueData } = seasonId
     ? await supabase
         .from("games")
-        .select("venue_id, venue:venues(name, location:locations(name))")
+        .select("venue_id, venue:venues(name, location:locations(id, name))")
         .eq("league_id", seasonId)
         .not("venue_id", "is", null)
-    : { data: [] as { venue_id: string; venue: { name: string; location: { name: string } | null } | null }[] };
-  const venues = (() => {
+    : { data: [] as unknown[] };
+  const venues: VenueOption[] = (() => {
     const rows = (venueData ?? []) as unknown as {
       venue_id: string;
-      venue: { name: string; location: { name: string } | null } | null;
+      venue: { name: string; location: { id: string; name: string } | null } | null;
     }[];
-    const byId = new Map<string, { name: string; location: { name: string } | null }>();
+    const byId = new Map<string, Omit<VenueOption, "id">>();
     for (const r of rows) {
       if (r.venue_id && r.venue?.name && !byId.has(r.venue_id)) {
         byId.set(r.venue_id, { name: r.venue.name, location: r.venue.location ?? null });
@@ -230,6 +247,9 @@ export default async function SchedulePage({
       byQualifiedVenueLabel,
     );
   })();
+  const locationOptions = locationOptionsFromVenues(venues);
+  // The Venue dropdown lists only the selected location's venues.
+  const venueOptions = venueOptionsForLocation(venues, selectedLocationId);
 
   const effectiveTeamId = (() => {
     if (!selectedTeamId) return "";
@@ -253,6 +273,15 @@ export default async function SchedulePage({
   let games: ScheduleGame[] = [];
   let gamesError: string | null = null;
 
+  // Venue/location scope. The location's venue ids come from a separate
+  // fail-loud read (see fetchLocationVenueIds for why not the options above).
+  // A read failure lands in `gamesError` like the games read itself, so the
+  // page shows an error — never an unfiltered or empty list posing as Monroe's.
+  let venueScope: VenueScope = {
+    venueId: selectedVenueId,
+    locationVenueIds: null,
+  };
+
   let teamIdScope: string[] | null = null;
   if (effectiveTeamId) {
     teamIdScope = [effectiveTeamId];
@@ -274,6 +303,20 @@ export default async function SchedulePage({
     // either, since 1000 is PostgREST's own silent cap and a real limit at that
     // value is indistinguishable from being truncated by the server.
     try {
+      if (selectedLocationId) {
+        const locationVenueIds = await fetchLocationVenueIds(
+          supabase,
+          currentOrgId,
+          selectedLocationId,
+        );
+        venueScope = {
+          // A venue outside the location is dropped, not ANDed into an
+          // always-empty result — the effectiveTeamId pattern.
+          venueId: effectiveVenueForLocation(selectedVenueId, locationVenueIds),
+          locationVenueIds,
+        };
+      }
+      const scope = venueScope;
       games = await fetchAllRows<ScheduleGame>(
         "the season schedule",
         ({ from, to, exactCount }) => {
@@ -321,12 +364,11 @@ export default async function SchedulePage({
             }
           }
 
-          // Venue filter composes as AND with the division/team scope above.
-          // Interleague away games (venue_id null) fall out under a specific
-          // venue by design — they're only reachable under "All venues".
-          if (selectedVenueId) {
-            q = q.eq("venue_id", selectedVenueId);
-          }
+          // Location + venue filters compose as AND with the division/team
+          // scope above. Interleague away games (venue_id null) fall out under
+          // a specific location or venue by design — they're only reachable
+          // under "All locations" + "All venues".
+          q = applyVenueScope(q, scope);
 
           if (gridRange) {
             q = q
@@ -445,14 +487,13 @@ export default async function SchedulePage({
     }
   }
 
-  // A `?venue=` filter already narrows the games to one field, so leaving every
-  // other eligible field on screen as an empty row would misread as "these
-  // fields are free this week". The `?division=` filter deliberately does NOT
-  // narrow rows — a division's games are only part of what occupies a field —
-  // and the grid says so in a footnote instead.
-  if (selectedVenueId) {
-    weekVenues = weekVenues.filter((v) => v.venueId === selectedVenueId);
-  }
+  // A `?venue=` or `?location=` filter already narrows the games, so leaving
+  // every other eligible field on screen as an empty row would misread as
+  // "these fields are free this week" — under Monroe, Westside's fields would
+  // show as empty. The `?division=` filter deliberately does NOT narrow rows —
+  // a division's games are only part of what occupies a field — and the grid
+  // says so in a footnote instead.
+  weekVenues = narrowWeekVenues(weekVenues, venueScope);
 
   // Empty-state /setup link gate (Chunk 4): own-org owner mid-setup AND the
   // season GENUINELY has zero games. "No games found." also renders under
@@ -524,8 +565,19 @@ export default async function SchedulePage({
                   selectedDivisionId={selectedDivisionId}
                 />
               )}
+              {/* Hidden when no venue with a game this season has a location
+                  — the same no-dead-options rule as the venue dropdown. */}
+              {locationOptions.length > 0 && (
+                <LocationFilter
+                  locations={locationOptions}
+                  selectedId={selectedLocationId}
+                />
+              )}
               {venues.length > 0 && (
-                <VenueFilter venues={venues} selectedId={selectedVenueId} />
+                <VenueFilter
+                  venues={venueOptions}
+                  selectedId={venueScope.venueId}
+                />
               )}
             </div>
           </div>
