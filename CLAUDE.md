@@ -796,7 +796,40 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   found") while the dropdown visually falls back to "All …". Only the team
   filter reconciles (`effectiveTeamId` in the server page). Division and
   venue are consistent with each other by design for now; if reconciliation
-  is ever added, apply it to BOTH uniformly, not one.
+  is ever added, apply it to BOTH uniformly, not one. **`?location=` (added
+  2026-09-24) joins this family and must be included in that same fix.** The
+  practical trigger is the season switcher: it `router.refresh()`es and keeps
+  the URL, so a previous season's ids ride along.
+- **Location filter (`?location=`, 2026-09-24) — the tier above venue.** Sits
+  BEFORE Venue and mirrors it exactly: options derive from venues carrying a
+  game this season (`locationOptionsFromVenues`; the options read's venue embed
+  carries `location:locations(id, name)`), filter is server-side on the ONE
+  shared games query, so list/calendar/week/print all honor it. All logic lives
+  in `src/lib/schedule/location-filter.ts`; the page only calls it.
+  - **Venues with no location are out of scope BY DESIGN** — no option, no
+    "Unassigned", excluded under a specific location, as are interleague away
+    games (null `venue_id`). The dropdown hides when no season venue is located.
+  - **Location → venue cascades like division → team:** the dropdown clears
+    `?venue=` on change, the Venue dropdown lists only that location's venues,
+    and the server drops a venue outside the location
+    (`effectiveVenueForLocation`) rather than ANDing it into an empty list.
+    This is location-vs-venue consistency, NOT stale-season reconciliation —
+    with no location selected the venue passes through untouched.
+  - **The location's venue ids come from their own read** —
+    `fetchLocationVenueIds`: `venues` by `owner_id` + `location_id`, FAILS LOUD
+    into `gamesError`. Not from the dropdown options (unpaginated — a venue lost
+    to truncation there would silently drop its games from the filter) and not
+    an `!inner` venue embed (that would change the shared query's embed for
+    every view mode). A location with zero venues matches NOTHING (sentinel
+    uuid), never everything.
+  - **Week mode narrows ROWS too** (`narrowWeekVenues`), same as a venue
+    filter. Without it, a Monroe view lists Westside's fields as empty rows —
+    which reads as "free this week". Mutant LM3 (games filtered, rows not) is
+    killed only by `[W1]`.
+  - **Harness: `npm run sim:location-filter`** — 31 checks, 5 anti-vacuity
+    counters, 5 mutants each killed first at its own assertion. It drives the
+    lib, NOT the page: the page must keep CALLING `applyVenueScope` and
+    `narrowWeekVenues`, never an inline copy, or the harness proves nothing.
 
 ## Schedule page — the ONE shared games query
 
@@ -2012,8 +2045,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `delete_venue_if_unreferenced`. It holds because every venue reference in
   the engine is ID-keyed (verified: `division_venues`, `teams.preferred_field_id`,
   `snack_shack_settings.home_venue_ids`, the generator's venue maps), so
-  location is a pure DISPLAY grouping. **Only two kinds of code read
-  `location_id`: the CSV builder and `qualifiedVenueLabel`.** If a change
+  location is a pure DISPLAY grouping. **Only three kinds of code read
+  `location_id`: the CSV builder, `qualifiedVenueLabel`, and the Schedule
+  page's Location FILTER (`src/lib/schedule/location-filter.ts`, 2026-09-24) —
+  which narrows what is SHOWN, never what is scheduled.** If a change
   appears to need a scheduling path to know about locations, STOP — the plan
   is wrong.
 - **THE CHOOSER vs DISPLAY line (safety-critical, not cosmetic).** Anywhere the
@@ -2669,6 +2704,15 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   input value to the DB.
 
 ## Open items
+
+- **CANDIDATE — a filtered schedule print does not say it is filtered.**
+  `SchedulePrintRegion` prints the season name and a game count, but nothing
+  about an active `?division=` / `?team=` / `?venue=` / `?location=` filter. A
+  Monroe-only print therefore looks like the full season schedule — and a
+  printed schedule handed to a board or parents is exactly where that misread
+  lands. Pre-existing for every filter; the Location filter (2026-09-24) just
+  makes a partial print more natural to produce. Fix = the print header names
+  the active filters. Not built.
 
 - **Rainout reschedule modal: swallowed `blackout_dates` error + NaN-prone
   duration/buffer parsing; occupancy gate: null buffer resolves to 0.** All
