@@ -9,6 +9,7 @@ import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   AlertTriangle,
+  Ban,
   CalendarDays,
   Check,
   Hourglass,
@@ -21,11 +22,15 @@ import {
 } from "lucide-react";
 import { ScheduleGameActions } from "@/components/interleague/schedule-game-actions";
 import {
+  cancelledGameBadge,
+  cancelledSectionHeading,
+  cancelledSectionNote,
   canRequestReschedule,
   confirmedGameBadge,
   confirmedRespondHref,
   counteredGameLines,
   hostLeagueLabel,
+  type RecipientCancelledGame,
   type RecipientConfirmedGame,
   type RecipientCounteredGame,
   type RecipientSender,
@@ -35,17 +40,18 @@ export const dynamic = "force-dynamic";
 
 type Game = RecipientConfirmedGame;
 
-// Shape of get_interleague_schedule_by_token (migration 0090). `games` holds
-// CONFIRMED games (scheduled or reschedule_pending); `countered_games` holds
-// games this league answered with a different time that the host has not
-// resolved. `countered_games` is optional only so a payload from before 0090
-// still renders.
+// Shape of get_interleague_schedule_by_token (migrations 0090/0092). `games`
+// holds CONFIRMED games (scheduled or reschedule_pending); `countered_games`
+// holds games this league answered with a different time that the host has not
+// resolved; `cancelled_games` holds games called off. Both extra keys are
+// optional only so a payload from before their migration still renders.
 type SchedulePayload = {
   sender: RecipientSender;
   org: { name: string } | null;
   season: { name: string; season: string | null } | null;
   games: Game[];
   countered_games?: RecipientCounteredGame[];
+  cancelled_games?: RecipientCancelledGame[];
 };
 
 const MONTH_LABEL_OPTS: Intl.DateTimeFormatOptions = {
@@ -88,6 +94,7 @@ export default async function PublicSchedulePage({
   const orgName = payload.org?.name ?? "your league";
   const hostLabel = hostLeagueLabel(payload.sender);
   const countered = payload.countered_games ?? [];
+  const cancelled = payload.cancelled_games ?? [];
   const nowMs = Date.now();
 
   // Group games by month for readability.
@@ -170,6 +177,30 @@ export default async function PublicSchedulePage({
             )}
           </section>
 
+          {cancelled.length > 0 && (
+            <section className="mt-8">
+              <div className="mb-3 flex items-center gap-2">
+                <Ban className="h-4 w-4 text-gray-400" />
+                <h2 className="text-base font-semibold text-[#0C1F3F]">
+                  {cancelledSectionHeading(cancelled.length)}
+                </h2>
+              </div>
+              <p className="mb-3 text-xs text-gray-500">
+                {cancelledSectionNote(hostLabel)}
+              </p>
+              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-50/60 shadow-sm">
+                {cancelled.map((game, idx) => (
+                  <CancelledRow
+                    key={game.id}
+                    game={game}
+                    orgName={orgName}
+                    isLast={idx === cancelled.length - 1}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
           <p className="mt-8 text-center text-xs text-gray-400">
             This schedule was shared by {seasonLabel} using FieldSlate.
           </p>
@@ -177,6 +208,66 @@ export default async function PublicSchedulePage({
       </main>
 
       <InviteFooter />
+    </div>
+  );
+}
+
+/** A cancelled game.
+ *
+ *  THREE SIGNALS, NONE OF THEM LOAD-BEARING ALONE: the section heading, a
+ *  "Cancelled" badge, and struck-through greyed text. A partner skimming on a
+ *  phone must not be able to mistake this for a game that is on — that misread
+ *  is the whole defect (they drive to the field). There is deliberately no
+ *  action here: nothing for them to accept, counter or reschedule.
+ */
+function CancelledRow({
+  game,
+  orgName,
+  isLast,
+}: {
+  game: RecipientCancelledGame;
+  orgName: string;
+  isLast: boolean;
+}) {
+  const ourTeam = game.home_team.name;
+  const theirTeam = game.external_team_name ?? "TBD";
+  const venueName = game.venue ? qualifiedVenueLabel(game.venue) : null;
+
+  return (
+    <div
+      className={`flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${
+        isLast ? "" : "border-b border-gray-200/70"
+      }`}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex w-20 flex-shrink-0 flex-col text-sm">
+          <span className="font-semibold text-gray-400 line-through">
+            {fmtGameDate(game.scheduled_at)}
+          </span>
+          <span className="text-xs text-gray-400 line-through">
+            {fmtGameTime(game.scheduled_at)}
+          </span>
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-gray-400 line-through">
+            {theirTeam}
+            <span className="mx-1.5 text-xs font-bold uppercase tracking-wider text-gray-300">
+              vs
+            </span>
+            {ourTeam}
+          </p>
+          <p className="mt-0.5 truncate text-xs text-gray-400">
+            {game.division.name} · {orgName}
+            {venueName ? ` · ${venueName}` : ""}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-shrink-0 items-center gap-3 sm:flex-col sm:items-end sm:gap-1">
+        <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-600">
+          {cancelledGameBadge()}
+        </span>
+      </div>
     </div>
   );
 }

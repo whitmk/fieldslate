@@ -173,7 +173,10 @@ begin
                where e->>'id' = g_unanswer::text) then
       f := f || 'W1'::text;
     elsif pass = 0 then c_unanswered_excluded := c_unanswered_excluded + 1; end if;
-    -- W2: cancelled appears nowhere.
+    -- W2: cancelled appears in NEITHER of the keys 0090 owns. Since 0092 a
+    -- cancelled game IS emitted, in its own `cancelled_games` key — this
+    -- assertion is about those two keys only and stays true. See
+    -- scripts/sim/cancelled-visibility-rpc-sim.sql.
     if exists (select 1 from jsonb_array_elements(coalesce(j->'countered_games','[]') || coalesce(j->'games','[]')) e
                where e->>'id' = g_cancel::text) then
       f := f || 'W2'::text;

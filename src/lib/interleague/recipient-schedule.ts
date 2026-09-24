@@ -5,11 +5,14 @@
 // "already accepted" screen and the acceptance confirmation email all render
 // from these functions, and scripts/sim/recipient-schedule-sim.ts drives them.
 //
-// Data comes from get_interleague_schedule_by_token (migration 0090):
+// Data comes from get_interleague_schedule_by_token (migrations 0090/0092):
 //   games           — CONFIRMED games: status 'scheduled' or 'reschedule_pending'
 //   countered_games — 'pending_interleague' games the recipient answered with a
 //                     different time/field that the host has not resolved yet
-// See that migration's header for why exactly these, and why nothing else.
+//   cancelled_games — games called off (0092). Their own key, never folded into
+//                     `games`: that key means "confirmed and going ahead" and
+//                     the acceptance confirmation email is built from it.
+// See those migrations' headers for why exactly these, and why nothing else.
 
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 
@@ -72,6 +75,43 @@ export function hostLeagueLabel(sender: RecipientSender): string {
     sender?.email?.trim() ||
     "the host league"
   );
+}
+
+export type RecipientCancelledGame = {
+  id: string;
+  status: "cancelled";
+  scheduled_at: string;
+  is_away: boolean;
+  external_team_name: string | null;
+  home_team: { name: string };
+  division: { name: string };
+  venue: RecipientVenue;
+};
+
+/**
+ * The words for the cancelled section (0092).
+ *
+ * A CANCELLED GAME MUST NEVER READ AS A LIVE ONE. Before 0092 it did not read
+ * at all — it left the `games` filter and vanished from this page, so a partner
+ * league could travel to a field for a game that was called off. The section
+ * therefore says "cancelled" in the heading, in a per-row badge and in the
+ * strike-through the page applies; no single one of those carries it alone.
+ *
+ * AND BE HONEST ABOUT THE LIMIT: this makes the truth AVAILABLE, it does not
+ * DELIVER it. Nothing emails the partner when a game is cancelled, so the
+ * heading must not imply they were told.
+ */
+export function cancelledSectionHeading(count: number): string {
+  return count === 1 ? "Cancelled (1)" : `Cancelled (${count})`;
+}
+
+export function cancelledSectionNote(hostLabel: string): string {
+  return `These games were called off by ${hostLabel}. They are not being played — check with them if you were expecting one.`;
+}
+
+/** Per-row label. Deliberately the same word as the heading and the styling. */
+export function cancelledGameBadge(): string {
+  return "Cancelled";
 }
 
 /** Badge for a confirmed game, or null for a plain scheduled one. */

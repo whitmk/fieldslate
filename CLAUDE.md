@@ -70,7 +70,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0091.** The repo files are the record, not the
+  **Latest migration: 0092.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -2273,9 +2273,32 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
     on a pending game only by the invite's counter branch) and includes
     `reschedule_pending` in `games` with a `status` key — a confirmed game with a
     change outstanding also used to vanish at the moment the partner was asked
-    about it. Unanswered pending games and `cancelled` games stay hidden.
-    **Open, not decided:** a rained-out (cancelled) confirmed game still
-    disappears from the partner's schedule.
+    about it. Unanswered pending games stay hidden.
+  - **CANCELLED GAMES — CLOSED 2026-09-24 by 0092.** A cancelled game used to
+    disappear from the partner's schedule entirely — no row, no message — so
+    their league could turn up to a field for a game that was called off. It now
+    comes back in its OWN key, `cancelled_games`, rendered as a separate greyed,
+    struck-through "Cancelled" section. **Not folded into `games`:** that key
+    means "confirmed and going ahead" AND `/api/invite/[token]/accept` builds the
+    acceptance confirmation email from it, so a cancelled game inside it would be
+    listed to the partner as one they had just agreed to (mutant CM2). Wording
+    lives in `recipient-schedule.ts`; harnesses are
+    `scripts/sim/cancelled-visibility-rpc-sim.sql` (2 mutants) and
+    `npm run sim:recipient-schedule` ([X1]–[X10], 3 mutants).
+  - **SAY THIS WHEREVER THE CANCELLED SECTION COMES UP: it makes the truth
+    AVAILABLE, it does not DELIVER it.** Nothing emails the partner when a game
+    is cancelled. The page is honest for a partner who opens it; one who does
+    not open it still learns nothing. Do not read the section as "the partner
+    has been told."
+  - **NOTIFICATION IS NOT BUILT, and any future design must satisfy two
+    constraints** (both established 2026-09-24): the rainout path CANCELS AND
+    THEN RESCHEDULES, so emailing on the status write sends "cancelled" then
+    "moved" — two emails for one event, which argues for sending on the rainout
+    flow's COMPLETION rather than on the write; and the division panel's bulk
+    path cancels many games at once, so it needs ONE digest, not N emails. All
+    seven cancel paths are bare client-side `games.update({status:'cancelled'})`
+    with no server route and no interleague filter, so notification needs a
+    route before it needs a template.
   - `get_interleague_invite_by_token` emits the invite's own `schedule_token`
     (null until accepted) so the "already accepted" screen links the schedule.
   - All partner-facing wording lives in `src/lib/interleague/recipient-schedule.ts`.

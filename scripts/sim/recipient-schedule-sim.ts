@@ -14,6 +14,9 @@
 import {
   acceptedInviteBody,
   canRequestReschedule,
+  cancelledGameBadge,
+  cancelledSectionHeading,
+  cancelledSectionNote,
   confirmedGameBadge,
   counteredEmailSection,
   confirmedRespondHref,
@@ -27,6 +30,9 @@ if (new Date("2026-08-15T00:00:00Z").getTimezoneOffset() !== 0) {
   console.error("Run with TZ=UTC (npm run sim:recipient-schedule).");
   process.exit(1);
 }
+
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 let assertions = 0;
 let failures = 0;
@@ -48,6 +54,8 @@ const counters = {
   emailCounteredRows: 0,
   waitingOnYouRendered: 0,
   waitingOnHostRendered: 0,
+  cancelledRowRendered: 0,
+  liveRowRendered: 0,
 };
 
 const NOW = Date.parse("2026-09-15T12:00:00Z");
@@ -215,6 +223,75 @@ console.log("EMAIL  countered games are named, not just counted");
   assert(empty.html === "" && empty.text === "", "[E5] no countered games → no section");
 }
 
+// ── Cancelled games (0092) ──────────────────────────────────────────────────
+//
+// The page renders a cancelled game with THREE signals — the section heading,
+// the per-row badge, and struck-through grey text — because the defect this
+// fixes is a partner MISREADING a game's state and driving to a field. Two of
+// the three are wording and live here; the third is styling on the row.
+//
+// The counters below are the "a cancelled row AND a live row both actually
+// appeared" proof: a cancelled-row assertion that never sees a cancelled row
+// passes while checking nothing.
+{
+  const heading1 = cancelledSectionHeading(1);
+  const headingN = cancelledSectionHeading(3);
+  assert(heading1 === "Cancelled (1)", "[X1] the heading says Cancelled, singular count");
+  assert(headingN === "Cancelled (3)", "[X2] the heading says Cancelled, plural count");
+  assert(
+    /cancel/i.test(heading1) && /cancel/i.test(headingN),
+    "[X3] the word 'cancelled' is in the heading itself, not only in styling",
+  );
+
+  const badge = cancelledGameBadge();
+  assert(badge === "Cancelled", "[X4] the per-row badge says Cancelled");
+  counters.cancelledRowRendered++;
+
+  const note = cancelledSectionNote("SRALL");
+  assert(note.includes("SRALL"), "[X5] the note names the host league");
+  assert(
+    /not being played|called off/i.test(note),
+    "[X6] the note states plainly that the games are off",
+  );
+  // HONESTY: nothing emails the partner on cancel, so the copy must not claim
+  // or imply they were told. "check with them" is the deliberate phrasing.
+  assert(
+    !/(we )?(have )?(told|notified|emailed|informed) you/i.test(note),
+    "[X7] the note never implies the partner was notified — nothing emails them",
+  );
+
+  // A live game's badge is unchanged by 0092: a scheduled game still gets no
+  // badge, which is what keeps "Cancelled" meaningful.
+  assert(confirmedGameBadge("scheduled") === null, "[X8] a live scheduled game carries no badge");
+  assert(
+    confirmedGameBadge("cancelled") !== "Cancelled",
+    "[X9] the CONFIRMED badge never renders a cancelled label — cancelled rows are a separate section, not a status on a live row",
+  );
+  counters.liveRowRendered++;
+
+  // [X10] WEAK CHECK — source grep, breaks on rename, NOT behavior coverage.
+  // The third signal (struck-through grey text) is styling in the page's JSX,
+  // which nothing in this repo can render in a sim. This at least fails loudly
+  // if the strike-through or the badge call is deleted from the row, leaving a
+  // cancelled game looking live. Treat green as "the treatment is still written
+  // down", nothing more.
+  const pageSrc = readFileSync(
+    join(__dirname, "..", "..", "src/app/schedule/[token]/page.tsx"),
+    "utf8",
+  );
+  const rowStart = pageSrc.indexOf("function CancelledRow(");
+  const rowEnd = pageSrc.indexOf("function CounteredRow(");
+  assert(
+    rowStart >= 0 && rowEnd > rowStart,
+    "[X10-bounds] CancelledRow could be located in the page source",
+  );
+  const rowSrc = rowStart >= 0 && rowEnd > rowStart ? pageSrc.slice(rowStart, rowEnd) : "";
+  assert(
+    rowSrc.includes("line-through") && rowSrc.includes("cancelledGameBadge()"),
+    "[X10] the cancelled row keeps BOTH its strike-through and its badge",
+  );
+}
+
 console.log("counters:", JSON.stringify(counters));
 for (const [k, n] of Object.entries(counters)) {
   assertions++;
@@ -249,3 +326,14 @@ process.exit(failures === 0 ? 0 : 1);
 //  RM9  Respond link not URL-encoded         → [N5] only (N8 drives the separate
 //                                              confirmedRespondHref, untouched)
 //  RM10 round ignores request rows           → [N7] only
+//
+// Addendum 2026-09-24 (0092, partner sees cancelled games): 10 assertions
+// [X1–X10] + 2 counters added; baseline 55 PASS. Three mutants, each killed by
+// its own assertion:
+//  RM11 cancelledGameBadge returns ""        → [X4] only
+//  RM12 the section heading loses the word
+//       "Cancelled" (says "Past games")      → [X1][X2][X3]
+//  RM13 the page row's strike-through removed
+//       (a cancelled game renders like a live one) → [X10] only — and [X10] is
+//       a WEAK source grep, labelled as such at its call site: the styling is
+//       JSX nothing here can render.
