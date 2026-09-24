@@ -70,7 +70,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0092.** The repo files are the record, not the
+  **Latest migration: 0093.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -2661,13 +2661,33 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   C, same section). Neither server gate checks the division's playing days.
   (The lock, hours and occupancy gaps alongside it closed 2026-09-23 — see
   "WHICH PATH GETS WHICH GATE" under Interleague negotiation.)
-- **Single-game delete mid-negotiation is still silent.**
-  `delete_game_if_unblocked` permits deleting a `pending_interleague` game, so
-  it will remove one with an open partner request; the request cascades and the
-  partner's link dies with no email. REGENERATE no longer does this (2026-09-23,
-  see "Generator reads fail CLOSED"), and the two are not coupled — a partner
-  decline goes through the token RPC, so this RPC can be tightened on its own
-  without touching the 0082 lock trigger's carve-out. Next one to do.
+- **CLOSED 2026-09-24 by 0093 — both delete doors now guard a live
+  negotiation.** `delete_game_if_unblocked` gained a FOURTH block reason,
+  `interleague_negotiation`, evaluated alongside the other three (never
+  first-match), count-first as the house rule requires. The
+  `pending_interleague` carve-out STAYS for untouched invites — a dead invite
+  must not strand a row — and the 0082 lock trigger was NOT touched, which was
+  safe because a partner decline goes through the token RPCs
+  (`accept`/`decline_interleague_invite` delete games directly), never this one.
+  `anon` holds no EXECUTE on it, re-verified.
+- **ONE DEFINITION OF "PROTECTED", TWO LANGUAGES, PINNED BY A SHARED TRUTH
+  TABLE.** `public.is_protected_interleague_game` (SQL, 0093) and
+  `isProtectedInterleagueGame` (TypeScript, the regenerate guard) must agree
+  about the same rows and neither can be derived from the other. **The table
+  lives in exactly ONE place: the `values` block between the
+  `TRUTH-TABLE-BEGIN`/`END` marker lines in
+  `scripts/sim/delete-game-negotiation-sim.sql`.** That harness runs every row
+  through the SQL function; `npm run sim:regenerate-pending-guard` PARSES THE
+  SAME BLOCK OUT OF THAT FILE and runs it through the TypeScript one. Change
+  either predicate alone and its side goes red.
+  **The formatting is load-bearing, in a measured way** (not the vague way an
+  earlier draft of this note claimed): re-indenting or reflowing the ROWS is
+  fine, but each marker must stay alone on its own line, and renaming,
+  removing or DUPLICATING a marker, adding a column, or changing the literal
+  style all fail the cross-check. Never a skip — a missing block is a failure.
+  **Do not add a second "for readability" copy of the table**: the first draft
+  of that file had one in its header, and the parser silently read 22 rows
+  across both copies, which is the exact drift the design exists to prevent.
 
 - **Dead-column cleanup (backlog, no reader/writer).** `divisions.practice_venue_id`
   (no UI picker anywhere, 1 live row) and `venues.venue_type` (read/written

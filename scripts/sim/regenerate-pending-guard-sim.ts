@@ -51,6 +51,8 @@
 import { generateSchedule, isProtectedInterleagueGame } from "../../src/lib/schedule/generate-schedule";
 import { preservedSummary } from "../../src/lib/schedule/preserved-games";
 import { FakeClient, type Db, type Row } from "./fake-supabase";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 if (process.env.TZ !== "UTC") {
   console.error("Run with TZ=UTC (npm run sim:regenerate-pending-guard). Aborting.");
@@ -79,6 +81,7 @@ const seen = {
   summaryRendered: 0,       // preservedSummary produced a sentence
   slotHazardChecked: 0,     // the double-book check had a preserved slot to test
   failClosedProven: 0,      // a read fault aborted the run with nothing deleted
+  truthTableRows: 0,        // rows cross-checked against the SQL guard's table
 };
 
 const LEAGUE_ID = "league-1";
@@ -295,7 +298,98 @@ async function main() {
     }
   }
 
-  // ══ E. The predicate's truth table ═════════════════════════════════════════
+  // ══ X. CROSS-CHECK AGAINST THE SQL GUARD'S TRUTH TABLE ═════════════════════
+//
+// The same rows are guarded by TWO doors: this regenerate delete (TypeScript,
+// isProtectedInterleagueGame) and the single-game delete RPC (SQL,
+// public.is_protected_interleague_game, migration 0093). Neither definition can
+// be derived from the other, so BOTH are asserted against ONE written table —
+// the one inside scripts/sim/delete-game-negotiation-sim.sql. That harness runs
+// it through the SQL function; this block parses it out of that same file and
+// runs it through the TypeScript one.
+//
+// WEAK IN ONE SPECIFIC WAY: this parses TEXT. Measured, not assumed — what it
+// actually tolerates and what it rejects:
+//   TOLERATED  whitespace and line breaks inside the rows (the row pattern is
+//              whitespace-agnostic, so re-indenting or reflowing is fine).
+//   REJECTED   a missing/renamed/duplicated marker line (X-markers, X-order),
+//              a changed column count or literal style (X-parsed sees too few
+//              rows), and of course a genuine disagreement (X-agrees).
+// The trade buys exactly ONE written copy of the table instead of a third
+// artifact that can drift on its own. Every rejection is a FAILURE, never a
+// skip, so tidying that file cannot silently switch this check off. If you do
+// change the row format, change this parser in the same commit.
+{
+  const sqlPath = join(__dirname, "delete-game-negotiation-sim.sql");
+  let sql = "";
+  try {
+    sql = readFileSync(sqlPath, "utf8");
+  } catch {
+    ok("X-file", false, "could not read delete-game-negotiation-sim.sql");
+  }
+  // MARKERS ARE MATCHED AS WHOLE LINES, AND THERE MUST BE EXACTLY ONE OF EACH.
+  // indexOf() on the raw text was the first version and it was wrong twice
+  // over: the file's header discusses the markers by name in prose, and an
+  // earlier draft carried a SECOND, commented copy of the table. With a
+  // renamed end marker, indexOf then paired the header's BEGIN with the
+  // table's END and happily parsed 22 rows across both copies — a broken file
+  // that passed. Counting whole-line markers makes both of those loud.
+  const lines = sql.split("\n");
+  const beginLines = lines.filter((l) => l.trim() === "-- TRUTH-TABLE-BEGIN").length;
+  const endLines = lines.filter((l) => l.trim() === "-- TRUTH-TABLE-END").length;
+  ok(
+    "X-markers",
+    beginLines === 1 && endLines === 1,
+    `expected exactly one TRUTH-TABLE-BEGIN and one TRUTH-TABLE-END line, found ${beginLines} and ${endLines}`,
+  );
+  const bi = lines.findIndex((l) => l.trim() === "-- TRUTH-TABLE-BEGIN");
+  const ei = lines.findIndex((l) => l.trim() === "-- TRUTH-TABLE-END");
+  ok("X-order", bi >= 0 && ei > bi, "the END marker must follow the BEGIN marker");
+  const block =
+    beginLines === 1 && endLines === 1 && ei > bi ? lines.slice(bi + 1, ei).join("\n") : "";
+  const ROW =
+    /\(\s*'([a-z_]+)'\s*,\s*(true|false)\s*,\s*(true|false)\s*,\s*(true|false)\s*,\s*(true|false)\s*,\s*(true|false)\s*\)/g;
+  const rows = [...block.matchAll(ROW)].map((m) => ({
+    status: m[1]!,
+    isInterleague: m[2] === "true",
+    hasExternalTeamName: m[3] === "true",
+    hasProposedScheduledAt: m[4] === "true",
+    hasRequest: m[5] === "true",
+    expected: m[6] === "true",
+  }));
+
+  ok("X-parsed", rows.length >= 10, `expected the full table, parsed ${rows.length} row(s)`);
+  if (rows.length >= 10) seen.truthTableRows += rows.length;
+
+  let mismatches = 0;
+  for (const r of rows) {
+    const actual = isProtectedInterleagueGame({
+      status: r.status,
+      interleague_org_id: r.isInterleague ? ORG_ID : null,
+      external_team_name: r.hasExternalTeamName ? "Rockies" : null,
+      proposed_scheduled_at: r.hasProposedScheduledAt ? "2026-10-18T13:00:00+00" : null,
+      hasRescheduleRequest: r.hasRequest,
+    });
+    if (actual !== r.expected) {
+      mismatches++;
+      ok(
+        "X-agrees",
+        false,
+        `TS predicate disagrees with the SQL guard's table: status=${r.status} il=${r.isInterleague} ext=${r.hasExternalTeamName} prop=${r.hasProposedScheduledAt} req=${r.hasRequest} → expected ${r.expected}, got ${actual}`,
+      );
+    }
+  }
+  ok("X-agrees", mismatches === 0, "the two definitions of 'protected' agree on every row");
+  // Both sides must have SEEN a protected and an unprotected row, or agreement
+  // is agreement about nothing.
+  ok(
+    "X-both-outcomes",
+    rows.some((r) => r.expected) && rows.some((r) => !r.expected),
+    "the table must contain both protected and unprotected rows",
+  );
+}
+
+// ══ E. The predicate's truth table ═════════════════════════════════════════
   {
     const base = {
       status: "pending_interleague",

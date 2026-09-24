@@ -577,13 +577,15 @@ function GameRowCells({
 
 // ── Delete dialog ────────────────────────────────────────────────────────────
 
-// Block reasons returned by delete_game_if_unblocked (0079, extended 0083).
-// Strings mirror the RPC's jsonb exactly. All THREE are checked server-side;
-// a blocked response lists every reason that applies.
+// Block reasons returned by delete_game_if_unblocked (0079, extended 0083 and
+// 0093). Strings mirror the RPC's jsonb exactly. All FOUR are checked
+// server-side; a blocked response lists every reason that applies, so a locked
+// division mid-negotiation shows both.
 type DeleteGameBlockReason =
   | "interleague_accepted"
   | "result_recorded"
-  | "division_locked";
+  | "division_locked"
+  | "interleague_negotiation";
 
 type DeleteGameRpcResult =
   | {
@@ -603,6 +605,10 @@ function describeBlockReason(
   if (reason === "interleague_accepted") {
     const org = game.interleague_org?.name ?? "a partner league";
     return `It's a confirmed interleague game with ${org}. The partner league sees this game on their own schedule, and deleting it would remove it from their view without any notice. Cancel or reschedule it through the interleague flow instead.`;
+  }
+  if (reason === "interleague_negotiation") {
+    const org = game.interleague_org?.name ?? "a partner league";
+    return `You're mid-negotiation with ${org} about this game — they've proposed a time, or you have. Deleting it would break the link they use to reply, without telling them. Resolve or decline it on the Interleague page first.`;
   }
   if (reason === "division_locked") {
     const div = game.home_team?.division?.name ?? "This game's division";
