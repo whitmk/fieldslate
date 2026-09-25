@@ -478,8 +478,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   finish, add game, delete team), season-page division cards (Locked/Sent
   badges), generate-all modal (pre-run "will be skipped" notice, amber
   rows, `skipped_locked` status), setup generate step (same skip), Add
-  game modal, conflict resolver, and the All Games delete dialog's
-  `division_locked` reason.
+  game modal, conflict resolver, the All Games delete dialog's
+  `division_locked` reason, and the panel's "Reschedule a game" (2026-09-25 —
+  see "Division panel — Reschedule a game" for why it is gated when rainout
+  recovery is not).
 - **The two division-ambiguous surfaces get PER-OPTION / PER-ROW state, never
   a disabled button.** Add game picks its division INSIDE the modal, so
   options are annotated "— locked" and stay SELECTABLE (an admin must be
@@ -1465,12 +1467,73 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   genuine overlap is caught by both models, and a mutant that killed F2 too
   would prove nothing about which model is better.
 
+## Division panel — "Reschedule a game" (2026-09-25)
+
+- **A single-pick variant of "Select games"** in `division-schedule-panel.tsx`:
+  pick a game from this division, move it WITHOUT marking it rained out.
+  Rained-out rows are not pickable (they keep their own Reschedule button).
+  Where a pick goes is ONE pure decision, `routeMoveTarget`
+  (`src/lib/schedule/panel-reschedule-route.ts`); the panel only switches on
+  its result. Never add a routing branch in the panel.
+- **Routes:** ordinary `scheduled` game → `RainoutRescheduleModal`
+  `variant="move"` (same picker, same reads, same gates, same save — the
+  variant changes the HEADER only: a calendar-clock instead of a rain cloud);
+  accepted upcoming interleague game → `RescheduleRequestModal` + the
+  interleague reschedule route, with an `intro` line saying the partner agreed
+  to this time so moving it sends a request; everything else → a stated
+  reason, never a silent no-op. `pending_interleague` and `reschedule_pending`
+  point at the Interleague page (the resolve flow owns them). Only `scheduled`
+  ordinary games move — the picker's save writes `status: "scheduled"`, which
+  would silently un-complete a `completed` row.
+- **An interleague game must NEVER reach the plain picker.** Moving a time
+  another league agreed to, without their consent, is what the request/respond
+  flow exists to prevent. `plain` carries `awayTeamId: string` and is returned
+  only when `interleague_org_id` is null AND `away_team_id` is set, so the
+  render site needs no `!`. This is what keeps it from being a fifth ungated
+  render path (see the reschedule picker's KNOWN DEFECT).
+- **LOCK — GATED, AND RAINOUT RECOVERY IS NOT. THIS IS DELIBERATE, NOT AN
+  INCONSISTENCY TO "FIX".** Rainout recovery (the cloud, the rained-out row's
+  Reschedule) is exempt because weather is not a choice — a locked schedule
+  must still survive a rainstorm. A plain move IS a choice, made on a schedule
+  that may already be in parents' hands, so it takes the conflict resolver's
+  "move" rule: the button is disabled with `lockedReason(…, "move")`, and the
+  router refuses with the same sentence if the lock flips before the click
+  (interleague requests use the route's own `rescheduleInterleague` sentence).
+  **This is a UI gate, exactly like the resolver's move — NOT a database
+  guarantee.** The 0082 trigger's allowlist permits `scheduled_at`/`venue_id`
+  writes on a locked division, so a direct RLS update still succeeds.
+- **Plan (decided 2026-09-25): the button shows for everyone.** An ordinary
+  game on a Free plan opens the Pro upsell (`UpgradeModal`, feature mode);
+  interleague requests stay Free, matching the Schedule page's row menu. A
+  visible control that explains the upgrade beats a hidden one.
+- **One submit path for interleague requests:**
+  `submitInterleagueRescheduleRequest` (`src/lib/interleague/request-reschedule.ts`)
+  — extracted verbatim from `schedule-list.tsx`, pinned by the differential in
+  `npm run sim:request-reschedule`. Both surfaces call it; never inline a second
+  `fetch` to that route.
+- **Byte-identical guarantees:** `RescheduleModalHeader`'s default render and
+  `RescheduleRequestModal` without `intro` are both asserted against goldens
+  recorded BEFORE the prop existed (`scripts/sim/fixtures/`). If either fails,
+  an existing caller changed — fix the component, never re-record.
+- **Harness: `npm run sim:panel-reschedule`** (TZ=UTC) — parts H (header), M
+  (request modal intro), R (routing, 10 counters incl. an ordinary game routed
+  plain and an interleague game routed to the request), S (source-wiring
+  greps — weak by nature, stated). 8 mutants each killed first at its own
+  assertion. **Keep the `ilAnomaly` fixture** (an interleague row WITH an away
+  team): without it the "interleague branch skipped" mutant lands on
+  `no_opponent` and [R2] passes vacuously.
+
 ## Makeup days (per venue, per day)
 
 - **`venues.availability` gains a per-day `makeup?` boolean** — sibling to
   `practice`, same jsonb, no schema change. It means "rained-out games may be
   rescheduled onto this field on this day". Honored by the rainout reschedule
-  picker and NOTHING else. (The interleague counter-proposal picker reads it
+  picker and NOTHING else — which since 2026-09-25 includes that picker's
+  "move" variant (the division panel's "Reschedule a game"), because it is the
+  SAME picker with the same inputs. **OPEN QUESTION, not decided:** a plain move
+  is not a rainout, and the interleague picker strips the flag for exactly that
+  reason; stripping it here too would also need the modal's case-(a) makeup copy
+  and link reworded for the move variant. (The interleague counter-proposal picker reads it
   only to CLEAR it — `stripMakeup` — because a counter-proposal is not a
   rainout; see "Interleague counter-proposal picker".)
 - **`makeup` DEFAULTS FALSE. `practice` DEFAULTS TRUE. The two are opposite ON
@@ -1653,11 +1716,25 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
      a venue does NOT block a 3:30 game offer there.
   3. ~~The venue-occupancy read is org-wide and unpaginated~~ — **CLOSED
      2026-07-30**, see "Occupancy read scope" below. The other two stand.
-- **KNOWN DEFECT — `RainoutRescheduleModal` HAS SEVEN RENDER PATHS AND FOUR OF
-  THEM ARE UNGATED FOR INTERLEAGUE.** Documented, not fixed (2026-08-21).
+  4. **THE SAVE IS CLIENT-SIDE WITH NO SERVER RE-CHECK.** `handleConfirm` is a
+     bare browser `games.update({scheduled_at, venue_id, status})` under RLS.
+     Hours and occupancy are enforced only when the slot is OFFERED, so a
+     booking made between open and confirm is not caught, and nothing
+     server-side would refuse a hand-built update either. Contrast the
+     interleague routes, which run `gateRescheduleVenue` +
+     `gateRescheduleOccupancy` on the server. Applies to BOTH variants (rainout
+     and the panel's plain move). Worth closing the next time this save is
+     touched: route it through a server endpoint that re-runs both gates.
+- **KNOWN DEFECT — `RainoutRescheduleModal` HAS EIGHT RENDER PATHS AND FOUR OF
+  THEM ARE UNGATED FOR INTERLEAGUE.** Documented, not fixed (2026-08-21; the
+  eighth, gated, added 2026-09-25).
   - Gated on interleague: `schedule-list.tsx` and `schedule-calendar.tsx` (both
-    `rescheduleGame.away_team_id &&`), and `division-schedule-panel.tsx` (the
-    button itself is `canReschedule && !game.interleague_org_id`).
+    `rescheduleGame.away_team_id &&`), and `division-schedule-panel.tsx` TWICE —
+    the rained-out row's button (`canReschedule && !game.interleague_org_id`)
+    and "Reschedule a game", which renders the picker only from a `plain`
+    `routeMoveTarget` result whose `awayTeamId` is a real `string` by
+    construction (no `!`, no cast — `sim:panel-reschedule` [R2]/[R13]/[S2]).
+    **That typed route is the pattern to copy when fixing the four below.**
   - NOT gated: `log-rainout-modal.tsx`, `rained-out-stat-card.tsx`,
     `upcoming-games-list.tsx`, `conflict-stat-card.tsx`.
   - **`log-rainout-modal` is the live route.** Its games query is scoped by
