@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { X, CloudRain, CalendarDays, Loader2, CheckCircle2, AlertTriangle, ChevronRight } from "lucide-react";
+import { CalendarDays, Loader2, CheckCircle2, AlertTriangle, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
@@ -33,6 +33,10 @@ import {
 } from "@/lib/schedule/reschedule-slots";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { SlotExceptionChips, SlotOverrideToggles } from "@/components/schedule/slot-overrides";
+import {
+  RescheduleModalHeader,
+  type RescheduleModalVariant,
+} from "./reschedule-modal-header";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -48,6 +52,9 @@ interface Props {
   onRescheduled: () => void;
   /** Override the activity-log message. Receives the chosen slot; return the full message string. */
   buildLogMessage?: (p: { newScheduledAt: string; newVenueName: string }) => string;
+  /** Header only — see RescheduleModalVariant. Omitted = "rainout", which is
+   *  what every pre-existing caller renders, byte-identically. */
+  variant?: RescheduleModalVariant;
 }
 
 // Slot construction (the 15-minute grid + real-span occupancy test) lives in
@@ -203,6 +210,7 @@ function DiagnosticRow({
 export function RainoutRescheduleModal({
   gameId, homeTeamId, awayTeamId, homeTeamName, awayTeamName,
   divisionId, leagueId, onClose, onRescheduled, buildLogMessage,
+  variant = "rainout",
 }: Props) {
   const router = useRouter();
   // The builder's inputs are held, not its output: flipping an override
@@ -544,23 +552,12 @@ export function RainoutRescheduleModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex flex-shrink-0 items-start justify-between border-b border-gray-100 px-6 py-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <CloudRain className="h-4 w-4 text-blue-400" />
-              <h2 className="font-semibold text-[#0C1F3F]">Reschedule game</h2>
-            </div>
-            <p className="mt-0.5 text-sm text-gray-500">
-              {homeTeamName} vs {awayTeamName}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <RescheduleModalHeader
+          homeTeamName={homeTeamName}
+          awayTeamName={awayTeamName}
+          onClose={onClose}
+          variant={variant}
+        />
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
