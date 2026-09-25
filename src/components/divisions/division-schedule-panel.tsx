@@ -40,6 +40,7 @@ import {
   lockedReason,
 } from "@/lib/schedule/division-lock";
 import { AutoAssignUmpiresButton } from "@/components/umpires/auto-assign-button";
+import { ROW_ICON_REVEAL } from "@/components/ui/row-icon-reveal";
 import {
   UmpireSlots,
   type SlotAssignment,
@@ -1453,7 +1454,7 @@ export function DivisionSchedulePanel({
                             onClick={() => handleRainOut(game)}
                             disabled={isRaining}
                             title="Mark as rained out"
-                            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-200 opacity-0 transition-all group-hover:opacity-100 hover:bg-blue-50 hover:text-blue-400 disabled:opacity-50"
+                            className={`flex h-7 w-7 items-center justify-center rounded-lg ${ROW_ICON_REVEAL} transition-all hover:bg-blue-50 hover:text-blue-400 disabled:opacity-50`}
                           >
                             {isRaining
                               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />

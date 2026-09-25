@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 const config: Config = {
   content: [
@@ -34,6 +35,15 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // `can-hover:` — applies only on devices whose primary input can hover
+    // (mouse/trackpad). Keys on INPUT TYPE, not width: a phone never hovers, a
+    // narrow desktop window still does. Used by ROW_ICON_REVEAL
+    // (src/components/ui/row-icon-reveal.ts) so hover-revealed row icons are
+    // always visible on touch screens.
+    plugin(({ addVariant }) => {
+      addVariant("can-hover", "@media (hover: hover)");
+    }),
+  ],
 };
 export default config;
