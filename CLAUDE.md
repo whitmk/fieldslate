@@ -1475,6 +1475,17 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Where a pick goes is ONE pure decision, `routeMoveTarget`
   (`src/lib/schedule/panel-reschedule-route.ts`); the panel only switches on
   its result. Never add a routing branch in the panel.
+- **The move variant offers NO makeup days** (2026-09-25). Makeup means "a
+  RAINED-OUT game may move here"; the move variant clears every flag before the
+  slot build via `availabilityForVariant` → `stripMakeup` (the interleague
+  picker's function, same reason). Rainout recovery keeps them. A move can still
+  reach a non-playing day through the "include non-playing days" override —
+  those slots carry the `Off day` chip. Case (a) wording comes from
+  `noFieldCopy`: on a move, a non-playing day reads "{Division} doesn't play
+  that day." (grey, no link); rainout wording is unchanged and pinned as
+  literals. Harness part V drives the REAL builder: a makeup-flagged Friday is
+  offered through the rainout door and withheld through the move door, with
+  Saturday identical through both.
 - **Routes:** ordinary `scheduled` game → `RainoutRescheduleModal`
   `variant="move"` (same picker, same reads, same gates, same save — the
   variant changes the HEADER only: a calendar-clock instead of a rain cloud);
@@ -1517,8 +1528,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   an existing caller changed — fix the component, never re-record.
 - **Harness: `npm run sim:panel-reschedule`** (TZ=UTC) — parts H (header), M
   (request modal intro), R (routing, 10 counters incl. an ordinary game routed
-  plain and an interleague game routed to the request), S (source-wiring
-  greps — weak by nature, stated). 8 mutants each killed first at its own
+  plain and an interleague game routed to the request), V (move variant's
+  makeup strip + case-(a) wording, through the real builder), S (source-wiring
+  greps — weak by nature, stated). 11 mutants each killed first at its own
   assertion. **Keep the `ilAnomaly` fixture** (an interleague row WITH an away
   team): without it the "interleague branch skipped" mutant lands on
   `no_opponent` and [R2] passes vacuously.
@@ -1528,12 +1540,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **`venues.availability` gains a per-day `makeup?` boolean** — sibling to
   `practice`, same jsonb, no schema change. It means "rained-out games may be
   rescheduled onto this field on this day". Honored by the rainout reschedule
-  picker and NOTHING else — which since 2026-09-25 includes that picker's
-  "move" variant (the division panel's "Reschedule a game"), because it is the
-  SAME picker with the same inputs. **OPEN QUESTION, not decided:** a plain move
-  is not a rainout, and the interleague picker strips the flag for exactly that
-  reason; stripping it here too would also need the modal's case-(a) makeup copy
-  and link reworded for the move variant. (The interleague counter-proposal picker reads it
+  picker and NOTHING else. **The same picker's "move" variant (the division
+  panel's "Reschedule a game") STRIPS the flags — decided 2026-09-25**: a plain
+  move is not a rainout. `availabilityForVariant`
+  (`src/lib/schedule/reschedule-variant.ts`) is the one place that decides, and
+  `noFieldCopy` keeps case (a) from naming makeups on a move. (The interleague counter-proposal picker reads it
   only to CLEAR it — `stripMakeup` — because a counter-proposal is not a
   rainout; see "Interleague counter-proposal picker".)
 - **`makeup` DEFAULTS FALSE. `practice` DEFAULTS TRUE. The two are opposite ON
