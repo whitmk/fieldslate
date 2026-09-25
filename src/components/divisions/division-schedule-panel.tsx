@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   Zap, Loader2, CheckCircle2, AlertTriangle, CalendarDays,
   RefreshCw, Plus, PlusCircle, Printer, CloudRain, CalendarClock,
@@ -41,6 +40,7 @@ import {
 } from "@/lib/schedule/division-lock";
 import { AutoAssignUmpiresButton } from "@/components/umpires/auto-assign-button";
 import { ROW_ICON_REVEAL } from "@/components/ui/row-icon-reveal";
+import { MoveGameIcon, MoveNoticeLine } from "./move-game-row";
 import {
   UmpireSlots,
   type SlotAssignment,
@@ -66,7 +66,7 @@ interface Props {
   onPrintDone?: () => void;
   onScheduleChange?: () => void;
   /** Pro+ only — the auto-reschedule action on rained-out rows, and the plain
-   *  move in "Reschedule a game". Marking a game rained out and requesting an
+   *  move behind each row's "Reschedule game" icon. Marking a game rained out and requesting an
    *  interleague reschedule stay Free. */
   canReschedule?: boolean;
 }
@@ -214,12 +214,12 @@ export function DivisionSchedulePanel({
   const [confirmingBulkRainout, setConfirmingBulkRainout] = useState(false);
   const [bulkRainoutLoading, setBulkRainoutLoading] = useState(false);
 
-  // "Reschedule a game" — the single-pick variant of select mode. A picked game
-  // goes wherever routeMoveTarget says: the plain slot picker, the interleague
-  // request flow, the Pro upsell, or a stated reason. Never a silent no-op.
-  const [moveMode, setMoveMode] = useState(false);
-  const [moveNotice, setMoveNotice] = useState<
-    { message: string; link?: { href: string; label: string } } | null
+  // "Reschedule game" — the per-row icon beside the rainout cloud. A click goes
+  // wherever routeMoveTarget says: the plain slot picker, the interleague
+  // request flow, the Pro upsell, or a refusal shown UNDER that row
+  // (MoveNoticeLine). Never a silent no-op. See move-game-row.tsx.
+  const [rowNotice, setRowNotice] = useState<
+    { gameId: string; message: string; link?: { href: string; label: string } } | null
   >(null);
   // awayTeamId is carried SEPARATELY from the row, typed `string` by the
   // router, so the picker's render site needs no `!` on a nullable column.
@@ -689,25 +689,14 @@ export function DivisionSchedulePanel({
   // ── Bulk rainout helpers ──────────────────────────────────────────────────────
 
   function enterSelectMode() {
-    exitMoveMode();
+    setRowNotice(null);
     setSelectMode(true);
     setSelectedGameIds(new Set());
   }
 
-  // ── "Reschedule a game" helpers ───────────────────────────────────────────────
+  // ── "Reschedule game" (per-row icon) ──────────────────────────────────────────
 
-  function enterMoveMode() {
-    exitSelectMode();
-    setMoveNotice(null);
-    setMoveMode(true);
-  }
-
-  function exitMoveMode() {
-    setMoveMode(false);
-    setMoveNotice(null);
-  }
-
-  function handleMovePick(game: GameRow) {
+  function handleMoveClick(game: GameRow) {
     const route = routeMoveTarget(game, {
       locked,
       canReschedule,
@@ -716,19 +705,20 @@ export function DivisionSchedulePanel({
     });
     switch (route.kind) {
       case "plain":
-        exitMoveMode();
+        setRowNotice(null);
         setMoveTarget({ game, awayTeamId: route.awayTeamId });
         return;
       case "interleague_request":
-        exitMoveMode();
+        setRowNotice(null);
         setRequestError(null);
         setRequestTarget({ game, intro: route.intro });
         return;
       case "upgrade":
+        setRowNotice(null);
         setMoveUpgradeOpen(true);
         return;
       case "blocked":
-        setMoveNotice({ message: route.message, link: route.link });
+        setRowNotice({ gameId: game.id, message: route.message, link: route.link });
         return;
     }
   }
@@ -1125,18 +1115,6 @@ export function DivisionSchedulePanel({
           </button>
         )}
 
-        {activeGames.length > 0 && (
-          <button
-            onClick={enterMoveMode}
-            title={locked ? lockedReason(divisionName, "move") : undefined}
-            disabled={locked}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:border-[#22C55E] hover:text-[#22C55E] disabled:cursor-not-allowed disabled:opacity-60 print:hidden"
-          >
-            <CalendarClock className="h-4 w-4" />
-            Reschedule a game
-          </button>
-        )}
-
         {umpiresPerGame > 0 && activeGames.length > 0 && (
           <AutoAssignUmpiresButton
             divisionId={divisionId}
@@ -1282,37 +1260,6 @@ export function DivisionSchedulePanel({
                   </button>
                 </div>
               </>
-            ) : moveMode ? (
-              /* ── Move mode header ── */
-              <>
-                <div className="flex min-w-0 flex-col">
-                  <span className="text-xs font-semibold text-gray-500">
-                    Pick a game to reschedule
-                  </span>
-                  {moveNotice && (
-                    <span className="mt-0.5 text-xs text-amber-700">
-                      {moveNotice.message}
-                      {moveNotice.link && (
-                        <>
-                          {" "}
-                          <Link
-                            href={moveNotice.link.href}
-                            className="text-[#22C55E] underline underline-offset-2"
-                          >
-                            {moveNotice.link.label}
-                          </Link>
-                        </>
-                      )}
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={exitMoveMode}
-                  className="ml-3 flex-shrink-0 text-xs text-gray-400 transition-colors hover:text-gray-600"
-                >
-                  Cancel
-                </button>
-              </>
             ) : (
               /* ── Normal header ── */
               <>
@@ -1356,18 +1303,13 @@ export function DivisionSchedulePanel({
                   const isRaining = rainoutId === game.id;
                   const isSelected = selectedGameIds.has(game.id);
                   const isSelectable = selectMode && !isCancelled;
-                  // Rained-out rows keep their own Reschedule button.
-                  const isMovePickable = moveMode && !isCancelled;
                   const gameAssignments = assignmentsByGame.get(game.id) ?? [];
                   const showSlots =
-                    !isCancelled && !selectMode && !moveMode && umpiresPerGame > 0;
+                    !isCancelled && !selectMode && umpiresPerGame > 0;
                   return (
                     <div
                       key={game.id}
-                      onClick={() => {
-                        if (isSelectable) toggleGameSelect(game.id);
-                        else if (isMovePickable) handleMovePick(game);
-                      }}
+                      onClick={() => { if (isSelectable) toggleGameSelect(game.id); }}
                       className={`group flex flex-col gap-2 px-4 py-3 transition-colors ${
                         isCancelled
                           ? "bg-gray-50/80"
@@ -1375,8 +1317,6 @@ export function DivisionSchedulePanel({
                           ? isSelected
                             ? "cursor-pointer bg-blue-50/60"
                             : "cursor-pointer hover:bg-gray-50/60"
-                          : isMovePickable
-                          ? "cursor-pointer hover:bg-gray-50/60"
                           : ""
                       }`}
                     >
@@ -1449,20 +1389,39 @@ export function DivisionSchedulePanel({
                               </button>
                             )}
                           </div>
-                        ) : !selectMode && !moveMode ? (
-                          <button
-                            onClick={() => handleRainOut(game)}
-                            disabled={isRaining}
-                            title="Mark as rained out"
-                            className={`flex h-7 w-7 items-center justify-center rounded-lg ${ROW_ICON_REVEAL} transition-all hover:bg-blue-50 hover:text-blue-400 disabled:opacity-50`}
-                          >
-                            {isRaining
-                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              : <CloudRain className="h-3.5 w-3.5" />}
-                          </button>
+                        ) : !selectMode ? (
+                          /* Rainout cloud + "Reschedule game" sit as a tight
+                             pair. Rained-out rows take the branch above and
+                             get neither (they have their own Reschedule). */
+                          <div className="flex items-center gap-0.5">
+                            <button
+                              onClick={() => handleRainOut(game)}
+                              disabled={isRaining}
+                              title="Mark as rained out"
+                              className={`flex h-7 w-7 items-center justify-center rounded-lg ${ROW_ICON_REVEAL} transition-all hover:bg-blue-50 hover:text-blue-400 disabled:opacity-50`}
+                            >
+                              {isRaining
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <CloudRain className="h-3.5 w-3.5" />}
+                            </button>
+                            <MoveGameIcon
+                              locked={locked}
+                              divisionName={divisionName}
+                              isInterleague={!!game.interleague_org_id}
+                              interleagueOrgName={game.interleague_org?.name ?? null}
+                              onClick={() => handleMoveClick(game)}
+                            />
+                          </div>
                         ) : null}
                       </div>
                     </div>
+                    {rowNotice?.gameId === game.id && !selectMode && (
+                      <MoveNoticeLine
+                        message={rowNotice.message}
+                        link={rowNotice.link}
+                        onDismiss={() => setRowNotice(null)}
+                      />
+                    )}
                     {showSlots && (
                       <div
                         onClick={(e) => e.stopPropagation()}
@@ -1670,7 +1629,7 @@ export function DivisionSchedulePanel({
         />
       )}
 
-      {/* ── "Reschedule a game": plain move ──
+      {/* ── Row "Reschedule game" icon: plain move ──
           Rendered only from a `plain` route, whose awayTeamId is a real string
           by construction — never from a raw row. */}
       {moveTarget && (
@@ -1692,7 +1651,7 @@ export function DivisionSchedulePanel({
         />
       )}
 
-      {/* ── "Reschedule a game": interleague → request the partner's consent ── */}
+      {/* ── Row "Reschedule game" icon: interleague → request the partner's consent ── */}
       {requestTarget && (
         <RescheduleRequestModal
           intro={requestTarget.intro}

@@ -3,7 +3,7 @@
 // The picker (RainoutRescheduleModal) has two doors:
 // - "rainout" — a rained-out game being put back on the schedule. Every
 //   caller before 2026-09-25, and still the default.
-// - "move" — the division panel's "Reschedule a game": a game that was NOT
+// - "move" — the division panel's per-row "Reschedule game" icon: a game that was NOT
 //   rained out, moved by choice.
 //
 // MAKEUP DAYS ARE A RAINOUT CAPABILITY (decided 2026-09-25). A field's

@@ -1,4 +1,4 @@
-// Harness for the division panel's "Reschedule a game" action.
+// Harness for the division panel's "Reschedule game" row action.
 //
 // PART H — the reschedule modal's header variant
 // (src/components/divisions/reschedule-modal-header.tsx).
@@ -34,6 +34,14 @@
 // rainout strings as LITERALS (byte-identical to before), and no move string
 // may name makeups.
 //
+// PART W — the per-row trigger (2026-09-25; replaced the action-row pick
+// mode). Renders the REAL MoveGameIcon and MoveNoticeLine
+// (src/components/divisions/move-game-row.tsx), the two hook-free pieces the
+// panel renders: the icon is disabled with the lock sentence when locked and
+// enabled with the right tooltip otherwise; every refusal routeMoveTarget can
+// return renders under the row WITH its sentence and, where it has one, its
+// link. Counters prove a blocked case and an allowed case both rendered.
+//
 // PART S — source wiring. The harness drives the lib, not the panel; these
 // textual checks pin that the panel still CALLS the router and renders the
 // picker from the router's typed awayTeamId. Weak by nature (a grep), stated.
@@ -60,6 +68,11 @@
 //   VM2  availabilityForVariant always strips (rainout loses them) → [V1]
 //   VM3  noFieldCopy's move branch removed (move names makeups)    → [V3]
 // RESULT (V): 3/3 killed, each FIRST at its own assertion.
+//   WM1  MoveNoticeLine drops the message                     → [W3]
+//   WM2  MoveNoticeLine drops the link                        → [W4]
+//   WM3  MoveGameIcon never disabled (lock ignored)           → [W1]
+//   WM4  panel stops rendering MoveNoticeLine for a refusal   → [S7]
+// RESULT (W): 4/4 killed, each FIRST at its own assertion.
 //   RM5  reschedule_pending branch removed (falls through)   → [R5]
 // RESULT: 6/6 killed, each FIRST at its own assertion. RM1 is the one the
 // ilAnomaly fixture exists for: without an interleague row carrying an
@@ -420,6 +433,98 @@ async function partV() {
   console.log("  counters V:", JSON.stringify(counters));
 }
 
+async function partW() {
+  const { MoveGameIcon, MoveNoticeLine } = await import(
+    "@/components/divisions/move-game-row"
+  );
+  const { routeMoveTarget } = await import("@/lib/schedule/panel-reschedule-route");
+  const { lockedReason } = await import("@/lib/schedule/division-lock");
+  const { ROW_ICON_REVEAL } = await import("@/components/ui/row-icon-reveal");
+  const esc = (t: string) =>
+    t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
+  const icon = (p: { locked: boolean; isInterleague: boolean }) =>
+    renderToStaticMarkup(
+      React.createElement(MoveGameIcon, {
+        ...p,
+        divisionName: "AA",
+        interleagueOrgName: p.isInterleague ? "Westside LL" : null,
+        onClick: () => {},
+      }),
+    );
+  const counters = { blockedLineRendered: 0, allowedIconRendered: 0, lockedIconRendered: 0 };
+
+  const lockedOrd = icon({ locked: true, isInterleague: false });
+  counters.lockedIconRendered++;
+  ok(
+    / disabled=""/.test(lockedOrd) &&
+      lockedOrd.includes(`title="${esc(lockedReason("AA", "move"))}"`),
+    "[W1] locked: icon DISABLED, tooltip carries the 'move' lock sentence",
+    lockedOrd.slice(0, 200),
+  );
+  const lockedIL = icon({ locked: true, isInterleague: true });
+  ok(
+    / disabled=""/.test(lockedIL) &&
+      lockedIL.includes(`title="${esc(lockedReason("AA", "rescheduleInterleague"))}"`),
+    "[W1b] locked interleague: disabled, the route's own lock sentence",
+  );
+  const ord = icon({ locked: false, isInterleague: false });
+  const il = icon({ locked: false, isInterleague: true });
+  counters.allowedIconRendered += 2;
+  ok(
+    !/ disabled=""/.test(ord) && ord.includes('title="Reschedule game"') &&
+      !/ disabled=""/.test(il) && il.includes('title="Request a new time from Westside LL"'),
+    "[W2] unlocked: enabled, tooltip names the action (and the partner for interleague)",
+  );
+  ok(
+    ROW_ICON_REVEAL.split(" ").every((c) => ord.includes(c)),
+    "[W2b] the icon uses ROW_ICON_REVEAL (visible on touch, like the cloud)",
+  );
+
+  // Every refusal routeMoveTarget returns for an ENABLED icon (i.e. not locked)
+  // must render under the row with its sentence and link.
+  const NOW = Date.parse("2026-09-25T12:00:00Z");
+  const org = { name: "Westside LL" };
+  const blockedGames = [
+    { status: "pending_interleague", scheduled_at: "2026-10-10T15:30:00+00:00", interleague_org_id: "io", away_team_id: null, interleague_org: org },
+    { status: "reschedule_pending", scheduled_at: "2026-10-10T15:30:00+00:00", interleague_org_id: "io", away_team_id: null, interleague_org: org },
+    { status: "scheduled", scheduled_at: "2026-09-20T15:30:00+00:00", interleague_org_id: "io", away_team_id: null, interleague_org: org },
+    { status: "scheduled", scheduled_at: "2026-10-10T15:30:00+00:00", interleague_org_id: null, away_team_id: null },
+    { status: "completed", scheduled_at: "2026-09-20T15:30:00+00:00", interleague_org_id: null, away_team_id: "t" },
+  ];
+  const reasons = new Set<string>();
+  let allHaveMessage = true;
+  let linksOk = true;
+  for (const g of blockedGames) {
+    const r = routeMoveTarget(g, { locked: false, canReschedule: true, divisionName: "AA", nowMs: NOW });
+    if (r.kind !== "blocked") {
+      allHaveMessage = false;
+      continue;
+    }
+    reasons.add(r.reason);
+    const html = renderToStaticMarkup(
+      React.createElement(MoveNoticeLine, { message: r.message, link: r.link, onDismiss: () => {} }),
+    );
+    if (!html.includes(esc(r.message))) allHaveMessage = false;
+    else counters.blockedLineRendered++;
+    if (r.link && !(html.includes(`href="${r.link.href}"`) && html.includes(esc(r.link.label)))) {
+      linksOk = false;
+    }
+  }
+  ok(
+    reasons.size === blockedGames.length,
+    "[W5] the fixture reaches five distinct refusal reasons",
+    [...reasons].join(","),
+  );
+  ok(allHaveMessage, "[W3] every refusal renders under the row WITH its sentence");
+  ok(linksOk, "[W4] refusals that carry a link (Interleague page) render it");
+
+  for (const [name, n] of Object.entries(counters)) {
+    ok(n > 0, `[AV] counter ${name} fired`, `got ${n}`);
+  }
+  console.log("  counters W:", JSON.stringify(counters));
+}
+
 function partS() {
   const src = readFileSync(
     join(__dirname, "..", "..", "src", "components", "divisions", "division-schedule-panel.tsx"),
@@ -435,6 +540,18 @@ function partS() {
   ok(
     src.includes("submitInterleagueRescheduleRequest("),
     "[S4] the panel submits requests through the shared helper",
+  );
+  ok(
+    /\{rowNotice\?\.gameId === game\.id[^}]*&& \(\s*<MoveNoticeLine\s+message=\{rowNotice\.message\}/.test(src),
+    "[S7] the panel renders MoveNoticeLine under the refused row",
+  );
+  ok(
+    src.includes("<MoveGameIcon") && src.includes("onClick={() => handleMoveClick(game)}"),
+    "[S8] each row renders MoveGameIcon wired to the router",
+  );
+  ok(
+    !/moveMode|Pick a game to reschedule|Reschedule a game/.test(src),
+    "[S9] the action-row pick mode is gone entirely",
   );
   const modal = readFileSync(
     join(__dirname, "..", "..", "src", "components", "divisions", "rainout-reschedule-modal.tsx"),
@@ -456,6 +573,7 @@ async function main() {
   await partM();
   await partR();
   await partV();
+  await partW();
   partS();
   console.log(`\n${checks - fails}/${checks} checks passed`);
   if (fails > 0) process.exit(1);

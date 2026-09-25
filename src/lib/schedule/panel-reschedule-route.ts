@@ -1,7 +1,7 @@
-// Where a game picked in the division schedule panel's "Reschedule a game"
-// mode goes. ONE pure decision, so the panel cannot open the plain slot picker
-// on a game that must not reach it — and so the harness drives the same code
-// the panel calls (`npm run sim:panel-reschedule`, part R).
+// Where a game goes when its "Reschedule game" row icon is clicked in the
+// division schedule panel. ONE pure decision, so the panel cannot open the
+// plain slot picker on a game that must not reach it — and so the harness
+// drives the same code the panel calls (`npm run sim:panel-reschedule`, part R).
 //
 // THE ROUTES
 // - `plain`: an ordinary scheduled game → RainoutRescheduleModal
