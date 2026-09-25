@@ -30,7 +30,7 @@
     "sim:reschedule-gate-gaps": "npx tsx scripts/sim/reschedule-gate-gaps-sim.ts",
     "sim:regenerate-pending-guard": "TZ=UTC npx tsx scripts/sim/regenerate-pending-guard-sim.ts",
     "sim:picker-overrides": "TZ=UTC npx tsx scripts/sim/picker-overrides-sim.ts",
-    "sim:panel-reschedule": "npx tsx scripts/sim/panel-reschedule-sim.ts",
+    "sim:panel-reschedule": "TZ=UTC npx tsx scripts/sim/panel-reschedule-sim.ts",
     "sim:request-reschedule": "npx tsx scripts/sim/request-reschedule-sim.ts",
     "sim:location-filter": "npx tsx scripts/sim/location-filter-sim.ts",
     "sim:week-grid": "TZ=UTC npx tsx scripts/sim/week-grid-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/week-grid-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/week-grid-sim.ts"

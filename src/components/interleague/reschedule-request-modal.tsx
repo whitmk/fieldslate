@@ -25,6 +25,10 @@ interface Props {
     venue_name?: string;
     note?: string;
   };
+  /** Optional line above "Currently" saying why this surface sends a request
+   *  rather than moving the game. Absent = the modal renders exactly as it did
+   *  before the prop existed (pinned by sim:panel-reschedule). */
+  intro?: string;
   busy: boolean;
   error: string | null;
   onSubmit: (payload: {
@@ -48,6 +52,7 @@ export function RescheduleRequestModal({
   submitLabel = "Send reschedule request",
   game,
   initial,
+  intro,
   busy,
   error,
   onSubmit,
@@ -109,6 +114,11 @@ export function RescheduleRequestModal({
           }}
           className="flex flex-col gap-4 px-6 py-5"
         >
+          {intro && (
+            <p className="rounded-lg border border-purple-100 bg-purple-50 px-3 py-2 text-xs text-purple-700">
+              {intro}
+            </p>
+          )}
           <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               Currently

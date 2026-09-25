@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Zap, Loader2, CheckCircle2, AlertTriangle, CalendarDays,
   RefreshCw, Plus, PlusCircle, Printer, CloudRain, CalendarClock,
@@ -24,6 +25,13 @@ import {
 import { CoachConflictNotice } from "@/components/schedule/coach-conflict-notice";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
+import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
+import { UpgradeModal } from "@/components/plan/upgrade-cta";
+import { submitInterleagueRescheduleRequest } from "@/lib/interleague/request-reschedule";
+import {
+  routeMoveTarget,
+  MOVE_UPGRADE_FEATURE,
+} from "@/lib/schedule/panel-reschedule-route";
 import { AddGameModal } from "@/components/schedule/add-game-modal";
 import { logActivity } from "@/lib/activity-log";
 import {
@@ -56,8 +64,9 @@ interface Props {
   printMode?: PrintMode;
   onPrintDone?: () => void;
   onScheduleChange?: () => void;
-  /** Pro+ only — the auto-reschedule action on rained-out rows. Marking a
-   *  game rained out stays Free. */
+  /** Pro+ only — the auto-reschedule action on rained-out rows, and the plain
+   *  move in "Reschedule a game". Marking a game rained out and requesting an
+   *  interleague reschedule stay Free. */
   canReschedule?: boolean;
 }
 
@@ -203,6 +212,25 @@ export function DivisionSchedulePanel({
   const [selectedGameIds, setSelectedGameIds] = useState<Set<string>>(new Set());
   const [confirmingBulkRainout, setConfirmingBulkRainout] = useState(false);
   const [bulkRainoutLoading, setBulkRainoutLoading] = useState(false);
+
+  // "Reschedule a game" — the single-pick variant of select mode. A picked game
+  // goes wherever routeMoveTarget says: the plain slot picker, the interleague
+  // request flow, the Pro upsell, or a stated reason. Never a silent no-op.
+  const [moveMode, setMoveMode] = useState(false);
+  const [moveNotice, setMoveNotice] = useState<
+    { message: string; link?: { href: string; label: string } } | null
+  >(null);
+  // awayTeamId is carried SEPARATELY from the row, typed `string` by the
+  // router, so the picker's render site needs no `!` on a nullable column.
+  const [moveTarget, setMoveTarget] = useState<
+    { game: GameRow; awayTeamId: string } | null
+  >(null);
+  const [requestTarget, setRequestTarget] = useState<
+    { game: GameRow; intro: string } | null
+  >(null);
+  const [requestBusy, setRequestBusy] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [moveUpgradeOpen, setMoveUpgradeOpen] = useState(false);
 
   // Umpire state
   const [umpiresPerGame, setUmpiresPerGame] = useState(0);
@@ -660,8 +688,74 @@ export function DivisionSchedulePanel({
   // ── Bulk rainout helpers ──────────────────────────────────────────────────────
 
   function enterSelectMode() {
+    exitMoveMode();
     setSelectMode(true);
     setSelectedGameIds(new Set());
+  }
+
+  // ── "Reschedule a game" helpers ───────────────────────────────────────────────
+
+  function enterMoveMode() {
+    exitSelectMode();
+    setMoveNotice(null);
+    setMoveMode(true);
+  }
+
+  function exitMoveMode() {
+    setMoveMode(false);
+    setMoveNotice(null);
+  }
+
+  function handleMovePick(game: GameRow) {
+    const route = routeMoveTarget(game, {
+      locked,
+      canReschedule,
+      divisionName,
+      nowMs: Date.now(),
+    });
+    switch (route.kind) {
+      case "plain":
+        exitMoveMode();
+        setMoveTarget({ game, awayTeamId: route.awayTeamId });
+        return;
+      case "interleague_request":
+        exitMoveMode();
+        setRequestError(null);
+        setRequestTarget({ game, intro: route.intro });
+        return;
+      case "upgrade":
+        setMoveUpgradeOpen(true);
+        return;
+      case "blocked":
+        setMoveNotice({ message: route.message, link: route.link });
+        return;
+    }
+  }
+
+  async function submitMoveRequest(payload: {
+    scheduled_at: string;
+    venue_name?: string;
+    note?: string;
+  }) {
+    if (!requestTarget) return;
+    setRequestError(null);
+    setRequestBusy(true);
+    // The one shared submit path — see request-reschedule.ts.
+    const outcome = await submitInterleagueRescheduleRequest(
+      requestTarget.game.id,
+      payload,
+    );
+    setRequestBusy(false);
+    if (!outcome.ok) {
+      setRequestError(outcome.error);
+      return;
+    }
+    const org = requestTarget.game.interleague_org?.name ?? "the other league";
+    setRequestTarget(null);
+    setResult({ type: "success", message: `Reschedule request sent to ${org}.` });
+    await fetchGames();
+    router.refresh();
+    onScheduleChange?.();
   }
 
   function exitSelectMode() {
@@ -1030,6 +1124,18 @@ export function DivisionSchedulePanel({
           </button>
         )}
 
+        {activeGames.length > 0 && (
+          <button
+            onClick={enterMoveMode}
+            title={locked ? lockedReason(divisionName, "move") : undefined}
+            disabled={locked}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:border-[#22C55E] hover:text-[#22C55E] disabled:cursor-not-allowed disabled:opacity-60 print:hidden"
+          >
+            <CalendarClock className="h-4 w-4" />
+            Reschedule a game
+          </button>
+        )}
+
         {umpiresPerGame > 0 && activeGames.length > 0 && (
           <AutoAssignUmpiresButton
             divisionId={divisionId}
@@ -1175,6 +1281,37 @@ export function DivisionSchedulePanel({
                   </button>
                 </div>
               </>
+            ) : moveMode ? (
+              /* ── Move mode header ── */
+              <>
+                <div className="flex min-w-0 flex-col">
+                  <span className="text-xs font-semibold text-gray-500">
+                    Pick a game to reschedule
+                  </span>
+                  {moveNotice && (
+                    <span className="mt-0.5 text-xs text-amber-700">
+                      {moveNotice.message}
+                      {moveNotice.link && (
+                        <>
+                          {" "}
+                          <Link
+                            href={moveNotice.link.href}
+                            className="text-[#22C55E] underline underline-offset-2"
+                          >
+                            {moveNotice.link.label}
+                          </Link>
+                        </>
+                      )}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={exitMoveMode}
+                  className="ml-3 flex-shrink-0 text-xs text-gray-400 transition-colors hover:text-gray-600"
+                >
+                  Cancel
+                </button>
+              </>
             ) : (
               /* ── Normal header ── */
               <>
@@ -1218,13 +1355,18 @@ export function DivisionSchedulePanel({
                   const isRaining = rainoutId === game.id;
                   const isSelected = selectedGameIds.has(game.id);
                   const isSelectable = selectMode && !isCancelled;
+                  // Rained-out rows keep their own Reschedule button.
+                  const isMovePickable = moveMode && !isCancelled;
                   const gameAssignments = assignmentsByGame.get(game.id) ?? [];
                   const showSlots =
-                    !isCancelled && !selectMode && umpiresPerGame > 0;
+                    !isCancelled && !selectMode && !moveMode && umpiresPerGame > 0;
                   return (
                     <div
                       key={game.id}
-                      onClick={() => { if (isSelectable) toggleGameSelect(game.id); }}
+                      onClick={() => {
+                        if (isSelectable) toggleGameSelect(game.id);
+                        else if (isMovePickable) handleMovePick(game);
+                      }}
                       className={`group flex flex-col gap-2 px-4 py-3 transition-colors ${
                         isCancelled
                           ? "bg-gray-50/80"
@@ -1232,6 +1374,8 @@ export function DivisionSchedulePanel({
                           ? isSelected
                             ? "cursor-pointer bg-blue-50/60"
                             : "cursor-pointer hover:bg-gray-50/60"
+                          : isMovePickable
+                          ? "cursor-pointer hover:bg-gray-50/60"
                           : ""
                       }`}
                     >
@@ -1304,7 +1448,7 @@ export function DivisionSchedulePanel({
                               </button>
                             )}
                           </div>
-                        ) : !selectMode ? (
+                        ) : !selectMode && !moveMode ? (
                           <button
                             onClick={() => handleRainOut(game)}
                             disabled={isRaining}
@@ -1522,6 +1666,56 @@ export function DivisionSchedulePanel({
             fetchGames();
             onScheduleChange?.();
           }}
+        />
+      )}
+
+      {/* ── "Reschedule a game": plain move ──
+          Rendered only from a `plain` route, whose awayTeamId is a real string
+          by construction — never from a raw row. */}
+      {moveTarget && (
+        <RainoutRescheduleModal
+          variant="move"
+          gameId={moveTarget.game.id}
+          homeTeamId={moveTarget.game.home_team_id}
+          awayTeamId={moveTarget.awayTeamId}
+          homeTeamName={moveTarget.game.home_team?.name ?? "Home"}
+          awayTeamName={moveTarget.game.away_team?.name ?? "Away"}
+          divisionId={divisionId}
+          leagueId={leagueId}
+          onClose={() => setMoveTarget(null)}
+          onRescheduled={() => {
+            setMoveTarget(null);
+            fetchGames();
+            onScheduleChange?.();
+          }}
+        />
+      )}
+
+      {/* ── "Reschedule a game": interleague → request the partner's consent ── */}
+      {requestTarget && (
+        <RescheduleRequestModal
+          intro={requestTarget.intro}
+          game={{
+            scheduled_at: requestTarget.game.scheduled_at,
+            is_away: !!requestTarget.game.is_away,
+            external_team_name: requestTarget.game.external_team_name,
+            proposed_venue_name: requestTarget.game.proposed_venue_name,
+            home_team: requestTarget.game.home_team,
+            venue: requestTarget.game.venue,
+            interleague_org: requestTarget.game.interleague_org,
+          }}
+          busy={requestBusy}
+          error={requestError}
+          onSubmit={submitMoveRequest}
+          onClose={() => setRequestTarget(null)}
+        />
+      )}
+
+      {moveUpgradeOpen && (
+        <UpgradeModal
+          mode="feature"
+          feature={MOVE_UPGRADE_FEATURE}
+          onClose={() => setMoveUpgradeOpen(false)}
         />
       )}
 
