@@ -21,6 +21,7 @@ import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { logActivity } from "@/lib/activity-log";
 import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
 import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
+import { submitInterleagueRescheduleRequest } from "@/lib/interleague/request-reschedule";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
 
 export type ScheduleGameUmpire = {
@@ -188,30 +189,19 @@ export function ScheduleList({
     if (!requestRescheduleGame) return;
     setRescheduleError(null);
     setRescheduleSubmitting(true);
-    try {
-      const res = await fetch(
-        `/api/interleague/games/${encodeURIComponent(requestRescheduleGame.id)}/reschedule`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        },
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        setRescheduleError(data.error ?? "Failed to send request.");
-        setRescheduleSubmitting(false);
-        return;
-      }
-      setRequestRescheduleGame(null);
+    // The one shared submit path — see request-reschedule.ts.
+    const outcome = await submitInterleagueRescheduleRequest(
+      requestRescheduleGame.id,
+      payload,
+    );
+    if (!outcome.ok) {
+      setRescheduleError(outcome.error);
       setRescheduleSubmitting(false);
-      router.refresh();
-    } catch (err) {
-      setRescheduleError(
-        err instanceof Error ? err.message : "Network error.",
-      );
-      setRescheduleSubmitting(false);
+      return;
     }
+    setRequestRescheduleGame(null);
+    setRescheduleSubmitting(false);
+    router.refresh();
   }
 
   async function handleRainout(game: ScheduleGame) {
