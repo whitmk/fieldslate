@@ -24,6 +24,16 @@
 // mutant that forgets the interleague branch would land on `no_opponent`
 // rather than `plain` and the plain-path assertion would prove nothing.
 //
+// PART V — the move variant offers NO makeup days (2026-09-25). Makeup means
+// "a rained-out game may move here"; a plain move is not a rainout, so
+// `availabilityForVariant` strips the flags for "move" and leaves "rainout"
+// untouched (src/lib/schedule/reschedule-variant.ts). Driven through the REAL
+// slot builder on a Saturday-only division with a makeup-flagged Friday: the
+// rainout door must offer Friday, the move door must not, and Saturday must be
+// identical through both. Case (a)'s empty-day wording is pinned too — the
+// rainout strings as LITERALS (byte-identical to before), and no move string
+// may name makeups.
+//
 // PART S — source wiring. The harness drives the lib, not the panel; these
 // textual checks pin that the panel still CALLS the router and renders the
 // picker from the router's typed awayTeamId. Weak by nature (a grep), stated.
@@ -46,6 +56,10 @@
 //   RM2  lock gate skipped on the plain path                → [R7]
 //   RM3  ordinary status check dropped (completed moves)    → [R10]
 //   RM4  plain returns before the plan check (Free moves)   → [R8]
+//   VM1  availabilityForVariant never strips (move offers makeups) → [V2]
+//   VM2  availabilityForVariant always strips (rainout loses them) → [V1]
+//   VM3  noFieldCopy's move branch removed (move names makeups)    → [V3]
+// RESULT (V): 3/3 killed, each FIRST at its own assertion.
 //   RM5  reschedule_pending branch removed (falls through)   → [R5]
 // RESULT: 6/6 killed, each FIRST at its own assertion. RM1 is the one the
 // ilAnomaly fixture exists for: without an interleague row carrying an
@@ -285,6 +299,127 @@ async function partR() {
   console.log("  counters:", JSON.stringify(counters));
 }
 
+async function partV() {
+  const { availabilityForVariant, noFieldCopy } = await import(
+    "@/lib/schedule/reschedule-variant"
+  );
+  const { buildSlotsAndDiagnostics } = await import("@/lib/schedule/reschedule-slots");
+  const { parseAvailability } = await import("@/lib/venues/availability");
+  type Params = Parameters<typeof buildSlotsAndDiagnostics>[0];
+
+  const VEN = "v_andrews";
+  const SAT = "2026-08-15";
+  const FRI = "2026-08-21";
+  const raw = parseAvailability({
+    Sa: { start: "08:00", end: "20:00", practice: true },
+    Fr: { start: "16:30", end: "21:00", practice: true, makeup: true },
+  });
+  const params = (variant: "rainout" | "move", overrides?: Params["overrides"]): Params => ({
+    startDate: SAT,
+    endDate: "2026-08-22",
+    playingDays: ["Sa"],
+    dayWindows: { Sa: { start: "10:00", end: "18:00" } },
+    earliestStart: "10:00",
+    latestStart: "18:00",
+    gameDuration: 105,
+    bufferMinutes: 30,
+    maxPerTeamDay: 1,
+    venueIds: [VEN],
+    venueNames: { [VEN]: "Andrews" },
+    venueAvailability: { [VEN]: availabilityForVariant(raw, variant) },
+    blackoutDates: new Set<string>(),
+    venueBookings: new Map(),
+    homeTeamSpans: new Map(),
+    awayTeamSpans: new Map(),
+    homeTeamDayCounts: new Map(),
+    awayTeamDayCounts: new Map(),
+    homeTeamId: "h",
+    awayTeamId: "a",
+    constraintRules: new Map(),
+    today: SAT,
+    ...(overrides ? { overrides } : {}),
+  });
+  const onDate = (r: ReturnType<typeof buildSlotsAndDiagnostics>, d: string) =>
+    r.slots.filter((x) => x.date === d).map((x) => `${x.isoString}|${x.venueId}`);
+
+  const rain = buildSlotsAndDiagnostics(params("rainout"));
+  const move = buildSlotsAndDiagnostics(params("move"));
+  const counters = {
+    makeupDayOfferedOnRainout: onDate(rain, FRI).length,
+    makeupDayWithheldOnMove: onDate(move, FRI).length === 0 && raw.Fr?.makeup === true ? 1 : 0,
+    playingDaySlotsCompared: onDate(rain, SAT).length,
+  };
+
+  ok(onDate(rain, FRI).length > 0, "[V1] rainout door offers the makeup-flagged Friday");
+  ok(
+    onDate(move, FRI).length === 0,
+    "[V2] move door offers NOTHING on the makeup-flagged Friday",
+    JSON.stringify(onDate(move, FRI).slice(0, 3)),
+  );
+  const friDiag = move.diagnostics.get(FRI);
+  const friCopy = noFieldCopy({
+    variant: "move",
+    includeNonPlayingDays: false,
+    playsThatDay: false,
+    divisionName: "AA",
+    countSuffix: "",
+  });
+  ok(
+    friDiag?.kind === "no_field" &&
+      friCopy.text === "AA doesn't play that day." &&
+      friCopy.tone === "info" && friCopy.link === null,
+    "[V3] move: the withheld Friday reads 'doesn't play', grey, no Makeup link",
+    JSON.stringify({ friDiag, friCopy }),
+  );
+  ok(
+    JSON.stringify(onDate(rain, SAT)) === JSON.stringify(onDate(move, SAT)) &&
+      onDate(rain, SAT).length > 0,
+    "[V4] the playing day is identical through both doors",
+  );
+  const moveOff = buildSlotsAndDiagnostics(params("move", { includeNonPlayingDays: true }));
+  const offFri = moveOff.slots.filter((x) => x.date === FRI);
+  ok(
+    offFri.length > 0 && offFri.every((x) => x.exceptions?.includes("off_day")),
+    "[V5] move + 'include non-playing days' reaches Friday, every slot marked Off day",
+  );
+
+  // Rainout wording — LITERALS, byte-identical to the pre-change JSX strings.
+  const rc = (inp: boolean, suffix: string) =>
+    noFieldCopy({ variant: "rainout", includeNonPlayingDays: inp, playsThatDay: false, divisionName: "AA", countSuffix: suffix });
+  const r0 = rc(false, "");
+  const r1 = rc(true, " (2 dates)");
+  ok(
+    r0.text === "no field is open and marked for makeups." &&
+      r0.link === "Mark a field \u201cMakeup\u201d on the Venues page" && r0.tone === "config",
+    "[V6] rainout, override off: unchanged makeup wording + link",
+  );
+  ok(
+    r1.text === "no field is open that day (2 dates)." &&
+      r1.link === "Set field hours on the Venues page" && r1.tone === "config",
+    "[V6b] rainout, override on: unchanged wording + link",
+  );
+  const mPlay = noFieldCopy({ variant: "move", includeNonPlayingDays: false, playsThatDay: true, divisionName: "AA", countSuffix: "" });
+  ok(
+    mPlay.text === "no field is open that day." && mPlay.link === "Set field hours on the Venues page",
+    "[V7] move, a playing day with no open field: 'no field is open', Set-hours link",
+  );
+  const moveCopies = [false, true].flatMap((inp) =>
+    [false, true].map((plays) =>
+      noFieldCopy({ variant: "move", includeNonPlayingDays: inp, playsThatDay: plays, divisionName: "AA", countSuffix: "" }),
+    ),
+  );
+  ok(
+    moveCopies.every((c) => !/makeup/i.test(`${c.text} ${c.link ?? ""}`)),
+    "[V8] no move-variant sentence or link names makeups",
+  );
+  ok(availabilityForVariant(raw, "rainout") === raw, "[V9] rainout passes availability through untouched");
+
+  for (const [name, n] of Object.entries(counters)) {
+    ok(n > 0, `[AV] counter ${name} fired`, `got ${n}`);
+  }
+  console.log("  counters V:", JSON.stringify(counters));
+}
+
 function partS() {
   const src = readFileSync(
     join(__dirname, "..", "..", "src", "components", "divisions", "division-schedule-panel.tsx"),
@@ -301,6 +436,18 @@ function partS() {
     src.includes("submitInterleagueRescheduleRequest("),
     "[S4] the panel submits requests through the shared helper",
   );
+  const modal = readFileSync(
+    join(__dirname, "..", "..", "src", "components", "divisions", "rainout-reschedule-modal.tsx"),
+    "utf8",
+  );
+  ok(
+    /availabilityForVariant\(\s*parseAvailability\([^)]*\),\s*variant,?\s*\)/.test(modal),
+    "[S5] the picker feeds the builder through availabilityForVariant(…, variant)",
+  );
+  ok(
+    (modal.match(/variant=\{variant\}/g) ?? []).length >= 3,
+    "[S6] both empty-day renderings and the header receive the variant",
+  );
 }
 
 async function main() {
@@ -308,6 +455,7 @@ async function main() {
   await partH();
   await partM();
   await partR();
+  await partV();
   partS();
   console.log(`\n${checks - fails}/${checks} checks passed`);
   if (fails > 0) process.exit(1);

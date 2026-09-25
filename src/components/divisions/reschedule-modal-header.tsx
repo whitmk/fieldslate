@@ -1,16 +1,10 @@
 import { X, CloudRain, CalendarClock } from "lucide-react";
+import type { RescheduleVariant } from "@/lib/schedule/reschedule-variant";
 
-/**
- * Which door the reschedule picker was opened from.
- * - "rainout" (the default, and every caller before 2026-09-25): a rained-out
- *   game being put back on the schedule. Rain-cloud header.
- * - "move": the division panel's "Reschedule a game" — a game that was NOT
- *   rained out, moved by choice. A rain cloud there would say something false.
- *
- * The variant changes the header ONLY. The picker, its reads, its gates and its
- * save are identical for both — there is one slot-selection mechanism.
- */
-export type RescheduleModalVariant = "rainout" | "move";
+// Which door the reschedule picker was opened from — see RescheduleVariant in
+// reschedule-variant.ts. Here it swaps the icon only: a rain cloud on a game
+// that was moved by choice would say something false. (The variant's other
+// effect — the move variant offers no makeup days — lives in that lib.)
 
 /**
  * Lifted verbatim out of RainoutRescheduleModal so its markup can be pinned:
@@ -27,7 +21,7 @@ export function RescheduleModalHeader({
   homeTeamName: string;
   awayTeamName: string;
   onClose: () => void;
-  variant?: RescheduleModalVariant;
+  variant?: RescheduleVariant;
 }) {
   return (
         <div className="flex flex-shrink-0 items-start justify-between border-b border-gray-100 px-6 py-4">

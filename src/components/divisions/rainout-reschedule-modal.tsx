@@ -33,10 +33,12 @@ import {
 } from "@/lib/schedule/reschedule-slots";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { SlotExceptionChips, SlotOverrideToggles } from "@/components/schedule/slot-overrides";
+import { RescheduleModalHeader } from "./reschedule-modal-header";
 import {
-  RescheduleModalHeader,
-  type RescheduleModalVariant,
-} from "./reschedule-modal-header";
+  availabilityForVariant,
+  noFieldCopy,
+  type RescheduleVariant,
+} from "@/lib/schedule/reschedule-variant";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -52,9 +54,10 @@ interface Props {
   onRescheduled: () => void;
   /** Override the activity-log message. Receives the chosen slot; return the full message string. */
   buildLogMessage?: (p: { newScheduledAt: string; newVenueName: string }) => string;
-  /** Header only — see RescheduleModalVariant. Omitted = "rainout", which is
-   *  what every pre-existing caller renders, byte-identically. */
-  variant?: RescheduleModalVariant;
+  /** Which door opened the picker — see reschedule-variant.ts. "move" swaps
+   *  the header icon and offers no makeup days. Omitted = "rainout", which is
+   *  what every pre-existing caller gets, unchanged. */
+  variant?: RescheduleVariant;
 }
 
 // Slot construction (the 15-minute grid + real-span occupancy test) lives in
@@ -85,8 +88,15 @@ function fmt12(hhmm: string): string {
 function DiagnosticRow({
   summary,
   includeNonPlayingDays,
+  variant,
+  playsThatDay,
+  divisionName,
 }: {
   summary: DaySummary;
+  /** Case (a)'s wording depends on the door (see reschedule-variant.ts). */
+  variant: RescheduleVariant;
+  playsThatDay: boolean;
+  divisionName: string;
   /** With the override on, a non-playing day was EVALUATED — the makeup flag is
    *  no longer what decides whether it is offered, so copy that names makeups
    *  (and the "Mark a field Makeup" link) would be wrong. */
@@ -186,22 +196,35 @@ function DiagnosticRow({
   // CASE (a). Nothing open that day. With the override off that means nothing
   // open AND flagged for makeups, and the fix is to flag one; with it on the
   // flag is irrelevant and the field is simply shut, so neither the wording nor
-  // the link may mention makeups.
+  // the link may mention makeups. The MOVE variant never offers makeup days at
+  // all, so it never names them — see noFieldCopy.
+  const copy = noFieldCopy({
+    variant,
+    includeNonPlayingDays,
+    playsThatDay,
+    divisionName,
+    countSuffix,
+  });
+  if (copy.tone === "info") {
+    return (
+      <div className="px-6 py-2.5">
+        <p className="text-xs text-gray-400">
+          <span className="font-medium text-gray-500">{label}</span> — {copy.text}
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="px-6 py-2.5">
       <p className="text-xs text-amber-700">
         <span className="font-medium">{label}</span> —{" "}
-        {includeNonPlayingDays
-          ? `no field is open that day${countSuffix}.`
-          : `no field is open and marked for makeups${countSuffix}.`}
+        {copy.text}
       </p>
       <Link
         href="/dashboard/venues"
         className="text-xs text-[#22C55E] underline underline-offset-2"
       >
-        {includeNonPlayingDays
-          ? "Set field hours on the Venues page"
-          : "Mark a field \u201cMakeup\u201d on the Venues page"}
+        {copy.link}
       </Link>
     </div>
   );
@@ -448,7 +471,12 @@ export function RainoutRescheduleModal({
 
     const venueAvailabilityParsed: Record<string, VenueAvailability> = {};
     for (const vid of venueIds) {
-      venueAvailabilityParsed[vid] = parseAvailability(venueAvailability[vid]);
+      // The move variant clears every makeup flag: makeup means "a RAINED-OUT
+      // game may move here", and a plain move is not a rainout.
+      venueAvailabilityParsed[vid] = availabilityForVariant(
+        parseAvailability(venueAvailability[vid]),
+        variant,
+      );
     }
 
     // 4c. Team game constraints (0076) for both teams. Fail CLOSED on a read
@@ -662,6 +690,9 @@ export function RainoutRescheduleModal({
                     key={`${sm.day}:${i}`}
                     summary={sm}
                     includeNonPlayingDays={overrides.includeNonPlayingDays === true}
+                    variant={variant}
+                    playsThatDay={builderParams?.playingDays.includes(sm.day) ?? false}
+                    divisionName={divisionName}
                   />
                 ))}
               </div>
@@ -724,6 +755,9 @@ export function RainoutRescheduleModal({
                     key={`${sm.day}:${i}`}
                     summary={sm}
                     includeNonPlayingDays={overrides.includeNonPlayingDays === true}
+                    variant={variant}
+                    playsThatDay={builderParams?.playingDays.includes(sm.day) ?? false}
+                    divisionName={divisionName}
                   />
                     ))}
                   </div>
