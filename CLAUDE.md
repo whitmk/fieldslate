@@ -479,8 +479,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   badges), generate-all modal (pre-run "will be skipped" notice, amber
   rows, `skipped_locked` status), setup generate step (same skip), Add
   game modal, conflict resolver, the All Games delete dialog's
-  `division_locked` reason, and the panel's "Reschedule a game" (2026-09-25 —
-  see "Division panel — Reschedule a game" for why it is gated when rainout
+  `division_locked` reason, and the panel's per-row "Reschedule game" icon
+  (2026-09-25 — see "Division panel — Reschedule game" for why it is gated when rainout
   recovery is not).
 - **The two division-ambiguous surfaces get PER-OPTION / PER-ROW state, never
   a disabled button.** Add game picks its division INSIDE the modal, so
@@ -1467,14 +1467,27 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   genuine overlap is caught by both models, and a mutant that killed F2 too
   would prove nothing about which model is better.
 
-## Division panel — "Reschedule a game" (2026-09-25)
+## Division panel — "Reschedule game" (2026-09-25)
 
-- **A single-pick variant of "Select games"** in `division-schedule-panel.tsx`:
-  pick a game from this division, move it WITHOUT marking it rained out.
-  Rained-out rows are not pickable (they keep their own Reschedule button).
-  Where a pick goes is ONE pure decision, `routeMoveTarget`
+- **A per-row icon beside the rainout cloud** in `division-schedule-panel.tsx`
+  (calendar-clock, `MoveGameIcon`): move a game WITHOUT marking it rained out.
+  It first shipped as an action-row button with a pick mode; that was REMOVED
+  the same day — every per-game affordance lives on the row, and two ways to do
+  one thing on one screen is clutter. Do not bring the pick mode back.
+  Rained-out rows get no icon (they keep their own Reschedule button).
+  Where a click goes is ONE pure decision, `routeMoveTarget`
   (`src/lib/schedule/panel-reschedule-route.ts`); the panel only switches on
   its result. Never add a routing branch in the panel.
+- **Where a refusal shows — decided per case, never silent:** a LOCKED
+  division disables the icon with the lock sentence as its tooltip (the roster
+  team-delete pattern; the "Schedule locked" card says it on every screen).
+  Every other refusal (not yet agreed, request already out, already played,
+  no opponent, not a scheduled game) keeps the icon enabled and, on click,
+  renders `MoveNoticeLine` DIRECTLY UNDER THAT ROW with its sentence and link.
+  Not a tooltip — tooltips don't exist on touch and can't hold a link. Not the
+  footer or a toast — a refusal away from the action reads as "nothing
+  happened" (Team deletion, Defect 2). `reschedule_pending` has no row chip, so
+  that line is the ONLY thing telling the admin a request is already out.
 - **The move variant offers NO makeup days** (2026-09-25). Makeup means "a
   RAINED-OUT game may move here"; the move variant clears every flag before the
   slot build via `availabilityForVariant` → `stripMakeup` (the interleague
@@ -1507,7 +1520,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Reschedule) is exempt because weather is not a choice — a locked schedule
   must still survive a rainstorm. A plain move IS a choice, made on a schedule
   that may already be in parents' hands, so it takes the conflict resolver's
-  "move" rule: the button is disabled with `lockedReason(…, "move")`, and the
+  "move" rule: the icon is disabled with `lockedReason(…, "move")`, and the
   router refuses with the same sentence if the lock flips before the click
   (interleague requests use the route's own `rescheduleInterleague` sentence).
   **This is a UI gate, exactly like the resolver's move — NOT a database
@@ -1529,11 +1542,47 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Harness: `npm run sim:panel-reschedule`** (TZ=UTC) — parts H (header), M
   (request modal intro), R (routing, 10 counters incl. an ordinary game routed
   plain and an interleague game routed to the request), V (move variant's
-  makeup strip + case-(a) wording, through the real builder), S (source-wiring
-  greps — weak by nature, stated). 11 mutants each killed first at its own
-  assertion. **Keep the `ilAnomaly` fixture** (an interleague row WITH an away
+  makeup strip + case-(a) wording, through the real builder), W (the REAL
+  `MoveGameIcon`/`MoveNoticeLine` rendered: disabled-with-lock-sentence, and
+  every refusal's sentence + link under the row; counters for a blocked and an
+  allowed render), S (source-wiring greps — weak by nature, stated). 15 mutants
+  each killed first at its own assertion. **Keep the `ilAnomaly` fixture** (an interleague row WITH an away
   team): without it the "interleague branch skipped" mutant lands on
   `no_opponent` and [R2] passes vacuously.
+
+## Row icons on touch screens — `ROW_ICON_REVEAL`
+
+- **A hover-revealed control must never be invisible-but-tappable.** The
+  panel's rainout cloud used `opacity-0 group-hover:opacity-100`; a touch screen
+  never hovers, so on a phone it was INVISIBLE BUT STILL TAPPABLE — a tap on the
+  blank right edge of a row could mark a game rained out with no control on
+  screen. Fixed 2026-09-25 for the cloud and the "Reschedule game" icon.
+- **The fix keys on INPUT TYPE, not width:** a `can-hover:` Tailwind variant
+  (`@media (hover: hover)`, `tailwind.config.ts`) and the shared class string
+  `ROW_ICON_REVEAL` (`src/components/ui/row-icon-reveal.ts`). Pointer devices:
+  hidden until hover, grey-200 — exactly as before. Touch: always visible,
+  grey-400 (grey-200 on white is visible in name only). Never a `sm:`/`md:`
+  breakpoint: a narrow desktop window still hovers and a large tablet doesn't.
+- **The string must stay a complete literal under `src/components`** — the
+  Tailwind content globs don't scan `src/lib`, and the JIT emits nothing for a
+  class it can't read whole.
+- **Harness: `npm run sim:row-icon-reveal`** compiles the old and new classes
+  with the REAL Tailwind config and resolves effective opacity/colour on both
+  device types; pointer rendering asserted unchanged, touch asserted visible.
+  4 mutants. Its mutation log records a first TV2 that was a touch mutant
+  mislabelled as a pointer one — read it.
+- **NOT yet converted, same hazard class:** the roster's team rename/delete
+  icons in this same panel (`opacity-0 … group-hover:opacity-100`, ~:910 —
+  delete opens a confirm dialog, so lower risk), and hover-revealed controls in
+  `interleague-page-client.tsx`, `venues-page-client.tsx` and
+  `practices-page-client.tsx`. Convert each to `ROW_ICON_REVEAL` when touched.
+- **Row space on phones — recorded, not fixed.** The panel's game row is one
+  line at every width, and its right cluster (venue name + icons) does not
+  shrink. SRALL's venue names are long ("Andrews Field @ Monroe Complex
+  (SRALL)", ~200px at text-xs), so at 375px the team names already get a few
+  dozen pixels before truncating; the second icon (a gap-0.5 pair, ~30px)
+  tightens that further. The real problem is the unshrinkable venue name — let
+  it truncate, or wrap the row on narrow screens — a separate change.
 
 ## Makeup days (per venue, per day)
 
@@ -1541,7 +1590,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `practice`, same jsonb, no schema change. It means "rained-out games may be
   rescheduled onto this field on this day". Honored by the rainout reschedule
   picker and NOTHING else. **The same picker's "move" variant (the division
-  panel's "Reschedule a game") STRIPS the flags — decided 2026-09-25**: a plain
+  panel's per-row "Reschedule game" icon) STRIPS the flags — decided
+  2026-09-25**: a plain
   move is not a rainout. `availabilityForVariant`
   (`src/lib/schedule/reschedule-variant.ts`) is the one place that decides, and
   `noFieldCopy` keeps case (a) from naming makeups on a move. (The interleague counter-proposal picker reads it
@@ -1742,7 +1792,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   - Gated on interleague: `schedule-list.tsx` and `schedule-calendar.tsx` (both
     `rescheduleGame.away_team_id &&`), and `division-schedule-panel.tsx` TWICE —
     the rained-out row's button (`canReschedule && !game.interleague_org_id`)
-    and "Reschedule a game", which renders the picker only from a `plain`
+    and the row's "Reschedule game" icon, which renders the picker only from a `plain`
     `routeMoveTarget` result whose `awayTeamId` is a real `string` by
     construction (no `!`, no cast — `sim:panel-reschedule` [R2]/[R13]/[S2]).
     **That typed route is the pattern to copy when fixing the four below.**
