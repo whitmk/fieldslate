@@ -481,7 +481,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   game modal, conflict resolver, the All Games delete dialog's
   `division_locked` reason, and the panel's per-row "Reschedule game" icon
   (2026-09-25 — see "Division panel — Reschedule game" for why it is gated when rainout
-  recovery is not).
+  recovery is not), and the Schedule page's list-menu and calendar-popover
+  "Reschedule" for scheduled games (2026-09-26 — rained-out games exempt).
 - **The two division-ambiguous surfaces get PER-OPTION / PER-ROW state, never
   a disabled button.** Add game picks its division INSIDE the modal, so
   options are annotated "— locked" and stay SELECTABLE (an admin must be
@@ -1550,6 +1551,57 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   team): without it the "interleague branch skipped" mutant lands on
   `no_opponent` and [R2] passes vacuously.
 
+## Schedule page — "Reschedule" (list menu + calendar popover, 2026-09-26)
+
+- **ONE item, TWO jobs, so the picker variant is chosen PER GAME.** The list
+  row menu's and calendar popover's "Reschedule" serves a scheduled game (a
+  plain move) AND a rained-out game (rainout recovery). It used to open the
+  rainout picker for everything — rain-cloud header, makeup days, no manual
+  entry. Never pass a fixed `variant` from this surface.
+- **Routing = `routeScheduleReschedule`** (`src/lib/schedule/schedule-page-reschedule-route.ts`):
+  the panel's `routeMoveTarget` plus ONE added case. Rained-out non-interleague
+  → RAINOUT picker (makeup days, no manual entry, NO lock gate — weather is not
+  a choice), Pro only. Rained-out interleague → a refusal pointing at the
+  Interleague page (the request route only accepts scheduled games).
+  Everything else → `routeMoveTarget` unchanged: scheduled → MOVE picker
+  (manual entry, no makeup days), accepted upcoming interleague → request flow
+  with its intro, Free → upsell, and every other case a stated refusal.
+  `pickerFor(route)` is the ONE place a route becomes a variant.
+- **COMPLETED games are refused — this closed a live path.** The item used to
+  open the picker for a `completed` game, and the picker's save writes
+  `status: "scheduled"`, which would have silently un-completed a finished
+  game. `routeMoveTarget` refuses it (`not_movable_status`).
+- **Shared wiring: `useScheduleReschedule`** (`src/components/schedule/`) —
+  both the list and the calendar call it, so they cannot drift. It renders the
+  picker (routed variant, typed `awayTeamId`, current time/field for the
+  manual form), the request modal and the upsell. The list's separate
+  "Request reschedule" item (upcoming accepted interleague games) is unchanged.
+- **Refusals are never silent.** Pending / already-requested / past /
+  rained-out interleague games used to show "Reschedule" and do NOTHING on
+  click. Now `MoveNoticeLine` (the panel's component) renders the reason in a
+  full-width row directly under the list row, or inside the calendar popover,
+  which stays open to show it.
+- **Lock** from the page's EXISTING divisions read (`locked` added to its
+  select — no extra round trip). `rescheduleItemLockTitle` disables the item
+  with the panel's "move" sentence for a scheduled, non-interleague game on a
+  locked division; the router refuses the same case with the same sentence.
+  Page-load state — the move picker's manual save re-reads the lock anyway.
+- **Plan visibility matches the panel:** `rescheduleItemVisible` — Free sees
+  "Reschedule" on every game that isn't rained out (click → upsell); rained-out
+  games stay hidden on Free, as the panel hides the rained-out row's button.
+- **Mobile game cards and the week grid have no reschedule** and were left
+  that way.
+- **Harness: `npm run sim:schedule-page-reschedule`** (TZ=UTC) — parts R
+  (routing grid), V (per-game variant; makeup day through the REAL slot
+  builder), L (lock), P (plan visibility), S (source wiring). 29 checks,
+  counters for a scheduled game routed to move and a rained-out game routed to
+  rainout. 9 mutants, each killed first at its own assertion.
+- **NOT FIXED, recorded:** "Mark as rained out" still shows on games that are
+  ALREADY rained out in the list menu and the calendar popover (the mobile
+  card disables it via `RAINOUT_BLOCKED_STATUSES`; the desktop menu and the
+  popover don't). And the dashboard cards' four ungated picker render paths —
+  see the reschedule picker's KNOWN DEFECT.
+
 ## Move picker — "Enter a time manually" (2026-09-26)
 
 - **The escape hatch for a time or field the slot list doesn't offer.** On the
@@ -1844,9 +1896,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
      client-side shape and no server re-check either.
 - **KNOWN DEFECT — `RainoutRescheduleModal` HAS EIGHT RENDER PATHS AND FOUR OF
   THEM ARE UNGATED FOR INTERLEAGUE.** Documented, not fixed (2026-08-21; the
-  eighth, gated, added 2026-09-25).
-  - Gated on interleague: `schedule-list.tsx` and `schedule-calendar.tsx` (both
-    `rescheduleGame.away_team_id &&`), and `division-schedule-panel.tsx` TWICE —
+  eighth, gated, added 2026-09-25). **The four ungated ones are all on the
+  DASHBOARD / league page, not the Schedule page — still open, recorded again
+  2026-09-26.**
+  - Gated on interleague: `schedule-list.tsx` and `schedule-calendar.tsx`
+    (since 2026-09-26 both go through `useScheduleReschedule`, whose single
+    render site takes a typed `awayTeamId` from `routeScheduleReschedule` →
+    `pickerFor` — the old `rescheduleGame.away_team_id &&` guard, which made
+    interleague clicks a SILENT no-op, is gone), and `division-schedule-panel.tsx` TWICE —
     the rained-out row's button (`canReschedule && !game.interleague_org_id`)
     and the row's "Reschedule game" icon, which renders the picker only from a `plain`
     `routeMoveTarget` result whose `awayTeamId` is a real `string` by
