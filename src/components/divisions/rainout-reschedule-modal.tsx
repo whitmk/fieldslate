@@ -34,6 +34,8 @@ import {
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { SlotExceptionChips, SlotOverrideToggles } from "@/components/schedule/slot-overrides";
 import { RescheduleModalHeader } from "./reschedule-modal-header";
+import { ManualMoveForm } from "./manual-move-form";
+import { manualEntryAvailable } from "@/lib/schedule/manual-move";
 import {
   availabilityForVariant,
   noFieldCopy,
@@ -58,6 +60,10 @@ interface Props {
    *  the header icon and offers no makeup days. Omitted = "rainout", which is
    *  what every pre-existing caller gets, unchanged. */
   variant?: RescheduleVariant;
+  /** The game's current time and field — prefill for the move variant's
+   *  "Enter a time manually" form. Ignored by the rainout variant. */
+  currentScheduledAt?: string;
+  currentVenueId?: string | null;
 }
 
 // Slot construction (the 15-minute grid + real-span occupancy test) lives in
@@ -234,6 +240,8 @@ export function RainoutRescheduleModal({
   gameId, homeTeamId, awayTeamId, homeTeamName, awayTeamName,
   divisionId, leagueId, onClose, onRescheduled, buildLogMessage,
   variant = "rainout",
+  currentScheduledAt,
+  currentVenueId,
 }: Props) {
   const router = useRouter();
   // The builder's inputs are held, not its output: flipping an override
@@ -250,6 +258,14 @@ export function RainoutRescheduleModal({
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // "Enter a time manually" — move variant only (manualEntryAvailable). That
+  // variant check is the interleague guard: every picker render path that is
+  // ungated for interleague uses the rainout variant.
+  const [manual, setManual] = useState(false);
+  const [manualSaved, setManualSaved] = useState<
+    { isoString: string; venueName: string } | null
+  >(null);
+  const manualAllowed = manualEntryAvailable(variant);
 
   useEffect(() => {
     void loadSlots();
@@ -599,7 +615,10 @@ export function RainoutRescheduleModal({
                 <p className="mt-1 text-sm text-gray-500">
                   {homeTeamName} vs {awayTeamName}
                   <br />
-                  {picked && `${fmtGameDate(picked.isoString)} at ${fmtGameTime(picked.isoString)} — ${picked.venueName}`}
+                  {(() => {
+                    const saved = picked ?? manualSaved;
+                    return saved && `${fmtGameDate(saved.isoString)} at ${fmtGameTime(saved.isoString)} — ${saved.venueName}`;
+                  })()}
                 </p>
               </div>
               <button
@@ -609,6 +628,23 @@ export function RainoutRescheduleModal({
                 Done
               </button>
             </div>
+          ) : manualAllowed && manual ? (
+            <ManualMoveForm
+              gameId={gameId}
+              divisionId={divisionId}
+              leagueId={leagueId}
+              homeTeamId={homeTeamId}
+              awayTeamId={awayTeamId}
+              homeTeamName={homeTeamName}
+              awayTeamName={awayTeamName}
+              initialScheduledAt={currentScheduledAt}
+              initialVenueId={currentVenueId}
+              onBack={() => setManual(false)}
+              onSaved={(saved) => {
+                setManualSaved(saved);
+                setDone(true);
+              }}
+            />
           ) : picked ? (
             /* Confirmation view */
             <div className="flex flex-col gap-5 px-6 py-6">
@@ -766,6 +802,21 @@ export function RainoutRescheduleModal({
             </div>
           )}
         </div>
+
+        {/* The escape hatch: deliberate, secondary, below the list — the
+            interleague picker's pattern. MOVE variant only. */}
+        {manualAllowed && !manual && !done && !picked && (
+          <div className="flex flex-shrink-0 items-center justify-between border-t border-gray-100 px-6 py-3">
+            <p className="text-[11px] text-gray-400">Need a time or field that isn&rsquo;t listed?</p>
+            <button
+              type="button"
+              onClick={() => setManual(true)}
+              className="text-xs text-gray-400 underline underline-offset-2 hover:text-gray-600"
+            >
+              Enter a time manually
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

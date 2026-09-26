@@ -1638,6 +1638,8 @@ export function DivisionSchedulePanel({
           gameId={moveTarget.game.id}
           homeTeamId={moveTarget.game.home_team_id}
           awayTeamId={moveTarget.awayTeamId}
+          currentScheduledAt={moveTarget.game.scheduled_at}
+          currentVenueId={moveTarget.game.venue_id}
           homeTeamName={moveTarget.game.home_team?.name ?? "Home"}
           awayTeamName={moveTarget.game.away_team?.name ?? "Away"}
           divisionId={divisionId}
