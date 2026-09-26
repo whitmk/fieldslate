@@ -21,7 +21,10 @@ import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { logActivity } from "@/lib/activity-log";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
 import { useScheduleReschedule } from "./use-schedule-reschedule";
-import { rescheduleItemLockTitle } from "@/lib/schedule/schedule-page-reschedule-route";
+import {
+  rescheduleItemLockTitle,
+  rescheduleItemVisible,
+} from "@/lib/schedule/schedule-page-reschedule-route";
 import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
 import { submitInterleagueRescheduleRequest } from "@/lib/interleague/request-reschedule";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
@@ -553,7 +556,7 @@ function GameRowCells({
                 <Repeat className="h-3.5 w-3.5 text-[#22C55E]" />
                 Request reschedule
               </button>
-            ) : canReschedule ? (
+            ) : rescheduleItemVisible(game.status, canReschedule) ? (
               <button
                 onClick={onReschedule}
                 disabled={!!rescheduleLockTitle}

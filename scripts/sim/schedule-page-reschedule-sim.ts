@@ -15,6 +15,8 @@
 //   with the panel's "move" sentence, and the menu item shows it BEFORE the
 //   click (disabled + tooltip); a rained-out game is never gated. The lock set
 //   comes from the page's existing divisions read.
+// - P: plan visibility, matching the panel — Free sees "Reschedule" on
+//   scheduled games (click → upsell) but not on rained-out games.
 // - S: source wiring — both surfaces go through the shared hook, and the hook's
 //   one render site passes the ROUTED variant and typed awayTeamId.
 //
@@ -32,12 +34,16 @@
 //   LM2  rescheduleItemLockTitle never gates (item never disabled)      → [L2]
 //   LM3  the page's divisions read stops selecting `locked`             → [S6]
 // RESULT (L): 3/3 killed, each FIRST at its own assertion.
+//   PM1  visibility reverts to Pro-only (Free sees nothing)             → [P1]
+//   PM2  visibility ignores status (Free sees rained-out Reschedule)   → [P2]
+// RESULT (P): 2/2 killed, each FIRST at its own assertion.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   pickerFor,
   rescheduleItemLockTitle,
+  rescheduleItemVisible,
   routeScheduleReschedule,
   type ScheduleRescheduleRoute,
 } from "@/lib/schedule/schedule-page-reschedule-route";
@@ -188,6 +194,18 @@ function partL() {
   );
 }
 
+function partP() {
+  ok(
+    rescheduleItemVisible("scheduled", false) && route("scheduled", false, false).kind === "upgrade",
+    "[P1] Free sees 'Reschedule' on a scheduled game, and a click opens the upsell",
+  );
+  ok(
+    !rescheduleItemVisible("cancelled", false) && rescheduleItemVisible("cancelled", true),
+    "[P2] rained-out games: hidden on Free, shown on Pro (as the panel)",
+  );
+  ok(rescheduleItemVisible("scheduled", true), "[P3] Pro sees it on scheduled games");
+}
+
 function partS() {
   const root = join(__dirname, "..", "..", "src", "components", "schedule");
   const hook = readFileSync(join(root, "use-schedule-reschedule.tsx"), "utf8");
@@ -224,6 +242,11 @@ function partS() {
       [list, cal].every((f) => f.includes("rescheduleItemLockTitle(") && f.includes("disabled={!!")),
     "[S6] the page reads `locked` on its existing divisions query and both surfaces disable the item",
   );
+  ok(
+    list.includes("rescheduleItemVisible(game.status, canReschedule)") &&
+      cal.includes("rescheduleItemVisible(pill.data.status, canReschedule)"),
+    "[S7] both surfaces decide visibility through rescheduleItemVisible",
+  );
 }
 
 function main() {
@@ -231,6 +254,7 @@ function main() {
   partR();
   partV();
   partL();
+  partP();
   partS();
   for (const [name, n] of Object.entries(counters)) {
     ok(n > 0, `[AV] counter ${name} fired`, `got ${n}`);

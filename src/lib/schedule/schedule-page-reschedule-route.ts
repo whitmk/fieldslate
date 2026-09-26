@@ -98,3 +98,17 @@ export function rescheduleItemLockTitle(
   if (game.status !== "scheduled" || game.interleague_org_id || !divisionLocked) return null;
   return lockedReason(divisionName, "move");
 }
+
+/**
+ * Whether the "Reschedule" item shows at all — matching the division panel.
+ * Free sees it on every game that isn't rained out (a scheduled game's click
+ * opens the upsell: a menu that explains the upgrade teaches something, one
+ * that silently omits the option teaches nothing). Rained-out games stay
+ * hidden on Free, as the panel hides a rained-out row's Reschedule button.
+ */
+export function rescheduleItemVisible(
+  status: string,
+  canReschedule: boolean,
+): boolean {
+  return canReschedule || status !== "cancelled";
+}

@@ -17,7 +17,10 @@ import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
 import { useScheduleReschedule } from "./use-schedule-reschedule";
-import { rescheduleItemLockTitle } from "@/lib/schedule/schedule-page-reschedule-route";
+import {
+  rescheduleItemLockTitle,
+  rescheduleItemVisible,
+} from "@/lib/schedule/schedule-page-reschedule-route";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
 import type { ScheduleGame } from "./schedule-list";
 
@@ -358,7 +361,7 @@ export function ScheduleCalendar({
                 <CloudRain className="h-3.5 w-3.5 text-blue-400" />
                 Mark as rained out
               </button>
-              {canReschedule && (() => {
+              {rescheduleItemVisible(pill.data.status, canReschedule) && (() => {
                 const lockTitle = rescheduleItemLockTitle(
                   { status: pill.data.status, interleague_org_id: pill.data.interleague_org_id ?? null },
                   !!pill.data.home_team?.division_id &&
