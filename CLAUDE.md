@@ -1550,6 +1550,60 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   team): without it the "interleague branch skipped" mutant lands on
   `no_opponent` and [R2] passes vacuously.
 
+## Move picker — "Enter a time manually" (2026-09-26)
+
+- **The escape hatch for a time or field the slot list doesn't offer.** On the
+  reschedule picker's MOVE variant only (the row "Reschedule game" icon), a
+  small footer — "Need a time or field that isn't listed? Enter a time
+  manually" — the interleague picker's pattern. Rainout recovery keeps offering
+  slots and has no manual path. Form: `manual-move-form.tsx`; every decision:
+  `src/lib/schedule/manual-move.ts` (pure).
+- **FULLY manual:** any date, any time, any venue in the org — every venue by
+  `owner_id`, labelled `qualifiedVenueLabel`, the same list as Add Game,
+  INCLUDING its duplicate-name exposure (two location-less venues with the same
+  name get identical labels; zero exist live; no tiebreaker invented). No
+  filtering by division attachment, playing days, hours or occupancy. The
+  footer sits OUTSIDE the picker body, so it stays reachable when the slot list
+  fails to load — e.g. a division with no configured fields, the case this
+  exists for. Saves `scheduled_at` + `venue_id` together, in the picker's bare
+  wall-clock shape (`2026-10-10T15:30:00`); `status` is not written (only
+  `scheduled` games reach it).
+- **CONFLICTS ARE NOTICES, NEVER GATES, AND NOTHING IS RECORDED — THIS
+  DIVERGES FROM ADD GAME ON PURPOSE. DO NOT "FIX" IT.** Add Game and the
+  conflict resolver's manual move BLOCK until the admin types a reason
+  (recorded in `conflict_overrides`). Add Game is placing a NEW game and can
+  afford to demand a justification; this is an escape hatch whose whole purpose
+  is to stop asking. What it must do is SAY what the save steps on: field
+  already booked (`candidateClearsSpan` — real spans, the arriving division's
+  buffer, the picker's own predicate), a team already playing then
+  (`spansOverlap`, no buffer), outside the field's hours / closed that day /
+  hours not set (`dayWindowBounds`, must END by close), a day the division
+  doesn't play, a blackout date. A read that fails says "couldn't check" and
+  the save stays allowed — never an empty all-clear. `manualSaveEnabled` takes
+  the conflicts only to state in code that they never disable Save.
+- **Occupancy reads are DATE-bounded, never league-bounded** (another season's
+  game at the same field genuinely occupies it — see "Occupancy read scope"),
+  one field on one day plus two teams on one day, so plain reads with their
+  errors checked rather than `fetchAllRows`.
+- **The lock is RE-READ AT SAVE — manual path only.** `routeMoveTarget` keeps
+  the picker closed on a locked division, but the lock can be switched on while
+  the form is open, and the 0082 trigger permits `scheduled_at`/`venue_id` on a
+  locked division — so without the re-read the manual path would be the way
+  around the lock. `fetchDivisionLocks` → `manualSaveLockRefusal`: refuses on a
+  locked OR UNREADABLE lock. Still a UI gate, not a DB guarantee.
+- **The interleague guard IS the variant check.** `manualEntryAvailable` is
+  true for "move" only; the move variant opens only from a `plain` route
+  (non-interleague, real away team); the four picker render paths ungated for
+  interleague all use the RAINOUT variant. Mutant MM1 (link on every variant)
+  is exactly the leak.
+- **Harness: `npm run sim:manual-move`** (TZ=UTC) — 39 checks: variant/route
+  guard, every conflict kind with its sentence and boundary fixtures (buffer
+  edge, team game ending at the start, game ending at close), failed reads,
+  lock refusal, Save never gated, input parsing, source wiring. Counters: a
+  conflicting and a clean save each reached "Save enabled", all 8 conflict
+  kinds produced, interleague games routed. 5 mutants, each killed first at its
+  own assertion.
+
 ## Row icons on touch screens — `ROW_ICON_REVEAL`
 
 - **A hover-revealed control must never be invisible-but-tappable.** The
@@ -1786,6 +1840,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
      `gateRescheduleOccupancy` on the server. Applies to BOTH variants (rainout
      and the panel's plain move). Worth closing the next time this save is
      touched: route it through a server endpoint that re-runs both gates.
+     The move variant's "Enter a time manually" save (below) has the same
+     client-side shape and no server re-check either.
 - **KNOWN DEFECT — `RainoutRescheduleModal` HAS EIGHT RENDER PATHS AND FOUR OF
   THEM ARE UNGATED FOR INTERLEAGUE.** Documented, not fixed (2026-08-21; the
   eighth, gated, added 2026-09-25).
@@ -2842,6 +2898,37 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   input value to the DB.
 
 ## Open items
+
+- **Game notes — DECIDED REQUIREMENTS, not built (2026-09-26).** Scope the
+  change from these, don't re-derive them:
+  - **Current state:** `games.notes` (0001, text, nullable) is read and written
+    by NOTHING in `src` (only two comments saying conflict-override reasons are
+    kept apart from it), and zero live rows carry a note.
+  - **Notes live on the GAME, not in a move form** — a note about a game is not
+    a note about moving it. Natural home: the game detail modal (full text +
+    edit); a truncated grey line under the matchup on the panel row and the
+    Schedule list/cards; a marker only on calendar/week blocks.
+  - **Notes are INTERNAL:** never printed, never exported (generic CSV or
+    Sports Connect), never shown to parents, never in the partner token RPCs.
+  - **Notes are editable UNDER A LOCK** — a locked schedule is exactly when
+    someone writes "lights out on field 2". Today the 0082 trigger REFUSES it:
+    `notes` is not in `enforce_division_lock`'s allowlist. So the change needs
+    a migration adding `notes` to that allowlist — AND a new sentinel column for
+    `schedule-lock-sim`'s notes assertion, which is the ONLY thing killing
+    mutant M4 (the enumerated-blocklist mutant); pick another non-allowlisted
+    column for it rather than deleting the assertion.
+  - **A note-only edit must NOT clear `posted`.** `clear_division_posted` fires
+    on ANY update regardless of column; since notes are internal and not on the
+    schedule parents received, clearing "Sent" for one would be wrong. That
+    trigger has to become column-aware (a second migration), under the
+    SQL-harness standard.
+- **The reschedule picker's own save has no save-time lock re-read** (the
+  manual path gained one 2026-09-26). If the lock is switched on while the
+  picker is open, a picked slot still saves — the trigger allowlists the
+  columns. Pre-existing; add the same `fetchDivisionLocks` →
+  `manualSaveLockRefusal`-style check to `handleConfirm` when it is next
+  touched (it affects the rainout variant too, where the lock is deliberately
+  NOT a gate — so the check belongs to the move variant only).
 
 - **CANDIDATE — a filtered schedule print does not say it is filtered.**
   `SchedulePrintRegion` prints the season name and a game count, but nothing
