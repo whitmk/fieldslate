@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeft,
@@ -17,6 +17,7 @@ import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
 import { useScheduleReschedule } from "./use-schedule-reschedule";
+import { rescheduleItemLockTitle } from "@/lib/schedule/schedule-page-reschedule-route";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
 import type { ScheduleGame } from "./schedule-list";
 
@@ -26,11 +27,9 @@ interface Props {
   today: string; // "YYYY-MM-DD"
   /** Pro+ only — the auto-reschedule action. "Mark as rained out" stays Free. */
   canReschedule?: boolean;
+  /** Divisions locked as of this page load (the page's divisions read). */
+  lockedDivisionIds?: string[];
 }
-
-// Lock state arrives with the lock-gate commit; until then nothing is gated,
-// exactly as before.
-const NO_LOCKS_YET: ReadonlySet<string> = new Set();
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -92,7 +91,13 @@ function pillMatchupLabel(g: ScheduleGame): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ScheduleCalendar({ games, month, today, canReschedule = false }: Props) {
+export function ScheduleCalendar({
+  games,
+  month,
+  today,
+  canReschedule = false,
+  lockedDivisionIds = [],
+}: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -104,9 +109,10 @@ export function ScheduleCalendar({ games, month, today, canReschedule = false }:
   // "Reschedule" — the SAME routing as the list row menu (shared hook): the
   // picker variant is chosen per game, and a refusal is shown inside the
   // popover rather than closing it on nothing.
+  const lockedSet = useMemo(() => new Set(lockedDivisionIds), [lockedDivisionIds]);
   const reschedule = useScheduleReschedule({
     canReschedule,
-    lockedDivisionIds: NO_LOCKS_YET,
+    lockedDivisionIds: lockedSet,
   });
   const [dayDetail, setDayDetail] = useState<string | null>(null);
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
@@ -352,18 +358,28 @@ export function ScheduleCalendar({ games, month, today, canReschedule = false }:
                 <CloudRain className="h-3.5 w-3.5 text-blue-400" />
                 Mark as rained out
               </button>
-              {canReschedule && (
+              {canReschedule && (() => {
+                const lockTitle = rescheduleItemLockTitle(
+                  { status: pill.data.status, interleague_org_id: pill.data.interleague_org_id ?? null },
+                  !!pill.data.home_team?.division_id &&
+                    lockedSet.has(pill.data.home_team.division_id),
+                  pill.data.home_team?.division?.name ?? "This division",
+                );
+                return (
                 <button
                   onClick={() => {
                     const refused = reschedule.open(pill.data);
                     if (!refused) setSelected(null);
                   }}
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                  disabled={!!lockTitle}
+                  title={lockTitle ?? undefined}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
                 >
                   <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
                   Reschedule
                 </button>
-              )}
+                );
+              })()}
               {reschedule.notice?.gameId === pill.data.id && (
                 <div className="px-4 pb-2">
                   <MoveNoticeLine

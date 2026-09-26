@@ -178,7 +178,7 @@ export default async function SchedulePage({
   const { data: divisionData } = seasonId
     ? await supabase
         .from("divisions")
-        .select("id, name, league_id, game_duration:settings->game_duration")
+        .select("id, name, league_id, locked, game_duration:settings->game_duration")
         .eq("league_id", seasonId)
         .order("name")
     : { data: [] as unknown[] };
@@ -186,6 +186,7 @@ export default async function SchedulePage({
     id: string;
     name: string;
     league_id: string;
+    locked: boolean | null;
     game_duration?: unknown;
   }[];
   // Narrowed back down for the two client components that take this list, so
@@ -198,6 +199,10 @@ export default async function SchedulePage({
   // division id -> minutes, omitting any division without a usable duration.
   // UNDEFINED MEANS UNRESOLVED, NEVER ZERO — see division-durations.ts.
   const gameDurationByDivisionId = gameDurationsFromDivisionRows(divisionRows);
+  // Divisions locked as of this load — rides the same read, no extra round
+  // trip. Gates the "Reschedule" move (not rainout recovery) in the list and
+  // calendar; the move picker's manual save re-reads the lock anyway.
+  const lockedDivisionIds = divisionRows.filter((d) => d.locked).map((d) => d.id);
 
   const { data: teamData } = seasonId
     ? await supabase
@@ -629,11 +634,13 @@ export default async function SchedulePage({
               month={month}
               today={today}
               canReschedule={isProPlus(plan)}
+              lockedDivisionIds={lockedDivisionIds}
             />
           ) : (
             <ScheduleList
               games={games}
               canReschedule={isProPlus(plan)}
+              lockedDivisionIds={lockedDivisionIds}
               seasonRoleNames={seasonRoleNames}
               sport={season?.sport ?? null}
               showSetupLink={showSetupLink}

@@ -11,6 +11,10 @@
 // - V: the variant is chosen PER GAME (`pickerFor`), and end to end through the
 //   REAL slot builder a rained-out game is still offered its makeup day while a
 //   scheduled game is not.
+// - L: the division lock — a scheduled game on a locked division is refused
+//   with the panel's "move" sentence, and the menu item shows it BEFORE the
+//   click (disabled + tooltip); a rained-out game is never gated. The lock set
+//   comes from the page's existing divisions read.
 // - S: source wiring — both surfaces go through the shared hook, and the hook's
 //   one render site passes the ROUTED variant and typed awayTeamId.
 //
@@ -24,17 +28,23 @@
 //   SM3  wrapper's rained-out case removed (falls to routeMoveTarget) → [R2]
 //   SM4  the hook's render site passes a fixed variant                → [S2]
 // RESULT: 4/4 killed, each FIRST at its own assertion.
+//   LM1  wrapper drops ctx.locked before routeMoveTarget (lock skipped) → [L1]
+//   LM2  rescheduleItemLockTitle never gates (item never disabled)      → [L2]
+//   LM3  the page's divisions read stops selecting `locked`             → [S6]
+// RESULT (L): 3/3 killed, each FIRST at its own assertion.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   pickerFor,
+  rescheduleItemLockTitle,
   routeScheduleReschedule,
   type ScheduleRescheduleRoute,
 } from "@/lib/schedule/schedule-page-reschedule-route";
 import { availabilityForVariant } from "@/lib/schedule/reschedule-variant";
 import { buildSlotsAndDiagnostics } from "@/lib/schedule/reschedule-slots";
 import { parseAvailability } from "@/lib/venues/availability";
+import { lockedReason } from "@/lib/schedule/division-lock";
 
 let checks = 0;
 let fails = 0;
@@ -160,6 +170,24 @@ function partV() {
   ok(moveFri === 0, "[V3] a scheduled game is not offered the makeup day", `got ${moveFri}`);
 }
 
+function partL() {
+  const r = route("scheduled", true, true);
+  ok(
+    r.kind === "blocked" && r.reason === "locked" && r.message === lockedReason("AA", "move"),
+    "[L1] a scheduled game on a locked division is refused with the 'move' sentence",
+    JSON.stringify(r),
+  );
+  const t = (g: { status: string; interleague_org_id: string | null }, locked: boolean) =>
+    rescheduleItemLockTitle(g, locked, "AA");
+  ok(
+    t(games.scheduled, true) === lockedReason("AA", "move") &&
+      t(games.scheduled, false) === null &&
+      t(games.rainedOut, true) === null &&
+      t(games.ilAccepted, true) === null,
+    "[L2] the item is disabled with the sentence ONLY for a scheduled, non-interleague game on a locked division",
+  );
+}
+
 function partS() {
   const root = join(__dirname, "..", "..", "src", "components", "schedule");
   const hook = readFileSync(join(root, "use-schedule-reschedule.tsx"), "utf8");
@@ -182,12 +210,27 @@ function partS() {
     [list, cal].every((f) => f.includes("<MoveNoticeLine")),
     "[S4] both surfaces render a refusal with MoveNoticeLine",
   );
+  ok(
+    hook.includes("lockedDivisionIds.has(divisionId)"),
+    "[S5] the hook resolves each game's lock from its own division",
+  );
+  const page = readFileSync(
+    join(__dirname, "..", "..", "src", "app", "(dashboard)", "dashboard", "schedule", "page.tsx"),
+    "utf8",
+  );
+  ok(
+    /\.select\("id, name, league_id, locked,/.test(page) &&
+      (page.match(/lockedDivisionIds=\{lockedDivisionIds\}/g) ?? []).length === 2 &&
+      [list, cal].every((f) => f.includes("rescheduleItemLockTitle(") && f.includes("disabled={!!")),
+    "[S6] the page reads `locked` on its existing divisions query and both surfaces disable the item",
+  );
 }
 
 function main() {
   console.log("\nschedule-page-reschedule sim");
   partR();
   partV();
+  partL();
   partS();
   for (const [name, n] of Object.entries(counters)) {
     ok(n > 0, `[AV] counter ${name} fired`, `got ${n}`);

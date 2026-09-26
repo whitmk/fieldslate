@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useRef, useEffect } from "react";
+import { Fragment, useMemo, useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   MoreHorizontal,
@@ -21,6 +21,7 @@ import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { logActivity } from "@/lib/activity-log";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
 import { useScheduleReschedule } from "./use-schedule-reschedule";
+import { rescheduleItemLockTitle } from "@/lib/schedule/schedule-page-reschedule-route";
 import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
 import { submitInterleagueRescheduleRequest } from "@/lib/interleague/request-reschedule";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
@@ -89,6 +90,8 @@ interface Props {
   /** Pro+ only — the rainout auto-reschedule action. "Mark as rained out"
    *  and the interleague "Request reschedule" stay Free. */
   canReschedule?: boolean;
+  /** Divisions locked as of this page load (the page's divisions read). */
+  lockedDivisionIds?: string[];
   /** Season official_roles names (ordered by sort_order) + the season sport.
    *  The row builds slot labels from these via padRoleLabels so they match the
    *  game_umpires.role text the assign path writes (the modal uses the same
@@ -151,6 +154,7 @@ function venueLabel(g: ScheduleGame): string {
 export function ScheduleList({
   games,
   canReschedule = false,
+  lockedDivisionIds = [],
   seasonRoleNames,
   sport,
   showSetupLink,
@@ -160,9 +164,10 @@ export function ScheduleList({
   const [rainoutId, setRainoutId] = useState<string | null>(null);
   // "Reschedule" — routed per game (move vs rainout picker, request flow,
   // upsell, or a refusal shown under the row). See use-schedule-reschedule.
+  const lockedSet = useMemo(() => new Set(lockedDivisionIds), [lockedDivisionIds]);
   const reschedule = useScheduleReschedule({
     canReschedule,
-    lockedDivisionIds: NO_LOCKS_YET,
+    lockedDivisionIds: lockedSet,
   });
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
   const [requestRescheduleGame, setRequestRescheduleGame] = useState<ScheduleGame | null>(null);
@@ -269,6 +274,11 @@ export function ScheduleList({
                 setRequestRescheduleGame(g);
               }}
               canReschedule={canReschedule}
+              rescheduleLockTitle={rescheduleItemLockTitle(
+                { status: g.status, interleague_org_id: g.interleague_org_id ?? null },
+                !!g.home_team?.division_id && lockedSet.has(g.home_team.division_id),
+                g.home_team?.division?.name ?? "This division",
+              )}
               onViewDetails={() => {
                 setOpenMenuId(null);
                 setDetailGame(g);
@@ -363,9 +373,6 @@ export function ScheduleList({
 // rained out or already played. The button stays visible but disabled.
 const RAINOUT_BLOCKED_STATUSES = new Set(["cancelled", "completed"]);
 
-// Lock state arrives with the lock-gate commit; until then nothing is gated,
-// exactly as before.
-const NO_LOCKS_YET: ReadonlySet<string> = new Set();
 
 interface GameCardProps {
   game: ScheduleGame;
@@ -426,6 +433,9 @@ interface GameRowProps {
   onReschedule: () => void;
   onRequestReschedule: () => void;
   canReschedule: boolean;
+  /** Set when the division is locked and this item would move the game:
+   *  the item renders disabled with this as its tooltip. */
+  rescheduleLockTitle: string | null;
   onViewDetails: () => void;
   onDelete: () => void;
   rainoutLoading: boolean;
@@ -441,6 +451,7 @@ function GameRowCells({
   onReschedule,
   onRequestReschedule,
   canReschedule,
+  rescheduleLockTitle,
   onViewDetails,
   onDelete,
   rainoutLoading,
@@ -545,7 +556,9 @@ function GameRowCells({
             ) : canReschedule ? (
               <button
                 onClick={onReschedule}
-                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                disabled={!!rescheduleLockTitle}
+                title={rescheduleLockTitle ?? undefined}
+                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
               >
                 <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
                 Reschedule

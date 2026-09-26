@@ -29,6 +29,7 @@ import {
   type MoveRoute,
 } from "@/lib/schedule/panel-reschedule-route";
 import type { RescheduleVariant } from "@/lib/schedule/reschedule-variant";
+import { lockedReason } from "@/lib/schedule/division-lock";
 
 export type ScheduleRescheduleRoute =
   | MoveRoute
@@ -76,4 +77,24 @@ export function pickerFor(
   if (route.kind === "rainout") return { variant: "rainout", awayTeamId: route.awayTeamId };
   if (route.kind === "plain") return { variant: "move", awayTeamId: route.awayTeamId };
   return null;
+}
+
+/**
+ * The lock, shown BEFORE the click: the "Reschedule" item is disabled with this
+ * sentence as its tooltip when it would open the MOVE picker on a locked
+ * division — the panel's disabled-icon pattern. Null = not gated.
+ *
+ * Only a scheduled, non-interleague game is gated here: a rained-out game is
+ * rainout recovery (exempt), and interleague games route to a refusal or to
+ * the request flow, whose server route has its own lock gate.
+ * `routeScheduleReschedule` refuses the same case with the same sentence if a
+ * click ever gets through, so this is presentation over the same rule.
+ */
+export function rescheduleItemLockTitle(
+  game: { status: string; interleague_org_id: string | null },
+  divisionLocked: boolean,
+  divisionName: string,
+): string | null {
+  if (game.status !== "scheduled" || game.interleague_org_id || !divisionLocked) return null;
+  return lockedReason(divisionName, "move");
 }
