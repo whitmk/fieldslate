@@ -30,6 +30,7 @@
     "sim:reschedule-gate-gaps": "npx tsx scripts/sim/reschedule-gate-gaps-sim.ts",
     "sim:regenerate-pending-guard": "TZ=UTC npx tsx scripts/sim/regenerate-pending-guard-sim.ts",
     "sim:picker-overrides": "TZ=UTC npx tsx scripts/sim/picker-overrides-sim.ts",
+    "sim:schedule-page-reschedule": "TZ=UTC npx tsx scripts/sim/schedule-page-reschedule-sim.ts",
     "sim:manual-move": "TZ=UTC npx tsx scripts/sim/manual-move-sim.ts",
     "sim:row-icon-reveal": "npx tsx scripts/sim/row-icon-reveal-sim.ts",
     "sim:panel-reschedule": "TZ=UTC npx tsx scripts/sim/panel-reschedule-sim.ts",

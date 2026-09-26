@@ -71,15 +71,20 @@ export function MoveNoticeLine({
   message,
   link,
   onDismiss,
+  inset = "ml-[80px] mr-2",
 }: {
   message: string;
   link?: { href: string; label: string };
   onDismiss: () => void;
+  /** Horizontal placement. The default lines up under the panel row's
+   *  matchup; the Schedule page's table row and calendar popover pass their
+   *  own. */
+  inset?: string;
 }) {
   return (
     <div
       role="status"
-      className="ml-[80px] mr-2 flex items-start justify-between gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2"
+      className={`${inset} flex items-start justify-between gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2`}
     >
       <p className="text-xs text-amber-700">
         {message}

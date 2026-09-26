@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { Fragment, useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   MoreHorizontal,
@@ -19,7 +19,8 @@ import { padRoleLabels } from "@/lib/utils/official-title";
 import { createClient } from "@/lib/supabase/client";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { logActivity } from "@/lib/activity-log";
-import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
+import { MoveNoticeLine } from "@/components/divisions/move-game-row";
+import { useScheduleReschedule } from "./use-schedule-reschedule";
 import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
 import { submitInterleagueRescheduleRequest } from "@/lib/interleague/request-reschedule";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
@@ -157,7 +158,12 @@ export function ScheduleList({
   const router = useRouter();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
-  const [rescheduleGame, setRescheduleGame] = useState<ScheduleGame | null>(null);
+  // "Reschedule" — routed per game (move vs rainout picker, request flow,
+  // upsell, or a refusal shown under the row). See use-schedule-reschedule.
+  const reschedule = useScheduleReschedule({
+    canReschedule,
+    lockedDivisionIds: NO_LOCKS_YET,
+  });
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
   const [requestRescheduleGame, setRequestRescheduleGame] = useState<ScheduleGame | null>(null);
   // Delete — the game queued for the confirm dialog. Deletion goes through the
@@ -247,15 +253,15 @@ export function ScheduleList({
         </thead>
         <tbody>
           {games.map((g) => (
+            <Fragment key={g.id}>
             <GameRowCells
-              key={g.id}
               game={g}
               isMenuOpen={openMenuId === g.id}
               onMenuToggle={() => setOpenMenuId(openMenuId === g.id ? null : g.id)}
               onRainout={() => handleRainout(g)}
               onReschedule={() => {
                 setOpenMenuId(null);
-                setRescheduleGame(g);
+                reschedule.open(g);
               }}
               onRequestReschedule={() => {
                 setOpenMenuId(null);
@@ -275,6 +281,20 @@ export function ScheduleList({
               seasonRoleNames={seasonRoleNames}
               sport={sport}
             />
+            {/* A refused "Reschedule" says why, directly under THAT row. */}
+            {reschedule.notice?.gameId === g.id && (
+              <tr>
+                <td colSpan={7} className="pb-3">
+                  <MoveNoticeLine
+                    message={reschedule.notice.message}
+                    link={reschedule.notice.link}
+                    onDismiss={reschedule.clearNotice}
+                    inset="mx-0"
+                  />
+                </td>
+              </tr>
+            )}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -293,22 +313,7 @@ export function ScheduleList({
         ))}
       </ul>
 
-      {rescheduleGame && rescheduleGame.away_team_id && (
-        <RainoutRescheduleModal
-          gameId={rescheduleGame.id}
-          homeTeamId={rescheduleGame.home_team_id}
-          awayTeamId={rescheduleGame.away_team_id}
-          homeTeamName={rescheduleGame.home_team?.name ?? "Home"}
-          awayTeamName={rescheduleGame.away_team?.name ?? "Away"}
-          divisionId={rescheduleGame.home_team?.division_id ?? ""}
-          leagueId={rescheduleGame.league_id}
-          onClose={() => setRescheduleGame(null)}
-          onRescheduled={() => {
-            setRescheduleGame(null);
-            router.refresh();
-          }}
-        />
-      )}
+      {reschedule.modals}
 
       {detailGame && (
         <GameDetailModal game={detailGame} onClose={() => setDetailGame(null)} />
@@ -357,6 +362,10 @@ export function ScheduleList({
 // Statuses where marking a rainout makes no sense — the game is already
 // rained out or already played. The button stays visible but disabled.
 const RAINOUT_BLOCKED_STATUSES = new Set(["cancelled", "completed"]);
+
+// Lock state arrives with the lock-gate commit; until then nothing is gated,
+// exactly as before.
+const NO_LOCKS_YET: ReadonlySet<string> = new Set();
 
 interface GameCardProps {
   game: ScheduleGame;

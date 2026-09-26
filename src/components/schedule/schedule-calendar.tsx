@@ -15,7 +15,8 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
-import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
+import { MoveNoticeLine } from "@/components/divisions/move-game-row";
+import { useScheduleReschedule } from "./use-schedule-reschedule";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
 import type { ScheduleGame } from "./schedule-list";
 
@@ -26,6 +27,10 @@ interface Props {
   /** Pro+ only — the auto-reschedule action. "Mark as rained out" stays Free. */
   canReschedule?: boolean;
 }
+
+// Lock state arrives with the lock-gate commit; until then nothing is gated,
+// exactly as before.
+const NO_LOCKS_YET: ReadonlySet<string> = new Set();
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -96,7 +101,13 @@ export function ScheduleCalendar({ games, month, today, canReschedule = false }:
     pill: GamePill;
   } | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
-  const [rescheduleGame, setRescheduleGame] = useState<ScheduleGame | null>(null);
+  // "Reschedule" — the SAME routing as the list row menu (shared hook): the
+  // picker variant is chosen per game, and a refusal is shown inside the
+  // popover rather than closing it on nothing.
+  const reschedule = useScheduleReschedule({
+    canReschedule,
+    lockedDivisionIds: NO_LOCKS_YET,
+  });
   const [dayDetail, setDayDetail] = useState<string | null>(null);
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -344,14 +355,24 @@ export function ScheduleCalendar({ games, month, today, canReschedule = false }:
               {canReschedule && (
                 <button
                   onClick={() => {
-                    setRescheduleGame(pill.data);
-                    setSelected(null);
+                    const refused = reschedule.open(pill.data);
+                    if (!refused) setSelected(null);
                   }}
                   className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
                 >
                   <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
                   Reschedule
                 </button>
+              )}
+              {reschedule.notice?.gameId === pill.data.id && (
+                <div className="px-4 pb-2">
+                  <MoveNoticeLine
+                    message={reschedule.notice.message}
+                    link={reschedule.notice.link}
+                    onDismiss={reschedule.clearNotice}
+                    inset="mx-0"
+                  />
+                </div>
               )}
               <button
                 onClick={() => {
@@ -403,22 +424,7 @@ export function ScheduleCalendar({ games, month, today, canReschedule = false }:
           );
         })()}
 
-      {rescheduleGame && rescheduleGame.away_team_id && (
-        <RainoutRescheduleModal
-          gameId={rescheduleGame.id}
-          homeTeamId={rescheduleGame.home_team_id}
-          awayTeamId={rescheduleGame.away_team_id}
-          homeTeamName={rescheduleGame.home_team?.name ?? "Home"}
-          awayTeamName={rescheduleGame.away_team?.name ?? "Away"}
-          divisionId={rescheduleGame.home_team?.division_id ?? ""}
-          leagueId={rescheduleGame.league_id}
-          onClose={() => setRescheduleGame(null)}
-          onRescheduled={() => {
-            setRescheduleGame(null);
-            router.refresh();
-          }}
-        />
-      )}
+      {reschedule.modals}
 
       {detailGame && (
         <GameDetailModal game={detailGame} onClose={() => setDetailGame(null)} />
