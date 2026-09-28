@@ -312,6 +312,22 @@ async function partE() {
     const g = readFileSync(join(GOLDEN_DIR, name), "utf8").trimEnd();
     ok(body.trimEnd() === g, `[E1:${name}] anonymous response email byte-identical to the golden`);
   }
+  // The signed-in (Case A) host email differs from the anonymous one by
+  // exactly one added sentence, in the HTML and in the text.
+  const flagged = await renderEmails({ partnerOnFieldSlate: true });
+  const SENTENCE = "is on FieldSlate too";
+  for (const name of ["email-acceptance.html", "email-acceptance.txt"] as const) {
+    const a = out[name];
+    const b = flagged[name];
+    ok(b !== a && b.includes(SENTENCE) && !a.includes(SENTENCE), `[E2:${name}] the FieldSlate line appears only when flagged`);
+    // Remove the flagged email's added block and it must equal the anonymous one.
+    const stripped =
+      name === "email-acceptance.html"
+        ? b.replace(/\s*<p style="margin:0 0 18px;padding:10px 14px;background:#f0fdf4[\s\S]*?<\/p>/, "")
+        : b.split("\n").filter((l) => !l.includes(SENTENCE)).join("\n");
+    ok(stripped === a, `[E3:${name}] the FieldSlate line is the ONLY difference`, `${stripped.length} vs ${a.length}`);
+  }
+  ok(flagged["email-recipient.html"] === out["email-recipient.html"], "[E4] the recipient email ignores the flag");
 }
 
 async function main() {

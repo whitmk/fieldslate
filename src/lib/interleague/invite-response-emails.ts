@@ -142,6 +142,10 @@ export function buildAcceptanceEmail(params: {
   countered: number;
   declined: number;
   dashboardUrl: string;
+  /** Case A (2026-09-28): the partner accepted while signed into FieldSlate,
+   *  so their games are on their own schedule too. Absent on the anonymous
+   *  path — the email is then byte-identical to before this flag existed. */
+  partnerOnFieldSlate?: boolean;
 }): { html: string; text: string; subject: string } {
   const {
     senderName,
@@ -153,6 +157,7 @@ export function buildAcceptanceEmail(params: {
     countered,
     declined,
     dashboardUrl,
+    partnerOnFieldSlate,
   } = params;
 
   const declinedCount = responses.filter((r) => r.action === "decline").length;
@@ -246,6 +251,14 @@ export function buildAcceptanceEmail(params: {
           ? `<p style="margin:18px 0 6px;font-size:13px;font-weight:600;color:#ef4444;">Declined (${declinedCount})</p>
         <p style="margin:0 0 18px;color:#6b7280;font-size:14px;">These games have been removed from your schedule.</p>`
           : ""
+      }${
+        partnerOnFieldSlate
+          ? `
+
+      <p style="margin:0 0 18px;padding:10px 14px;background:#f0fdf4;border-left:3px solid #22C55E;border-radius:4px;color:#166534;font-size:13px;">
+        ${escapeHtml(orgName)} is on FieldSlate too — they accepted while signed in, so the accepted games are on their own schedule as well.
+      </p>`
+          : ""
       }
 
       <div style="margin:24px 0 4px;">
@@ -264,6 +277,9 @@ export function buildAcceptanceEmail(params: {
   const text = [
     `${orgName} responded to your invite for ${seasonLabelDisplay}.`,
     `Accepted: ${accepted}, counter-proposed: ${countered}, declined: ${declined} (of ${total}).`,
+    ...(partnerOnFieldSlate
+      ? [`${orgName} is on FieldSlate too — they accepted while signed in, so the accepted games are on their own schedule as well.`]
+      : []),
     "",
     ...(responses.length > 0
       ? [

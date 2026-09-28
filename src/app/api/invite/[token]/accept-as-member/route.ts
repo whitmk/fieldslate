@@ -172,6 +172,8 @@ export async function POST(
       countered: result.countered,
       declined: result.declined ?? 0,
       dashboardUrl,
+      // The moment the host learns the loop closed inside FieldSlate.
+      partnerOnFieldSlate: true,
     });
     await sendEmail(result.sender_email, subject, html, text);
   }
