@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/activity-log";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { withLogSource } from "@/lib/schedule/log-source";
+import { saveOutcome, saveScope } from "@/lib/schedule/picker-guard";
 import { parseAvailability, type VenueAvailability } from "@/lib/venues/availability";
 import { qualifiedVenueLabel, byQualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
@@ -317,12 +318,25 @@ export function ManualMoveForm({
       return;
     }
 
-    const { error } = await supabase
+    // The picker's guard conditions ride inside this UPDATE too (picker-guard.ts):
+    // the manual form exists only on the move variant, so status must still be
+    // scheduled and the game must not be interleague. Zero rows = an error.
+    const scope = saveScope("move");
+    const { data: saved, error } = await supabase
       .from("games")
       .update({ scheduled_at: when.isoString, venue_id: venue.id } as never)
-      .eq("id", gameId);
+      .eq("id", gameId)
+      .is("interleague_org_id", null)
+      .eq("status", scope.status)
+      .select("id");
     if (error) {
       setSaveError(isDivisionLockError(error.message) ? formatLockError(error.message) : error.message);
+      setSaving(false);
+      return;
+    }
+    const outcome = saveOutcome((saved ?? []).length, "move");
+    if (outcome) {
+      setSaveError(outcome);
       setSaving(false);
       return;
     }

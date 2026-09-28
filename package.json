@@ -30,6 +30,7 @@
     "sim:reschedule-gate-gaps": "npx tsx scripts/sim/reschedule-gate-gaps-sim.ts",
     "sim:regenerate-pending-guard": "TZ=UTC npx tsx scripts/sim/regenerate-pending-guard-sim.ts",
     "sim:picker-overrides": "TZ=UTC npx tsx scripts/sim/picker-overrides-sim.ts",
+    "sim:picker-guard": "npx tsx scripts/sim/picker-guard-sim.ts",
     "sim:interleague-makeup": "TZ=UTC npx tsx scripts/sim/interleague-makeup-sim.ts",
     "sim:schedule-page-reschedule": "TZ=UTC npx tsx scripts/sim/schedule-page-reschedule-sim.ts",
     "sim:manual-move": "TZ=UTC npx tsx scripts/sim/manual-move-sim.ts",

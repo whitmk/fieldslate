@@ -38,6 +38,12 @@ import { ManualMoveForm } from "./manual-move-form";
 import { manualEntryAvailable } from "@/lib/schedule/manual-move";
 import { withLogSource } from "@/lib/schedule/log-source";
 import {
+  pickerOpenRefusal,
+  saveOutcome,
+  saveScope,
+  type PickerGameRow,
+} from "@/lib/schedule/picker-guard";
+import {
   availabilityForVariant,
   noFieldCopy,
   type RescheduleVariant,
@@ -260,6 +266,10 @@ export function RainoutRescheduleModal({
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // THE PICKER'S OWN GUARD (picker-guard.ts): set when the game must not be
+  // rescheduled here at all — interleague, or the wrong status for this
+  // variant. Distinct from loadError: there is nothing to retry.
+  const [guardRefusal, setGuardRefusal] = useState<string | null>(null);
   const [picked, setPicked] = useState<SlotOption | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
@@ -281,7 +291,28 @@ export function RainoutRescheduleModal({
   async function loadSlots() {
     setLoading(true);
     setLoadError(null);
+    setGuardRefusal(null);
     const supabase = createClient();
+
+    // 0. THE GUARD, before any other read: what kind of game is this? An
+    // interleague game never gets slots from here (its time is changed by a
+    // request to the partner), and a game whose status is not the one this
+    // variant acts on never gets its status rewritten by the save. A failed
+    // read refuses too — fail closed.
+    const { data: gameRaw, error: gameErr } = await supabase
+      .from("games")
+      .select("status, interleague_org_id, interleague_org:interleague_orgs!interleague_org_id(name)")
+      .eq("id", gameId)
+      .maybeSingle();
+    const refusal = pickerOpenRefusal(
+      gameErr ? null : ((gameRaw as unknown as PickerGameRow | null) ?? null),
+      variant,
+    );
+    if (refusal) {
+      setGuardRefusal(refusal);
+      setLoading(false);
+      return;
+    }
 
     // 1. Division settings + dates
     const { data: divRaw, error: divErr } = await supabase
@@ -550,17 +581,30 @@ export function RainoutRescheduleModal({
     setConfirming(true);
     setConfirmError(null);
     const supabase = createClient();
-    const { error } = await supabase
+    // DEFENCE IN DEPTH: the guard's conditions ride INSIDE the UPDATE, and the
+    // affected rows come back. Zero rows = nothing written, reported as an
+    // error (saveOutcome) — never a silent no-op, never a silent move.
+    const scope = saveScope(variant);
+    const { data: saved, error } = await supabase
       .from("games")
       .update({
         scheduled_at: picked.isoString,
         venue_id: picked.venueId,
         status: "scheduled",
       } as never)
-      .eq("id", gameId);
+      .eq("id", gameId)
+      .is("interleague_org_id", null)
+      .eq("status", scope.status)
+      .select("id");
 
     if (error) {
       setConfirmError(error.message);
+      setConfirming(false);
+      return;
+    }
+    const outcome = saveOutcome((saved ?? []).length, variant);
+    if (outcome) {
+      setConfirmError(outcome);
       setConfirming(false);
       return;
     }
@@ -703,6 +747,18 @@ export function RainoutRescheduleModal({
               <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
               <p className="text-sm text-gray-400">Finding available slots…</p>
             </div>
+          ) : guardRefusal ? (
+            <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+              <AlertTriangle className="h-6 w-6 text-amber-400" />
+              <p className="text-sm font-medium text-gray-700">{guardRefusal}</p>
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-sm text-[#22C55E] underline underline-offset-2"
+              >
+                Close
+              </button>
+            </div>
           ) : loadError ? (
             <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
               <AlertTriangle className="h-6 w-6 text-amber-400" />
@@ -815,7 +871,7 @@ export function RainoutRescheduleModal({
 
         {/* The escape hatch: deliberate, secondary, below the list — the
             interleague picker's pattern. MOVE variant only. */}
-        {manualAllowed && !manual && !done && !picked && (
+        {manualAllowed && !manual && !done && !picked && !guardRefusal && (
           <div className="flex flex-shrink-0 items-center justify-between border-t border-gray-100 px-6 py-3">
             <p className="text-[11px] text-gray-400">Need a time or field that isn&rsquo;t listed?</p>
             <button

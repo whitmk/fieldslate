@@ -285,7 +285,7 @@ function partS() {
   ok(
     modal.includes("const manualAllowed = manualEntryAvailable(variant);") &&
       modal.includes(") : manualAllowed && manual ? (") &&
-      modal.includes("{manualAllowed && !manual && !done && !picked && ("),
+      modal.includes("{manualAllowed && !manual && !done && !picked && !guardRefusal && ("),
     "[S1] the modal renders the form AND the link only under the move-variant check",
   );
   const refuseAt = form.indexOf("manualSaveLockRefusal(read");
