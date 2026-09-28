@@ -27,9 +27,18 @@
 --       which is why partner decline needs no bypass)
 --   T4  allowlisted UPDATEs allowed: rainout (status), reschedule
 --       (scheduled_at/venue_id), partner accept (external_team_name+status)
---   T5  non-allowlisted UPDATEs refused: home_score, away_team_id, AND notes.
---       `notes` is the one that proves the check is SUBTRACTION-based rather
---       than an enumerated blocklist — drop it and mutant M4 survives.
+--   T5  non-allowlisted UPDATEs refused: home_score, away_team_id, AND
+--       home_team_id. The third is the one that proves the check is
+--       SUBTRACTION-based rather than an enumerated blocklist — drop it and
+--       mutant M4 survives. It was `notes` until 0095 (2026-09-28) made a note
+--       edit LEGAL on a locked division. RE-KEYED TO home_team_id, and why
+--       that column and not another: the trigger's own body commits to it —
+--       "if home_team_id moved between divisions, a lock on either end must
+--       apply. (That move is outside the allowlist and so is blocked
+--       regardless.)" Allowlisting home_team_id would break the trigger's own
+--       division resolution, so nobody will; it is the game's identity, never
+--       a "reschedule surface" column. home_score / away_team_id stay as the
+--       other two.
 --   T6  CARVE-OUT: NULL division_id => not locked => row stays mutable
 --   T7  unlocked division is entirely unrestricted
 --   T8  posted auto-clears on an ALLOWED change inside a LOCKED division
@@ -40,12 +49,21 @@
 --   T12 BYPASS: an archived season holding a locked division is still deletable
 --
 -- ── MUTATION PASS (all 9 killed, 2026-07-23) ────────────────────────────────
+-- 2026-09-28 (0095/0096 batch, rolled back): full baseline PASS with T5c
+-- re-keyed to home_team_id — counters ins=1 del=1 pend=1 updOK=3 updNO=3
+-- orphan=1 open=1 posted=1 rpcLock=1 rpcPend=1 bypDiv=1 bypLg=1. M4 is now
+-- exercised explicitly (as NM3) in game-notes-triggers-sim.sql and dies at
+-- T5c. NOTE: the leak check's "locked_divisions must be 0" line predates
+-- real locked divisions in production (3 on 2026-09-28); read it as "no
+-- HARNESS division left locked", i.e. zero ZZ_% rows.
 -- Install each mutant, re-run the baseline, confirm the named assertion FAILS,
 -- then roll back. Mutant "killed" means the baseline assertion failed.
 --   M1 remove the INSERT block                    -> T1 fails
 --   M2 remove the DELETE block                    -> T2 fails
 --   M3 remove the pending_interleague carve-out   -> T3 fails
---   M4 subtraction check -> enumerated blocklist  -> T5c (notes) fails
+--   M4 subtraction check -> enumerated blocklist  -> T5c (home_team_id) fails
+--      (the enumerated list names home_score + away_team_id and NOT
+--      home_team_id — written out explicitly in game-notes-triggers-sim.sql)
 --   M5 remove set_config bypass from
 --      delete_division_permanently                -> T11 fails
 --   M6 make NULL division fail CLOSED             -> T6 fails
@@ -137,9 +155,11 @@ begin
   exception when others then v_ok:=true; c_upd_blocked:=c_upd_blocked+1; end;
   if not v_ok then v_fail:=v_fail||'T5b opponent-update-not-blocked; '; end if;
   v_ok:=false;
-  begin update public.games set notes='x' where id=v_gNorm;
+  -- T5c: re-keyed 0095 from `notes` (now allowlisted) to `home_team_id` — see
+  -- the header for why this column is the durable choice.
+  begin update public.games set home_team_id=v_tL2 where id=v_gNorm;
   exception when others then v_ok:=true; c_upd_blocked:=c_upd_blocked+1; end;
-  if not v_ok then v_fail:=v_fail||'T5c notes-update-not-blocked (subtraction check missed a column); '; end if;
+  if not v_ok then v_fail:=v_fail||'T5c home_team_id-update-not-blocked (subtraction check missed a column); '; end if;
 
   v_ok:=true;
   begin
