@@ -17,6 +17,7 @@
 import {
   decideHostProposal,
   gameStatusAfterHostDecline,
+  statusAfterHostProposal,
   openHostProposal,
   openPartnerProposals,
   partnerRowsOnResolve,
@@ -104,7 +105,14 @@ console.log("PROPOSE  decideHostProposal");
     { status: "scheduled", external_team_name: "Bob", scheduled_at: "2026-09-01T10:00:00+00:00" },
     [], "2026-10-02T10:00:00+00:00", NOW, PARTNER,
   );
-  assert(!d2.ok && d2.status === 409 && d2.error === "This game is in the past.", "[P2] scheduled past game → the pre-existing refusal, verbatim");
+  // RULE CHANGE 2026-09-28 (like the regenerate guard's D3 flip): the ORIGINAL
+  // date no longer matters — a makeup for a played-out day is the normal case.
+  assert(d2.ok && d2.branch === "confirmed_reschedule", "[P2] scheduled game whose ORIGINAL day has passed, future proposal → allowed");
+  const d2b = decideHostProposal(
+    { status: "scheduled", external_team_name: "Bob", scheduled_at: "2026-09-01T10:00:00+00:00" },
+    [], "2026-09-10T10:00:00+00:00", NOW, PARTNER,
+  );
+  assert(!d2b.ok && d2b.status === 400 && d2b.error === "Propose a time that hasn't passed yet.", "[P2b] scheduled game, proposed time in the past → refused on the PROPOSED time");
 
   const d3 = decideHostProposal(
     { status: "reschedule_pending", external_team_name: "Bob", scheduled_at: "2026-10-01T10:00:00+00:00" },
@@ -130,8 +138,16 @@ console.log("PROPOSE  decideHostProposal");
   const d8 = decideHostProposal(countered, [hostRow("declined"), partnerRow()], "2026-09-26T09:00:00+00:00", NOW, PARTNER);
   assert(d8.ok && d8.branch === "pending_counter", "[P8] answering the partner's counter-back with another time is allowed");
 
+  // RULE CHANGE 2026-09-28: a rained-out game gets a MAKEUP proposal.
   const d9 = decideHostProposal({ ...countered, status: "cancelled" }, [], "2026-09-26T09:00:00+00:00", NOW, PARTNER);
-  assert(!d9.ok && d9.status === 409, "[P9] cancelled → refused");
+  assert(d9.ok && d9.branch === "cancelled_makeup", "[P9] cancelled (rained out), future proposal → the makeup branch");
+  const d9b = decideHostProposal({ ...countered, status: "cancelled" }, [hostRow()], "2026-09-26T09:00:00+00:00", NOW, PARTNER);
+  assert(!d9b.ok && d9b.status === 409 && d9b.error.includes("already proposed a makeup"), "[P9b] a second makeup proposal while one is out is refused");
+  const d9c = decideHostProposal({ ...countered, status: "cancelled" }, [], "2026-09-10T09:00:00+00:00", NOW, PARTNER);
+  assert(!d9c.ok && d9c.status === 400, "[P9c] a makeup proposed in the past is refused");
+  assert(statusAfterHostProposal("cancelled_makeup") === null && statusAfterHostProposal("pending_counter") === null && statusAfterHostProposal("confirmed_reschedule") === "reschedule_pending", "[P10] only a confirmed game's proposal flips its status; a makeup leaves the game CANCELLED");
+  const d10 = decideHostProposal({ ...countered, status: "completed" }, [], "2026-09-26T09:00:00+00:00", NOW, PARTNER);
+  assert(!d10.ok && d10.status === 409, "[P11] completed → refused");
 }
 
 // ── Resolve refusal while a host proposal is outstanding ────────────────────
@@ -173,6 +189,8 @@ console.log("DECLINE  gameStatusAfterHostDecline");
   assert(same, "[D3] for every non-pending status the decline rule equals the pre-change rule");
   const released = gameStatusAfterHostDecline("reschedule_pending", 0);
   assert(released === "scheduled", "[D4] a confirmed game with no request left is released to scheduled");
+  // 0094's rule, host side: declining a partner's counter on a MAKEUP leaves the game rained out.
+  assert(gameStatusAfterHostDecline("cancelled", 0) === null && gameStatusAfterHostDecline("cancelled", 1) === null, "[D5] a decline on a CANCELLED game never revives it");
   if (released === "scheduled") counters.scheduledDeclineReleased++;
 }
 

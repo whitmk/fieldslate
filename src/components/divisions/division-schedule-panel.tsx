@@ -29,6 +29,8 @@ import { UpgradeModal } from "@/components/plan/upgrade-cta";
 import { submitInterleagueRescheduleRequest } from "@/lib/interleague/request-reschedule";
 import {
   routeMoveTarget,
+  makeupIntro,
+  requestModalLabels,
   MOVE_UPGRADE_FEATURE,
 } from "@/lib/schedule/panel-reschedule-route";
 import { AddGameModal } from "@/components/schedule/add-game-modal";
@@ -1379,6 +1381,21 @@ export function DivisionSchedulePanel({
                             <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-400">
                               Rained out
                             </span>
+                            {/* Rained-out INTERLEAGUE game: a makeup is a REQUEST to
+                                the partner (Free, not lock-gated — rainout recovery). */}
+                            {game.interleague_org_id && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRequestError(null);
+                                  setRequestTarget({ game, intro: makeupIntro(game.interleague_org?.name) });
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600 transition-colors hover:border-[#22C55E] hover:text-[#22C55E]"
+                              >
+                                <CalendarClock className="h-3 w-3" />
+                                Propose makeup time
+                              </button>
+                            )}
                             {canReschedule && !game.interleague_org_id && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); setRescheduleGame(game); }}
@@ -1656,6 +1673,7 @@ export function DivisionSchedulePanel({
       {/* ── Row "Reschedule game" icon: interleague → request the partner's consent ── */}
       {requestTarget && (
         <RescheduleRequestModal
+          {...requestModalLabels(requestTarget.game.status)}
           intro={requestTarget.intro}
           game={{
             scheduled_at: requestTarget.game.scheduled_at,

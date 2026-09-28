@@ -40,6 +40,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { makeupIntro } from "@/lib/schedule/panel-reschedule-route";
 import {
   pickerFor,
   rescheduleItemLockTitle,
@@ -119,15 +120,23 @@ function partR() {
     "[R5] a COMPLETED game is refused (the picker's save would un-complete it)",
     JSON.stringify(r5),
   );
+  // RULE CHANGE 2026-09-28: a rained-out interleague game is rescheduled
+  // DIRECTLY — a makeup request to the partner, no restore step, no lock gate.
   const r6 = route("ilRainedOut");
   ok(
-    r6.kind === "blocked" && r6.reason === "cancelled_interleague" &&
-      r6.message.includes("Westside LL") && r6.link?.href === "/dashboard/interleague",
-    "[R6] rained-out interleague game → refusal naming the partner, with the link",
+    r6.kind === "interleague_request" && r6.intro === makeupIntro("Westside LL") &&
+      route("ilRainedOut", true, false).kind === "interleague_request",
+    "[R6] rained-out interleague game → the request flow with makeup wording, even locked and on Free",
+    JSON.stringify(r6),
   );
   ok(
-    ["ilPending", "ilRequested", "ilPast"].every((n) => route(n as Name).kind === "blocked"),
-    "[R7] pending / already-requested / past interleague → a refusal (not a silent no-op)",
+    ["ilPending", "ilRequested"].every((n) => route(n as Name).kind === "blocked") &&
+      route("ilPast").kind === "interleague_request",
+    "[R7] pending / already-requested → a refusal; a played-out accepted game → a makeup request",
+  );
+  ok(
+    ["ilRainedOut", "ilRainedOutAnomaly"].every((n) => pickerFor(route(n as Name)) === null),
+    "[R7b] a rained-out interleague game never reaches the rainout picker (even with an away team set)",
   );
   ok(route("ilAccepted").kind === "interleague_request", "[R7b] accepted upcoming interleague → request flow");
   ok(
@@ -243,8 +252,8 @@ function partS() {
     "[S6] the page reads `locked` on its existing divisions query and both surfaces disable the item",
   );
   ok(
-    list.includes("rescheduleItemVisible(game.status, canReschedule)") &&
-      cal.includes("rescheduleItemVisible(pill.data.status, canReschedule)"),
+    list.includes("rescheduleItemVisible(game.status, canReschedule, !!game.interleague_org_id)") &&
+      cal.includes("rescheduleItemVisible(pill.data.status, canReschedule, !!pill.data.interleague_org_id)"),
     "[S7] both surfaces decide visibility through rescheduleItemVisible",
   );
 }

@@ -52,21 +52,32 @@ export function proposalRound(requestRowCount: number): number {
 
 export type ProposalDecision =
   /** status 'scheduled': the pre-existing reschedule request. The route flips
-   *  the game to reschedule_pending, exactly as before this change. */
+   *  the game to reschedule_pending, exactly as before. */
   | { ok: true; branch: "confirmed_reschedule" }
   /** status 'pending_interleague' WITH a partner response: a host counter.
    *  The game stays pending_interleague. */
   | { ok: true; branch: "pending_counter" }
+  /** status 'cancelled' (rained out): a MAKEUP proposal. The game stays
+   *  cancelled until the partner accepts (accept_reschedule_request_by_token
+   *  then sets it scheduled at the new time); a decline leaves it cancelled
+   *  (0094). Decided 2026-09-28 — there is no "restore then request" step. */
+  | { ok: true; branch: "cancelled_makeup" }
   | { ok: false; status: 400 | 409; error: string };
 
 /**
  * Which statuses the host may propose a time on, and why not otherwise.
  *
- *   scheduled               → allowed (unchanged: the game must be in the future)
+ *   scheduled               → allowed when the PROPOSED time is in the future.
+ *                             The ORIGINAL date no longer matters (2026-09-28):
+ *                             a makeup for a game whose day has passed is the
+ *                             normal case, and "is the game in the past" was
+ *                             the wrong question.
+ *   cancelled (rained out)  → allowed when the proposed time is in the future
+ *                             and no host proposal is already outstanding
  *   pending_interleague     → allowed ONLY with a partner response
  *                             (external_team_name set), no host proposal already
  *                             outstanding, and a proposed time in the future
- *   anything else           → refused (reschedule_pending, cancelled, …)
+ *   anything else           → refused (reschedule_pending, completed, …)
  *
  * The scheduled branch's two refusals keep their exact pre-existing wording.
  */
@@ -78,10 +89,23 @@ export function decideHostProposal(
   partnerName: string,
 ): ProposalDecision {
   if (game.status === "scheduled") {
-    if (new Date(game.scheduled_at).getTime() <= nowMs) {
-      return { ok: false, status: 409, error: "This game is in the past." };
+    if (new Date(proposedIso).getTime() <= nowMs) {
+      return { ok: false, status: 400, error: "Propose a time that hasn't passed yet." };
     }
     return { ok: true, branch: "confirmed_reschedule" };
+  }
+  if (game.status === "cancelled") {
+    if (openHostProposal(requests)) {
+      return {
+        ok: false,
+        status: 409,
+        error: `You've already proposed a makeup time for this game. Wait for ${partnerName} to answer.`,
+      };
+    }
+    if (new Date(proposedIso).getTime() <= nowMs) {
+      return { ok: false, status: 400, error: "Propose a time that hasn't passed yet." };
+    }
+    return { ok: true, branch: "cancelled_makeup" };
   }
   if (game.status === "pending_interleague") {
     if (!game.external_team_name) {
@@ -104,6 +128,27 @@ export function decideHostProposal(
     return { ok: true, branch: "pending_counter" };
   }
   return { ok: false, status: 409, error: "This game can't be rescheduled right now." };
+}
+
+/**
+ * The game status the route writes after creating the request row, or null
+ * for "leave it alone". ONE place, so the route cannot drift from the model:
+ *   confirmed_reschedule → reschedule_pending (unchanged)
+ *   pending_counter      → null (stays pending_interleague — see THE MODEL)
+ *   cancelled_makeup     → null (stays CANCELLED until the partner accepts —
+ *                          a rained-out game must never look scheduled on the
+ *                          strength of an unanswered proposal)
+ */
+export function statusAfterHostProposal(
+  branch: Extract<ProposalDecision, { ok: true }>["branch"],
+): "reschedule_pending" | null {
+  return branch === "confirmed_reschedule" ? "reschedule_pending" : null;
+}
+
+/** Statuses the route must read the game's outstanding requests for before
+ *  deciding: those where a second host proposal could otherwise pile up. */
+export function proposalNeedsRequestRead(status: string): boolean {
+  return status === "pending_interleague" || status === "cancelled";
 }
 
 // ── Resolve a counter-proposed game (/api/interleague/games/[id]/resolve) ───
@@ -161,10 +206,13 @@ export function partnerRowsOnResolve(action: ResolveAction): "accepted" | "decli
 /**
  * The game's status after the HOST declines a partner's request.
  *
- * Mirrors decline_reschedule_request_by_token (0091) from the other side:
+ * Mirrors decline_reschedule_request_by_token (0091, 0094) from the other side:
  *   pending_interleague → null (never write). The game was never agreed;
  *                         setting it 'scheduled' would confirm a time the
  *                         partner rejected. The pre-0091 route did exactly that.
+ *   cancelled           → null (never write). A rained-out game with a
+ *                         partner counter on its makeup stays rained out when
+ *                         the host declines the counter (0094's rule, host side).
  *   otherwise           → 'scheduled' once no other request is pending
  *                         (unchanged behaviour for confirmed games).
  */
@@ -172,6 +220,6 @@ export function gameStatusAfterHostDecline(
   gameStatus: string,
   pendingLeft: number,
 ): "scheduled" | null {
-  if (gameStatus === "pending_interleague") return null;
+  if (gameStatus === "pending_interleague" || gameStatus === "cancelled") return null;
   return pendingLeft > 0 ? null : "scheduled";
 }

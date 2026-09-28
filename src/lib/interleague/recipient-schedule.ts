@@ -254,8 +254,33 @@ export type RespondPageCopy = {
   done: Record<"accept" | "decline" | "counter", { title: string; message: string }>;
 };
 
-export function respondPageCopy(p: { pending: boolean; senderName: string; round: number }): RespondPageCopy {
+export function respondPageCopy(p: {
+  pending: boolean;
+  senderName: string;
+  round: number;
+  /** The game is CANCELLED (rained out) and the host is proposing a makeup.
+   *  Absent/false → the confirmed-game copy, byte-identical to before. */
+  rainedOut?: boolean;
+}): RespondPageCopy {
   const s = p.senderName;
+  if (!p.pending && p.rainedOut) {
+    // A makeup: the game is off the schedule until the partner accepts, and a
+    // decline LEAVES it rained out (0094) — never "stays at its original time".
+    return {
+      intro: `${s} is proposing a makeup time for this interleague game, which was rained out. Accept it to put the game back on the schedule, propose a different time, or decline — declining leaves the game rained out.`,
+      currentLabel: "Rained out",
+      proposedLabel: "Makeup",
+      acceptLabel: "Accept makeup",
+      counterLabel: "Propose a different time",
+      declineLabel: "Decline makeup",
+      counterSubmitLabel: "Send my time",
+      done: {
+        accept: { title: "Makeup confirmed", message: `${s} has been notified. The game is back on the schedule at the new time.` },
+        decline: { title: "Makeup declined", message: `${s} has been notified. The game stays rained out.` },
+        counter: { title: "Counter-proposal sent", message: `${s} will review your proposal and confirm.` },
+      },
+    };
+  }
   if (!p.pending) {
     return {
       intro: `${s} is asking to move this interleague game. Review the change and either accept, propose a different time, or decline.`,

@@ -59,7 +59,12 @@ export function RescheduleForm({ token, payload }: Props) {
   // means they're hosting (HOME for them).
   const recipientIsHome = game.is_away;
   const pending = game.status === "pending_interleague";
-  const copy = respondPageCopy({ pending, senderName, round: (payload.proposal_count ?? 0) + 1 });
+  const copy = respondPageCopy({
+    pending,
+    rainedOut: game.status === "cancelled",
+    senderName,
+    round: (payload.proposal_count ?? 0) + 1,
+  });
   // On a pending game the left card is the partner's OWN proposal (falling back
   // to the first-offered time when they only proposed a field).
   const leftIso = pending ? game.proposed_scheduled_at ?? game.scheduled_at : game.scheduled_at;

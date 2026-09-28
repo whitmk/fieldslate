@@ -25,8 +25,6 @@ import {
   rescheduleItemLockTitle,
   rescheduleItemVisible,
 } from "@/lib/schedule/schedule-page-reschedule-route";
-import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
-import { submitInterleagueRescheduleRequest } from "@/lib/interleague/request-reschedule";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
 
 export type ScheduleGameUmpire = {
@@ -173,7 +171,6 @@ export function ScheduleList({
     lockedDivisionIds: lockedSet,
   });
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
-  const [requestRescheduleGame, setRequestRescheduleGame] = useState<ScheduleGame | null>(null);
   // Delete — the game queued for the confirm dialog. Deletion goes through the
   // delete_game_if_unblocked RPC (0079), which is the guard: it re-checks the
   // block conditions (accepted interleague, recorded result) server-side,
@@ -181,8 +178,6 @@ export function ScheduleList({
   // nothing was deleted. The dialog owns the RPC call and busy/error/blocked
   // state, mirroring the venue delete dialog.
   const [deleteGame, setDeleteGame] = useState<ScheduleGame | null>(null);
-  const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
-  const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -194,29 +189,6 @@ export function ScheduleList({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  async function submitRescheduleRequest(payload: {
-    scheduled_at: string;
-    venue_name?: string;
-    note?: string;
-  }) {
-    if (!requestRescheduleGame) return;
-    setRescheduleError(null);
-    setRescheduleSubmitting(true);
-    // The one shared submit path — see request-reschedule.ts.
-    const outcome = await submitInterleagueRescheduleRequest(
-      requestRescheduleGame.id,
-      payload,
-    );
-    if (!outcome.ok) {
-      setRescheduleError(outcome.error);
-      setRescheduleSubmitting(false);
-      return;
-    }
-    setRequestRescheduleGame(null);
-    setRescheduleSubmitting(false);
-    router.refresh();
-  }
 
   async function handleRainout(game: ScheduleGame) {
     setRainoutId(game.id);
@@ -271,10 +243,11 @@ export function ScheduleList({
                 setOpenMenuId(null);
                 reschedule.open(g);
               }}
+              // Same router as "Reschedule": an interleague game routes to
+              // the request flow (makeup wording when rained out).
               onRequestReschedule={() => {
                 setOpenMenuId(null);
-                setRescheduleError(null);
-                setRequestRescheduleGame(g);
+                reschedule.open(g);
               }}
               canReschedule={canReschedule}
               rescheduleLockTitle={rescheduleItemLockTitle(
@@ -349,25 +322,6 @@ export function ScheduleList({
         />
       )}
 
-      {requestRescheduleGame && (
-        <RescheduleRequestModal
-          game={{
-            scheduled_at: requestRescheduleGame.scheduled_at,
-            is_away: !!requestRescheduleGame.is_away,
-            external_team_name: requestRescheduleGame.external_team_name ?? null,
-            proposed_venue_name: requestRescheduleGame.proposed_venue_name ?? null,
-            home_team: requestRescheduleGame.home_team
-              ? { name: requestRescheduleGame.home_team.name }
-              : null,
-            venue: requestRescheduleGame.venue ?? null,
-            interleague_org: requestRescheduleGame.interleague_org ?? null,
-          }}
-          busy={rescheduleSubmitting}
-          error={rescheduleError}
-          onSubmit={submitRescheduleRequest}
-          onClose={() => setRequestRescheduleGame(null)}
-        />
-      )}
     </div>
   );
 }
@@ -461,10 +415,12 @@ function GameRowCells({
   seasonRoleNames,
   sport,
 }: GameRowProps) {
+  // An interleague game's time is changed by REQUEST: a confirmed game
+  // (whatever its date — a makeup for a played-out day is normal) or a
+  // rained-out one (a makeup proposal). Free.
   const canRequestReschedule =
     !!game.interleague_org_id &&
-    game.status === "scheduled" &&
-    new Date(game.scheduled_at).getTime() > Date.now();
+    (game.status === "scheduled" || game.status === "cancelled");
   const umpiresPerGame = Number(game.home_team?.division?.umpires_per_game ?? 0);
   // Build slot labels from the season's official_roles (padded sport-aware) —
   // the exact recipe the modal/assign path uses to write game_umpires.role.
@@ -554,9 +510,9 @@ function GameRowCells({
                 className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
               >
                 <Repeat className="h-3.5 w-3.5 text-[#22C55E]" />
-                Request reschedule
+                {game.status === "cancelled" ? "Propose makeup time" : "Request reschedule"}
               </button>
-            ) : rescheduleItemVisible(game.status, canReschedule) ? (
+            ) : rescheduleItemVisible(game.status, canReschedule, !!game.interleague_org_id) ? (
               <button
                 onClick={onReschedule}
                 disabled={!!rescheduleLockTitle}

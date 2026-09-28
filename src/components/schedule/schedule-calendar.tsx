@@ -361,7 +361,7 @@ export function ScheduleCalendar({
                 <CloudRain className="h-3.5 w-3.5 text-blue-400" />
                 Mark as rained out
               </button>
-              {rescheduleItemVisible(pill.data.status, canReschedule) && (() => {
+              {rescheduleItemVisible(pill.data.status, canReschedule, !!pill.data.interleague_org_id) && (() => {
                 const lockTitle = rescheduleItemLockTitle(
                   { status: pill.data.status, interleague_org_id: pill.data.interleague_org_id ?? null },
                   !!pill.data.home_team?.division_id &&

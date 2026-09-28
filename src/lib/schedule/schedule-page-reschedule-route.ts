@@ -9,8 +9,9 @@
 // - `cancelled`, not interleague, with a real away team → the RAINOUT picker:
 //   rain-cloud header, makeup days offered, no manual entry, and NO lock gate
 //   (rainout recovery is exempt — weather is not a choice). Pro only.
-// - `cancelled` interleague → a stated refusal: moving it needs the partner,
-//   and the interleague request route only accepts scheduled games.
+// - `cancelled` interleague → the REQUEST flow with makeup wording: the host
+//   proposes a makeup time, the game stays cancelled until the partner
+//   accepts (2026-09-28; the request route accepts cancelled games).
 // - everything else → routeMoveTarget, unchanged: plain → the MOVE picker
 //   (manual entry, no makeup days, lock-gated), accepted upcoming interleague →
 //   the request flow, Free → the upsell, and every other case (pending /
@@ -23,6 +24,7 @@
 // sites call it. Pinned by `npm run sim:schedule-page-reschedule`.
 
 import {
+  makeupIntro,
   routeMoveTarget,
   type MoveCandidate,
   type MoveContext,
@@ -33,13 +35,7 @@ import { lockedReason } from "@/lib/schedule/division-lock";
 
 export type ScheduleRescheduleRoute =
   | MoveRoute
-  | { kind: "rainout"; awayTeamId: string }
-  | {
-      kind: "blocked";
-      reason: "cancelled_interleague";
-      message: string;
-      link?: { href: string; label: string };
-    };
+  | { kind: "rainout"; awayTeamId: string };
 
 export function routeScheduleReschedule(
   game: MoveCandidate,
@@ -47,13 +43,10 @@ export function routeScheduleReschedule(
 ): ScheduleRescheduleRoute {
   if (game.status === "cancelled") {
     if (game.interleague_org_id) {
-      const org = game.interleague_org?.name ?? "the other league";
-      return {
-        kind: "blocked",
-        reason: "cancelled_interleague",
-        message: `This interleague game was rained out. A new time needs ${org}'s agreement — arrange it on the Interleague page.`,
-        link: { href: "/dashboard/interleague", label: "Open the Interleague page" },
-      };
+      // A rained-out interleague game is rescheduled DIRECTLY: propose a
+      // makeup to the partner. The game stays cancelled until they accept.
+      // Not lock-gated: rainout recovery, like the non-interleague branch.
+      return { kind: "interleague_request", intro: makeupIntro(game.interleague_org?.name) };
     }
     if (!game.away_team_id) {
       return {
@@ -109,6 +102,8 @@ export function rescheduleItemLockTitle(
 export function rescheduleItemVisible(
   status: string,
   canReschedule: boolean,
+  /** An interleague game's item is a REQUEST (Free), so it always shows. */
+  isInterleague = false,
 ): boolean {
-  return canReschedule || status !== "cancelled";
+  return isInterleague || canReschedule || status !== "cancelled";
 }

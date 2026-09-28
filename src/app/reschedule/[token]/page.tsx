@@ -54,6 +54,7 @@ export default async function PublicReschedulePage({
           <p className="mb-4 text-sm text-gray-500">
             {respondPageCopy({
               pending: payload.game.status === "pending_interleague",
+              rainedOut: payload.game.status === "cancelled",
               senderName,
               round: (payload.proposal_count ?? 0) + 1,
             }).intro}

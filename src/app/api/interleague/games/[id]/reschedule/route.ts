@@ -12,7 +12,13 @@ import { gateRescheduleVenue } from "@/lib/venues/reschedule-gate";
 import { gateRescheduleOccupancy } from "@/lib/venues/occupancy-gate";
 import { lockRefusal } from "@/lib/interleague/lock-gate";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
-import { decideHostProposal, proposalRound, type RequestLite } from "@/lib/interleague/negotiation";
+import {
+  decideHostProposal,
+  proposalNeedsRequestRead,
+  proposalRound,
+  statusAfterHostProposal,
+  type RequestLite,
+} from "@/lib/interleague/negotiation";
 import { hostProposalEmail, respondUrl } from "@/lib/interleague/negotiation-emails";
 
 // Two branches, decided by decideHostProposal (src/lib/interleague/negotiation.ts):
@@ -166,7 +172,7 @@ export async function POST(
   // branch never read them and still doesn't. FAIL CLOSED: an unreadable list
   // could hide a proposal already out with the partner.
   let requests: (RequestLite & { id: string })[] = [];
-  if (game.status === "pending_interleague") {
+  if (proposalNeedsRequestRead(game.status)) {
     const { data: reqRows, error: reqRowsErr } = await supabase
       .from("interleague_reschedule_requests")
       .select("id, status, requested_by_user_id")
@@ -270,18 +276,24 @@ export async function POST(
     );
   }
 
-  const { error: updErr } = await supabase
-    .from("games")
-    .update({ status: "reschedule_pending" } as never)
-    .eq("id", game.id);
-  if (updErr) {
-    // Roll back the request to keep state consistent.
-    await supabase
-      .from("interleague_reschedule_requests")
-      .delete()
-      .eq("id", reqRow.id);
-    return NextResponse.json({ error: updErr.message }, { status: 500 });
+  // A confirmed game flips to reschedule_pending; a rained-out game STAYS
+  // cancelled until the partner accepts the makeup (statusAfterHostProposal).
+  const nextStatus = statusAfterHostProposal(decision.branch);
+  if (nextStatus) {
+    const { error: updErr } = await supabase
+      .from("games")
+      .update({ status: nextStatus } as never)
+      .eq("id", game.id);
+    if (updErr) {
+      // Roll back the request to keep state consistent.
+      await supabase
+        .from("interleague_reschedule_requests")
+        .delete()
+        .eq("id", reqRow.id);
+      return NextResponse.json({ error: updErr.message }, { status: 500 });
+    }
   }
+  const rainedOut = decision.branch === "cancelled_makeup";
 
   // Look up recipient email via the most recent accepted invite for this
   // (org, season).
@@ -322,26 +334,37 @@ export async function POST(
     // Matchup framed from recipient's perspective (their team listed first).
     const matchup = `${externalTeam} vs ${homeTeam}`;
 
-    const subject = `Reschedule request: ${matchup} — ${seasonLabel}`;
+    const subject = rainedOut
+      ? `Makeup game proposed: ${matchup} — ${seasonLabel}`
+      : `Reschedule request: ${matchup} — ${seasonLabel}`;
+    const kicker = rainedOut ? "Makeup game" : "Reschedule request";
+    const heading = rainedOut
+      ? `${escapeHtml(senderName)} proposed a makeup time`
+      : `${escapeHtml(senderName)} asked to move a game`;
+    const introLine = rainedOut
+      ? `${escapeHtml(matchup)} (${escapeHtml(division)}, ${escapeHtml(seasonLabel)}) was rained out. They&apos;re proposing a makeup — accept it to put the game back on the schedule, counter-propose, or decline.`
+      : `${escapeHtml(matchup)} (${escapeHtml(division)}, ${escapeHtml(seasonLabel)}) — they&apos;d like to reschedule. Review the change and accept, counter-propose, or decline.`;
+    const currentLabel = rainedOut ? "Rained out" : "Current";
+    const proposedLabel = rainedOut ? "Makeup" : "Proposed";
 
     const html = `<!doctype html>
 <html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;background:#f6f7f9;margin:0;padding:24px;">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
     <div style="background:#0C1F3F;padding:24px 28px;">
       <img src="${SITE_URL}/brand/lockup-email-dark-2x.png" alt="FieldSlate" width="160" height="36" style="display:block;border:0;outline:none;text-decoration:none;" />
-      <p style="margin:2px 0 0;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Reschedule request</p>
+      <p style="margin:2px 0 0;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">${kicker}</p>
     </div>
     <div style="padding:28px;">
       <h1 style="margin:0 0 12px;font-size:20px;color:#0C1F3F;">
-        ${escapeHtml(senderName)} asked to move a game
+        ${heading}
       </h1>
       <p style="margin:0 0 18px;color:#4b5563;font-size:14px;line-height:1.55;">
-        ${escapeHtml(matchup)} (${escapeHtml(division)}, ${escapeHtml(seasonLabel)}) — they&apos;d like to reschedule. Review the change and accept, counter-propose, or decline.
+        ${introLine}
       </p>
       <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 12px;border:1px solid #eee;border-radius:6px;overflow:hidden;">
         <tbody>
-          <tr><td style="padding:8px 12px;border-bottom:1px solid #eee;color:#6b7280;width:35%;">Current</td><td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(fmtIso(game.scheduled_at))}</td></tr>
-          <tr><td style="padding:8px 12px;border-bottom:1px solid #eee;color:#6b7280;">Proposed</td><td style="padding:8px 12px;border-bottom:1px solid #eee;font-weight:600;">${escapeHtml(fmtIso(normalized))}</td></tr>
+          <tr><td style="padding:8px 12px;border-bottom:1px solid #eee;color:#6b7280;width:35%;">${currentLabel}</td><td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(fmtIso(game.scheduled_at))}</td></tr>
+          <tr><td style="padding:8px 12px;border-bottom:1px solid #eee;color:#6b7280;">${proposedLabel}</td><td style="padding:8px 12px;border-bottom:1px solid #eee;font-weight:600;">${escapeHtml(fmtIso(normalized))}</td></tr>
           ${venueName ? `<tr><td style="padding:8px 12px;border-bottom:1px solid #eee;color:#6b7280;">Proposed venue</td><td style="padding:8px 12px;border-bottom:1px solid #eee;">${escapeHtml(venueName)}</td></tr>` : ""}
           ${note ? `<tr><td style="padding:8px 12px;color:#6b7280;">Note</td><td style="padding:8px 12px;">${escapeHtml(note)}</td></tr>` : ""}
         </tbody>
@@ -361,9 +384,11 @@ export async function POST(
 </body></html>`;
 
     const text = [
-      `${senderName} asked to reschedule ${matchup} (${seasonLabel}).`,
-      `Current: ${fmtIso(game.scheduled_at)}`,
-      `Proposed: ${fmtIso(normalized)}`,
+      rainedOut
+        ? `${senderName} proposed a makeup time for ${matchup} (${seasonLabel}), which was rained out.`
+        : `${senderName} asked to reschedule ${matchup} (${seasonLabel}).`,
+      `${currentLabel}: ${fmtIso(game.scheduled_at)}`,
+      `${proposedLabel}: ${fmtIso(normalized)}`,
       venueName ? `Proposed venue: ${venueName}` : "",
       note ? `Note: ${note}` : "",
       "",

@@ -203,7 +203,6 @@ async function partR() {
     blocked_locked: 0,
     blocked_pending_interleague: 0,
     blocked_already_requested: 0,
-    blocked_past_interleague: 0,
     blocked_not_movable_status: 0,
     blocked_no_opponent: 0,
   };
@@ -253,10 +252,13 @@ async function partR() {
     "[R5] reschedule_pending → 'already waiting', pointed at the Interleague page",
     JSON.stringify(r5),
   );
+  // RULE CHANGE 2026-09-28: a played-out interleague game is exactly what a
+  // makeup request is for; the route checks the PROPOSED time instead.
   const r6 = route("ilPast");
   ok(
-    r6.kind === "blocked" && r6.reason === "past_interleague",
-    "[R6] past interleague game → nothing to request",
+    r6.kind === "interleague_request",
+    "[R6] past accepted interleague game → the request flow (a makeup)",
+    JSON.stringify(r6),
   );
   const r7 = route("ordinary", true, true);
   ok(
@@ -488,7 +490,8 @@ async function partW() {
   const blockedGames = [
     { status: "pending_interleague", scheduled_at: "2026-10-10T15:30:00+00:00", interleague_org_id: "io", away_team_id: null, interleague_org: org },
     { status: "reschedule_pending", scheduled_at: "2026-10-10T15:30:00+00:00", interleague_org_id: "io", away_team_id: null, interleague_org: org },
-    { status: "scheduled", scheduled_at: "2026-09-20T15:30:00+00:00", interleague_org_id: "io", away_team_id: null, interleague_org: org },
+    // (a played-out accepted interleague game is no longer a refusal — it routes
+    // to a makeup request; see [R6])
     { status: "scheduled", scheduled_at: "2026-10-10T15:30:00+00:00", interleague_org_id: null, away_team_id: null },
     { status: "completed", scheduled_at: "2026-09-20T15:30:00+00:00", interleague_org_id: null, away_team_id: "t" },
   ];
@@ -513,7 +516,7 @@ async function partW() {
   }
   ok(
     reasons.size === blockedGames.length,
-    "[W5] the fixture reaches five distinct refusal reasons",
+    "[W5] the fixture reaches four distinct refusal reasons",
     [...reasons].join(","),
   );
   ok(allHaveMessage, "[W3] every refusal renders under the row WITH its sentence");

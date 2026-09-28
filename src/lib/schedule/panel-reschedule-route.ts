@@ -47,9 +47,22 @@ export type MoveBlockReason =
   | "locked"
   | "pending_interleague"
   | "already_requested"
-  | "past_interleague"
   | "not_movable_status"
   | "no_opponent";
+
+/** The request modal's intro for a rained-out interleague game — a MAKEUP.
+ *  Shared by the panel's rained-out row and the Schedule page's routing. */
+export function makeupIntro(orgName: string | null | undefined): string {
+  const org = orgName ?? "The other league";
+  return `This game was rained out. Proposing a makeup time sends ${org} a request; the game stays rained out until they accept.`;
+}
+
+/** Modal title + button for a makeup proposal, vs the plain request. */
+export function requestModalLabels(status: string): { title: string; submitLabel: string } {
+  return status === "cancelled"
+    ? { title: "Propose a makeup time", submitLabel: "Send makeup proposal" }
+    : { title: "Request reschedule", submitLabel: "Send reschedule request" };
+}
 
 export type MoveRoute =
   | { kind: "plain"; awayTeamId: string }
@@ -116,14 +129,9 @@ export function routeMoveTarget(
         message: "Only scheduled games can be moved from here.",
       };
     }
-    // Same future-only rule as the Schedule page's "Request reschedule".
-    if (new Date(game.scheduled_at).getTime() <= ctx.nowMs) {
-      return {
-        kind: "blocked",
-        reason: "past_interleague",
-        message: "This game has already been played, so there's nothing to request.",
-      };
-    }
+    // No "already played" refusal (2026-09-28): a game whose day has passed
+    // is exactly what a makeup request is for. The route checks that the
+    // PROPOSED time is in the future.
     if (ctx.locked) {
       return {
         kind: "blocked",

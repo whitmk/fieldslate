@@ -15,7 +15,7 @@ import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedul
 import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
 import { UpgradeModal } from "@/components/plan/upgrade-cta";
 import { submitInterleagueRescheduleRequest } from "@/lib/interleague/request-reschedule";
-import { MOVE_UPGRADE_FEATURE } from "@/lib/schedule/panel-reschedule-route";
+import { MOVE_UPGRADE_FEATURE, requestModalLabels } from "@/lib/schedule/panel-reschedule-route";
 import {
   pickerFor,
   routeScheduleReschedule,
@@ -131,6 +131,7 @@ export function useScheduleReschedule({
       )}
       {request && (
         <RescheduleRequestModal
+          {...requestModalLabels(request.game.status)}
           intro={request.intro}
           game={{
             scheduled_at: request.game.scheduled_at,
