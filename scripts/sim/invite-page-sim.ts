@@ -32,6 +32,13 @@
 //   superseded       revisit screen
 //   not-found        RPC returned null
 //
+// EMAILS (part E): the two invite-RESPONSE emails (host acceptance email +
+// recipient confirmation) were lifted verbatim out of the anonymous accept
+// route into src/lib/interleague/invite-response-emails.ts; their output for a
+// fixed fixture is pinned in email-*.{html,txt}, recorded at the moment of the
+// move. A later change to the builders must keep the anonymous rendering
+// byte-identical.
+//
 // RECORD=1 rewrites the goldens. That is legitimate ONLY on the capture commit
 // (the pre-change tree). If part G fails later, the anonymous page changed —
 // fix the page, do not re-record.
@@ -214,6 +221,10 @@ async function record() {
     writeFileSync(join(GOLDEN_DIR, `${state}.html`), html + "\n");
     console.log(`  recorded ${state}.html (${html.length} bytes)`);
   }
+  for (const [name, body] of Object.entries(await renderEmails())) {
+    writeFileSync(join(GOLDEN_DIR, name), body + "\n");
+    console.log(`  recorded ${name} (${body.length} bytes)`);
+  }
 }
 
 function golden(state: string): string {
@@ -243,6 +254,66 @@ async function partG() {
   return { identical };
 }
 
+
+// ── Part E: the invite-response emails ──────────────────────────────────────
+
+const EMAIL_RESPONSES = [
+  { game_id: "g1", team_name: "Wildcats", action: "accept" as const, venue_name: null, proposed_scheduled_at: null },
+  { game_id: "g2", team_name: "Wildcats", action: "accept" as const, venue_name: "Riverside A", proposed_scheduled_at: null },
+  { game_id: "g3", team_name: "Bears", action: "counter" as const, venue_name: null, proposed_scheduled_at: "2026-10-25T10:00:00+00:00" },
+  { game_id: "g4", team_name: "", action: "decline" as const, venue_name: null, proposed_scheduled_at: null },
+];
+const EMAIL_SCHEDULE_GAMES = [
+  { id: "g1", scheduled_at: "2026-10-10T09:00:00+00:00", is_away: false, external_team_name: "Wildcats", proposed_venue_name: null, home_team: { name: "Dodgers" }, division: { name: "Majors" }, venue: { name: "Andrews", location: { name: "Monroe Complex" } } },
+  { id: "g2", scheduled_at: "2026-10-17T11:00:00+00:00", is_away: true, external_team_name: "Wildcats", proposed_venue_name: "Riverside A", home_team: { name: "Red Sox" }, division: { name: "Majors" }, venue: null },
+];
+const EMAIL_COUNTERED = [
+  { id: "g3", status: "pending_interleague" as const, scheduled_at: "2026-10-24T13:00:00+00:00", proposed_scheduled_at: "2026-10-25T10:00:00+00:00", proposed_venue_name: null, is_away: false, external_team_name: "Bears", home_team: { name: "Giants" }, division: { name: "Minors" }, venue: { name: "Polley Field", location: null } },
+];
+
+export async function renderEmails(opts: { partnerOnFieldSlate?: boolean } = {}) {
+  const mod = await import("@/lib/interleague/invite-response-emails");
+  const acceptanceParams = {
+    senderName: "Jen Medici",
+    orgName: "Westside Little League",
+    seasonLabelDisplay: "SRALL · Fall 2026",
+    responses: EMAIL_RESPONSES,
+    total: 4,
+    accepted: 2,
+    countered: 1,
+    declined: 1,
+    dashboardUrl: "https://www.thefieldslate.com/dashboard/interleague",
+  };
+  const acceptance = mod.buildAcceptanceEmail(
+    (opts.partnerOnFieldSlate ? { ...acceptanceParams, partnerOnFieldSlate: true } : acceptanceParams) as Parameters<
+      typeof mod.buildAcceptanceEmail
+    >[0],
+  );
+  const recipient = mod.buildRecipientConfirmationEmail({
+    senderOrgName: "SRALL",
+    orgName: "Westside Little League",
+    seasonLabelDisplay: "SRALL · Fall 2026",
+    games: EMAIL_SCHEDULE_GAMES,
+    counteredCount: 1,
+    counteredGames: EMAIL_COUNTERED,
+    scheduleUrl: "https://www.thefieldslate.com/schedule/sched-abc",
+  });
+  return {
+    "email-acceptance.html": acceptance.html,
+    "email-acceptance.txt": acceptance.subject + "\n" + acceptance.text,
+    "email-recipient.html": recipient.html,
+    "email-recipient.txt": recipient.subject + "\n" + recipient.text,
+  };
+}
+
+async function partE() {
+  const out = await renderEmails();
+  for (const [name, body] of Object.entries(out)) {
+    const g = readFileSync(join(GOLDEN_DIR, name), "utf8").trimEnd();
+    ok(body.trimEnd() === g, `[E1:${name}] anonymous response email byte-identical to the golden`);
+  }
+}
+
 async function main() {
   const startedAt = Date.now();
   if (process.env.RECORD === "1") {
@@ -252,6 +323,7 @@ async function main() {
     return;
   }
   const g = await partG();
+  await partE();
   console.log(
     `invite-page-sim: ${checks} checks, ${fails} failures; ${g.identical}/${STATES.length} states fully identical (footer included); ${Date.now() - startedAt}ms`,
   );
