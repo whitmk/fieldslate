@@ -1503,13 +1503,16 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Routes:** ordinary `scheduled` game → `RainoutRescheduleModal`
   `variant="move"` (same picker, same reads, same gates, same save — the
   variant changes the HEADER only: a calendar-clock instead of a rain cloud);
-  accepted upcoming interleague game → `RescheduleRequestModal` + the
+  accepted interleague game, **whatever its date** (2026-09-28: a played-out
+  day is what a makeup request is for) → `RescheduleRequestModal` + the
   interleague reschedule route, with an `intro` line saying the partner agreed
   to this time so moving it sends a request; everything else → a stated
   reason, never a silent no-op. `pending_interleague` and `reschedule_pending`
   point at the Interleague page (the resolve flow owns them). Only `scheduled`
   ordinary games move — the picker's save writes `status: "scheduled"`, which
-  would silently un-complete a `completed` row.
+  would silently un-complete a `completed` row. **The rained-out row of an
+  interleague game carries "Propose makeup time"** (Free) → the request modal
+  with `makeupIntro` (see Interleague negotiation).
 - **An interleague game must NEVER reach the plain picker.** Moving a time
   another league agreed to, without their consent, is what the request/respond
   flow exists to prevent. `plain` carries `awayTeamId: string` and is returned
@@ -1561,8 +1564,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Routing = `routeScheduleReschedule`** (`src/lib/schedule/schedule-page-reschedule-route.ts`):
   the panel's `routeMoveTarget` plus ONE added case. Rained-out non-interleague
   → RAINOUT picker (makeup days, no manual entry, NO lock gate — weather is not
-  a choice), Pro only. Rained-out interleague → a refusal pointing at the
-  Interleague page (the request route only accepts scheduled games).
+  a choice), Pro only. Rained-out interleague → the REQUEST modal with makeup
+  wording, any plan, no lock gate (2026-09-28 — it used to be a refusal).
+  **The list's "Request reschedule" / "Propose makeup time" item goes through
+  the same hook** — the list's private request wiring is gone.
   Everything else → `routeMoveTarget` unchanged: scheduled → MOVE picker
   (manual entry, no makeup days), accepted upcoming interleague → request flow
   with its intro, Free → upsell, and every other case a stated refusal.
@@ -1588,7 +1593,17 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Page-load state — the move picker's manual save re-reads the lock anyway.
 - **Plan visibility matches the panel:** `rescheduleItemVisible` — Free sees
   "Reschedule" on every game that isn't rained out (click → upsell); rained-out
-  games stay hidden on Free, as the panel hides the rained-out row's button.
+  games stay hidden on Free, as the panel hides the rained-out row's button —
+  EXCEPT an interleague game, whose item is a request (Free) and always shows.
+- **`useScheduleReschedule` is now shared by SIX surfaces** (list, calendar,
+  log-rainout, rained-out card, conflict card, upcoming list): `ReschedulableGame`
+  is the minimal input, each surface's select carries the interleague fields
+  (`interleague_org_id`, `interleague_org(name)`, `is_away`,
+  `external_team_name`, `proposed_venue_name`, `venue_id`, `league_id`,
+  `home_team.division(name)`), and every refusal renders `MoveNoticeLine` at
+  the action. The conflict card gained the plan gate it never had (it fit both
+  July incidents). The dashboard page reads locked divisions in one small
+  query so the upcoming list can disable the item before the click.
 - **Mobile game cards and the week grid have no reschedule** and were left
   that way.
 - **Harness: `npm run sim:schedule-page-reschedule`** (TZ=UTC) — parts R
@@ -1894,45 +1909,46 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
      touched: route it through a server endpoint that re-runs both gates.
      The move variant's "Enter a time manually" save (below) has the same
      client-side shape and no server re-check either.
-- **KNOWN DEFECT — `RainoutRescheduleModal` HAS EIGHT RENDER PATHS AND FOUR OF
-  THEM ARE UNGATED FOR INTERLEAGUE.** Documented, not fixed (2026-08-21; the
-  eighth, gated, added 2026-09-25). **The four ungated ones are all on the
-  DASHBOARD / league page, not the Schedule page — still open, recorded again
-  2026-09-26.**
-  - Gated on interleague: `schedule-list.tsx` and `schedule-calendar.tsx`
-    (since 2026-09-26 both go through `useScheduleReschedule`, whose single
-    render site takes a typed `awayTeamId` from `routeScheduleReschedule` →
-    `pickerFor` — the old `rescheduleGame.away_team_id &&` guard, which made
-    interleague clicks a SILENT no-op, is gone), and `division-schedule-panel.tsx` TWICE —
-    the rained-out row's button (`canReschedule && !game.interleague_org_id`)
-    and the row's "Reschedule game" icon, which renders the picker only from a `plain`
-    `routeMoveTarget` result whose `awayTeamId` is a real `string` by
-    construction (no `!`, no cast — `sim:panel-reschedule` [R2]/[R13]/[S2]).
-    **That typed route is the pattern to copy when fixing the four below.**
-  - NOT gated: `log-rainout-modal.tsx`, `rained-out-stat-card.tsx`,
-    `upcoming-games-list.tsx`, `conflict-stat-card.tsx`.
-  - **`log-rainout-modal` is the live route.** Its games query is scoped by
-    `home_team_id` + `status='scheduled'` with NO interleague filter, so an
-    interleague game can be listed, marked rained out, and taken straight into
-    the picker.
-  - **The type system is being told a falsehood, which is why `tsc` never
-    caught it.** All four ungated sites declare `away_team_id: string` while
-    the column is genuinely nullable — one arrives through an
-    `as unknown as RainedOutGame[]` cast (`leagues/[id]/page.tsx` ~:328), one
-    is forced with a `!` assertion (`division-schedule-panel.tsx` ~:1522).
-  - **SECOND-ORDER, and the part that actually bites:** with `away_team_id`
-    null at runtime the picker's away-team span checks, per-day caps and
-    constraint lookups all match nothing and pass silently — so an interleague
-    game gets a LAXER slot search than a normal game, with no error anywhere.
-  - `away_team_id IS NULL` is an EXACT proxy for interleague in production: 66
-    interleague games, all 66 null; zero non-interleague games with a null away
-    team (verified 2026-08-21).
-  - **All of this PREDATES makeup days.** Makeup days widened the day set that
-    path operates over; they did not create the reachability. Do not attribute
-    it to that feature when fixing it.
-  - The PARTNER-facing interleague reschedule is unaffected and never touches
-    this function — it uses `RescheduleRequestModal`, a free-text date/venue
-    form with no slot computation.
+- **CLOSED 2026-09-28 — the picker GUARDS ITSELF, and every render path routes.**
+  Until then `RainoutRescheduleModal` had eight render paths, four of them
+  (log-rainout, the rained-out card, the upcoming list, the conflict card)
+  opening it on interleague games with a nullable `away_team_id` asserted
+  non-null, and its save wrote `status: "scheduled"` matching on `id` only.
+  Two live incidents came from it (SRALL "Fall 2026", test org): `205fb4a5`,
+  `pending_interleague` → `scheduled` on 2026-07-13 22:40 bypassing the
+  partner's agreement (`accept_interleague_invite` then skipped it, so it still
+  renders "TBD"); and `7b595c78`, an ACCEPTED game moved three minutes after
+  acceptance with no request and no email. Both identified by "vs Away" — the
+  picker's fallback label — in exactly 2 of 341 `game_rescheduled` log entries.
+  - **The guard is IN THE PICKER, not per surface** (`src/lib/schedule/picker-guard.ts`):
+    at open, before any other read, it reads the game and refuses an
+    interleague game (naming the partner and the request to use), a game whose
+    status is not the variant's (rainout → `cancelled`, move → `scheduled`),
+    or an unreadable game. At save, both conditions ride INSIDE the UPDATE's
+    WHERE and `.select("id")` returns the rows: **zero rows is reported as
+    "Nothing was saved", never success**. The manual form's save does the same.
+    Per-surface routing is how the four ungated paths came to exist; a ninth
+    render site will appear eventually and this is what catches it.
+  - **The picker is rendered in exactly THREE places** — `useScheduleReschedule`
+    (which the Schedule list/calendar, log-rainout, both league-page cards and
+    the dashboard upcoming list all call) and the division panel twice (row
+    icon, rained-out row). `sim:interleague-makeup` [S3] pins the count. A new
+    surface calls the hook; it never renders the picker.
+  - **Every save names its surface:** `logSource` (`src/lib/schedule/log-source.ts`)
+    appends "— via {surface}" to the activity-log entry. Absent means unknown
+    and the message is byte-identical to before, so old entries read the same.
+  - **The status condition on the picker's save is the ONE such clause this
+    codebase has, and it is acceptable only because a zero-row save is an
+    error.** A codebase-wide status-clause sweep was decided AGAINST
+    (2026-09-28): zero completed / scored / in_progress / postponed games exist
+    live, and every clause would need rows-affected handling or become a silent
+    no-op — worse than the bug. A DATABASE TRIGGER is the only layer that
+    covers direct RLS writes and the eventual right answer; DEFERRED because
+    every legitimate status writer (rainout, "Remove Rainout", the interleague
+    routes, the token functions, the generator) needs auditing against it
+    first. Both are recorded decisions, not omissions.
+  - The PARTNER-facing interleague reschedule never touches this function — it
+    uses `RescheduleRequestModal`, a free-text date/venue form.
 - **Occupancy read scope — DATE-BOUNDED, NEVER SEASON-BOUNDED, and paginated.**
   `occupancyWindow(startDate, endDate)` in `reschedule-slots.ts` supplies the
   bounds for both of the picker's `games` reads.
@@ -2637,14 +2653,42 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
      but without the guard a leaked partner-row token could accept the
      partner's own request or counter it with wrong attribution. Behind the
      guard, "a token counter is the partner" is true by construction.
-- **Statuses each creation path accepts (widened deliberately):**
-  `/api/interleague/games/[id]/reschedule` — `scheduled` (unchanged: flips to
-  reschedule_pending, same wording) OR `pending_interleague` WITH a partner
-  response (new: stays pending; lock gate, hours gate and 0088 occupancy gate
-  on the proposed time; closes the partner's open counter-back; refuses a second
-  host proposal). `create_reschedule_request_by_schedule_token` (partner) —
-  still `scheduled` only; a partner answers a pending game through the host's
-  token, never by opening a request.
+- **Statuses each creation path accepts (widened deliberately, again
+  2026-09-28):** `/api/interleague/games/[id]/reschedule` — `scheduled` (flips
+  to reschedule_pending; **the ORIGINAL date no longer matters**, only that the
+  PROPOSED time is in the future — "is the game in the past" was the wrong
+  question for a makeup), `pending_interleague` WITH a partner response (stays
+  pending; lock gate, hours gate and 0088 occupancy gate; closes the partner's
+  open counter-back; refuses a second host proposal), OR **`cancelled` — a
+  MAKEUP** (see the next bullet). `create_reschedule_request_by_schedule_token`
+  (partner) — still `scheduled` only; a partner answers a pending game through
+  the host's token, never by opening a request.
+- **A RAINED-OUT INTERLEAGUE GAME IS RESCHEDULED DIRECTLY (decided 2026-09-28).
+  There is no "restore, then request" step.** "Remove Rainout" keeps its real
+  meaning — the game wasn't rained out after all — and is never part of
+  rescheduling. The host proposes a makeup time on the CANCELLED game
+  (`decideHostProposal` → `cancelled_makeup`; refused while a host proposal is
+  already out, or if the proposed time has passed); the request row is created
+  and **the game STAYS `cancelled`** (`statusAfterHostProposal` → null) — an
+  unanswered proposal must never make a rained-out game look scheduled. The
+  partner's accept (`accept_reschedule_request_by_token`, UNCHANGED) sets it
+  `scheduled` at the new time; the partner's decline leaves it cancelled
+  (**0094**, `and status <> 'cancelled'` on the decline's UPDATE — a decline
+  that quietly revived a rained-out game would be the pending-game decline bug
+  again); the host declining a partner counter leaves it cancelled
+  (`gameStatusAfterHostDecline`). **A makeup is NOT lock-gated**
+  (`proposalLockGated`) — rainout recovery never is, and every surface offers
+  it on a locked division; hours and occupancy gates still apply. Surfaces:
+  the Schedule page menu's "Propose makeup time", the panel's rained-out row,
+  the rained-out card, and log-rainout's done screen — all Free (a request).
+  Emails and the partner's respond page carry makeup wording ("Rained out" /
+  "Makeup", "declining leaves the game rained out"); the confirmed-game copy is
+  asserted byte-identical. Why the restore step was rejected: it only worked
+  while the game's ORIGINAL date was still ahead, so an on-the-day rainout —
+  the common case — was trapped. Harnesses: `npm run sim:interleague-makeup`
+  (host side, end to end), `scripts/sim/cancelled-reschedule-rpc-sim.sql`
+  (the token functions, twin fixtures old-vs-new for the shared accept/decline
+  paths, 3 mutants).
 - **Resolve refuses `accept_proposal` / `keep_original` / `edit` while a host
   proposal is outstanding** (`resolveRefusal`); `decline` stays allowed (the
   partner is emailed). New `withdraw_proposal` is the way out — without it a
@@ -2674,6 +2718,18 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   cap would need a terminal action (auto-keep? auto-decline?) that commits or
   deletes a game neither side chose, which is worse than a visible count. Adding
   one later is a count check in `decideHostProposal` + the counter RPC.
+- **KNOWN, NOT FIXED (2026-09-28) — makeup follow-ups.** (1) A host cannot
+  WITHDRAW a makeup proposal: `withdraw_proposal` lives on the resolve route,
+  which accepts only `pending_interleague`; a silent partner leaves the makeup
+  outstanding (the same shape as a confirmed game's `reschedule_pending` with
+  a silent partner — pre-existing). (2) The partner's live schedule page shows
+  a rained-out game under "Cancelled" with NO sign of the open makeup proposal
+  — `get_interleague_schedule_by_token` emits `open_host_proposal` for `games`
+  only; the email is the delivery. (3) The token decline's email to the HOST
+  says the game "will stay at its current time" for a rained-out game — the
+  RPC's JSON carries no game status (`was_pending` only); a `was_cancelled`
+  key is a one-line 0095. (4) The picker's SLOT save still has no save-time
+  lock re-read (the manual form's does).
 - **KNOWN, NOT FIXED — deleting a game mid-negotiation is silent.** Regenerate's
   delete clause (`status.neq.scheduled,…`) and `delete_game_if_unblocked` (which
   permits `pending_interleague`) both remove a pending game with an open request;
