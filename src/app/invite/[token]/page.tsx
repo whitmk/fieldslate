@@ -1,37 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import { InviteForm, type PendingGame } from "@/components/interleague/invite-form";
+import { InviteForm } from "@/components/interleague/invite-form";
 import { InviteHeader, InviteFooter } from "@/components/interleague/invite-shell";
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { acceptedInviteBody } from "@/lib/interleague/recipient-schedule";
+import { pageMode } from "@/lib/interleague/signed-in-accept";
+import { renderSignedInInvite, type InvitePayload } from "./signed-in-invite-page";
 
 export const dynamic = "force-dynamic";
-
-type InvitePayload = {
-  invite: {
-    id: string;
-    token: string;
-    status: string;
-    personal_note: string | null;
-    created_at: string;
-    updated_at: string;
-    recipient_email: string;
-    /** 0090: this invite's own live-schedule token; null until accepted. */
-    schedule_token?: string | null;
-  };
-  scheduled_game_count: number;
-  /** 0090: games the recipient countered that the host hasn't resolved. */
-  countered_game_count?: number;
-  sender: { full_name: string | null; email: string | null } | null;
-  org: { id: string; name: string } | null;
-  season: {
-    id: string;
-    name: string;
-    season: string | null;
-    start_date: string | null;
-    end_date: string | null;
-  } | null;
-  games: PendingGame[];
-};
 
 // Wall-clock UTC date (matches lib/utils/game-time.ts): read the literal date
 // substring instead of letting `new Date()` apply a timezone offset.
@@ -46,8 +21,11 @@ function fmtDate(iso: string): string {
 
 export default async function PublicInvitePage({
   params,
+  searchParams,
 }: {
   params: { token: string };
+  /** `?anon=1` — the signed-in escape hatch: render the anonymous page. */
+  searchParams?: { anon?: string | string[] };
 }) {
   const supabase = createClient();
   const { data, error } = await supabase.rpc(
@@ -123,6 +101,26 @@ export default async function PublicInvitePage({
       ? `${payload.season.name} · ${payload.season.season}`
       : payload.season.name
     : "this season";
+
+  // Interleague Case A: a signed-in FieldSlate league accepts onto its own
+  // schedule. The identifier is the LINK, not the email — whoever holds it
+  // and is signed in is the right person. `?anon=1` takes the anonymous
+  // branch below without signing out. Everything under this `if` lives in
+  // signed-in-invite-page.tsx; the anonymous tree that follows is byte-
+  // identical to the pre-Case-A page (npm run sim:invite-page, part G).
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user && pageMode(user.id, searchParams?.anon) === "signed_in") {
+    return renderSignedInInvite({
+      supabase,
+      user,
+      token: params.token,
+      payload,
+      senderName,
+      seasonLabel,
+    });
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
