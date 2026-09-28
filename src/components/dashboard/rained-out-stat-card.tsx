@@ -10,6 +10,9 @@ import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { useScheduleReschedule } from "@/components/schedule/use-schedule-reschedule";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
+import { useGameNoteEditor } from "@/components/schedule/use-game-note-editor";
+import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
+import type { GameNoteFields } from "@/lib/schedule/game-notes";
 import { rescheduleItemVisible } from "@/lib/schedule/schedule-page-reschedule-route";
 
 export type RainedOutGame = {
@@ -28,7 +31,7 @@ export type RainedOutGame = {
   home_team: { name: string; division_id: string | null; division: { name: string } | null } | null;
   away_team: { name: string } | null;
   venue: { name: string } | null;
-};
+} & GameNoteFields;
 
 // Rained-out routes (rainout picker / makeup request) are not lock-gated.
 const NO_LOCKS: ReadonlySet<string> = new Set();
@@ -56,6 +59,10 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
     logSource: "rained-out card",
   });
   void leagueId; // routing carries each game's own league_id now
+  const note = useGameNoteEditor({
+    logSource: "rained-out card",
+    onSaved: (gameId, fresh) => setGames((prev) => prev.map((g) => (g.id === gameId ? { ...g, ...fresh } : g))),
+  });
 
   // Sync when server re-renders after router.refresh()
   useEffect(() => { setGames(initialGames); }, [initialGames]);
@@ -168,11 +175,15 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
                         </div>
 
                         {/* Matchup */}
-                        <p className="mt-1.5 text-sm font-semibold text-[#0C1F3F]">
-                          {game.home_team?.name ?? "TBD"}
-                          <span className="mx-1.5 font-normal text-gray-400">vs</span>
-                          {game.away_team?.name ?? "TBD"}
-                        </p>
+                        <div className="mt-1.5 flex items-start justify-between gap-2">
+                          <p className="text-sm font-semibold text-[#0C1F3F]">
+                            {game.home_team?.name ?? "TBD"}
+                            <span className="mx-1.5 font-normal text-gray-400">vs</span>
+                            {game.away_team?.name ?? "TBD"}
+                          </p>
+                          <GameNoteIcon game={game} onClick={() => note.open(game)} />
+                        </div>
+                        <GameNoteLine game={game} onClick={() => note.open(game)} />
 
                         {reschedule.notice?.gameId === game.id && (
                           <div className="mt-2">
@@ -221,6 +232,7 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
       )}
 
       {reschedule.modals}
+      {note.modal}
     </>
   );
 }

@@ -7,6 +7,9 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { useScheduleReschedule } from "@/components/schedule/use-schedule-reschedule";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
+import { useGameNoteEditor } from "@/components/schedule/use-game-note-editor";
+import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
+import type { GameNoteFields } from "@/lib/schedule/game-notes";
 import {
   rescheduleItemLockTitle,
   rescheduleItemVisible,
@@ -30,7 +33,7 @@ export type UpcomingGame = {
   home_team: { name: string; division_id: string | null; division: { name: string } | null } | null;
   away_team: { name: string } | null;
   venue: { name: string } | null;
-};
+} & GameNoteFields;
 
 interface Props {
   initialGames: UpcomingGame[];
@@ -45,6 +48,7 @@ export function UpcomingGamesList({ initialGames, canReschedule = false, lockedD
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
   const lockedSet = useMemo(() => new Set(lockedDivisionIds), [lockedDivisionIds]);
+  const note = useGameNoteEditor({ logSource: "dashboard upcoming games" });
   // Routed per game: ordinary → move picker (Pro); interleague → request.
   const reschedule = useScheduleReschedule({
     canReschedule,
@@ -105,6 +109,7 @@ export function UpcomingGamesList({ initialGames, canReschedule = false, lockedD
               <p className="truncate text-sm font-medium text-[#0C1F3F]">
                 {game.home_team?.name ?? "TBD"} vs {game.away_team?.name ?? "TBD"}
               </p>
+              <GameNoteLine game={game} onClick={() => note.open(game)} />
               <p className="mt-0.5 text-xs text-gray-400">
                 {fmtGameDate(game.scheduled_at)}, {fmtGameTime(game.scheduled_at)}
               </p>
@@ -120,6 +125,8 @@ export function UpcomingGamesList({ initialGames, canReschedule = false, lockedD
 
             {/* Status badge */}
             <Badge variant="info">Scheduled</Badge>
+
+            <GameNoteIcon game={game} onClick={() => note.open(game)} />
 
             {/* ⋯ actions menu */}
             <div className="relative flex-shrink-0">
@@ -183,6 +190,7 @@ export function UpcomingGamesList({ initialGames, canReschedule = false, lockedD
       </ul>
 
       {reschedule.modals}
+      {note.modal}
     </>
   );
 }

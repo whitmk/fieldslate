@@ -43,6 +43,9 @@ import {
 import { AutoAssignUmpiresButton } from "@/components/umpires/auto-assign-button";
 import { ROW_ICON_REVEAL } from "@/components/ui/row-icon-reveal";
 import { MoveGameIcon, MoveNoticeLine } from "./move-game-row";
+import { useGameNoteEditor } from "@/components/schedule/use-game-note-editor";
+import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
+import type { GameNoteFields } from "@/lib/schedule/game-notes";
 import {
   UmpireSlots,
   type SlotAssignment,
@@ -147,7 +150,7 @@ type GameRow = {
   away_team: { name: string } | null;
   interleague_org: { name: string } | null;
   venue: { name: string } | null;
-};
+} & GameNoteFields;
 
 type ScheduleEvent = { kind: "game"; sortKey: string; data: GameRow };
 
@@ -234,6 +237,20 @@ export function DivisionSchedulePanel({
   const [requestBusy, setRequestBusy] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [moveUpgradeOpen, setMoveUpgradeOpen] = useState(false);
+  // Game notes — the one editor. The panel holds its games in client state,
+  // so the fresh row is patched in place rather than waiting on a refetch.
+  const note = useGameNoteEditor({
+    logSource: "division schedule panel",
+    onSaved: (gameId, fresh) =>
+      setGames((prev) => prev.map((g) => (g.id === gameId ? { ...g, ...fresh } : g))),
+  });
+  // The panel's rows carry only the home team's name; the editor wants the
+  // division id for the activity log, and this panel IS one division.
+  const noteGame = (game: GameRow) => ({
+    ...game,
+    league_id: leagueId,
+    home_team: game.home_team ? { name: game.home_team.name, division_id: divisionId } : null,
+  });
 
   // Umpire state
   const [umpiresPerGame, setUmpiresPerGame] = useState(0);
@@ -326,7 +343,8 @@ export function DivisionSchedulePanel({
          home_team:teams!home_team_id(name),
          away_team:teams!away_team_id(name),
          interleague_org:interleague_orgs!interleague_org_id(name),
-         venue:venues(name)`,
+         venue:venues(name),
+         notes, notes_updated_at, notes_editor:profiles!games_notes_updated_by_fkey(full_name)`,
       )
       .in("home_team_id", teamIds)
       .order("scheduled_at");
@@ -1428,9 +1446,15 @@ export function DivisionSchedulePanel({
                               interleagueOrgName={game.interleague_org?.name ?? null}
                               onClick={() => handleMoveClick(game)}
                             />
+                            <GameNoteIcon game={game} onClick={() => note.open(noteGame(game))} />
                           </div>
                         ) : null}
                       </div>
+                    </div>
+                    {/* The note line sits under the matchup, aligned with the
+                        umpire slots and the refusal line. */}
+                    <div className="ml-[80px] mr-2 -mt-1">
+                      <GameNoteLine game={game} onClick={() => note.open(noteGame(game))} />
                     </div>
                     {rowNotice?.gameId === game.id && !selectMode && (
                       <MoveNoticeLine
@@ -1691,6 +1715,8 @@ export function DivisionSchedulePanel({
           onClose={() => setRequestTarget(null)}
         />
       )}
+
+      {note.modal}
 
       {moveUpgradeOpen && (
         <UpgradeModal

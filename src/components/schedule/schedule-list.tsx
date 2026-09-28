@@ -21,6 +21,9 @@ import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { logActivity } from "@/lib/activity-log";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
 import { useScheduleReschedule } from "./use-schedule-reschedule";
+import { useGameNoteEditor } from "./use-game-note-editor";
+import { GameNoteIcon, GameNoteLine } from "./game-note";
+import type { GameNoteFields } from "@/lib/schedule/game-notes";
 import {
   rescheduleItemLockTitle,
   rescheduleItemVisible,
@@ -63,6 +66,7 @@ export type ScheduleGame = {
    *  schedule. */
   venue: { name: string; location?: { name: string } | null } | null;
   game_umpires?: ScheduleGameUmpire[];
+} & GameNoteFields & {
   /** The two fields below are OPTIONAL and exist for the week-by-field view
    *  mode. List, calendar and the print region never read them, so a caller
    *  that omits them behaves exactly as before.
@@ -172,6 +176,9 @@ export function ScheduleList({
     logSource: "Schedule page",
   });
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
+  // Game notes — the one editor (use-game-note-editor). Opened from the row's
+  // note icon or by clicking the note line itself.
+  const note = useGameNoteEditor({ logSource: "Schedule page" });
   // Delete — the game queued for the confirm dialog. Deletion goes through the
   // delete_game_if_unblocked RPC (0079), which is the guard: it re-checks the
   // block conditions (accepted interleague, recorded result) server-side,
@@ -267,6 +274,7 @@ export function ScheduleList({
               rainoutLoading={rainoutId === g.id}
               seasonRoleNames={seasonRoleNames}
               sport={sport}
+              onEditNote={() => { setOpenMenuId(null); note.open(g); }}
             />
             {/* A refused "Reschedule" says why, directly under THAT row. */}
             {reschedule.notice?.gameId === g.id && (
@@ -295,12 +303,14 @@ export function ScheduleList({
             game={g}
             onRainout={() => handleRainout(g)}
             onAddOfficial={() => setDetailGame(g)}
+            onEditNote={() => note.open(g)}
             rainoutLoading={rainoutId === g.id}
           />
         ))}
       </ul>
 
       {reschedule.modals}
+      {note.modal}
 
       {detailGame && (
         <GameDetailModal game={detailGame} onClose={() => setDetailGame(null)} />
@@ -336,10 +346,11 @@ interface GameCardProps {
   game: ScheduleGame;
   onRainout: () => void;
   onAddOfficial: () => void;
+  onEditNote: () => void;
   rainoutLoading: boolean;
 }
 
-function GameCard({ game, onRainout, onAddOfficial, rainoutLoading }: GameCardProps) {
+function GameCard({ game, onRainout, onAddOfficial, onEditNote, rainoutLoading }: GameCardProps) {
   return (
     <li className="rounded-xl border border-gray-200 bg-white p-4">
       <div className="flex items-start justify-between gap-2">
@@ -348,16 +359,20 @@ function GameCard({ game, onRainout, onAddOfficial, rainoutLoading }: GameCardPr
             {fmtGameDate(game.scheduled_at)} · {fmtGameTime(game.scheduled_at)}
           </p>
           <p className="mt-1 font-semibold text-gray-900">{matchupLabel(game)}</p>
+          <GameNoteLine game={game} onClick={onEditNote} className="mt-0.5" />
           <p className="mt-1 text-sm text-gray-600">
             {venueLabel(game)} · {game.home_team?.division?.name ?? "—"}
           </p>
         </div>
-        <Badge
-          variant={gameStatusVariants[game.status] ?? "default"}
-          className="flex-shrink-0"
-        >
-          {gameStatusLabel(game.status)}
-        </Badge>
+        <div className="flex flex-shrink-0 items-center gap-1">
+          <GameNoteIcon game={game} onClick={onEditNote} size="md" />
+          <Badge
+            variant={gameStatusVariants[game.status] ?? "default"}
+            className="flex-shrink-0"
+          >
+            {gameStatusLabel(game.status)}
+          </Badge>
+        </div>
       </div>
       <div className="mt-4 flex gap-2">
         <Button
@@ -395,6 +410,7 @@ interface GameRowProps {
    *  the item renders disabled with this as its tooltip. */
   rescheduleLockTitle: string | null;
   onViewDetails: () => void;
+  onEditNote: () => void;
   onDelete: () => void;
   rainoutLoading: boolean;
   seasonRoleNames: string[];
@@ -412,6 +428,7 @@ function GameRowCells({
   rescheduleLockTitle,
   onViewDetails,
   onDelete,
+  onEditNote,
   rainoutLoading,
   seasonRoleNames,
   sport,
@@ -447,7 +464,10 @@ function GameRowCells({
       <td className="py-3 text-gray-600">
         {fmtGameDate(game.scheduled_at)}, {fmtGameTime(game.scheduled_at)}
       </td>
-      <td className="py-3 font-medium text-gray-900">{matchupLabel(game)}</td>
+      <td className="py-3 font-medium text-gray-900">
+        {matchupLabel(game)}
+        <GameNoteLine game={game} onClick={onEditNote} className="mt-0.5 font-normal" />
+      </td>
       <td className="py-3 text-gray-600">{game.home_team?.division?.name ?? "—"}</td>
       <td className="py-3 text-gray-600">{venueLabel(game)}</td>
       <td className="py-3">
@@ -484,6 +504,8 @@ function GameRowCells({
         </Badge>
       </td>
       <td className="relative py-3 text-right">
+        <span className="inline-flex items-center gap-0.5">
+        <GameNoteIcon game={game} onClick={onEditNote} />
         <button
           onClick={onMenuToggle}
           disabled={rainoutLoading}
@@ -496,6 +518,7 @@ function GameRowCells({
             <MoreHorizontal className="h-4 w-4" />
           )}
         </button>
+        </span>
         {isMenuOpen && (
           <div className="absolute right-0 top-9 z-30 w-48 overflow-hidden rounded-xl border border-gray-100 bg-white text-left shadow-lg">
             <button

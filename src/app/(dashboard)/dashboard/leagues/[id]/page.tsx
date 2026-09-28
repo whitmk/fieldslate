@@ -56,6 +56,9 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     venue: { name: string } | null;
     home_team: { name: string; division_id: string | null; division: { name: string } | null } | null;
     away_team: { name: string } | null;
+    notes: string | null;
+    notes_updated_at: string | null;
+    notes_editor: { full_name: string | null } | null;
   };
   type DivVenueRow = { division_id: string; venue_id: string };
   type BlackoutRow = { date: string; label: string | null };
@@ -89,7 +92,8 @@ export default async function LeaguePage({ params }: { params: { id: string } })
                interleague_org:interleague_orgs!interleague_org_id(name),
                venue:venues(name),
                home_team:teams!home_team_id(name, division_id, division:divisions(name)),
-               away_team:teams!away_team_id(name)`)
+               away_team:teams!away_team_id(name),
+               notes, notes_updated_at, notes_editor:profiles!games_notes_updated_by_fkey(full_name)`)
       .eq("league_id", league.id),
     divisionIds.length
       ? supabase
@@ -314,6 +318,9 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       is_away: g.is_away,
       external_team_name: g.external_team_name,
       proposed_venue_name: g.proposed_venue_name,
+      notes: g.notes,
+      notes_updated_at: g.notes_updated_at,
+      notes_editor: g.notes_editor,
       home_team: g.home_team,
       away_team: g.away_team,
       venue: g.venue,

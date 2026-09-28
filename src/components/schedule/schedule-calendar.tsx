@@ -17,6 +17,8 @@ import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { logActivity } from "@/lib/activity-log";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
 import { useScheduleReschedule } from "./use-schedule-reschedule";
+import { useGameNoteEditor } from "./use-game-note-editor";
+import { GameNoteDot, GameNoteIcon, GameNoteLine } from "./game-note";
 import {
   rescheduleItemLockTitle,
   rescheduleItemVisible,
@@ -119,6 +121,7 @@ export function ScheduleCalendar({
     logSource: "Schedule calendar",
   });
   const [dayDetail, setDayDetail] = useState<string | null>(null);
+  const note = useGameNoteEditor({ logSource: "Schedule calendar" });
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
@@ -326,9 +329,19 @@ export function ScheduleCalendar({
                     </span>
                   )}
                 </p>
-                <p className="mt-1 text-sm font-semibold text-[#0C1F3F]">
-                  {pillMatchupLabel(pill.data)}
-                </p>
+                <div className="mt-1 flex items-start justify-between gap-2">
+                  <p className="min-w-0 text-sm font-semibold text-[#0C1F3F]">
+                    {pillMatchupLabel(pill.data)}
+                  </p>
+                  <GameNoteIcon
+                    game={pill.data}
+                    onClick={() => { note.open(pill.data); setSelected(null); }}
+                  />
+                </div>
+                <GameNoteLine
+                  game={pill.data}
+                  onClick={() => { note.open(pill.data); setSelected(null); }}
+                />
                 <div className="mt-2 flex flex-col gap-1 text-xs text-gray-500">
                   <span className="inline-flex items-center gap-1.5">
                     <Clock className="h-3 w-3" />
@@ -445,6 +458,7 @@ export function ScheduleCalendar({
         })()}
 
       {reschedule.modals}
+      {note.modal}
 
       {detailGame && (
         <GameDetailModal game={detailGame} onClose={() => setDetailGame(null)} />
@@ -491,6 +505,7 @@ function PillButton({ pill, muted, loading, size = "sm", onClick }: PillButtonPr
         <span className="tabular-nums">{timeStr}</span>
       )}
       <span className="truncate">{label}</span>
+      <GameNoteDot game={pill.data} />
     </button>
   );
 }

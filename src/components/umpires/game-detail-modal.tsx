@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Calendar, MapPin, UserCheck, Loader2, History, AlertTriangle } from "lucide-react";
+import { X, Calendar, MapPin, UserCheck, Loader2, History, AlertTriangle, StickyNote } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
@@ -19,6 +19,7 @@ import {
   CONFLICT_TYPE_LABELS,
   type ConflictType,
 } from "@/lib/schedule/conflict-overrides";
+import { hasNote, noteAttribution, type GameNoteFields } from "@/lib/schedule/game-notes";
 
 export type GameDetailGame = {
   id: string;
@@ -38,7 +39,7 @@ export type GameDetailGame = {
   away_team: { name: string } | null;
   interleague_org?: { name: string } | null;
   venue: { name: string } | null;
-};
+} & GameNoteFields;
 
 function matchupLabel(g: GameDetailGame): string {
   const home = g.home_team?.name ?? "TBD";
@@ -320,6 +321,17 @@ export function GameDetailModal({ game, onClose }: Props) {
                 </div>
               );
             })()}
+            {hasNote(game) && (
+              <div className="flex items-start gap-2">
+                <StickyNote className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-violet-500" />
+                <div className="min-w-0">
+                  <p className="whitespace-pre-wrap text-sm text-gray-700" data-note-line>{game.notes}</p>
+                  {noteAttribution(game) && (
+                    <p className="mt-0.5 text-[11px] text-gray-400">{noteAttribution(game)}</p>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Badge variant={gameStatusVariants[game.status] ?? "default"}>
                 {gameStatusLabel(game.status)}

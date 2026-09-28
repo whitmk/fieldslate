@@ -129,7 +129,8 @@ export default async function DashboardPage({
         interleague_org:interleague_orgs!interleague_org_id(name),
         home_team:teams!home_team_id(name, division_id, division:divisions(name)),
         away_team:teams!away_team_id(name),
-        venue:venues(name)
+        venue:venues(name),
+        notes, notes_updated_at, notes_editor:profiles!games_notes_updated_by_fkey(full_name)
       `)
       .eq("status", "scheduled")
       .gte("scheduled_at", new Date().toISOString())

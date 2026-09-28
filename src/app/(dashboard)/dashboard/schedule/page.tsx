@@ -336,7 +336,8 @@ export default async function SchedulePage({
         away_team:teams!away_team_id(name),
         interleague_org:interleague_orgs(name),
         venue:venues(name, location:locations(name)),
-        game_umpires:game_umpires(id, role, umpire:umpires(id, name))
+        game_umpires:game_umpires(id, role, umpire:umpires(id, name)),
+        notes, notes_updated_at, notes_editor:profiles!games_notes_updated_by_fkey(full_name)
       `,
               exactCount ? { count: "exact" } : undefined,
             )

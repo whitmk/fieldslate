@@ -28,6 +28,11 @@
 --   N7   a 501-character note is refused; 500 is accepted
 --   N8   INSERT still clears posted                         (branch untouched)
 --   N9   a non-note edit leaves the attribution columns alone
+--   K1   THE PARTNER'S SCHEDULE PAGE NEVER CARRIES A NOTE: an accepted
+--        interleague game with the note 'ZZ_SECRET_NOTE' is read through
+--        get_interleague_schedule_by_token and the JSON must not contain it
+--        (behavioural — catches a leak by any means, not just the obvious one)
+--   K2   no token RPC's prosrc mentions `notes` at all (the cheap scan)
 -- Mutants (target tag in brackets)
 --   NM1  lock allowlist loses 'notes'                          [N1a]
 --   NM2  posted trigger's ignore set loses 'notes' (a note clears) [N3]
@@ -35,6 +40,8 @@
 --        home_score + away_team_id only                        [T5c]
 --   NM4  attribution trigger writes null for the editor         [N1b]
 --   NM5  posted UPDATE branch never clears                      [N4]
+--   NM6  get_interleague_schedule_by_token emits the note
+--        (`'notes', g.notes` added beside every `'is_away'`)     [K1]
 -- Anti-vacuity: c_note_only, c_mixed, c_locked_note_allowed, c_real_cleared —
 -- all must be > 0 on the baseline pass.
 
@@ -51,29 +58,33 @@ declare
     'public.clear_division_posted()',
     'public.enforce_division_lock()',
     'public.set_games_notes_attribution()',
-    'public.clear_division_posted()'
+    'public.clear_division_posted()',
+    'public.get_interleague_schedule_by_token(text)'
   ];
   m_old  text[] := array[
     E'    ''notes'',\n',
     E'(to_jsonb(n) - ''notes'' - ''notes_updated_at''',
     E'  if (to_jsonb(old) - v_allow) is distinct from (to_jsonb(new) - v_allow) then',
     E'      new.notes_updated_by := auth.uid();',
-    E'     where d.posted\n       and d.id in (\n         select t.division_id\n           from newrows n'
+    E'     where d.posted\n       and d.id in (\n         select t.division_id\n           from newrows n',
+    E'''is_away'','
   ];
   m_new  text[] := array[
     E'',
     E'(to_jsonb(n) - ''notes_updated_at''',
     E'  if new.home_score is distinct from old.home_score or new.away_team_id is distinct from old.away_team_id then',
     E'      new.notes_updated_by := null;',
-    E'     where false\n       and d.id in (\n         select t.division_id\n           from newrows n'
+    E'     where false\n       and d.id in (\n         select t.division_id\n           from newrows n',
+    E'''notes'', g.notes, ''is_away'','
   ];
-  m_tag  text[] := array['N1a', 'N3', 'T5c', 'N1b', 'N4'];
+  m_tag  text[] := array['N1a', 'N3', 'T5c', 'N1b', 'N4', 'K1'];
   m_name text[] := array[
     'NM1 lock allowlist loses notes (note edit refused on a locked division)',
     'NM2 posted ignore set loses notes (a note-only edit clears posted)',
     'NM3 M4 re-keyed: subtraction check -> enumerated blocklist (home_team_id slips through)',
     'NM4 attribution writes null for the editor',
-    'NM5 posted UPDATE branch never clears (a mixed edit keeps posted)'
+    'NM5 posted UPDATE branch never clears (a mixed edit keeps posted)',
+    'NM6 get_interleague_schedule_by_token emits the note (a partner page could show it)'
   ];
   c_note_only int := 0; c_mixed int := 0; c_locked_note_allowed int := 0; c_real_cleared int := 0;
 begin
@@ -93,8 +104,8 @@ begin
       declare
         v_user uuid; v_lg uuid; v_locked uuid; v_open uuid;
         v_tL uuid; v_tL2 uuid; v_tO uuid; v_tO2 uuid;
-        v_gL uuid; v_gO uuid; v_gMix uuid; v_gReal uuid;
-        v_ok boolean; g record;
+        v_gL uuid; v_gO uuid; v_gMix uuid; v_gReal uuid; v_gIL uuid; v_org uuid;
+        v_ok boolean; g record; j jsonb;
       begin
         select owner_id into v_user from public.leagues where owner_id is not null limit 1;
         perform set_config('request.jwt.claims', json_build_object('sub', v_user, 'role', 'authenticated')::text, true);
@@ -111,8 +122,23 @@ begin
         insert into public.games (league_id,home_team_id,away_team_id,scheduled_at) values (v_lg,v_tO,v_tO2,now()) returning id into v_gO;
         insert into public.games (league_id,home_team_id,away_team_id,scheduled_at) values (v_lg,v_tO,v_tO2,now()+interval '1 day') returning id into v_gMix;
         insert into public.games (league_id,home_team_id,away_team_id,scheduled_at) values (v_lg,v_tO,v_tO2,now()+interval '2 day') returning id into v_gReal;
+        -- An ACCEPTED interleague game carrying a note, readable by the partner's
+        -- schedule token — the surface a note must never reach.
+        insert into public.interleague_orgs (owner_id,name,admin_email) values (v_user,'ZZ_N_ORG','zzn@example.invalid') returning id into v_org;
+        insert into public.interleague_invites (token,sender_user_id,interleague_org_id,season_id,recipient_email,status,schedule_token)
+          values ('ZZ_N_INV', v_user, v_org, v_lg, 'zzn@example.invalid', 'accepted', 'ZZ_N_SCHED');
+        insert into public.games (league_id,home_team_id,away_team_id,scheduled_at,interleague_org_id,status,external_team_name,notes)
+          values (v_lg,v_tO,null,now()+interval '4 day',v_org,'scheduled','Rockies','ZZ_SECRET_NOTE lights out') returning id into v_gIL;
         update public.divisions set locked=true, posted=true, posted_at=now() where id=v_locked;
         update public.divisions set posted=true, posted_at=now() where id=v_open;
+
+        ---------------------------------------------------------- K1 / K2: the partner never sees a note
+        j := public.get_interleague_schedule_by_token('ZZ_N_SCHED');
+        if j::text ~ 'ZZ_SECRET_NOTE' then f := f || 'K1'::text; end if;
+        if (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+             where n.nspname='public' and p.proname like 'get_%_by_token' and p.prosrc ~* '\mnotes\M') > 0 then
+          f := f || 'K2'::text;
+        end if;
 
         ---------------------------------------------------------- T5a / T5c on the LOCKED game
         v_ok:=false;
@@ -221,6 +247,12 @@ $harness$;
 --   KILLED  NM4 attribution writes null              — by N1b (only N1b)
 --   KILLED  NM5 posted UPDATE branch never clears    — by N4 (+N5)
 --   counters note_only=2 mixed=1 locked_note_allowed=1 real_cleared=1
+-- After apply, with the K1/K2 partner-leak fixture and NM6 added (live
+-- functions, every pass rolled back): BASELINE PASS; NM1–NM5 as above;
+--   KILLED  NM6 schedule RPC emits the note                — by K1 (+K2)
+-- Leak check afterwards: all four md5s unchanged (lock 39c43a87…, posted
+-- e1a09324…, attribution 6190ad28…, schedule RPC 61f67505…), zero ZZ_%
+-- rows across leagues / interleague_orgs / interleague_invites, games 663.
 -- The same batch with scripts/sim/schedule-lock-sim.sql's DO block (T5c
 -- re-keyed to home_team_id) in place of this one: HARNESS PASS, counters
 -- ins=1 del=1 pend=1 updOK=3 updNO=3 orphan=1 open=1 posted=1 rpcLock=1

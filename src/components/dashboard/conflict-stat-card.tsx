@@ -7,6 +7,9 @@ import {
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { useScheduleReschedule } from "@/components/schedule/use-schedule-reschedule";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
+import { useGameNoteEditor } from "@/components/schedule/use-game-note-editor";
+import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
+import type { GameNoteFields } from "@/lib/schedule/game-notes";
 import {
   rescheduleItemLockTitle,
   rescheduleItemVisible,
@@ -36,6 +39,7 @@ export type ConflictGame = {
   home_team: { name: string; division_id: string | null; division: { name: string } | null } | null;
   away_team: { name: string } | null;
   venue: { name: string } | null;
+} & GameNoteFields & {
   conflictType: "schedule" | "blackout";
   blackoutLabel: string | null;
   conflictsWith: ConflictPeer[];
@@ -74,6 +78,10 @@ export function ConflictStatCard({
         : `${game.home_team?.name ?? "Home"} vs ${game.away_team?.name ?? "Away"} rescheduled to ${fmtGameDate(newScheduledAt)}`,
   });
   void leagueId; // routing carries each game's own league_id now
+  const note = useGameNoteEditor({
+    logSource: "conflict card",
+    onSaved: (gameId, fresh) => setGames((prev) => prev.map((g) => (g.id === gameId ? { ...g, ...fresh } : g))),
+  });
 
   // Sync when server re-renders after router.refresh()
   useEffect(() => { setGames(initialConflictGames); }, [initialConflictGames]);
@@ -163,11 +171,15 @@ export function ConflictStatCard({
                         </div>
 
                         {/* Matchup */}
-                        <p className="mt-1.5 text-sm font-semibold text-[#0C1F3F]">
+                        <div className="mt-1.5 flex items-start justify-between gap-2">
+                        <p className="text-sm font-semibold text-[#0C1F3F]">
                           {game.home_team?.name ?? "TBD"}
                           <span className="mx-1.5 font-normal text-gray-400">vs</span>
                           {game.away_team?.name ?? "TBD"}
                         </p>
+                          <GameNoteIcon game={game} onClick={() => note.open(game)} />
+                        </div>
+                        <GameNoteLine game={game} onClick={() => note.open(game)} />
 
                         {/* Reason badge */}
                         <div className="mt-1.5">
@@ -249,6 +261,7 @@ export function ConflictStatCard({
       )}
 
       {reschedule.modals}
+      {note.modal}
     </>
   );
 }

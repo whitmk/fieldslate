@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DAY_KEYS, DAY_LABELS } from "@/lib/venues/availability";
+import { GameNoteDot } from "./game-note";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
 import type { ScheduleGame } from "./schedule-list";
 import {
@@ -322,6 +323,7 @@ function GameBlock({
         }`}
       >
         {fmtTimeRange(game.scheduled_at, game.durationMin)}
+        <GameNoteDot game={game} />
       </div>
       <div
         className={`text-xs ${
