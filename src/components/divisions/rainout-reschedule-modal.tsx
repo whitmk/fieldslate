@@ -36,6 +36,7 @@ import { SlotExceptionChips, SlotOverrideToggles } from "@/components/schedule/s
 import { RescheduleModalHeader } from "./reschedule-modal-header";
 import { ManualMoveForm } from "./manual-move-form";
 import { manualEntryAvailable } from "@/lib/schedule/manual-move";
+import { withLogSource } from "@/lib/schedule/log-source";
 import {
   availabilityForVariant,
   noFieldCopy,
@@ -56,6 +57,11 @@ interface Props {
   onRescheduled: () => void;
   /** Override the activity-log message. Receives the chosen slot; return the full message string. */
   buildLogMessage?: (p: { newScheduledAt: string; newVenueName: string }) => string;
+  /** Which surface opened the picker, appended to the activity-log message
+   *  ("… — via Schedule page"). The two 2026-07 incidents could not be traced
+   *  to a surface because nothing recorded one. Absent = unknown, which is
+   *  what the log says today; every render site names itself. */
+  logSource?: string;
   /** Which door opened the picker — see reschedule-variant.ts. "move" swaps
    *  the header icon and offers no makeup days. Omitted = "rainout", which is
    *  what every pre-existing caller gets, unchanged. */
@@ -238,7 +244,7 @@ function DiagnosticRow({
 
 export function RainoutRescheduleModal({
   gameId, homeTeamId, awayTeamId, homeTeamName, awayTeamName,
-  divisionId, leagueId, onClose, onRescheduled, buildLogMessage,
+  divisionId, leagueId, onClose, onRescheduled, buildLogMessage, logSource,
   variant = "rainout",
   currentScheduledAt,
   currentVenueId,
@@ -558,9 +564,12 @@ export function RainoutRescheduleModal({
       setConfirming(false);
       return;
     }
-    const logMsg = buildLogMessage
-      ? buildLogMessage({ newScheduledAt: picked.isoString, newVenueName: picked.venueName })
-      : `${homeTeamName} vs ${awayTeamName} rescheduled to ${fmtGameDate(picked.isoString)} at ${fmtGameTime(picked.isoString)} — ${picked.venueName}`;
+    const logMsg = withLogSource(
+      buildLogMessage
+        ? buildLogMessage({ newScheduledAt: picked.isoString, newVenueName: picked.venueName })
+        : `${homeTeamName} vs ${awayTeamName} rescheduled to ${fmtGameDate(picked.isoString)} at ${fmtGameTime(picked.isoString)} — ${picked.venueName}`,
+      logSource,
+    );
     console.log("[logActivity] before call: game_rescheduled (rainout-reschedule-modal)", { leagueId, divisionId });
     const _r = await logActivity(leagueId, divisionId, "game_rescheduled", logMsg);
     console.log("[logActivity] result (rainout-reschedule-modal):", _r);
@@ -639,6 +648,7 @@ export function RainoutRescheduleModal({
               awayTeamName={awayTeamName}
               initialScheduledAt={currentScheduledAt}
               initialVenueId={currentVenueId}
+              logSource={logSource}
               onBack={() => setManual(false)}
               onSaved={(saved) => {
                 setManualSaved(saved);

@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useMemo } from "react";
 import {
   AlertCircle, X, CalendarClock, CalendarDays, MapPin, Layers, CalendarX,
 } from "lucide-react";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
-import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
+import { useScheduleReschedule } from "@/components/schedule/use-schedule-reschedule";
+import { MoveNoticeLine } from "@/components/divisions/move-game-row";
+import {
+  rescheduleItemLockTitle,
+  rescheduleItemVisible,
+} from "@/lib/schedule/schedule-page-reschedule-route";
 
 export type ConflictPeer = {
   id: string;
@@ -18,10 +22,18 @@ export type ConflictPeer = {
 
 export type ConflictGame = {
   id: string;
+  status: string;
   scheduled_at: string;
+  league_id: string;
   home_team_id: string;
-  away_team_id: string;
-  home_team: { name: string; division_id: string | null } | null;
+  away_team_id: string | null;
+  venue_id: string | null;
+  interleague_org_id: string | null;
+  interleague_org: { name: string } | null;
+  is_away: boolean | null;
+  external_team_name: string | null;
+  proposed_venue_name: string | null;
+  home_team: { name: string; division_id: string | null; division: { name: string } | null } | null;
   away_team: { name: string } | null;
   venue: { name: string } | null;
   conflictType: "schedule" | "blackout";
@@ -33,24 +45,40 @@ interface Props {
   initialConflictGames: ConflictGame[];
   leagueId: string;
   divisionNames: Record<string, string>;
+  /** Pro+ — the plain move on an ordinary game. This card had NO plan gate
+   *  before 2026-09-28; it is the surface that fit both live incidents. */
+  canReschedule?: boolean;
+  /** Divisions locked as of this page load. */
+  lockedDivisionIds?: string[];
 }
 
-export function ConflictStatCard({ initialConflictGames, leagueId, divisionNames }: Props) {
-  const router = useRouter();
+export function ConflictStatCard({
+  initialConflictGames,
+  leagueId,
+  divisionNames,
+  canReschedule = false,
+  lockedDivisionIds = [],
+}: Props) {
   const [open, setOpen] = useState(false);
   const [games, setGames] = useState<ConflictGame[]>(initialConflictGames);
-  const [rescheduleGame, setRescheduleGame] = useState<ConflictGame | null>(null);
+  const lockedSet = useMemo(() => new Set(lockedDivisionIds), [lockedDivisionIds]);
+  // Routed per game (move picker / makeup request / upsell / refusal) —
+  // this card used to open the picker on ANY non-rained-out status.
+  const reschedule = useScheduleReschedule({
+    canReschedule,
+    lockedDivisionIds: lockedSet,
+    logSource: "conflict card",
+    buildLogMessage: (game, { newScheduledAt }) =>
+      (game as ConflictGame).conflictType === "blackout"
+        ? `${game.home_team?.name ?? "Home"} vs ${game.away_team?.name ?? "Away"} rescheduled from ${fmtGameDate(game.scheduled_at)} to ${fmtGameDate(newScheduledAt)} — was on blackout date`
+        : `${game.home_team?.name ?? "Home"} vs ${game.away_team?.name ?? "Away"} rescheduled to ${fmtGameDate(newScheduledAt)}`,
+  });
+  void leagueId; // routing carries each game's own league_id now
 
   // Sync when server re-renders after router.refresh()
   useEffect(() => { setGames(initialConflictGames); }, [initialConflictGames]);
 
   const active = games.length > 0;
-
-  function handleRescheduled(gameId: string) {
-    setGames((prev) => prev.filter((g) => g.id !== gameId));
-    setRescheduleGame(null);
-    router.refresh();
-  }
 
   return (
     <>
@@ -178,16 +206,38 @@ export function ConflictStatCard({ initialConflictGames, leagueId, divisionNames
                           </div>
                         )}
 
+                        {reschedule.notice?.gameId === game.id && (
+                          <div className="mt-2">
+                            <MoveNoticeLine
+                              message={reschedule.notice.message}
+                              link={reschedule.notice.link}
+                              onDismiss={reschedule.clearNotice}
+                              inset="mx-0"
+                            />
+                          </div>
+                        )}
+
                         {/* Action */}
+                        {rescheduleItemVisible(game.status, canReschedule, !!game.interleague_org_id) && (() => {
+                          const lockTitle = rescheduleItemLockTitle(
+                            game,
+                            !!game.home_team?.division_id && lockedSet.has(game.home_team.division_id),
+                            game.home_team?.division?.name ?? "This division",
+                          );
+                          return (
                         <div className="mt-3">
                           <button
-                            onClick={() => setRescheduleGame(game)}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0C1F3F] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80"
+                            onClick={() => reschedule.open(game)}
+                            disabled={!!lockTitle}
+                            title={lockTitle ?? undefined}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0C1F3F] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <CalendarClock className="h-3 w-3" />
-                            Reschedule
+                            {game.interleague_org_id ? "Request new time" : "Reschedule"}
                           </button>
                         </div>
+                          );
+                        })()}
                       </li>
                     );
                   })}
@@ -198,26 +248,7 @@ export function ConflictStatCard({ initialConflictGames, leagueId, divisionNames
         </div>
       )}
 
-      {/* ── Reschedule slot picker ── */}
-      {rescheduleGame && (
-        <RainoutRescheduleModal
-          gameId={rescheduleGame.id}
-          homeTeamId={rescheduleGame.home_team_id}
-          awayTeamId={rescheduleGame.away_team_id}
-          homeTeamName={rescheduleGame.home_team?.name ?? "Home"}
-          awayTeamName={rescheduleGame.away_team?.name ?? "Away"}
-          divisionId={rescheduleGame.home_team?.division_id ?? ""}
-          leagueId={leagueId}
-          onClose={() => setRescheduleGame(null)}
-          onRescheduled={() => handleRescheduled(rescheduleGame.id)}
-          buildLogMessage={
-            rescheduleGame.conflictType === "blackout"
-              ? ({ newScheduledAt }) =>
-                  `${rescheduleGame.home_team?.name ?? "Home"} vs ${rescheduleGame.away_team?.name ?? "Away"} rescheduled from ${fmtGameDate(rescheduleGame.scheduled_at)} to ${fmtGameDate(newScheduledAt)} — was on blackout date`
-              : undefined
-          }
-        />
-      )}
+      {reschedule.modals}
     </>
   );
 }

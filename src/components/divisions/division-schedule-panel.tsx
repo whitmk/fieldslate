@@ -1657,6 +1657,7 @@ export function DivisionSchedulePanel({
           awayTeamId={moveTarget.awayTeamId}
           currentScheduledAt={moveTarget.game.scheduled_at}
           currentVenueId={moveTarget.game.venue_id}
+          logSource="division schedule panel"
           homeTeamName={moveTarget.game.home_team?.name ?? "Home"}
           awayTeamName={moveTarget.game.away_team?.name ?? "Away"}
           divisionId={divisionId}
@@ -1705,6 +1706,7 @@ export function DivisionSchedulePanel({
           gameId={rescheduleGame.id}
           homeTeamId={rescheduleGame.home_team_id}
           awayTeamId={rescheduleGame.away_team_id!}
+          logSource="division schedule panel"
           homeTeamName={rescheduleGame.home_team?.name ?? "Home"}
           awayTeamName={rescheduleGame.away_team?.name ?? "Away"}
           divisionId={divisionId}

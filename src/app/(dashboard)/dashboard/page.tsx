@@ -124,8 +124,10 @@ export default async function DashboardPage({
     let q = supabase
       .from("games")
       .select(`
-        id, scheduled_at, status, league_id, home_team_id, away_team_id,
-        home_team:teams!home_team_id(name, division_id),
+        id, scheduled_at, status, league_id, home_team_id, away_team_id, venue_id,
+        interleague_org_id, is_away, external_team_name, proposed_venue_name,
+        interleague_org:interleague_orgs!interleague_org_id(name),
+        home_team:teams!home_team_id(name, division_id, division:divisions(name)),
         away_team:teams!away_team_id(name),
         venue:venues(name)
       `)
@@ -178,6 +180,14 @@ export default async function DashboardPage({
     pendingPlan === "pro" || pendingPlan === "elite" ? pendingPlan : plan;
 
   const upcomingGames = (rawGames ?? []) as unknown as UpcomingGame[];
+  // Divisions locked in the leagues the upcoming list spans, so its
+  // "Reschedule" can show the lock before the click (the move picker's manual
+  // save re-reads it anyway). One small read; empty when the rollup is empty.
+  const lockedLeagueIds = isAll ? nonArchivedLeagueIds : [selected];
+  const { data: lockedDivRows } = rollupIsEmpty || lockedLeagueIds.length === 0
+    ? { data: [] as { id: string }[] }
+    : await supabase.from("divisions").select("id").eq("locked", true).in("league_id", lockedLeagueIds);
+  const lockedDivisionIds = ((lockedDivRows ?? []) as { id: string }[]).map((d) => d.id);
   const isEmpty = ownedLeagues.length === 0;
 
   // Empty-state /setup link (Chunk 4): only for owners acting in their OWN
@@ -317,7 +327,11 @@ export default async function DashboardPage({
               <h2 className="font-semibold text-[#0C1F3F]">Upcoming Games</h2>
             </div>
             <div className="px-6 py-4">
-              <UpcomingGamesList initialGames={upcomingGames} canReschedule={isProPlus(plan)} />
+              <UpcomingGamesList
+                initialGames={upcomingGames}
+                canReschedule={isProPlus(plan)}
+                lockedDivisionIds={lockedDivisionIds}
+              />
             </div>
           </div>
         </>

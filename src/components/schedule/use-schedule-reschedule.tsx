@@ -1,7 +1,10 @@
 "use client";
 
-// The Schedule page's "Reschedule" wiring, shared by the list row menu and the
-// calendar popover so the two cannot drift. Routing is
+// The "Reschedule" wiring shared by EVERY surface that opens the reschedule
+// picker or the interleague request modal: the Schedule page's list row menu
+// and calendar popover, the league page's rained-out and conflict cards, the
+// dashboard's upcoming list, and the Log-rainout modal's handoff. One hook, so
+// the eight surfaces cannot drift — and so no surface renders the picker itself. Routing is
 // `routeScheduleReschedule` (the panel's routeMoveTarget + the rained-out
 // case); the picker variant comes from `pickerFor`, PER GAME — a scheduled game
 // opens the MOVE picker (manual entry, no makeup days), a rained-out game opens
@@ -21,7 +24,26 @@ import {
   routeScheduleReschedule,
 } from "@/lib/schedule/schedule-page-reschedule-route";
 import type { RescheduleVariant } from "@/lib/schedule/reschedule-variant";
-import type { ScheduleGame } from "./schedule-list";
+
+/** The minimum a surface must know about a game to route it. ScheduleGame
+ *  satisfies it; the dashboard/league-page card types were widened to it. */
+export type ReschedulableGame = {
+  id: string;
+  status: string;
+  scheduled_at: string;
+  league_id: string;
+  home_team_id: string;
+  away_team_id: string | null;
+  interleague_org_id?: string | null;
+  interleague_org?: { name: string } | null;
+  is_away?: boolean | null;
+  external_team_name?: string | null;
+  proposed_venue_name?: string | null;
+  venue_id?: string | null;
+  venue?: { name: string } | null;
+  home_team: { name: string; division_id: string | null; division?: { name: string } | null } | null;
+  away_team: { name: string } | null;
+};
 
 export type RescheduleNotice = {
   gameId: string;
@@ -32,14 +54,23 @@ export type RescheduleNotice = {
 export function useScheduleReschedule({
   canReschedule,
   lockedDivisionIds,
+  logSource,
+  buildLogMessage,
+  onDone,
 }: {
   canReschedule: boolean;
   /** Divisions locked as of this page load (the page's divisions read). */
   lockedDivisionIds: ReadonlySet<string>;
+  /** Names this surface in the activity log — see RainoutRescheduleModal. */
+  logSource: string;
+  /** Optional custom activity-log message for a picker save. */
+  buildLogMessage?: (game: ReschedulableGame, p: { newScheduledAt: string; newVenueName: string }) => string;
+  /** After a picker save or a sent request (a surface that wants to close). */
+  onDone?: () => void;
 }): {
   /** Route a game. Returns true when it produced a notice rather than opening
    *  something, so a popover can stay open to show it. */
-  open: (game: ScheduleGame) => boolean;
+  open: (game: ReschedulableGame) => boolean;
   notice: RescheduleNotice | null;
   clearNotice: () => void;
   modals: ReactNode;
@@ -48,15 +79,15 @@ export function useScheduleReschedule({
   // awayTeamId is carried separately, typed `string` by the router — the
   // render site needs no `!` on the nullable column.
   const [target, setTarget] = useState<
-    { game: ScheduleGame; variant: RescheduleVariant; awayTeamId: string } | null
+    { game: ReschedulableGame; variant: RescheduleVariant; awayTeamId: string } | null
   >(null);
   const [notice, setNotice] = useState<RescheduleNotice | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const [request, setRequest] = useState<{ game: ScheduleGame; intro: string } | null>(null);
+  const [request, setRequest] = useState<{ game: ReschedulableGame; intro: string } | null>(null);
   const [requestBusy, setRequestBusy] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
 
-  function open(game: ScheduleGame): boolean {
+  function open(game: ReschedulableGame): boolean {
     const divisionId = game.home_team?.division_id ?? null;
     // ScheduleGame declares interleague_org_id optional; absent means none.
     const candidate = { ...game, interleague_org_id: game.interleague_org_id ?? null };
@@ -106,6 +137,7 @@ export function useScheduleReschedule({
     }
     setRequest(null);
     router.refresh();
+    onDone?.();
   }
 
   const modals = (
@@ -122,10 +154,13 @@ export function useScheduleReschedule({
           leagueId={target.game.league_id}
           currentScheduledAt={target.game.scheduled_at}
           currentVenueId={target.game.venue_id}
+          logSource={logSource}
+          buildLogMessage={buildLogMessage ? (p) => buildLogMessage(target.game, p) : undefined}
           onClose={() => setTarget(null)}
           onRescheduled={() => {
             setTarget(null);
             router.refresh();
+            onDone?.();
           }}
         />
       )}

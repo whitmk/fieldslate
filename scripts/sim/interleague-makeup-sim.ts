@@ -12,7 +12,14 @@
 //   2. the route ACCEPTS it (decideHostProposal → cancelled_makeup) and writes
 //      NO status (statusAfterHostProposal → null);
 //   3. a host decline of the partner's counter leaves it cancelled;
-//   4. no interleague game reaches either picker.
+//   4. no interleague game reaches either picker;
+//   5. (part S) every surface that used to open the picker itself now routes
+//      through the shared hook, renders a refusal with MoveNoticeLine, and
+//      names itself in the activity log (logSource) — the picker is rendered in
+//      exactly three places (the hook, the panel's row icon, the panel's
+//      rained-out row), each passing logSource;
+//   6. (part L) withLogSource: absent means the message is byte-identical to
+//      before — an old entry and a source-less new one read the same.
 //
 // ANTI-VACUITY: a cancelled interleague game routed + decided + status-checked
 // end to end; an ordinary rained-out game still reaching the rainout picker.
@@ -24,6 +31,12 @@
 //   KM3  decideHostProposal refuses cancelled (the path is lost)       → [E1]
 //   KM4  rescheduleItemVisible hides a rained-out interleague item on
 //        Free (a surface omitting the makeup silently)                 → [V1]
+//   KM5  the rained-out card stops rendering MoveNoticeLine (a surface
+//        refusing silently)                                             → [S1]
+//   KM6  the hook's render site drops logSource (a picker save with no
+//        surface in the log)                                            → [S3]
+//   KM7  log-rainout gates the makeup handoff on canReschedule (an
+//        interleague rainout on Free left cancelled with no way forward) → [S2]
 
 import {
   decideHostProposal,
@@ -37,6 +50,9 @@ import {
   routeScheduleReschedule,
 } from "@/lib/schedule/schedule-page-reschedule-route";
 import { respondPageCopy } from "@/lib/interleague/recipient-schedule";
+import { withLogSource } from "@/lib/schedule/log-source";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 let checks = 0;
 let fails = 0;
@@ -54,7 +70,58 @@ const MAKEUP = "2026-10-10T10:00:00+00:00";
 const org = { name: "Westside LL" };
 const ilRainedOut = { status: "cancelled", scheduled_at: RAINED_OUT_DAY, interleague_org_id: "io", away_team_id: null, interleague_org: org, external_team_name: "Rockies" };
 const plainRainedOut = { status: "cancelled", scheduled_at: RAINED_OUT_DAY, interleague_org_id: null, away_team_id: "t_cubs", external_team_name: null };
-const counters = { makeupEndToEnd: 0, ordinaryRainoutPicker: 0 };
+const counters = { makeupEndToEnd: 0, ordinaryRainoutPicker: 0, surfacesChecked: 0 };
+
+const SRC = join(__dirname, "..", "..", "src");
+const read = (...p: string[]) => readFileSync(join(SRC, ...p), "utf8");
+
+function partS() {
+  // The six surfaces that route through the hook. None may render the picker.
+  const surfaces: [string, string][] = [
+    ["schedule-list", read("components", "schedule", "schedule-list.tsx")],
+    ["schedule-calendar", read("components", "schedule", "schedule-calendar.tsx")],
+    ["log-rainout", read("components", "divisions", "log-rainout-modal.tsx")],
+    ["rained-out card", read("components", "dashboard", "rained-out-stat-card.tsx")],
+    ["conflict card", read("components", "dashboard", "conflict-stat-card.tsx")],
+    ["upcoming list", read("components", "dashboard", "upcoming-games-list.tsx")],
+  ];
+  for (const [name, src] of surfaces) {
+    counters.surfacesChecked++;
+    ok(
+      src.includes("useScheduleReschedule(") && src.includes("<MoveNoticeLine") &&
+        /logSource: "/.test(src) && !src.includes("<RainoutRescheduleModal"),
+      `[S1] ${name}: routes through the hook, renders refusals with MoveNoticeLine, names itself, never renders the picker`,
+    );
+  }
+  const lr = read("components", "divisions", "log-rainout-modal.tsx");
+  ok(
+    lr.includes('rescheduleItemVisible("cancelled", canReschedule, markedIsInterleague)') &&
+      lr.includes('"Propose makeup time" : "Reschedule now"'),
+    "[S2] log-rainout offers the makeup handoff on an interleague rainout regardless of plan",
+  );
+  // Exactly three picker render sites, each passing logSource.
+  const hook = read("components", "schedule", "use-schedule-reschedule.tsx");
+  const panel = read("components", "divisions", "division-schedule-panel.tsx");
+  const sites = (hook.match(/<RainoutRescheduleModal/g) ?? []).length + (panel.match(/<RainoutRescheduleModal/g) ?? []).length;
+  const withSource = (hook.match(/logSource=\{logSource\}/g) ?? []).length + (panel.match(/logSource="division schedule panel"/g) ?? []).length;
+  ok(
+    sites === 3 && withSource === 3,
+    "[S3] the picker is rendered in exactly three places (hook, panel ×2), each naming its surface",
+    `sites=${sites} withSource=${withSource}`,
+  );
+  const manual = read("components", "divisions", "manual-move-form.tsx");
+  ok(
+    read("components", "divisions", "rainout-reschedule-modal.tsx").includes("logSource={logSource}") &&
+      manual.includes("withLogSource(") && manual.includes("(entered manually)"),
+    "[S4] the manual form inherits the picker's logSource",
+  );
+}
+
+function partL() {
+  ok(withLogSource("Mets vs Cubs rescheduled to X", undefined) === "Mets vs Cubs rescheduled to X", "[L1] no source → the message is byte-identical (absent means unknown)");
+  ok(withLogSource("Mets vs Cubs rescheduled to X", "Schedule page") === "Mets vs Cubs rescheduled to X — via Schedule page", "[L2] with a source → '— via {source}' appended");
+  ok(withLogSource("m", "  ") === "m", "[L3] a blank source is treated as absent");
+}
 
 function main() {
   console.log("\ninterleague-makeup sim");
@@ -124,6 +191,8 @@ function main() {
   ok(plain?.variant === "rainout", "[G2] an ordinary rained-out game still opens the rainout picker");
   if (plain?.variant === "rainout") counters.ordinaryRainoutPicker++;
 
+  partS();
+  partL();
   for (const [name, n] of Object.entries(counters)) ok(n > 0, `[AV] counter ${name} fired`, `got ${n}`);
   console.log("  counters:", JSON.stringify(counters));
   console.log(`\n${checks - fails}/${checks} checks passed`);

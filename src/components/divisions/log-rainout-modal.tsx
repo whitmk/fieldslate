@@ -6,7 +6,9 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
-import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
+import { useScheduleReschedule } from "@/components/schedule/use-schedule-reschedule";
+import { MoveNoticeLine } from "./move-game-row";
+import { rescheduleItemVisible } from "@/lib/schedule/schedule-page-reschedule-route";
 import { logActivity } from "@/lib/activity-log";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import type { Division } from "@/types/database";
@@ -15,11 +17,22 @@ type GameOption = {
   id: string;
   scheduled_at: string;
   home_team_id: string;
-  away_team_id: string;
-  home_team: { name: string } | null;
+  away_team_id: string | null;
+  // Interleague identity: an interleague game's makeup is a REQUEST to the
+  // partner, never the slot picker. Without these the modal could not tell.
+  interleague_org_id: string | null;
+  interleague_org: { name: string } | null;
+  is_away: boolean | null;
+  external_team_name: string | null;
+  proposed_venue_name: string | null;
+  venue_id: string | null;
+  home_team: { name: string; division_id: string | null; division: { name: string } | null } | null;
   away_team: { name: string } | null;
   venue: { name: string; location: { name: string } | null } | null;
 };
+
+// The rained-out routes (rainout picker / makeup request) are not lock-gated.
+const NO_LOCKS: ReadonlySet<string> = new Set();
 
 type MultiGameOption = GameOption & {
   division_id: string;
@@ -46,7 +59,14 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
   const [selectedGame, setSelectedGame] = useState<GameOption | null>(null);
   const [marking, setMarking] = useState(false);
   const [markedGame, setMarkedGame] = useState<GameOption | null>(null);
-  const [showReschedule, setShowReschedule] = useState(false);
+  // The handoff after marking: routed per game — an ordinary game opens the
+  // rainout picker (Pro), an interleague game opens the makeup request (Free).
+  const reschedule = useScheduleReschedule({
+    canReschedule,
+    lockedDivisionIds: NO_LOCKS,
+    logSource: "Log rainout",
+    onDone: () => { onRainedOut(); onClose(); },
+  });
 
   // ── Multi-game flow ───────────────────────────────────────────────────────
   const [multiGames, setMultiGames] = useState<MultiGameOption[]>([]);
@@ -87,8 +107,10 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
     const { data: gameData } = await supabase
       .from("games")
       .select(`
-        id, scheduled_at, home_team_id, away_team_id,
-        home_team:teams!home_team_id(name),
+        id, scheduled_at, home_team_id, away_team_id, venue_id,
+        interleague_org_id, is_away, external_team_name, proposed_venue_name,
+        interleague_org:interleague_orgs!interleague_org_id(name),
+        home_team:teams!home_team_id(name, division_id, division:divisions(name)),
         away_team:teams!away_team_id(name),
         venue:venues(name, location:locations(name))
       `)
@@ -131,8 +153,10 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
     const { data: gameData } = await supabase
       .from("games")
       .select(`
-        id, scheduled_at, home_team_id, away_team_id,
-        home_team:teams!home_team_id(name),
+        id, scheduled_at, home_team_id, away_team_id, venue_id,
+        interleague_org_id, is_away, external_team_name, proposed_venue_name,
+        interleague_org:interleague_orgs!interleague_org_id(name),
+        home_team:teams!home_team_id(name, division_id, division:divisions(name)),
         away_team:teams!away_team_id(name),
         venue:venues(name, location:locations(name))
       `)
@@ -218,21 +242,13 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
 
   const selectedDivision = divisions.find((d) => d.id === divisionId);
 
-  // Reschedule handoff (single flow)
-  if (showReschedule && markedGame) {
-    return (
-      <RainoutRescheduleModal
-        gameId={markedGame.id}
-        homeTeamId={markedGame.home_team_id}
-        awayTeamId={markedGame.away_team_id}
-        homeTeamName={markedGame.home_team?.name ?? "Home"}
-        awayTeamName={markedGame.away_team?.name ?? "Away"}
-        divisionId={divisionId}
-        leagueId={leagueId}
-        onClose={onClose}
-        onRescheduled={() => { onRainedOut(); onClose(); }}
-      />
-    );
+  // Reschedule handoff (single flow): the game is now cancelled; route it.
+  const markedIsInterleague = !!markedGame?.interleague_org_id;
+  const showHandoff =
+    !!markedGame && rescheduleItemVisible("cancelled", canReschedule, markedIsInterleague);
+  function handoff() {
+    if (!markedGame) return;
+    reschedule.open({ ...markedGame, status: "cancelled", league_id: leagueId });
   }
 
   return (
@@ -306,21 +322,35 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
                     {fmtGameDate(markedGame.scheduled_at)} at {fmtGameTime(markedGame.scheduled_at)}
                   </p>
                 </div>
+                {markedIsInterleague && (
+                  <p className="max-w-xs text-xs text-gray-500">
+                    A makeup time needs {markedGame.interleague_org?.name ?? "the other league"}&rsquo;s
+                    agreement — proposing one sends them a request, and the game stays rained out until they accept.
+                  </p>
+                )}
+                {reschedule.notice?.gameId === markedGame.id && (
+                  <MoveNoticeLine
+                    message={reschedule.notice.message}
+                    link={reschedule.notice.link}
+                    onDismiss={reschedule.clearNotice}
+                    inset="mx-0 w-full max-w-xs text-left"
+                  />
+                )}
                 <div className="flex w-full max-w-xs flex-col gap-2">
-                  {canReschedule && (
+                  {showHandoff && (
                     <button
-                      onClick={() => setShowReschedule(true)}
+                      onClick={handoff}
                       className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#0C1F3F] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80"
                     >
                       <CalendarClock className="h-4 w-4" />
-                      Reschedule now
+                      {markedIsInterleague ? "Propose makeup time" : "Reschedule now"}
                     </button>
                   )}
                   <button
                     onClick={onClose}
                     className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700"
                   >
-                    {canReschedule ? "Do it later" : "Done"}
+                    {showHandoff ? "Do it later" : "Done"}
                   </button>
                 </div>
               </div>
@@ -579,6 +609,7 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
           </div>
         )}
       </div>
+      {reschedule.modals}
     </div>
   );
 }

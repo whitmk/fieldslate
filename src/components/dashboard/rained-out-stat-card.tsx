@@ -8,25 +8,38 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
-import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
+import { useScheduleReschedule } from "@/components/schedule/use-schedule-reschedule";
+import { MoveNoticeLine } from "@/components/divisions/move-game-row";
+import { rescheduleItemVisible } from "@/lib/schedule/schedule-page-reschedule-route";
 
 export type RainedOutGame = {
   id: string;
+  status: string;
   scheduled_at: string;
+  league_id: string;
   home_team_id: string;
-  away_team_id: string;
-  home_team: { name: string; division_id: string | null } | null;
+  away_team_id: string | null;
+  venue_id: string | null;
+  interleague_org_id: string | null;
+  interleague_org: { name: string } | null;
+  is_away: boolean | null;
+  external_team_name: string | null;
+  proposed_venue_name: string | null;
+  home_team: { name: string; division_id: string | null; division: { name: string } | null } | null;
   away_team: { name: string } | null;
   venue: { name: string } | null;
 };
+
+// Rained-out routes (rainout picker / makeup request) are not lock-gated.
+const NO_LOCKS: ReadonlySet<string> = new Set();
 
 interface Props {
   count: number;
   initialGames: RainedOutGame[];
   leagueId: string;
   divisionNames: Record<string, string>;
-  /** Pro+ only — the auto-reschedule action. Basic logging + restore are
-   *  always available (Free). */
+  /** Pro+ only — the auto-reschedule action on an ordinary game. Restore,
+   *  and an interleague game's makeup REQUEST, are always available (Free). */
   canReschedule?: boolean;
 }
 
@@ -35,7 +48,14 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
   const [open, setOpen] = useState(false);
   const [games, setGames] = useState<RainedOutGame[]>(initialGames);
   const [restoringId, setRestoringId] = useState<string | null>(null);
-  const [rescheduleGame, setRescheduleGame] = useState<RainedOutGame | null>(null);
+  // Routed per game: ordinary → the rainout picker; interleague → a makeup
+  // request to the partner. Never the picker for an interleague game.
+  const reschedule = useScheduleReschedule({
+    canReschedule,
+    lockedDivisionIds: NO_LOCKS,
+    logSource: "rained-out card",
+  });
+  void leagueId; // routing carries each game's own league_id now
 
   // Sync when server re-renders after router.refresh()
   useEffect(() => { setGames(initialGames); }, [initialGames]);
@@ -54,11 +74,6 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
     router.refresh();
   }
 
-  function handleRescheduled(gameId: string) {
-    setGames((prev) => prev.filter((g) => g.id !== gameId));
-    setRescheduleGame(null);
-    router.refresh();
-  }
 
   return (
     <>
@@ -159,16 +174,27 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
                           {game.away_team?.name ?? "TBD"}
                         </p>
 
+                        {reschedule.notice?.gameId === game.id && (
+                          <div className="mt-2">
+                            <MoveNoticeLine
+                              message={reschedule.notice.message}
+                              link={reschedule.notice.link}
+                              onDismiss={reschedule.clearNotice}
+                              inset="mx-0"
+                            />
+                          </div>
+                        )}
+
                         {/* Actions */}
                         <div className="mt-3 flex items-center gap-2">
-                          {canReschedule && (
+                          {rescheduleItemVisible("cancelled", canReschedule, !!game.interleague_org_id) && (
                             <button
-                              onClick={() => setRescheduleGame(game)}
+                              onClick={() => reschedule.open(game)}
                               disabled={isRestoring}
                               className="inline-flex items-center gap-1.5 rounded-lg bg-[#0C1F3F] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#0C1F3F]/80 disabled:opacity-50"
                             >
                               <CalendarClock className="h-3 w-3" />
-                              Reschedule
+                              {game.interleague_org_id ? "Propose makeup time" : "Reschedule"}
                             </button>
                           )}
                           <button
@@ -194,20 +220,7 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
         </div>
       )}
 
-      {/* ── Reschedule slot picker ── */}
-      {rescheduleGame && (
-        <RainoutRescheduleModal
-          gameId={rescheduleGame.id}
-          homeTeamId={rescheduleGame.home_team_id}
-          awayTeamId={rescheduleGame.away_team_id}
-          homeTeamName={rescheduleGame.home_team?.name ?? "Home"}
-          awayTeamName={rescheduleGame.away_team?.name ?? "Away"}
-          divisionId={rescheduleGame.home_team?.division_id ?? ""}
-          leagueId={leagueId}
-          onClose={() => setRescheduleGame(null)}
-          onRescheduled={() => handleRescheduled(rescheduleGame.id)}
-        />
-      )}
+      {reschedule.modals}
     </>
   );
 }

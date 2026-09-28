@@ -15,6 +15,7 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/activity-log";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import { withLogSource } from "@/lib/schedule/log-source";
 import { parseAvailability, type VenueAvailability } from "@/lib/venues/availability";
 import { qualifiedVenueLabel, byQualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
@@ -110,6 +111,7 @@ export function ManualMoveForm({
   awayTeamName,
   initialScheduledAt,
   initialVenueId,
+  logSource,
   onBack,
   onSaved,
 }: {
@@ -123,6 +125,8 @@ export function ManualMoveForm({
   /** The game's current time/field, to prefill. Optional. */
   initialScheduledAt?: string;
   initialVenueId?: string | null;
+  /** See RainoutRescheduleModal.logSource. */
+  logSource?: string;
   onBack: () => void;
   onSaved: (saved: { isoString: string; venueName: string }) => void;
 }) {
@@ -326,7 +330,10 @@ export function ManualMoveForm({
       leagueId,
       divisionId,
       "game_rescheduled",
-      `${homeTeamName} vs ${awayTeamName} moved to ${fmtGameDate(when.isoString)} at ${fmtGameTime(when.isoString)} — ${venue.label} (entered manually)`,
+      withLogSource(
+        `${homeTeamName} vs ${awayTeamName} moved to ${fmtGameDate(when.isoString)} at ${fmtGameTime(when.isoString)} — ${venue.label} (entered manually)`,
+        logSource,
+      ),
     );
     router.refresh();
     setSaving(false);

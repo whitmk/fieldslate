@@ -48,10 +48,13 @@ export default async function LeaguePage({ params }: { params: { id: string } })
 
   type TeamRow = { id: string; division_id: string | null };
   type GameRow = {
-    id: string; scheduled_at: string; venue_id: string | null; home_team_id: string; away_team_id: string;
-    status: string;
+    id: string; scheduled_at: string; venue_id: string | null; home_team_id: string; away_team_id: string | null;
+    status: string; league_id: string;
+    interleague_org_id: string | null; is_away: boolean | null;
+    external_team_name: string | null; proposed_venue_name: string | null;
+    interleague_org: { name: string } | null;
     venue: { name: string } | null;
-    home_team: { name: string; division_id: string | null } | null;
+    home_team: { name: string; division_id: string | null; division: { name: string } | null } | null;
     away_team: { name: string } | null;
   };
   type DivVenueRow = { division_id: string; venue_id: string };
@@ -81,9 +84,11 @@ export default async function LeaguePage({ params }: { params: { id: string } })
     supabase.from("teams").select("id, division_id").eq("league_id", league.id),
     supabase
       .from("games")
-      .select(`id, scheduled_at, venue_id, home_team_id, away_team_id, status,
+      .select(`id, scheduled_at, venue_id, home_team_id, away_team_id, status, league_id,
+               interleague_org_id, is_away, external_team_name, proposed_venue_name,
+               interleague_org:interleague_orgs!interleague_org_id(name),
                venue:venues(name),
-               home_team:teams!home_team_id(name, division_id),
+               home_team:teams!home_team_id(name, division_id, division:divisions(name)),
                away_team:teams!away_team_id(name)`)
       .eq("league_id", league.id),
     divisionIds.length
@@ -298,9 +303,17 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       : [];
     conflictGames.push({
       id: g.id,
+      status: g.status,
       scheduled_at: g.scheduled_at,
+      league_id: g.league_id,
       home_team_id: g.home_team_id,
       away_team_id: g.away_team_id,
+      venue_id: g.venue_id,
+      interleague_org_id: g.interleague_org_id,
+      interleague_org: g.interleague_org,
+      is_away: g.is_away,
+      external_team_name: g.external_team_name,
+      proposed_venue_name: g.proposed_venue_name,
       home_team: g.home_team,
       away_team: g.away_team,
       venue: g.venue,
@@ -325,7 +338,8 @@ export default async function LeaguePage({ params }: { params: { id: string } })
   const divisionCount = allDivisions.length;
   const teamCount = allTeams.length;
   const gameCount = allGames.filter((g) => g.status !== "cancelled").length;
-  const rainedOutGames = allGames.filter((g) => g.status === "cancelled") as unknown as RainedOutGame[];
+  const rainedOutGames: RainedOutGame[] = allGames.filter((g) => g.status === "cancelled");
+  const lockedDivisionIds = allDivisions.filter((d) => d.locked).map((d) => d.id);
   const rainedOutCount = rainedOutGames.length;
   const scheduleConflictCount = allConflictingGameIds.size;
 
@@ -479,6 +493,8 @@ export default async function LeaguePage({ params }: { params: { id: string } })
           initialConflictGames={conflictGames}
           leagueId={league.id}
           divisionNames={divisionNames}
+          canReschedule={isProPlus(plan)}
+          lockedDivisionIds={lockedDivisionIds}
         />
 
         {/* Rained Out — interactive client card. Basic logging + restore stay

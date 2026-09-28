@@ -116,6 +116,7 @@ export function ScheduleCalendar({
   const reschedule = useScheduleReschedule({
     canReschedule,
     lockedDivisionIds: lockedSet,
+    logSource: "Schedule calendar",
   });
   const [dayDetail, setDayDetail] = useState<string | null>(null);
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);

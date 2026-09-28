@@ -1,11 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal, CloudRain, CalendarClock, Loader2, MapPin } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
-import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
+import { useScheduleReschedule } from "@/components/schedule/use-schedule-reschedule";
+import { MoveNoticeLine } from "@/components/divisions/move-game-row";
+import {
+  rescheduleItemLockTitle,
+  rescheduleItemVisible,
+} from "@/lib/schedule/schedule-page-reschedule-route";
 import { logActivity } from "@/lib/activity-log";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 
@@ -15,8 +20,14 @@ export type UpcomingGame = {
   status: string;
   league_id: string;
   home_team_id: string;
-  away_team_id: string;
-  home_team: { name: string; division_id: string | null } | null;
+  away_team_id: string | null;
+  venue_id: string | null;
+  interleague_org_id: string | null;
+  interleague_org: { name: string } | null;
+  is_away: boolean | null;
+  external_team_name: string | null;
+  proposed_venue_name: string | null;
+  home_team: { name: string; division_id: string | null; division: { name: string } | null } | null;
   away_team: { name: string } | null;
   venue: { name: string } | null;
 };
@@ -25,13 +36,21 @@ interface Props {
   initialGames: UpcomingGame[];
   /** Pro+ only — the auto-reschedule action. "Log Rainout" stays Free. */
   canReschedule?: boolean;
+  /** Divisions locked as of this page load (dashboard page). */
+  lockedDivisionIds?: string[];
 }
 
-export function UpcomingGamesList({ initialGames, canReschedule = false }: Props) {
+export function UpcomingGamesList({ initialGames, canReschedule = false, lockedDivisionIds = [] }: Props) {
   const router = useRouter();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
-  const [rescheduleGame, setRescheduleGame] = useState<UpcomingGame | null>(null);
+  const lockedSet = useMemo(() => new Set(lockedDivisionIds), [lockedDivisionIds]);
+  // Routed per game: ordinary → move picker (Pro); interleague → request.
+  const reschedule = useScheduleReschedule({
+    canReschedule,
+    lockedDivisionIds: lockedSet,
+    logSource: "dashboard upcoming games",
+  });
   const menuContainerRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
@@ -69,7 +88,7 @@ export function UpcomingGamesList({ initialGames, canReschedule = false }: Props
 
   function handleRescheduleClick(game: UpcomingGame) {
     setOpenMenuId(null);
-    setRescheduleGame(game);
+    reschedule.open(game);
   }
 
   if (initialGames.length === 0) {
@@ -80,7 +99,7 @@ export function UpcomingGamesList({ initialGames, canReschedule = false }: Props
     <>
       <ul ref={menuContainerRef} className="flex flex-col divide-y divide-gray-50">
         {initialGames.map((game) => (
-          <li key={game.id} className="flex items-center gap-3 py-3">
+          <li key={game.id} className="flex flex-wrap items-center gap-3 py-3">
             {/* Matchup + date */}
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-[#0C1F3F]">
@@ -128,38 +147,42 @@ export function UpcomingGamesList({ initialGames, canReschedule = false }: Props
                     <CloudRain className="h-3.5 w-3.5 text-blue-400" />
                     Log Rainout
                   </button>
-                  {canReschedule && (
+                  {rescheduleItemVisible(game.status, canReschedule, !!game.interleague_org_id) && (() => {
+                    const lockTitle = rescheduleItemLockTitle(
+                      game,
+                      !!game.home_team?.division_id && lockedSet.has(game.home_team.division_id),
+                      game.home_team?.division?.name ?? "This division",
+                    );
+                    return (
                     <button
                       onClick={() => handleRescheduleClick(game)}
-                      className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                      disabled={!!lockTitle}
+                      title={lockTitle ?? undefined}
+                      className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
                     >
                       <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
-                      Reschedule
+                      {game.interleague_org_id ? "Request reschedule" : "Reschedule"}
                     </button>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
             </div>
+            {reschedule.notice?.gameId === game.id && (
+              <div className="basis-full">
+                <MoveNoticeLine
+                  message={reschedule.notice.message}
+                  link={reschedule.notice.link}
+                  onDismiss={reschedule.clearNotice}
+                  inset="mx-0"
+                />
+              </div>
+            )}
           </li>
         ))}
       </ul>
 
-      {rescheduleGame && (
-        <RainoutRescheduleModal
-          gameId={rescheduleGame.id}
-          homeTeamId={rescheduleGame.home_team_id}
-          awayTeamId={rescheduleGame.away_team_id}
-          homeTeamName={rescheduleGame.home_team?.name ?? "Home"}
-          awayTeamName={rescheduleGame.away_team?.name ?? "Away"}
-          divisionId={rescheduleGame.home_team?.division_id ?? ""}
-          leagueId={rescheduleGame.league_id}
-          onClose={() => setRescheduleGame(null)}
-          onRescheduled={() => {
-            setRescheduleGame(null);
-            router.refresh();
-          }}
-        />
-      )}
+      {reschedule.modals}
     </>
   );
 }

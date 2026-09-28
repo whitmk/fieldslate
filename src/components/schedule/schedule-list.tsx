@@ -169,6 +169,7 @@ export function ScheduleList({
   const reschedule = useScheduleReschedule({
     canReschedule,
     lockedDivisionIds: lockedSet,
+    logSource: "Schedule page",
   });
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
   // Delete — the game queued for the confirm dialog. Deletion goes through the
