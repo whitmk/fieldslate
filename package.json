@@ -37,6 +37,7 @@
     "sim:manual-move": "TZ=UTC npx tsx scripts/sim/manual-move-sim.ts",
     "sim:row-icon-reveal": "npx tsx scripts/sim/row-icon-reveal-sim.ts",
     "sim:panel-reschedule": "TZ=UTC npx tsx scripts/sim/panel-reschedule-sim.ts",
+    "sim:invite-page": "TZ=UTC npx tsx scripts/sim/invite-page-sim.ts",
     "sim:request-reschedule": "npx tsx scripts/sim/request-reschedule-sim.ts",
     "sim:location-filter": "npx tsx scripts/sim/location-filter-sim.ts",
     "sim:week-grid": "TZ=UTC npx tsx scripts/sim/week-grid-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/week-grid-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/week-grid-sim.ts"
