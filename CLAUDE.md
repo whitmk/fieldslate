@@ -70,7 +70,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0096.** The repo files are the record, not the
+  **Latest migration: 0097.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -2641,6 +2641,101 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   day the division doesn't play — neither server gate checks playing days. The
   live AA proposal for Tue 2026-09-29 would pass both gates. The picker never
   offers such a day.
+
+## Interleague Case A — a signed-in league accepts onto its own schedule (2026-09-28)
+
+- **What it is.** An invite still goes to an email address and the recipient
+  answers anonymously through the token link; that path is UNCHANGED. When the
+  person holding the link is SIGNED IN (and has not taken the `?anon=1` escape
+  hatch), `/invite/[token]` recognises them and accepting also creates the
+  games in THEIR league. **The identifier is the LINK, not the email address**
+  — whoever holds it and is signed in is the right person; matching the
+  invite's recipient email to an account is NOT the mechanism (that address is
+  often a shared inbox that belongs to nobody).
+- **The created rows are ORDINARY Case B interleague rows** in the recipient's
+  league: their team as `home_team_id`, `away_team_id` NULL, `interleague_org_id`
+  → their contact card for the host, `external_team_name` = the host's team
+  name as text, `is_away` from THEIR perspective (the host's `is_away` inverted),
+  `venue_id` = their field when they host, else null with the host's qualified
+  venue label in `proposed_venue_name`. **Never point `away_team_id` at the
+  other org's team** — it resolves to NULL on both sides under RLS and breaks
+  the renderers. After acceptance the two leagues' rows are INDEPENDENT: no
+  link column, no syncing; a change goes through the reschedule request flow,
+  which already needs both sides to agree.
+- **The shape: a SECURITY INVOKER wrapper, `accept_interleague_invite_as_member`
+  (0097), authenticated only.** A plain route under the caller's RLS was ruled
+  IN on permissions (every row created belongs to their org), but two calls
+  from a route are not atomic and the token is single-use — "host RPC
+  succeeded, our inserts failed" would leave an accepted invite with nothing on
+  the recipient's schedule and no retry. So ONE transaction: read the invite
+  through the token function → refuse a member of the SENDING org → resolve our
+  team/venue IDs to the NAMES the host side stores → call the UNCHANGED anon
+  token RPC for the host half → find-or-create our contact card from the RPC's
+  own return (never client input) → insert our rows for ACCEPTED games only.
+  Any raise, including the 0082 lock trigger, rolls back both halves. A count
+  mismatch between what the host confirmed and what we planned raises
+  `host_games_changed` (defensive; both reads share one snapshot).
+- **`accept_interleague_invite` is NOT modified.** 0097 re-applied its 0074
+  body verbatim (the live body had drifted by three trimmed comment lines, the
+  0079 class); md5 matches the repo again. Proven by the twin-fixture run.
+- **The own-invite guard needs no new key:** under the caller's RLS the host's
+  season row is visible iff they are a member of the host org, so
+  `exists(select 1 from leagues where id = <invite season>)` is the refusal.
+  The page does the same read. Live on the founder's own accounts today (the
+  Westside Little League owner is also an SRALL admin) — reachable, not
+  hypothetical.
+- **Division mapping is a DEFAULT, not an inference.** One picker per host
+  division, pre-selected by case-insensitive trimmed name match, overridable;
+  the per-game team dropdown filters on that choice. The data supports "Majors
+  ↔ Majors" and fails "AA ↔ Minors", so never infer silently.
+- **Games the host marked away are games WE host — our field is REQUIRED**
+  (`venue_required`), stored as a real `venue_id` on our row and as the
+  qualified label on the host's `proposed_venue_name`, exactly as a typed
+  name would be.
+- **Counters create NOTHING on our side, and the page says so.** A pending row
+  that never syncs is the drift this design rejects. Declines create nothing.
+- **Empty states are the common case** (half the live accounts have no active
+  season): no season / no divisions / no teams each render a first-class card
+  with a link, Accept stays disabled, and the escape hatch is always there.
+  Locks are read up front (`fetchSeasonDivisionLocks`) and shown at the row
+  with `lockedReason(…, "add")`, never a failure on save.
+- **Signed-in pages render a PLAIN footer** — a signed-in partner is already a
+  customer. The anonymous PENDING page's footer promo was REPLACED (not
+  doubled) with the host-league line; every other `InviteFooter` caller (the
+  schedule and reschedule token pages, the invite status screens) renders
+  byte-identically with no props.
+- **The host's response email gains one sentence when the partner is on
+  FieldSlate** (`partnerOnFieldSlate` on `buildAcceptanceEmail`, set only by
+  the signed-in route). The builders were lifted VERBATIM out of the anonymous
+  route into `src/lib/interleague/invite-response-emails.ts`; the flag-less
+  rendering is pinned to goldens.
+- **BILLING — UNCAPPED AND UNBILLED, BY EXPLICIT DECISION (2026-09-28), to be
+  revisited deliberately.** What the code does: the partner cap lives ONLY in
+  the sender's invite-creation RPC (`create_interleague_org`, 0057), and
+  `getInterleagueOrgCountForSeason` counts invites on seasons the org OWNS, so
+  a received invite contributes zero. The Interleague nav item is Pro-locked
+  in the sidebar but `/dashboard/interleague` has NO server gate, and the
+  reschedule-request menu is already Free. Therefore **a Free league can
+  accept this way, hold real interleague rows and a partner card, and use the
+  reschedule flow without paying.** Recorded so the commercial call is made on
+  purpose, not discovered by accident.
+- **Invite visibility for the recipient is OUT of v1** — the invite's RLS is
+  `is_org_member(sender_user_id)` (the host org), and her games already show
+  on her own pages; a provenance column was judged not worth it.
+- **Harnesses.** `npm run sim:invite-page` — goldens of every anonymous state
+  captured from the PRE-CHANGE tree in their own commit (part G: byte-identical
+  outside the footer, footer moved on exactly the two pending states), the
+  emails (E), the signed-in branch rendered through the real page under a
+  loader-hooked fake client (S), the pure decisions (B), three anti-vacuity
+  counters, 9 in-source mutants each killed at its own tag — **read its
+  mutation log: TM8 survived a vacuous `includes("disabled")` that matched a
+  Tailwind class.** `scripts/sim/signed-in-accept-rpc-sim.sql` (SQL, Supabase
+  MCP): T0/T1 twin-fixture old-vs-new on the anon RPC (the pre-change body
+  rebuilt as `pg_temp.old_*` and md5-pinned), A1–A10 on the wrapper under an
+  impersonated authenticated caller (`set local role authenticated` +
+  `request.jwt.claims`), 8 mutants incl. host-side-not-updated, `away_team_id`
+  on the created row, and the swallowed lock error (atomicity), leak check
+  clean.
 
 ## Interleague negotiation (partner visibility + host counter)
 
