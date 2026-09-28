@@ -399,8 +399,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   form state rather than merging the stored row), so a lock kept there would
   be silently cleared by any wizard save.
 - **`posted` auto-clears on ANY change to the division's games** — not just
-  rainouts. Document it as auto-clearing on schedule change; it is not a
-  decorative checkbox. Nothing branches on it and nothing warns off it.
+  rainouts — EXCEPT a note-only edit (0096, 2026-09-28): `clear_division_posted`'s
+  UPDATE branch is column-aware, ignoring `notes` / `notes_updated_at` /
+  `notes_updated_by` / `updated_at` (the last because `set_games_updated_at`
+  bumps it on every write). A MIXED edit (note + a real change) still clears,
+  because the real change did. Set-based over the transition tables, so the
+  cost numbers below do not move. Document it as auto-clearing on schedule
+  change; it is not a decorative checkbox. Nothing branches on it and nothing
+  warns off it.
 - **`games` has NO `division_id`.** Every per-division check derives it via
   `home_team_id` → `teams.division_id`. Verified against live data: zero
   games whose home team lacks a division, zero cross-division games. A null
@@ -417,13 +423,21 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `pending_interleague` rows; UPDATE allowed only if every changed column is
   in the allowlist (`status`, `scheduled_at`, `venue_id`,
   `proposed_scheduled_at`, `proposed_venue_name`, `external_team_name`,
-  `updated_at`).
+  `updated_at`, and since 0095 `notes`, `notes_updated_at`,
+  `notes_updated_by` — a game note is internal admin text and a locked
+  schedule is exactly when someone writes "lights out on field 2").
 - **The column check is SUBTRACTION-based and must stay that way:**
   `to_jsonb(OLD) - allowlist IS DISTINCT FROM to_jsonb(NEW) - allowlist`.
   NEVER an enumerated blocklist — a column added to `games` next year must be
   blocked-when-locked BY DEFAULT. Mutant M4 in the harness swaps it for an
-  enumerated list and is caught only by the `notes` assertion; don't delete
-  that assertion.
+  enumerated list and is caught only by T5c; don't delete that assertion.
+  **T5c was RE-KEYED 2026-09-28 from `notes` (now allowlisted, 0095) to
+  `home_team_id`** — the durable choice because the trigger's own body commits
+  to it: "if home_team_id moved between divisions, a lock on either end must
+  apply. (That move is outside the allowlist and so is blocked regardless.)"
+  Allowlisting it would break the trigger's own division resolution, so nobody
+  will. M4 is written out explicitly (NM3) in
+  `scripts/sim/game-notes-triggers-sim.sql`.
 - **Trigger NAME ordering is load-bearing.** Postgres fires same-timing row
   triggers in name order, and `enforce_division_lock` sorts before
   `set_games_updated_at` so `updated_at` is unchanged at check time.
@@ -1670,6 +1684,56 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   conflicting and a clean save each reached "Save enabled", all 8 conflict
   kinds produced, interleague games routed. 5 mutants, each killed first at its
   own assertion.
+
+## Game notes (2026-09-28)
+
+- **`games.notes` is an INTERNAL free-text note on a game** — it existed since
+  0001, unused, until now. Decided, do not re-litigate: never printed, never
+  exported, never shown to parents or to a partner league on any token page;
+  editable while the division is LOCKED; a property of the game, edited where
+  the game is seen and never inside the reschedule flow. Helpers:
+  `src/lib/schedule/game-notes.ts` (pure); pieces: `GameNoteIcon` /
+  `GameNoteLine` / `GameNoteDot` in `src/components/schedule/game-note.tsx`;
+  the ONE editor: `useGameNoteEditor`.
+- **Where it shows.** Every surface that shows a game, so an admin can trust
+  the ABSENCE of a line to mean there is no note: Schedule list (row + mobile
+  card), calendar (dot on the pill; line + icon in the popover), week grid
+  (dot), division panel row, the three dashboard cards, and the game detail
+  modal (full text, read-only, with attribution). NOT the log-rainout picker
+  or the add-game modal. Two ways in, both on the row: the icon (outline and
+  hover-revealed when empty; filled, violet, always visible when present) and
+  the line itself (one truncated grey line under the matchup, full text on
+  hover). 500 characters — the UI counts, a database CHECK enforces.
+- **Attribution is a TRIGGER, never the write** (`set_games_notes_attribution`,
+  0095): `notes_updated_at` / `notes_updated_by` (FK → `profiles`, set null)
+  on every note change, cleared on removal. A writer cannot forget it or lie
+  about who edited. Both columns are in the lock allowlist on the merits and in
+  the posted trigger's ignore set. The editor embeds
+  `notes_editor:profiles!games_notes_updated_by_fkey(full_name)` — profiles'
+  RLS already lets org-mates read each other's name.
+- **`NOTE_SELECT_FIELDS` is the one string every select carries** (Schedule
+  page, panel, dashboard page, league page). That is deliberate and it is also
+  THE HAZARD: the very object the print regions render from now carries the
+  note. The omission is proven three ways and the third is the one that
+  matters: `npm run sim:game-notes` scans both print regions, both CSV
+  builders, the email builders and the partner-facing pages for `notes` (O1);
+  `scripts/sim/game-notes-triggers-sim.sql` scans every token RPC's prosrc AND
+  plants a note on an accepted interleague game and reads it back through the
+  schedule token (K1/K2 — behavioural, catches a leak by any means); and the
+  page/panel selects are asserted to CARRY the fields while the print files
+  never reference them (O3). Mutant GM1 (the print region renders `{g.notes}`)
+  is the one the design exists for.
+- **The activity log records the EVENT, never the text**
+  (`game_note_updated` / `game_note_removed` with the matchup and date).
+- **Harnesses:** `npm run sim:game-notes` (45 checks, 6 mutants each killed at
+  its own assertion, counters for a game with and without a note through each
+  piece) and `scripts/sim/game-notes-triggers-sim.sql` (SQL, both triggers:
+  note allowed on a locked division and attributed, note-only edit keeps
+  `posted`, mixed edit clears, every other edit still clears, removal clears
+  attribution, the 500 CHECK, INSERT branch untouched, the partner-leak
+  fixture; 6 mutants killed at their own tag). The full
+  `schedule-lock-sim.sql` was re-run on the same batch with T5c re-keyed:
+  every pre-existing lock assertion holds.
 
 ## Row icons on touch screens — `ROW_ICON_REVEAL`
 
@@ -3012,29 +3076,6 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
 
 ## Open items
 
-- **Game notes — DECIDED REQUIREMENTS, not built (2026-09-26).** Scope the
-  change from these, don't re-derive them:
-  - **Current state:** `games.notes` (0001, text, nullable) is read and written
-    by NOTHING in `src` (only two comments saying conflict-override reasons are
-    kept apart from it), and zero live rows carry a note.
-  - **Notes live on the GAME, not in a move form** — a note about a game is not
-    a note about moving it. Natural home: the game detail modal (full text +
-    edit); a truncated grey line under the matchup on the panel row and the
-    Schedule list/cards; a marker only on calendar/week blocks.
-  - **Notes are INTERNAL:** never printed, never exported (generic CSV or
-    Sports Connect), never shown to parents, never in the partner token RPCs.
-  - **Notes are editable UNDER A LOCK** — a locked schedule is exactly when
-    someone writes "lights out on field 2". Today the 0082 trigger REFUSES it:
-    `notes` is not in `enforce_division_lock`'s allowlist. So the change needs
-    a migration adding `notes` to that allowlist — AND a new sentinel column for
-    `schedule-lock-sim`'s notes assertion, which is the ONLY thing killing
-    mutant M4 (the enumerated-blocklist mutant); pick another non-allowlisted
-    column for it rather than deleting the assertion.
-  - **A note-only edit must NOT clear `posted`.** `clear_division_posted` fires
-    on ANY update regardless of column; since notes are internal and not on the
-    schedule parents received, clearing "Sent" for one would be wrong. That
-    trigger has to become column-aware (a second migration), under the
-    SQL-harness standard.
 - **The reschedule picker's own save has no save-time lock re-read** (the
   manual path gained one 2026-09-26). If the lock is switched on while the
   picker is open, a picked slot still saves — the trigger allowlists the
