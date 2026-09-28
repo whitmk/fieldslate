@@ -2,9 +2,12 @@
 // never looks different from one screen to the next — and so the harness
 // renders exactly what the surfaces render (hook-free, like move-game-row).
 //
-//   GameNoteIcon  — the row's note icon: outline (hover-revealed, like the
-//                   other row icons) when there is no note; filled and violet,
-//                   always visible, when there is one. Opens the editor.
+//   GameNoteIcon  — the row's note icon: a faint outline when there is no
+//                   note; filled and violet when there is one. ALWAYS VISIBLE
+//                   in both states (2026-09-28): it shipped hover-revealed when
+//                   empty, like the other row icons, and the first note was
+//                   undiscoverable on a mouse — the admin looked at the
+//                   Schedule page and saw nowhere to add one. Opens the editor.
 //   GameNoteLine  — one truncated grey line under the matchup, full text on
 //                   hover (title). Clicking it opens the editor too.
 //   GameNoteDot   — calendar pills and week-grid blocks have no room for text:
@@ -14,7 +17,6 @@
 // export, or a partner-facing page — src/lib/schedule/game-notes.ts.
 
 import { StickyNote } from "lucide-react";
-import { ROW_ICON_REVEAL } from "@/components/ui/row-icon-reveal";
 import { hasNote, noteLineText, type GameNoteFields } from "@/lib/schedule/game-notes";
 
 export function GameNoteIcon({
@@ -40,7 +42,7 @@ export function GameNoteIcon({
       className={`flex ${box} items-center justify-center rounded-lg transition-all ${
         present
           ? "text-violet-600 hover:bg-violet-50"
-          : `${ROW_ICON_REVEAL} hover:bg-violet-50 hover:text-violet-500`
+          : "text-gray-300 hover:bg-violet-50 hover:text-violet-500"
       }`}
     >
       <StickyNote className={glyph} fill={present ? "currentColor" : "none"} fillOpacity={present ? 0.2 : 0} />

@@ -26,6 +26,8 @@
 //   GM4  hasNote is true for whitespace                        → [H1]
 //   GM5  GameNoteLine drops the full-text title                → [R2]
 //   GM6  the Schedule page's select drops NOTE_SELECT_FIELDS   → [O3]
+//   GM7  the empty icon goes back to hover-revealed              → [R1b]
+// RESULT (GM7, 2026-09-28): killed at [R1b] alone.
 // RESULT: 6/6 killed, each FIRST (and only) at its own assertion. GM1 is the
 // one the design exists for: the print region rendering `{g.notes}` from the
 // object it already receives.
@@ -105,8 +107,9 @@ async function partR() {
     "[R1] icon with a note: filled, violet, always visible",
   );
   ok(
-    iconOff.includes('data-note="empty"') && iconOff.includes("can-hover:opacity-0") && iconOff.includes('fill="none"') && iconOff.includes("Add a note"),
-    "[R1b] icon without a note: outline, hover-revealed like the other row icons",
+    iconOff.includes('data-note="empty"') && !iconOff.includes("opacity-0") && iconOff.includes("text-gray-300") &&
+      iconOff.includes('fill="none"') && iconOff.includes("Add a note"),
+    "[R1b] icon without a note: faint outline, ALWAYS visible (never hover-revealed)",
   );
   const lineOn = r(GameNoteLine, { game: withNote, onClick: () => {} });
   const lineOff = r(GameNoteLine, { game: without, onClick: () => {} });

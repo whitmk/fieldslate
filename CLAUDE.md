@@ -1701,7 +1701,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (dot), division panel row, the three dashboard cards, and the game detail
   modal (full text, read-only, with attribution). NOT the log-rainout picker
   or the add-game modal. Two ways in, both on the row: the icon (outline and
-  hover-revealed when empty; filled, violet, always visible when present) and
+  a faint outline when empty; filled and violet when present — ALWAYS visible
+  in both states, since a hover-revealed empty icon made the first note
+  undiscoverable on a mouse, found on the day it shipped) and
   the line itself (one truncated grey line under the matchup, full text on
   hover). 500 characters — the UI counts, a database CHECK enforces.
 - **Attribution is a TRIGGER, never the write** (`set_games_notes_attribution`,
