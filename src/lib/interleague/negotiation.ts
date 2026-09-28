@@ -145,6 +145,20 @@ export function statusAfterHostProposal(
   return branch === "confirmed_reschedule" ? "reschedule_pending" : null;
 }
 
+/**
+ * Whether the host's proposal is gated on the division's schedule lock.
+ * A makeup for a RAINED-OUT game is rainout recovery, which the lock never
+ * gates anywhere in the product (weather is not a choice) — the surfaces
+ * offer it on a locked division, so the route must not refuse it. A confirmed
+ * game's reschedule stays gated (the lock's whole purpose); the pending branch
+ * has its own gate inside proposeOnPendingGame.
+ */
+export function proposalLockGated(
+  branch: Extract<ProposalDecision, { ok: true }>["branch"],
+): boolean {
+  return branch !== "cancelled_makeup";
+}
+
 /** Statuses the route must read the game's outstanding requests for before
  *  deciding: those where a second host proposal could otherwise pile up. */
 export function proposalNeedsRequestRead(status: string): boolean {

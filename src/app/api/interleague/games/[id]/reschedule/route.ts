@@ -14,6 +14,7 @@ import { lockRefusal } from "@/lib/interleague/lock-gate";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   decideHostProposal,
+  proposalLockGated,
   proposalNeedsRequestRead,
   proposalRound,
   statusAfterHostProposal,
@@ -199,13 +200,17 @@ export async function POST(
   // did. Proposing a new time is our own admin acting on a locked division, and
   // the 0082 trigger permits every write this branch makes (a `status` update
   // plus a row in another table), so this route gate is the only enforcement.
-  const lock = lockRefusal(
-    {
-      divisionName: game.home_team?.division?.name ?? null,
-      locked: game.home_team?.division?.locked ?? null,
-    },
-    "rescheduleInterleague",
-  );
+  // A MAKEUP for a rained-out game is rainout recovery and is not lock-gated
+  // (proposalLockGated) — every surface offers it on a locked division.
+  const lock = proposalLockGated(decision.branch)
+    ? lockRefusal(
+        {
+          divisionName: game.home_team?.division?.name ?? null,
+          locked: game.home_team?.division?.locked ?? null,
+        },
+        "rescheduleInterleague",
+      )
+    : null;
   if (lock) return NextResponse.json(lock.body, { status: lock.status });
 
   // ── Venue-hours gate ─────────────────────────────────────────────────────

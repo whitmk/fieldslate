@@ -37,10 +37,14 @@
 //        surface in the log)                                            → [S3]
 //   KM7  log-rainout gates the makeup handoff on canReschedule (an
 //        interleague rainout on Free left cancelled with no way forward) → [S2]
+//   KM8  proposalLockGated gates makeups too (the route refuses what every
+//        surface offers on a locked division)                          → [E5]
+// RESULT: KM1–KM8 each killed FIRST at its own assertion (2026-09-28).
 
 import {
   decideHostProposal,
   gameStatusAfterHostDecline,
+  proposalLockGated,
   statusAfterHostProposal,
 } from "@/lib/interleague/negotiation";
 import { makeupIntro, routeMoveTarget } from "@/lib/schedule/panel-reschedule-route";
@@ -166,6 +170,15 @@ function main() {
   ok(
     statusAfterHostProposal("confirmed_reschedule") === "reschedule_pending",
     "[E4] a confirmed game's request still flips it to reschedule_pending (unchanged)",
+  );
+  ok(
+    !proposalLockGated("cancelled_makeup") && proposalLockGated("confirmed_reschedule") && proposalLockGated("pending_counter"),
+    "[E5] a makeup proposal is NOT lock-gated (rainout recovery); a confirmed game's request still is",
+  );
+  const routeSrc = readFileSync(join(SRC, "app", "api", "interleague", "games", "[id]", "reschedule", "route.ts"), "utf8");
+  ok(
+    /proposalLockGated\(decision\.branch\)\s*\?\s*lockRefusal\(/.test(routeSrc),
+    "[E5b] the route asks proposalLockGated before applying the lock gate",
   );
 
   // ── Partner-facing copy ───────────────────────────────────────────────────
