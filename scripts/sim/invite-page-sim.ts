@@ -250,7 +250,22 @@ async function partG() {
       (html.match(/<footer/g) ?? []).length === 1 && (g.match(/<footer/g) ?? []).length === 1,
       `[G2:${state}] exactly one <footer> on both sides`,
     );
+    // The promo line REPLACES the old footer copy on the two pending (form)
+    // states, names the host league, keeps the signup link, and the old copy
+    // is gone; every other state's footer is byte-identical.
+    const footer = html.match(/<footer[\s\S]*?<\/footer>/)?.[0] ?? "";
+    if (state === "pending" || state === "pending-no-games") {
+      ok(
+        footer.includes("Jen Medici builds their schedule on FieldSlate") &&
+          footer.includes("signup?promo=INTERLEAGUE") &&
+          !footer.includes("Curious about FieldSlate"),
+        `[G3:${state}] footer carries the host-league promo line and not the old copy`,
+      );
+    } else {
+      ok(html === g, `[G3:${state}] footer byte-identical (no promo change here)`);
+    }
   }
+  ok(identical === STATES.length - 2, "[G4] exactly the two pending states moved, nothing else", `${identical}`);
   return { identical };
 }
 

@@ -3,7 +3,7 @@ import { InviteForm } from "@/components/interleague/invite-form";
 import { InviteHeader, InviteFooter } from "@/components/interleague/invite-shell";
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { acceptedInviteBody } from "@/lib/interleague/recipient-schedule";
-import { pageMode } from "@/lib/interleague/signed-in-accept";
+import { hostLeagueName, pageMode } from "@/lib/interleague/signed-in-accept";
 import { renderSignedInInvite, type InvitePayload } from "./signed-in-invite-page";
 
 export const dynamic = "force-dynamic";
@@ -149,7 +149,7 @@ export default async function PublicInvitePage({
         </div>
       </main>
 
-      <InviteFooter />
+      <InviteFooter hostLeagueName={hostLeagueName(payload.sender)} />
     </div>
   );
 }

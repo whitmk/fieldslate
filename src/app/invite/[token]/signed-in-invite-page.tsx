@@ -115,7 +115,7 @@ export async function renderSignedInInvite(params: {
             </div>
           </div>
         </main>
-        <InviteFooter />
+        <InviteFooter plain />
       </div>
     );
   }
@@ -151,7 +151,7 @@ export async function renderSignedInInvite(params: {
         </div>
       </main>
 
-      <InviteFooter />
+      <InviteFooter plain />
     </div>
   );
 }
