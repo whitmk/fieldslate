@@ -9,10 +9,6 @@ type Feature = { text: string; included: boolean };
 // season and additional active seasons are purchased at the same per-season
 // price.
 //
-// NOTE (Item 13 — annual billing not yet wired): annual pricing
-// ($229 Pro / $399 Elite) is intentionally NOT surfaced on this page yet.
-// When Stripe annual billing lands, add the toggle + those numbers here.
-//
 // The "Choose Pro" / "Choose Elite" CTAs route to /signup?plan=<tier> (new
 // users). After signup, onboarding should kick off a quantity:1 Stripe
 // checkout for the chosen plan (POST /api/stripe/checkout, built in Item 13).
@@ -46,12 +42,12 @@ const plans: {
   },
   {
     name: "Pro",
-    price: "$129",
+    price: "$249",
     period: "/season",
     description: "Core scheduling and coordination tools for your season.",
     features: [
       { text: "Unlimited divisions and teams", included: true },
-      { text: "1 active season included — add more at $129 each", included: true },
+      { text: "1 active season included — add more at $249 each", included: true },
       { text: "Up to 2 admin seats", included: true },
       { text: "Interleague scheduling (up to 5 partner leagues per season)", included: true },
       { text: "Rainout rescheduler", included: true },
@@ -66,12 +62,12 @@ const plans: {
   },
   {
     name: "Elite",
-    price: "$249",
+    price: "$349",
     period: "/season",
     description: "Everything in Pro, plus brackets, officials assignments, snack shack scheduling, and advanced reporting.",
     features: [
       { text: "Everything in Pro", included: true },
-      { text: "1 active season included — add more at $249 each", included: true },
+      { text: "1 active season included — add more at $349 each", included: true },
       { text: "Up to 5 admin seats", included: true },
       { text: "Unlimited interleague partner leagues", included: true },
       { text: "Playoff and tournament brackets", included: true },

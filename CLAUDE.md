@@ -125,7 +125,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   migration 0069. `process_checkout_event` treats any non-1 quantity as
   plan-flip only and provisions nothing; `/api/stripe/checkout` rejects
   `quantity !== 1`. A Free→paid upgrade converts the org's existing season in
-  place; add-season buys one more; `upgradeOnly` (Pro→Elite, $120 delta) flips
+  place; add-season buys one more; `upgradeOnly` (Pro→Elite, $100 delta) flips
   the tier without adding a season.
 - **Webhook idempotency is claim-first, inside the RPC.** Stripe delivers
   `checkout.session.completed` at-least-once and retries for ~3 days.
