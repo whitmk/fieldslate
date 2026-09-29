@@ -30,7 +30,8 @@ export default function ContactPage() {
             >
               (707) 206-7869
             </a>{" "}
-            — 8am–8pm Pacific. If I miss you, I&apos;ll call back same day.
+            — 8am–8pm Pacific. If we miss you, we&apos;ll call you back within
+            24–48 hours.
           </p>
           <p className="mt-3 text-xs text-gray-500">
             You can also email us directly at{" "}
