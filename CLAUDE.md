@@ -82,6 +82,40 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   part can't diverge.) After applying a function migration, verify
   `md5(prosrc)` against the repo file's body. Established 2026-07-23 after
   0079 was first applied from a trimmed copy and had to be re-applied.
+- **`profiles` IS COLUMN-GRANTED: a signed-in user may update FOUR columns of
+  their own row and nothing else (0098 — NOT YET APPLIED as of 2026-09-29;
+  until it is, the hole below is live).** RLS decides which ROWS a user may
+  update, never which COLUMNS. Before 0098, `authenticated` held table-level
+  UPDATE, the only policy was `auth.uid() = id`, and the table had no triggers,
+  so any signed-in user could set their own `plan`, `comped` and
+  `pending_promo` from the browser.
+  - **Editable by the user's own client:** `full_name`, `avatar_url`,
+    `org_name`, `setup_dismissed`. The list lives in TWO places in 0098 — the
+    `grant update (…)` and the trigger's array — and they must stay identical.
+  - **Everything else is protected, including columns added later.** A new
+    `profiles` column is NOT writable by users until a migration grants it, and
+    the trigger's check is subtraction-based for the same reason. A column the
+    app must let users change goes through a SECURITY DEFINER function (the
+    calendar feed's `timezone` via `set_org_timezone`) or gets added to BOTH
+    lists deliberately.
+  - **`protect_profiles_columns()` MUST STAY SECURITY INVOKER.** It decides by
+    `current_user`; as SECURITY DEFINER it would always see its owner and allow
+    everything while looking unchanged.
+  - **Legitimate writers of the protected columns:** `handle_new_user` (an
+    INSERT), `process_checkout_event` (SECURITY DEFINER, runs as `postgres`),
+    and the comping runbook (SQL editor, `postgres`). `service_role` has never
+    held UPDATE on `profiles`.
+  - **Proof:** `scripts/sim/profiles-protected-columns-sim.sql`, assembled by
+    `profiles-protected-columns-build.ts`. It applies the migration inside a
+    transaction that always rolls back, so it can run BEFORE the migration is
+    applied. It holds SHARE ROW EXCLUSIVE on `profiles` (blocks writes, not
+    reads) for the run.
+  - **STILL OPEN, same class, not fixed by 0098:** plan LIMITS are enforced in
+    the create RPCs only (`create_league` season cap, `create_division_atomic`,
+    `create_team`, `create_interleague_org`), while RLS lets an org member
+    INSERT into `leagues`, `divisions`, `teams` and `interleague_orgs`
+    directly, and UPDATE `leagues.archived_at`. A season is the unit of sale,
+    so a direct insert or un-archive is an unpaid season.
 - **`service_role` gets NO default grants on new tables in `public`.** This
   project's Postgres does not grant service_role DML on newly created tables,
   so any table the admin client (`src/lib/supabase/admin.ts`) reads or writes
