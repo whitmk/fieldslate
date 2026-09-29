@@ -126,6 +126,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     INSERT into `leagues`, `divisions`, `teams` and `interleague_orgs`
     directly, and UPDATE `leagues.archived_at`. A season is the unit of sale,
     so a direct insert or un-archive is an unpaid season.
+- **`is_org_member` IS the admin gate, because every org member is an admin
+  today.** If a non-admin member role (e.g. coach) is ever added,
+  `set_org_timezone`, `regenerate_team_calendar_link` and
+  `set_team_calendar_link_enabled` (0099) must be restricted to admins — and
+  so must every other `is_org_member`-gated write RPC; audit them all in the
+  same change.
 - **`service_role` gets NO default grants on new tables in `public`.** This
   project's Postgres does not grant service_role DML on newly created tables,
   so any table the admin client (`src/lib/supabase/admin.ts`) reads or writes

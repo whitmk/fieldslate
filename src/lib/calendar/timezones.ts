@@ -1,5 +1,5 @@
 // The org timezones FieldSlate supports — the SAME seven names the
-// `profiles.timezone` CHECK constraint allows (migration 0098). Change one,
+// `profiles.timezone` CHECK constraint allows (migration 0099). Change one,
 // change the other.
 //
 // Each entry carries what a calendar file needs to describe the zone: the
