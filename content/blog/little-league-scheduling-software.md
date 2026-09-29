@@ -3,7 +3,7 @@ title: "Little League Scheduling Software: An Honest Guide for Volunteer Boards 
 description: "What makes Little League scheduling genuinely hard, your real options — spreadsheets, schedule generators, all-in-ones, dedicated tools — and how to choose."
 slug: "little-league-scheduling-software"
 datePublished: "2026-07-09"
-dateModified: "2026-07-09"
+dateModified: "2026-09-29"
 faq:
   - question: "What's the best scheduling software for Little League?"
     answer: "The one that survives your real season in a demo: your shared fields, your interleague partners, your rainout scenario. Categories to compare: free spreadsheets, schedule generators, all-in-one platforms (TeamSideline, TeamLinkt, TeamSnap, SportsEngine), and dedicated scheduling tools (FieldSlate). There is no universal best — there's a best fit for your league's size and field situation."
@@ -17,7 +17,7 @@ faq:
 
 # Little League Scheduling Software: An Honest Guide for Volunteer Boards
 
-*Last updated: July 2026*
+*Last updated: September 2026*
 
 Every Little League has one volunteer who owns the schedule. If that's you, you already know the job isn't "make a schedule" — it's keep four divisions, two shared parks, a city permit calendar, a neighboring league's calendar, and forty volunteer umpires from colliding, all season long, while the weather does its best to wreck it.
 
@@ -64,7 +64,7 @@ This is the category **FieldSlate** ([thefieldslate.com](https://www.thefieldsla
 
 **What it doesn't do:** registration, payments, websites, or rosters-with-birth-certificates. It's the scheduling layer that sits alongside whatever registration system your league is required to use, not a replacement for it.
 
-**Pricing:** free for a single-division league; $129 or $249 per season for the paid tiers — per season, not per player, not a subscription.
+**Pricing:** free for a single-division league; $249 or $349 per season for the paid tiers — per season, not per player, not a subscription.
 
 Other dedicated tools exist at the edges of this category — facility-scheduling platforms aimed at complexes, and tournament schedulers aimed at weekend events — but most assume a paid facility manager or a tournament director, not a volunteer running a rec season.
 

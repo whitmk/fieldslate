@@ -3,7 +3,7 @@ title: "Sports Connect Alternatives in 2026: What Little League Admins Actually 
 description: "Sports Connect sunsets in 2027 and Little League registration moves to PlayMetrics. What's decided for you, what isn't, and your league's real options."
 slug: "sports-connect-alternatives-little-league"
 datePublished: "2026-07-09"
-dateModified: "2026-07-09"
+dateModified: "2026-09-29"
 faq:
   - question: "Is Sports Connect really shutting down?"
     answer: "Yes. Following the 2025 Stack Sports–PlayMetrics merger, the company announced Sports Connect and the Association Platform will be sunset in 2027."
@@ -16,7 +16,7 @@ faq:
 ---
 # Sports Connect Alternatives in 2026: What Little League Admins Actually Need to Know
 
-*Last updated: July 2026*
+*Last updated: September 2026*
 
 If you run a Little League and you've heard that Sports Connect is going away, you've probably started searching for alternatives. Here's the thing most "Sports Connect alternatives" articles get wrong: **if you're a chartered Little League, the biggest part of that decision has already been made for you.**
 
@@ -85,7 +85,7 @@ This is the category **FieldSlate** ([thefieldslate.com](https://www.thefieldsla
 
 **What FieldSlate is not:** a registration platform, a payments processor, or a website builder. It doesn't replace Central Registration and doesn't try to. If you want one login for everything, FieldSlate isn't that — it's the scheduling layer that sits alongside whatever registration you're required to use.
 
-**Pricing:** free for a single-division league; paid tiers are $129 or $249 per season (not per player, not a subscription), which for most leagues is less than one team's uniform order.
+**Pricing:** free for a single-division league; paid tiers are $249 or $349 per season (not per player, not a subscription), which for most leagues is less than one team's uniform order.
 
 The same unbundling logic applies to other point solutions too — some leagues pair mandated registration with a standalone website builder, or a dedicated umpire-assigning tool. The principle is the same: the mandate covers registration; everything else is your call.
 
