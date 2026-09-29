@@ -795,6 +795,35 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   builder (rounds, tiebreaks, quoting, midnight wrap, refusal shapes);
   mutation-checked (status-filter and duration-guard mutants both fail it).
   Re-run after ANY change to the builder or `weekKeyFromIsoDate`.
+- **WHICH games an export contains, and who is home, live in ONE function:
+  `normalizeExportGames` (`src/lib/schedule/export-games.ts`, 2026-09-29).**
+  Both CSVs call it — the Sports Connect builder and the generic games CSV
+  (`buildGenericGamesCsv` / `exportGenericGamesCsv` in
+  `generic-games-export.ts`) — so the two files always contain the same games.
+  It owns the status filter (`countsAsScheduledGame`), the sort, the partner
+  name (`external_team_name` → away team → "TBD"), the `is_away` swap and the
+  partner's field (away games only). **A format builder owns its columns,
+  formats and quoting and NOTHING else — never filter, resolve a name or swap
+  in a builder or a surface.** The generic CSV used to do all of that itself in
+  the modal: it exported pending interleague games as scheduled, left Away Team
+  blank on every interleague game, and never swapped.
+- **The generic CSV's FORMAT is frozen:** six columns, every value quoted,
+  `MM/DD/YYYY`, 12-hour `hh:mm AM/PM`, CRLF, no trailing newline, BOM added by
+  the modal at download. "Location/Field Name" is the bare venue name (never
+  the park), or the partner's field on an away game.
+- **A failed read downloads NOTHING, on every CSV surface.**
+  `fetchSportsConnectGames` is the one fetch all three use; it never throws and
+  returns `ok: false` on a read error, a rejected request, or an error that
+  arrives with partial rows. The generic CSV used to discard both read errors
+  and download a header-only file, which reads as "this division has no games".
+- **Harness: `npm run sim:games-export`** — fixtures for every status and every
+  interleague shape, the same-games assertion across both files, a differential
+  against a frozen copy of the pre-change generic code (ordinary games are
+  byte-identical), read-fault injection. `npm run sim:games-export:mutants`
+  applies 7 mutants to the real source and requires each to die FIRST at its
+  own assertion; it restores the source in a `finally` and verifies it. A
+  section that throws is recorded as `[CRASH-…]` and the run continues, so
+  collected failures always print.
 - **KNOWN HARNESS GAP: `sim:sc-export` drives the BUILDER, not the FETCH.** It
   feeds `buildSportsConnectCsv` fixture rows directly and never exercises
   `fetchSportsConnectGames`, so it **structurally cannot catch a truncated
@@ -3265,13 +3294,6 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   migration (see README data-model notes).
 - Follow-up (separate commit): add metadataBase: new URL(SITE_URL) to the
   root layout so OG URL resolution stops depending on Vercel domain config.
-- The generic per-division games CSV export (`export-picker-modal.tsx`,
-  `handleCsv`) leaves the Away column blank on interleague games —
-  `away_team_id` is null on those rows and the handler reads only
-  `away_team?.name` (no `external_team_name` fallback, no is_away swap).
-  Pre-existing, not a Sports Connect-branch regression; the Sports Connect
-  export handles both. Fix by reusing its name resolution if the generic
-  CSV ever matters for interleague seasons.
 - Practices `TimeSlotRow` **Duration** field
   (`practices-page-client.tsx` ~line 1697): clearing it blur-saves
   `duration_minutes: 0` (`Number("")` is `0`, `min={15}` is UI-only) — but

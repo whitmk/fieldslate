@@ -8,8 +8,8 @@ import type { DivisionStat } from "@/app/(dashboard)/dashboard/leagues/[id]/page
 import {
   buildSportsConnectCsv,
   fetchSportsConnectGames,
-  type SportsConnectGame,
 } from "@/lib/schedule/sports-connect-export";
+import { exportGenericGamesCsv } from "@/lib/schedule/generic-games-export";
 
 export type PrintMode = "games";
 
@@ -24,29 +24,14 @@ interface Props {
   onPrint: (divisionId: string, mode: PrintMode) => void;
 }
 
-// ── CSV helpers ──────────────────────────────────────────────────────────────
-
-function csvEscape(val: string): string {
-  return `"${val.replace(/"/g, '""')}"`;
-}
-
-function fmtCsvDate(iso: string): string {
-  const [year, month, day] = iso.substring(0, 10).split("-");
-  return `${month}/${day}/${year}`;
-}
-
-function fmtCsvTime(iso: string): string {
-  const [hourStr, minStr] = iso.substring(11, 16).split(":");
-  const hour = parseInt(hourStr, 10);
-  const h12 = hour % 12 || 12;
-  return `${h12.toString().padStart(2, "0")}:${minStr} ${hour >= 12 ? "PM" : "AM"}`;
-}
+// ALL CSV logic lives in src/lib/schedule/ — generic-games-export.ts and
+// sports-connect-export.ts, which share one fetch and one game-selection
+// function. This modal only picks a division, calls them, and downloads.
+// Never read games or format a row here.
 
 function slugify(s: string) {
   return s.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
-
-type GameRow = SportsConnectGame;
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -61,24 +46,6 @@ export function ExportPickerModal({
   const [exportError, setExportError] = useState<string | null>(null);
 
   const selectedDivision = divisions.find((d) => d.id === selectedDivisionId);
-
-  async function fetchGames(divisionId: string): Promise<GameRow[]> {
-    const supabase = createClient();
-    const { data: teamData } = await supabase
-      .from("teams").select("id").eq("division_id", divisionId);
-    const teamIds = (teamData ?? []).map((t: { id: string }) => t.id);
-    if (teamIds.length === 0) return [];
-    const { data } = await supabase
-      .from("games")
-      .select(`id, scheduled_at, status, is_away, external_team_name, proposed_venue_name,
-        home_team:teams!home_team_id(name),
-        away_team:teams!away_team_id(name),
-        venue:venues(name)`)
-      .in("home_team_id", teamIds)
-      .neq("status", "cancelled")
-      .order("scheduled_at", { ascending: true });
-    return (data ?? []) as unknown as GameRow[];
-  }
 
   // BOM helps Excel; the Sports Connect file feeds an importer, so it skips it.
   function triggerDownload(csv: string, filename: string, bom = true) {
@@ -97,24 +64,33 @@ export function ExportPickerModal({
     if (!selectedDivision) return;
     const key = "games-csv";
     setLoadingAction(key);
+    setExportError(null);
 
     const today = new Date().toISOString().substring(0, 10).replace(/-/g, "");
     const base = `FieldSlate-${slugify(leagueName)}-${slugify(selectedDivision.name)}`;
 
     try {
-      const games = await fetchGames(selectedDivisionId);
-      const header = ["Home Team", "Away Team", "Date", "Start Time", "Location/Field Name", "Division Name"]
-        .map(csvEscape).join(",");
-      const rows = games.map((g) =>
-        [g.home_team?.name ?? "", g.away_team?.name ?? "", fmtCsvDate(g.scheduled_at),
-         fmtCsvTime(g.scheduled_at), g.venue?.name ?? "", selectedDivision.name]
-        .map(csvEscape).join(","));
-      triggerDownload([header, ...rows].join("\r\n"), `${base}-games-${today}.csv`);
-
-      setDoneAction(key);
-      setTimeout(() => setDoneAction(null), 3000);
+      const result = await exportGenericGamesCsv(
+        createClient(),
+        selectedDivisionId,
+        selectedDivision.name,
+      );
+      // A failed read downloads NOTHING — a header-only file would read as
+      // "this division has no games".
+      if (!result.ok) {
+        setExportError(
+          "Couldn't read this division's games, so no file was downloaded. Check your connection and try again.",
+        );
+      } else {
+        triggerDownload(result.csv, `${base}-games-${today}.csv`);
+        setDoneAction(key);
+        setTimeout(() => setDoneAction(null), 3000);
+      }
     } catch (err) {
       console.error("[ExportPickerModal] CSV export failed:", err);
+      setExportError(
+        "Couldn't read this division's games, so no file was downloaded. Check your connection and try again.",
+      );
     }
 
     setLoadingAction(null);

@@ -46,20 +46,17 @@
 //   has no non-blank CHECK). is_away games carry no venue row, so they never
 //   get a Field value — Field stays blank exactly as today.
 
-import { countsAsScheduledGame, weekKeyFromIsoDate } from "@/lib/venues/game-days";
-import type { createClient } from "@/lib/supabase/client";
+//
+// WHICH games are exported, their order, the partner name and the is_away
+// swap all live in the shared normalizeExportGames (export-games.ts), which
+// the generic games CSV calls too. This file owns only the Sports Connect
+// columns and formats — never filter or resolve a team name here.
 
-export type SportsConnectGame = {
-  id: string;
-  scheduled_at: string; // ISO wall-clock, e.g. "2026-10-24T09:00:00+00:00"
-  status: string;
-  is_away: boolean | null;
-  external_team_name: string | null;
-  proposed_venue_name: string | null;
-  home_team: { name: string } | null;
-  away_team: { name: string } | null;
-  venue: { name: string; location: { name: string } | null } | null;
-};
+import { weekKeyFromIsoDate } from "@/lib/venues/game-days";
+import type { createClient } from "@/lib/supabase/client";
+import { normalizeExportGames, type ExportGame } from "./export-games";
+
+export type SportsConnectGame = ExportGame;
 
 export type SportsConnectResult =
   | { ok: true; csv: string; rowCount: number }
@@ -67,33 +64,42 @@ export type SportsConnectResult =
 
 export type SportsConnectFetchClient = ReturnType<typeof createClient>;
 
-/** The SINGLE games fetch both export surfaces use (the league-page picker
- *  modal and the /dashboard/export page). Shared so the column list can't
- *  drift between surfaces — a divergent select would change names/locations
- *  even with one builder. No status filter here: the builder applies the
- *  shared countsAsScheduledGame predicate. */
+/** The SINGLE games fetch every CSV export uses (the Sports Connect CSV on
+ *  the league-page picker modal and the /dashboard/export page, and the
+ *  generic games CSV). Shared so the column list can't drift between
+ *  surfaces — a divergent select would change names/locations even with one
+ *  builder. No status filter here: normalizeExportGames applies the shared
+ *  countsAsScheduledGame predicate.
+ *
+ *  Never throws and never returns a partial list as success: a read error OR
+ *  a rejected request comes back as `ok: false`, and the caller must show it
+ *  and not download a file. */
 export async function fetchSportsConnectGames(
   supabase: SportsConnectFetchClient,
   divisionId: string,
 ): Promise<{ ok: true; games: SportsConnectGame[] } | { ok: false; error: string }> {
-  const { data: teamData, error: teamErr } = await supabase
-    .from("teams")
-    .select("id")
-    .eq("division_id", divisionId);
-  if (teamErr) return { ok: false, error: teamErr.message };
-  const teamIds = ((teamData ?? []) as { id: string }[]).map((t) => t.id);
-  if (teamIds.length === 0) return { ok: true, games: [] };
+  try {
+    const { data: teamData, error: teamErr } = await supabase
+      .from("teams")
+      .select("id")
+      .eq("division_id", divisionId);
+    if (teamErr) return { ok: false, error: teamErr.message };
+    const teamIds = ((teamData ?? []) as { id: string }[]).map((t) => t.id);
+    if (teamIds.length === 0) return { ok: true, games: [] };
 
-  const { data, error } = await supabase
-    .from("games")
-    .select(`id, scheduled_at, status, is_away, external_team_name, proposed_venue_name,
+    const { data, error } = await supabase
+      .from("games")
+      .select(`id, scheduled_at, status, is_away, external_team_name, proposed_venue_name,
       home_team:teams!home_team_id(name),
       away_team:teams!away_team_id(name),
       venue:venues(name, location:locations(name))`)
-    .in("home_team_id", teamIds)
-    .order("scheduled_at", { ascending: true });
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, games: (data ?? []) as unknown as SportsConnectGame[] };
+      .in("home_team_id", teamIds)
+      .order("scheduled_at", { ascending: true });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, games: (data ?? []) as unknown as SportsConnectGame[] };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export const SPORTS_CONNECT_HEADER =
@@ -142,50 +148,38 @@ export function buildSportsConnectCsv(
     };
   }
 
-  const counting = games.filter((g) => countsAsScheduledGame(g.status));
-
-  const sorted = [...counting].sort((a, b) => {
-    const t = a.scheduled_at.substring(0, 16).localeCompare(b.scheduled_at.substring(0, 16));
-    if (t !== 0) return t;
-    const h = (a.home_team?.name ?? "").localeCompare(b.home_team?.name ?? "");
-    if (h !== 0) return h;
-    return a.id.localeCompare(b.id);
-  });
+  // Selection, order, partner name and the is_away swap: shared.
+  const sorted = normalizeExportGames(games);
 
   // Distinct game-bearing weeks, in order → round numbers.
-  const weekKeys = Array.from(new Set(sorted.map((g) => weekKeyFromIsoDate(g.scheduled_at)))).sort();
+  const weekKeys = Array.from(new Set(sorted.map((g) => weekKeyFromIsoDate(g.scheduledAt)))).sort();
   const roundByWeek = new Map(weekKeys.map((wk, i) => [wk, i + 1]));
 
   const rows = sorted.map((g, i) => {
-    const ourTeam = g.home_team?.name ?? "TBD";
-    const partner = g.external_team_name?.trim() || (g.away_team?.name ?? "TBD");
-    const [homeName, awayName] = g.is_away ? [partner, ourTeam] : [ourTeam, partner];
-    const start = startMinutes(g.scheduled_at);
+    const start = startMinutes(g.scheduledAt);
     // Location / Field split (see header). A venue with a location fills BOTH;
     // a venue without one keeps today's behavior (Location = venue, Field
     // blank); an is_away row has no venue, so Location falls back to
     // proposed_venue_name and Field stays blank — all byte-for-byte as before
     // for the no-location case.
-    const venueName = g.venue?.name?.trim() ?? "";
-    const locationName = g.venue?.location?.name?.trim() ?? "";
     let location: string;
     let field: string;
-    if (venueName && locationName) {
-      location = locationName;
-      field = venueName;
-    } else if (venueName) {
-      location = venueName;
+    if (g.venueName && g.locationName) {
+      location = g.locationName;
+      field = g.venueName;
+    } else if (g.venueName) {
+      location = g.venueName;
       field = "";
     } else {
-      location = g.is_away ? g.proposed_venue_name?.trim() ?? "" : "";
+      location = g.partnerFieldName;
       field = "";
     }
     return [
       String(i + 1),
-      String(roundByWeek.get(weekKeyFromIsoDate(g.scheduled_at)) ?? 0),
-      homeName,
-      awayName,
-      fmtMatchDate(g.scheduled_at),
+      String(roundByWeek.get(weekKeyFromIsoDate(g.scheduledAt)) ?? 0),
+      g.homeName,
+      g.awayName,
+      fmtMatchDate(g.scheduledAt),
       fmtHHMM(start),
       fmtHHMM(start + duration),
       location,
