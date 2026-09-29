@@ -272,9 +272,8 @@ function LockedFeatureBody({
 
             {isProToElite && (
               <p className="mt-3 text-center text-xs text-white/50">
-                You paid ${SEASON_PRICE_USD.pro} for Pro. Pay $
-                {SEASON_PRICE_USD.pro_to_elite} more to unlock all Elite features
-                for this season.
+                Pay ${SEASON_PRICE_USD.pro_to_elite} more to unlock all Elite
+                features for this season.
               </p>
             )}
           </div>
