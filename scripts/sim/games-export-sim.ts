@@ -12,6 +12,8 @@
 //   D   DIFFERENTIAL: for ordinary games the new generic builder is
 //       byte-identical to a frozen copy of the pre-change code.
 //   E   a failed read produces NO csv — generic and Sports Connect.
+//   K   the keepCancelled opt-in (team calendar feed): off by default, keeps
+//       and flags cancelled games when on, NEVER lets a pending game through.
 //   S   source wiring (grep-level, weak by nature — stated).
 //
 // A section that THROWS is recorded as a [CRASH-…] failure and the run goes
@@ -31,6 +33,14 @@
 //   GE6 games read error swallowed, empty list returned       → [E2]
 //   GE7 generic builder throws                                → [CRASH-P]
 //       (proves failures are still printed when a mutant crashes)
+//   GE8 keepCancelled defaults ON                             → [EQ3]
+//       (EQ3 is the default-selection assertion. First written to expect
+//        [ST-ro]; EQ3 runs earlier and checks exactly this, so the expectation
+//        was corrected rather than the assertions reordered.)
+//   GE9 keepCancelled lets pending games through              → [K3]
+//       (first died at K1, the general "nothing else new" check; K3 was moved
+//        ahead of it so the pending rule is pinned by its own assertion.)
+//   GE10 kept cancelled games are not flagged                 → [K2]
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -358,6 +368,28 @@ async function main() {
     }
   });
 
+  section("K", () => {
+    const off = normalizeExportGames(FIXTURES);
+    const explicitOff = normalizeExportGames(FIXTURES, { keepCancelled: false });
+    assert(JSON.stringify(off) === JSON.stringify(explicitOff) && off.every((r) => !r.cancelled), "K0",
+      "default and explicit-off agree, and no row is flagged cancelled");
+    const on = normalizeExportGames(FIXTURES, { keepCancelled: true });
+    // K3 runs BEFORE K1 on purpose: K1 ("nothing else new") would also catch a
+    // leaked pending game, and the pending rule must be pinned by its own line.
+    assert(!on.some((r) => r.id === "p1" || r.id === "p2"), "K3",
+      "opt-in still excludes BOTH pending interleague games");
+    const onIds = on.map((r) => r.id).sort();
+    assert(JSON.stringify(onIds) === JSON.stringify([...INCLUDED, "ro", "x"].sort()), "K1",
+      `opt-in keeps the two cancelled games and nothing else new (got: ${onIds.join(",")})`);
+    const flagged = on.filter((r) => r.cancelled).map((r) => r.id).sort();
+    assert(JSON.stringify(flagged) === JSON.stringify(["ro", "x"]), "K2",
+      `exactly the cancelled games are flagged (got: ${flagged.join(",") || "none"})`);
+    const kept = on.filter((r) => !r.cancelled);
+    assert(JSON.stringify(kept) === JSON.stringify(off), "K4",
+      "the non-cancelled rows are identical with the opt-in on or off");
+    count("cancelled_kept", flagged.length);
+  });
+
   console.log("\n── E");
   try {
     const okRes = await exportGenericGamesCsv(fakeSupabase(FIXTURES, "none"), "d1", "QA-Minors");
@@ -414,7 +446,7 @@ async function main() {
     "pending_unanswered_excluded", "pending_countered_excluded", "interleague_home_row",
     "away_field_known", "away_field_unknown", "tbd_partner", "rows_compared",
     "status_included", "status_excluded", "differential_rows",
-    "clean_read_produced_file", "read_error_refused",
+    "clean_read_produced_file", "read_error_refused", "cancelled_kept",
   ];
   for (const c of required) {
     const n = counters[c] ?? 0;

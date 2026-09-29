@@ -12,6 +12,11 @@
 //   is) and `pending_interleague` (an unagreed proposal, whether or not the
 //   partner has countered). scheduled, reschedule_pending, completed and any
 //   other status are included.
+// - `keepCancelled` (opt-in, DEFAULT OFF): also keeps `cancelled` games, each
+//   flagged `cancelled: true`, for a surface that must SHOW a called-off game
+//   instead of letting it vanish (the team calendar feed). Both CSV exports
+//   leave it off and are byte-identical to before it existed. It never lets a
+//   pending interleague game through — nothing does.
 // - Order: wall-clock start, then OUR team's name, then id (deterministic
 //   across identical start times).
 // - Partner name: external_team_name (trimmed) → away team's name → "TBD".
@@ -48,10 +53,23 @@ export type ExportGameRow = {
   locationName: string;
   /** The partner's field (free text), is_away games only; "" when unknown. */
   partnerFieldName: string;
+  /** True only for a `cancelled` game kept by `keepCancelled`. */
+  cancelled: boolean;
 };
 
-export function normalizeExportGames(games: ExportGame[]): ExportGameRow[] {
-  const counting = games.filter((g) => countsAsScheduledGame(g.status));
+export type NormalizeExportOptions = {
+  /** Keep `cancelled` games, flagged. Default false. */
+  keepCancelled?: boolean;
+};
+
+export function normalizeExportGames(
+  games: ExportGame[],
+  options: NormalizeExportOptions = {},
+): ExportGameRow[] {
+  const keepCancelled = options.keepCancelled === true;
+  const counting = games.filter(
+    (g) => countsAsScheduledGame(g.status) || (keepCancelled && g.status === "cancelled"),
+  );
 
   const sorted = [...counting].sort((a, b) => {
     const t = a.scheduled_at.substring(0, 16).localeCompare(b.scheduled_at.substring(0, 16));
@@ -73,6 +91,7 @@ export function normalizeExportGames(games: ExportGame[]): ExportGameRow[] {
       venueName: g.venue?.name?.trim() ?? "",
       locationName: g.venue?.location?.name?.trim() ?? "",
       partnerFieldName: g.is_away ? g.proposed_venue_name?.trim() ?? "" : "",
+      cancelled: g.status === "cancelled",
     };
   });
 }

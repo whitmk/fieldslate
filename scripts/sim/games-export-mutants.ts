@@ -1,27 +1,16 @@
-// Mutation pass for games-export-sim.ts. Applies each mutant to the REAL
-// source, runs the sim, RESTORES the source (always — try/finally, then
-// verified byte-for-byte), and requires the FIRST failing assertion to be the
-// one the mutant was written for. A red run is not the answer; the right red
-// line is.
-//
-// Prints every failure the sim collected for each mutant, including when the
-// mutant makes the code throw.
-import { readFileSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+// Mutation pass for games-export-sim.ts — see mutant-runner.ts for the rules
+// (real source, always restored, FIRST failure must be the mutant's own).
+import { runMutants, type Mutant } from "./mutant-runner";
 
-const ROOT = join(__dirname, "../..");
 const NORMALIZE = "src/lib/schedule/export-games.ts";
 const GENERIC = "src/lib/schedule/generic-games-export.ts";
 const FETCH = "src/lib/schedule/sports-connect-export.ts";
 
-type Mutant = { id: string; what: string; file: string; find: string; replace: string; expect: string };
-
 const MUTANTS: Mutant[] = [
   {
     id: "GE1", what: "pending filter removed (only cancelled excluded)", file: NORMALIZE,
-    find: "games.filter((g) => countsAsScheduledGame(g.status))",
-    replace: 'games.filter((g) => g.status !== "cancelled")',
+    find: "(g) => countsAsScheduledGame(g.status) || (keepCancelled",
+    replace: '(g) => g.status !== "cancelled" || (keepCancelled',
     expect: "P1",
   },
   {
@@ -60,56 +49,24 @@ const MUTANTS: Mutant[] = [
     replace: "(r as unknown as { venue: { name: string } }).venue.name,",
     expect: "CRASH-P",
   },
+  {
+    id: "GE8", what: "keepCancelled defaults ON (cancelled games reach the CSVs)", file: NORMALIZE,
+    find: "const keepCancelled = options.keepCancelled === true;",
+    replace: "const keepCancelled = options.keepCancelled !== false;",
+    expect: "EQ3",
+  },
+  {
+    id: "GE9", what: "keepCancelled lets pending games through", file: NORMALIZE,
+    find: '(keepCancelled && g.status === "cancelled")',
+    replace: "keepCancelled",
+    expect: "K3",
+  },
+  {
+    id: "GE10", what: "kept cancelled games are not flagged", file: NORMALIZE,
+    find: 'cancelled: g.status === "cancelled",',
+    replace: "cancelled: false,",
+    expect: "K2",
+  },
 ];
 
-function runSim(): { code: number; fails: string[] } {
-  const r = spawnSync("npx", ["tsx", "scripts/sim/games-export-sim.ts"], { cwd: ROOT, encoding: "utf8" });
-  const out = `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
-  const fails = out.split("\n").filter((l) => l.trimStart().startsWith("FAIL:")).map((l) => l.trim());
-  return { code: r.status ?? -1, fails };
-}
-
-let bad = 0;
-const base = runSim();
-if (base.code !== 0) {
-  console.error("Baseline is not green — fix that before running mutants.");
-  for (const f of base.fails) console.error("  " + f);
-  process.exit(1);
-}
-console.log("baseline: green\n");
-
-for (const m of MUTANTS) {
-  const path = join(ROOT, m.file);
-  const original = readFileSync(path, "utf8");
-  if (original.split(m.find).length !== 2) {
-    console.error(`${m.id}: target text not found exactly once in ${m.file} — mutant is stale`);
-    bad++;
-    continue;
-  }
-  let res: { code: number; fails: string[] };
-  try {
-    writeFileSync(path, original.replace(m.find, m.replace));
-    res = runSim();
-  } finally {
-    writeFileSync(path, original);
-  }
-  if (readFileSync(path, "utf8") !== original) {
-    console.error(`${m.id}: SOURCE NOT RESTORED — ${m.file}`);
-    process.exit(2);
-  }
-  const first = res.fails[0]?.match(/FAIL: \[([^\]]+)\]/)?.[1] ?? "(none)";
-  const killed = res.code !== 0 && first === m.expect;
-  if (!killed) bad++;
-  console.log(
-    `${m.id} ${m.what}\n   ${killed ? "KILLED" : res.code === 0 ? "SURVIVED" : "KILLED AT THE WRONG ASSERTION"}` +
-      ` — first failure [${first}], expected [${m.expect}], ${res.fails.length} failure(s) collected:`,
-  );
-  for (const f of res.fails) console.log(`     ${f.slice(0, 150)}`);
-  console.log("");
-}
-
-const after = runSim();
-console.log(`after restore: ${after.code === 0 ? "green" : "RED"}`);
-if (after.code !== 0) bad++;
-console.log(bad ? `\n${bad} PROBLEM(S)` : `\nAll ${MUTANTS.length} mutants killed at their own assertion.`);
-process.exit(bad ? 1 : 0);
+runMutants({ sim: "scripts/sim/games-export-sim.ts", mutants: MUTANTS });
