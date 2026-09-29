@@ -93,6 +93,48 @@ const MUTANTS: Mutant[] = [
     replace: "? r.venueName",
     expect: "I4",
   },
+  {
+    id: "TC15", what: "VTIMEZONE dropped (TZID referenced, never described)", file: ICS,
+    find: "    ...timezoneBlock(zone),\n",
+    replace: "",
+    expect: "Z7",
+  },
+  {
+    id: "TC16", what: "title order flipped (host first, the CSV order)", file: ICS,
+    find: "return weHost ? `${team.name} vs ${row.awayName}` : `${team.name} @ ${row.homeName}`;",
+    replace: "return `${row.homeName} vs ${row.awayName}`;",
+    expect: "N2",
+  },
+  {
+    id: "TC17", what: "home/away decided without is_away", file: ICS,
+    find: "const weHost = weAreStoredHome && !game.is_away;",
+    replace: "const weHost = weAreStoredHome;",
+    expect: "N3",
+  },
+  {
+    id: "TC18", what: "a game the team is not in is titled anyway", file: ICS,
+    find: "if (!weAreStoredHome && !weAreStoredAway) return null;",
+    replace: "",
+    expect: "N6",
+  },
+  {
+    id: "TC19", what: "org always prefixed to the calendar name", file: ICS,
+    find: "const tail = org === \"\" || orgAlreadyNamed ? season : `${org} ${season}`;",
+    replace: "const tail = org === \"\" ? season : `${org} ${season}`;",
+    expect: "N8",
+  },
+  {
+    id: "TC20", what: "own team and opponent swapped in the title", file: ICS,
+    find: "return weHost ? `${team.name} vs ${row.awayName}` : `${team.name} @ ${row.homeName}`;",
+    replace: "return weHost ? `${row.awayName} vs ${team.name}` : `${row.homeName} @ ${team.name}`;",
+    expect: "N1",
+  },
+  {
+    id: "TC21", what: "semicolon escaping removed", file: ICS,
+    find: '    .replace(/;/g, "\\\\;")\n',
+    replace: "",
+    expect: "X1",
+  },
 ];
 
 runMutants({

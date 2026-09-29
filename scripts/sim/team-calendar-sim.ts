@@ -13,7 +13,9 @@
 //      end = start + game duration; unusable duration → start only
 //   Z  the org's timezone labels every event; unsupported zone → refused
 //   U  UID is stable when a game moves
-//   I  interleague titles and locations (shared rules)
+//   N  titles from the feed team's perspective: own team first, "vs" at
+//      home, "@" away; a game the team is not in is refused; calendar name
+//   I  locations (shared rules)
 //   X  escaping, CRLF, 75-octet folding, multi-byte safety
 //   L  LEAK: fixtures carry a planted game note, coach name/email, contact
 //      email, official and score; none may appear, and every property name
@@ -48,7 +50,29 @@
 //   TC12 shared selection lets pending games through            → [P1]
 //   TC13 builder throws (crash reporting)                       → [CRASH-P]
 //   TC14 location prints the bare field, dropping the park      → [I4]
+//   TC15 VTIMEZONE dropped (TZID referenced, never described)   → [Z7]
+//        (first died at [Z1], a Pacific-only header check. Z7 — every TZID
+//         referenced is described, for all seven zones — now runs before
+//         it. That move made TC10 die at Z7 instead of its own Z2, so Z2/Z3
+//         run first of all.)
+//   TC16 title order flipped (host first, the CSV order)        → [N2]
+//   TC17 home/away decided without is_away                      → [N3]
+//   TC18 a game the team is not in is titled anyway             → [N6]
+//   TC19 org always prefixed to the calendar name               → [N8]
+//   TC20 own team and opponent swapped in the title             → [N1]
+//        (first died at [C1], which compared a whole cancelled title. C1 now
+//         checks the prefix only; wording and order belong to N.)
+//   TC21 semicolon escaping removed                             → [X1]
+//
+// A VACUOUS ASSERTION WAS FOUND HERE (2026-09-29). The builder shipped its
+// first draft with semicolons UNESCAPED, and X1/X2 passed anyway: their
+// expected values were computed with the same wrong replacement, so both
+// sides were wrong identically. Expected values in X are now written out as
+// LITERALS, read from a fixture file of raw text, and TC21 pins the
+// semicolon rule. Never compute an expected value with the code's own logic.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   buildTeamCalendarIcs,
   gameUid,
@@ -92,6 +116,8 @@ const PLANTED_STRINGS = [
   "PLANTED", "planted-coach@example.test", "planted-contact@example.test", "987654", "lights out",
 ];
 
+const TEAM_ID = "t-tigers";
+
 function g(p: Partial<TeamCalendarGame> & { id: string; scheduled_at: string }): TeamCalendarGame {
   return {
     status: "scheduled",
@@ -100,6 +126,8 @@ function g(p: Partial<TeamCalendarGame> & { id: string; scheduled_at: string }):
     proposed_venue_name: null,
     home_team: { name: "QA Tigers" },
     away_team: { name: "QA Bears" },
+    home_team_id: TEAM_ID,
+    away_team_id: "t-other",
     venue: { name: "QA-Memorial", location: null },
     updated_at: "2026-09-20T17:45:30.123456+00:00",
     ...(PLANTED as object),
@@ -112,26 +140,32 @@ const GAMES: TeamCalendarGame[] = [
   g({ id: "n1", scheduled_at: at("2026-10-24", "09:00") }),
   g({ id: "n2", scheduled_at: at("2026-10-24", "13:30"), away_team: { name: "QA Owls" },
       venue: { name: "Field 2", location: { name: "QA Park" } } }),
-  g({ id: "ih", scheduled_at: at("2026-10-31", "10:00"), away_team: null, external_team_name: "Riverside Reds" }),
-  g({ id: "ia1", scheduled_at: at("2026-11-07", "15:30"), away_team: null, is_away: true,
+  g({ id: "ih", away_team_id: null, scheduled_at: at("2026-10-31", "10:00"), away_team: null, external_team_name: "Riverside Reds" }),
+  g({ id: "ia1", away_team_id: null, scheduled_at: at("2026-11-07", "15:30"), away_team: null, is_away: true,
       external_team_name: "Riverside Blues", venue: null, proposed_venue_name: "Riverside Field 1" }),
-  g({ id: "ia2", scheduled_at: at("2026-11-08", "10:00"), away_team: null, is_away: true,
+  g({ id: "ia2", away_team_id: null, scheduled_at: at("2026-11-08", "10:00"), away_team: null, is_away: true,
       external_team_name: "Riverside Greens", venue: null }),
-  g({ id: "p1", scheduled_at: at("2026-11-14", "09:00"), status: "pending_interleague", away_team: null }),
-  g({ id: "p2", scheduled_at: at("2026-11-14", "11:00"), status: "pending_interleague", away_team: null,
+  g({ id: "p1", away_team_id: null, scheduled_at: at("2026-11-14", "09:00"), status: "pending_interleague", away_team: null }),
+  g({ id: "p2", away_team_id: null, scheduled_at: at("2026-11-14", "11:00"), status: "pending_interleague", away_team: null,
       external_team_name: "Riverside Golds", proposed_venue_name: "Riverside Field 9" }),
   g({ id: "x", scheduled_at: at("2026-11-15", "09:00"), status: "cancelled", away_team: { name: "QA Hawks" } }),
-  g({ id: "rp", scheduled_at: at("2026-11-21", "09:00"), status: "reschedule_pending", away_team: null,
+  g({ id: "rp", away_team_id: null, scheduled_at: at("2026-11-21", "09:00"), status: "reschedule_pending", away_team: null,
       external_team_name: "Riverside Silvers" }),
   g({ id: "late", scheduled_at: at("2026-12-31", "23:00"), away_team: { name: "QA Night" } }),
+  // ordinary game where the feed team is the VISITOR
+  g({ id: "aw", scheduled_at: at("2026-11-22", "12:00"), home_team: { name: "QA Lions" }, away_team: { name: "QA Tigers" },
+      home_team_id: "t-lions", away_team_id: TEAM_ID }),
+  // cancelled game where the feed team is the visitor
+  g({ id: "xa", scheduled_at: at("2026-11-28", "12:00"), status: "cancelled", home_team: { name: "QA Pumas" },
+      away_team: { name: "QA Tigers" }, home_team_id: "t-pumas", away_team_id: TEAM_ID }),
 ];
 
 function input(over: Partial<TeamCalendarInput> = {}): TeamCalendarInput {
   return {
-    team: { name: "QA Tigers" },
+    team: { id: TEAM_ID, name: "QA Tigers" },
     division: { name: "QA-Minors", game_duration: 105 },
     season: { name: "QA Fall 2026" },
-    org: { timezone: "America/Los_Angeles" },
+    org: { name: "QA League", timezone: "America/Los_Angeles" },
     games: GAMES,
     ...over,
   };
@@ -168,6 +202,7 @@ function build(over: Partial<TeamCalendarInput> = {}) {
 const OPPONENT: Record<string, string> = {
   n1: "QA Bears", n2: "QA Owls", ih: "Riverside Reds", ia1: "Riverside Blues", ia2: "Riverside Greens",
   p1: "TBD", p2: "Riverside Golds", x: "QA Hawks", rp: "Riverside Silvers", late: "QA Night",
+  aw: "QA Lions", xa: "QA Pumas",
 };
 const byUid = (events: Event[], id: string) =>
   events.find((e) => (e.get("SUMMARY") ?? "").includes(OPPONENT[id]));
@@ -186,14 +221,18 @@ function main() {
     const { events } = build();
     const x = byUid(events, "x");
     assert(!!x, "C0", "a cancelled game STAYS in the feed");
-    assert(x?.get("SUMMARY") === "CANCELLED: QA Tigers vs QA Hawks", "C1",
+    // Prefix only — the matchup's wording and order belong to section N.
+    assert(x?.get("SUMMARY")?.startsWith("CANCELLED: ") === true && x.get("SUMMARY")!.length > "CANCELLED: ".length, "C1",
       `cancelled title is "CANCELLED: <matchup>" (got: ${x?.get("SUMMARY")})`);
     assert(x?.get("STATUS") === "CANCELLED", "C2", `cancelled carries STATUS:CANCELLED (got: ${x?.get("STATUS")})`);
-    const others = events.filter((e) => e !== x);
-    assert(others.length === 7 && others.every((e) => e.get("STATUS") === "CONFIRMED" && !e.get("SUMMARY")!.startsWith("CANCELLED")),
-      "C3", "every other game is CONFIRMED and unprefixed (incl. reschedule_pending)");
+    const xa = byUid(events, "xa");
+    assert(xa?.get("STATUS") === "CANCELLED" && xa?.get("SUMMARY")?.startsWith("CANCELLED: ") === true, "C2b",
+      "a cancelled AWAY game is marked the same way");
+    const others = events.filter((e) => e !== x && e !== xa);
+    assert(others.length === 8 && others.every((e) => e.get("STATUS") === "CONFIRMED" && !e.get("SUMMARY")!.startsWith("CANCELLED")),
+      "C3", "every game that is not cancelled is CONFIRMED and unprefixed (incl. reschedule_pending)");
     assert(!events.some((e) => /RAINED/i.test(e.get("SUMMARY") ?? "")), "C4", 'no title says "RAINED OUT"');
-    assert(events.length === 8, "C5", `8 events from 10 games: 2 pending dropped, 1 cancelled kept (got ${events.length})`);
+    assert(events.length === 10, "C5", `10 events from 12 games: 2 pending dropped, 2 cancelled kept (got ${events.length})`);
     if (x) count("cancelled_event");
   });
 
@@ -223,24 +262,49 @@ function main() {
   });
 
   section("Z", () => {
-    const la = build();
-    assert(la.head.includes("TZID:America/Los_Angeles") && la.head.includes("TZNAME:PDT") && la.head.includes("TZOFFSETTO:-0700"),
-      "Z1", "Pacific feed describes its zone, with daylight time");
-    const ny = build({ org: { timezone: "America/New_York" } });
-    assert(ny.events.length === 8 && ny.events.every((e) => e.line("DTSTART")!.startsWith("DTSTART;TZID=America/New_York:") &&
+    // Z2/Z3 run first: they own "events carry the ORG's zone". Z7 below would
+    // also notice a hardcoded zone (it would reference an undescribed TZID).
+    const ny = build({ org: { name: "QA League", timezone: "America/New_York" } });
+    assert(ny.events.length === 10 && ny.events.every((e) => e.line("DTSTART")!.startsWith("DTSTART;TZID=America/New_York:") &&
       e.line("DTEND")!.startsWith("DTEND;TZID=America/New_York:")), "Z2",
       `an Eastern org's events are labelled Eastern (got: ${ny.events[0]?.line("DTSTART")})`);
     assert(byUid(ny.events, "n1")?.line("DTSTART") === "DTSTART;TZID=America/New_York:20261024T090000", "Z3",
       "…and the wall-clock time is the same 9:00 — relabelled, not shifted");
-    const bad = buildTeamCalendarIcs(input({ org: { timezone: "Europe/London" } }));
-    const empty = buildTeamCalendarIcs(input({ org: { timezone: "" } }));
+    // Every TZID an event REFERENCES must be DESCRIBED by a VTIMEZONE.
+    for (const z of ORG_TIMEZONES) {
+      const r = build({ org: { name: "QA League", timezone: z.id } });
+      const referenced = new Set(
+        r.events.flatMap((e) => e.lines.map((l) => l.match(/^[A-Z-]+;TZID=([^:;]+):/)?.[1]).filter((v): v is string => !!v)),
+      );
+      const described = new Set<string>();
+      let inZone = false;
+      for (const l of r.head) {
+        if (l === "BEGIN:VTIMEZONE") inZone = true;
+        else if (l === "END:VTIMEZONE") inZone = false;
+        else if (inZone && l.startsWith("TZID:")) described.add(l.substring(5));
+      }
+      const missing = [...referenced].filter((t) => !described.has(t));
+      assert(referenced.size === 1 && referenced.has(z.id) && missing.length === 0, "Z7",
+        `${z.id}: every TZID referenced has its VTIMEZONE (referenced: ${[...referenced].join(",") || "none"}; missing: ${missing.join(",") || "none"})`);
+      const hasDst = r.head.includes("BEGIN:DAYLIGHT");
+      const wantDst = z.id !== "America/Phoenix" && z.id !== "Pacific/Honolulu";
+      assert(hasDst === wantDst && r.head.includes("BEGIN:STANDARD") &&
+        (!wantDst || (r.head.includes("RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU") && r.head.includes("RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU"))),
+        "Z8", `${z.id}: ${wantDst ? "standard + daylight rules (2nd Sunday March, 1st Sunday November)" : "standard time only"}`);
+      if (referenced.size) count("tzid_referenced");
+    }
+    const la = build();
+    assert(la.head.includes("TZID:America/Los_Angeles") && la.head.includes("TZNAME:PDT") && la.head.includes("TZOFFSETTO:-0700"),
+      "Z1", "Pacific feed describes its zone, with daylight time");
+    const bad = buildTeamCalendarIcs(input({ org: { name: "QA League", timezone: "Europe/London" } }));
+    const empty = buildTeamCalendarIcs(input({ org: { name: "QA League", timezone: "" } }));
     assert(!bad.ok && !("ics" in bad) && !empty.ok, "Z4", "an unsupported or blank timezone is REFUSED, not defaulted");
-    const phx = build({ org: { timezone: "America/Phoenix" } });
+    const phx = build({ org: { name: "QA League", timezone: "America/Phoenix" } });
     assert(!phx.head.includes("BEGIN:DAYLIGHT") && phx.head.includes("TZOFFSETTO:-0700"), "Z5",
       "Arizona has no daylight block");
     for (const z of ORG_TIMEZONES) {
-      const r = build({ org: { timezone: z.id } });
-      assert(r.head.includes(`TZID:${z.id}`) && r.head.includes(`X-WR-TIMEZONE:${z.id}`) && r.events.length === 8,
+      const r = build({ org: { name: "QA League", timezone: z.id } });
+      assert(r.head.includes(`TZID:${z.id}`) && r.head.includes(`X-WR-TIMEZONE:${z.id}`) && r.events.length === 10,
         "Z6", `${z.id} builds and names itself`);
       count("zone_built");
     }
@@ -266,13 +330,50 @@ function main() {
     if (a && b) count("moved_game");
   });
 
+  section("N", () => {
+    const { events, head } = build();
+    const t = (id: string) => byUid(events, id)?.get("SUMMARY");
+    assert(t("n1") === "QA Tigers vs QA Bears", "N1", `home: "<Team> vs <Opponent>" (got: ${t("n1")})`);
+    assert(t("aw") === "QA Tigers @ QA Lions", "N2", `away: "<Team> @ <Opponent>", own team still first (got: ${t("aw")})`);
+    assert(t("ia1") === "QA Tigers @ Riverside Blues", "N3", `interleague away: "@" the partner (got: ${t("ia1")})`);
+    assert(t("ih") === "QA Tigers vs Riverside Reds", "N4", `interleague home: "vs" the partner (got: ${t("ih")})`);
+    assert(t("x") === "CANCELLED: QA Tigers vs QA Hawks" && t("xa") === "CANCELLED: QA Tigers @ QA Pumas", "N5",
+      `cancelled keeps the prefix, home and away (got: ${t("x")} / ${t("xa")})`);
+    assert(events.every((e) => (e.get("SUMMARY") ?? "").replace(/^CANCELLED: /, "").startsWith("QA Tigers ")), "N5b",
+      "every title starts with the feed team");
+    const stranger = buildTeamCalendarIcs(input({
+      games: [g({ id: "s", scheduled_at: at("2026-10-24", "09:00"), home_team_id: "t-a", away_team_id: "t-b",
+        home_team: { name: "QA Aces" }, away_team: { name: "QA Kings" } })],
+    }));
+    assert(!stranger.ok && !("ics" in stranger), "N6", "a game the feed team is not in is REFUSED, not titled");
+    // Same NAME, different team id: identity is the id.
+    const twin = buildTeamCalendarIcs(input({
+      games: [g({ id: "s2", scheduled_at: at("2026-10-24", "09:00"), home_team_id: "t-other-tigers", away_team_id: "t-b",
+        home_team: { name: "QA Tigers" }, away_team: { name: "QA Kings" } })],
+    }));
+    assert(!twin.ok, "N6b", "a same-named team with a different id is not the feed team");
+    assert(head.includes("X-WR-CALNAME:QA Tigers — QA League QA Fall 2026"), "N7",
+      `calendar name is "<Team> — <Org> <Season>" (got: ${head.find((l) => l.startsWith("X-WR-CALNAME"))})`);
+    const named = (org: string | null, season: string) => {
+      const r = buildTeamCalendarIcs(input({ org: { name: org, timezone: "America/Los_Angeles" }, season: { name: season } }));
+      return r.ok ? parse(r.ics).head.find((l) => l.startsWith("X-WR-CALNAME:")) : "(refused)";
+    };
+    assert(named("QA", "QA - Fall 2026") === "X-WR-CALNAME:QA Tigers — QA - Fall 2026", "N8",
+      `org already in the season name is not repeated (got: ${named("QA", "QA - Fall 2026")})`);
+    assert(named(null, "Fall 2026") === "X-WR-CALNAME:QA Tigers — Fall 2026" &&
+      named("   ", "Fall 2026") === "X-WR-CALNAME:QA Tigers — Fall 2026", "N9",
+      "an org with no name is left out, with no stray space");
+    assert(head.includes("X-WR-TIMEZONE:America/Los_Angeles"), "N10", "X-WR-TIMEZONE carries the org zone");
+    if (t("n1")) count("home_title");
+    if (t("aw")) count("away_title");
+    if (t("ia1")) count("interleague_away_title");
+    if (t("xa")) count("cancelled_away_title");
+    if (!stranger.ok) count("stranger_refused");
+  });
+
   section("I", () => {
     const { events } = build();
-    assert(byUid(events, "ih")?.get("SUMMARY") === "QA Tigers vs Riverside Reds", "I1",
-      `interleague home names the partner (got: ${byUid(events, "ih")?.get("SUMMARY")})`);
     const ia1 = byUid(events, "ia1");
-    assert(ia1?.get("SUMMARY") === "Riverside Blues vs QA Tigers", "I2",
-      `interleague away: the partner hosts (got: ${ia1?.get("SUMMARY")})`);
     assert(ia1?.get("LOCATION") === "Riverside Field 1", "I3",
       `interleague away: the partner's field (got: ${ia1?.get("LOCATION")})`);
     assert(byUid(events, "n2")?.get("LOCATION") === "QA Park — Field 2", "I4",
@@ -285,31 +386,58 @@ function main() {
   });
 
   section("X", () => {
-    const longName = "QA Río Grande Čhargers — the very long team name that keeps going, and going; on";
+    // Inputs and expected lines are RAW TEXT from a fixture file — never
+    // computed with a replace(), which is how a wrong rule once agreed with
+    // itself (see the header).
+    const fx = JSON.parse(readFileSync(join(__dirname, "fixtures/team-calendar-escaping.json"), "utf8")) as {
+      teamName: string; opponentName: string; venueName: string;
+      expectedSummary: string; expectedCalName: string; expectedLocation: string;
+    };
     const r = buildTeamCalendarIcs(input({
-      team: { name: "QA, Tigers; A\\B" },
+      team: { id: TEAM_ID, name: fx.teamName },
       games: [g({ id: "e1", scheduled_at: at("2026-10-24", "09:00"),
-        home_team: { name: "Reds, The" }, away_team: { name: longName },
-        venue: { name: "Line\nBreak Field", location: null } })],
+        home_team: { name: fx.teamName }, away_team: { name: fx.opponentName },
+        venue: { name: fx.venueName, location: null } })],
     }));
     if (!r.ok) throw new Error("builder refused: " + r.error);
     const { events, head } = parse(r.ics);
-    assert(events[0]?.get("SUMMARY") === `Reds\\, The vs ${longName.replace(/,/g, "\\,").replace(/;/g, "\;")}`, "X1",
-      `commas and semicolons are escaped (got: ${events[0]?.get("SUMMARY")})`);
-    assert(head.includes("X-WR-CALNAME:QA\\, Tigers\; A\\\\B — QA Fall 2026"), "X2",
-      "backslash, comma and semicolon escaped in the calendar name");
+    assert(events[0]?.line("SUMMARY") === fx.expectedSummary, "X1",
+      `comma, semicolon and backslash are each escaped in a title\n      want: ${fx.expectedSummary}\n      got:  ${events[0]?.line("SUMMARY")}`);
+    assert(head.includes(fx.expectedCalName), "X2",
+      `…and in the calendar name (got: ${head.find((l) => l.startsWith("X-WR-CALNAME"))})`);
     const physical = r.ics.split("\r\n");
     const enc = new TextEncoder();
     const longest = Math.max(...physical.map((l) => enc.encode(l).length));
     const folded = physical.filter((l) => l.startsWith(" ")).length;
     assert(longest <= 75 && folded > 0, "X3",
       `no physical line exceeds 75 octets, and the long one was folded (longest ${longest}, ${folded} continuation line(s))`);
-    assert(!r.ics.includes("\uFFFD") && events[0]?.get("SUMMARY")?.includes("Río Grande Čhargers — the") === true, "X4",
+    assert(!r.ics.includes("�") && events[0]?.get("SUMMARY")?.includes("Río Grande Čhargers — the") === true, "X4",
       "folding never splits a multi-byte character (round-trips intact)");
-    assert(events[0]?.get("LOCATION") === "Line\\nBreak Field", "X5", "a newline in a name is escaped, never emitted raw");
+    assert(events[0]?.line("LOCATION") === fx.expectedLocation, "X5",
+      `a newline in a name is escaped, never emitted raw (got: ${events[0]?.line("LOCATION")})`);
     assert(r.ics.endsWith("END:VCALENDAR\r\n") && !r.ics.replace(/\r\n/g, "").includes("\n") && !r.ics.replace(/\r\n/g, "").includes("\r"),
       "X6", "CRLF line endings only");
+    // Count the escapes in the raw output, independent of the expected text.
+    const summaryRaw = events[0]?.line("SUMMARY") ?? "";
+    // Counted by walking characters, with the backslash built from its code
+    // point, so this check shares no escaping syntax with the code under test.
+    const BS = String.fromCharCode(92);
+    const tally = { semi: 0, comma: 0, slash: 0, bareSemi: 0, bareComma: 0 };
+    for (let i = 0; i < summaryRaw.length; i++) {
+      const ch = summaryRaw[i];
+      if (ch === BS) {
+        const next = summaryRaw[i + 1];
+        if (next === ";") tally.semi++;
+        else if (next === ",") tally.comma++;
+        else if (next === BS) tally.slash++;
+        i++;
+      } else if (ch === ";") tally.bareSemi++;
+      else if (ch === ",") tally.bareComma++;
+    }
+    assert(tally.semi === 2 && tally.comma === 2 && tally.slash === 1 && tally.bareSemi === 0 && tally.bareComma === 0, "X7",
+      `the title carries 2 escaped semicolons, 2 escaped commas, 1 escaped backslash, none bare (got ${JSON.stringify(tally)})`);
     count("folded_lines", folded);
+    count("escapes_counted", tally.semi + tally.comma + tally.slash);
   });
 
   section("L", () => {
@@ -324,7 +452,8 @@ function main() {
       `every event property is on the allowlist (unexpected: ${extra.join(",") || "none"})`);
     assert(events.every((e) => e.get("DESCRIPTION") === "QA-Minors · QA Fall 2026"), "L3",
       "the description is division · season and nothing else");
-    assert(!/@(?!thefieldslate\.com)/.test(unfolded), "L4", "the only @ in the feed is the UID domain");
+    assert(!/@\S+\.\S/.test(unfolded.replace(/@thefieldslate\.com/g, "")), "L4",
+      "no email-shaped text: the only address-like @ is the UID domain (titles use a bare \" @ \")");
     assert(head.every((l) => !/ORGANIZER|ATTENDEE|CONTACT|COMMENT/.test(l)) && !/ORGANIZER|ATTENDEE|CONTACT|COMMENT/.test(unfolded),
       "L5", "no organizer, attendee, contact or comment property exists");
     count("planted_fields_checked", PLANTED_STRINGS.length);
@@ -375,7 +504,8 @@ function main() {
   console.log("\n── counters");
   for (const c of [
     "pending_excluded", "cancelled_event", "start_only_event", "midnight_rollover", "zone_built", "zone_refused",
-    "moved_game", "away_event", "locationless_event", "folded_lines", "planted_fields_checked", "events_scanned",
+    "moved_game", "away_event", "tzid_referenced", "home_title", "away_title", "interleague_away_title",
+    "cancelled_away_title", "stranger_refused", "escapes_counted", "locationless_event", "folded_lines", "planted_fields_checked", "events_scanned",
     "stamp_checked",
   ]) {
     const n = counters[c] ?? 0;

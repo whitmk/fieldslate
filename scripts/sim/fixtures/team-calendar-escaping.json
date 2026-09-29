@@ -1,0 +1,8 @@
+{
+  "teamName": "QA, Tigers; A\\B",
+  "opponentName": "QA Río Grande Čhargers — the very long team name that keeps going, and going; on",
+  "venueName": "Line\nBreak Field",
+  "expectedSummary": "SUMMARY:QA\\, Tigers\\; A\\\\B vs QA Río Grande Čhargers — the very long team name that keeps going\\, and going\\; on",
+  "expectedCalName": "X-WR-CALNAME:QA\\, Tigers\\; A\\\\B — QA League QA Fall 2026",
+  "expectedLocation": "LOCATION:Line\\nBreak Field"
+}

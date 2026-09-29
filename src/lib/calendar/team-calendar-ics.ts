@@ -6,6 +6,17 @@
 // pending interleague game is never in the feed; a cancelled game stays in
 // it, marked, so it does not silently vanish from a parent's phone.
 //
+// TITLES ARE FROM THE FEED TEAM'S PERSPECTIVE — own team always first:
+// "<Team> vs <Opponent>" at home, "<Team> @ <Opponent>" away. This is
+// CALENDAR-ONLY: the CSV exports keep the shared host-first order. Which side
+// the feed team is on is decided by team ID, never by comparing names; the
+// opponent's NAME still comes from the shared function (partner name, "TBD").
+// A game the feed team is not in is refused, not guessed at.
+//
+// EVERY TZID USED HAS ITS VTIMEZONE. One zone per feed (the org's), described
+// once in the header; a TZID with no matching VTIMEZONE is invalid and some
+// calendar apps then fall back to the viewer's own zone.
+//
 // TIMES ARE WALL-CLOCK, NEVER CONVERTED. `scheduled_at` stores the local time
 // with a literal +00 ("2026-10-24T09:00:00+00:00" means 9:00 AM at the field —
 // see game-time.ts). The date and time are read from the TEXT and labelled
@@ -30,13 +41,17 @@ import { findOrgTimezone, type OrgTimezone } from "./timezones";
 export type TeamCalendarGame = ExportGame & {
   /** A real instant — when the game row last changed. */
   updated_at: string;
+  /** `games` stores OUR team here on every interleague game (is_away flags
+   *  the true host). */
+  home_team_id: string;
+  away_team_id: string | null;
 };
 
 export type TeamCalendarInput = {
-  team: { name: string };
+  team: { id: string; name: string };
   division: { name: string; game_duration: unknown };
   season: { name: string };
-  org: { timezone: string };
+  org: { name: string | null; timezone: string };
   games: TeamCalendarGame[];
 };
 
@@ -56,7 +71,7 @@ export function gameUid(gameId: string): string {
 function escapeText(v: string): string {
   return v
     .replace(/\\/g, "\\\\")
-    .replace(/;/g, "\;")
+    .replace(/;/g, "\\;")
     .replace(/,/g, "\\,")
     .replace(/\r\n|\r|\n/g, "\\n");
 }
@@ -119,6 +134,31 @@ function usableDuration(raw: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** "<Team> — <Org> <Season>". The org is left out when it has no name, or
+ *  when the season's own name already contains it ("SRALL - Fall 2026") —
+ *  both real in production. */
+export function calendarName(input: Pick<TeamCalendarInput, "team" | "org" | "season">): string {
+  const org = input.org.name?.trim() ?? "";
+  const season = input.season.name.trim();
+  const orgAlreadyNamed = org !== "" && season.toLowerCase().includes(org.toLowerCase());
+  const tail = org === "" || orgAlreadyNamed ? season : `${org} ${season}`;
+  return `${input.team.name} — ${tail}`;
+}
+
+/** Own team first. Null when the feed team is on neither side. */
+function teamTitle(
+  team: { id: string; name: string },
+  game: TeamCalendarGame,
+  row: { homeName: string; awayName: string },
+): string | null {
+  const weAreStoredHome = game.home_team_id === team.id;
+  const weAreStoredAway = game.away_team_id === team.id;
+  if (!weAreStoredHome && !weAreStoredAway) return null;
+  // Stored home + is_away = an interleague game at the partner's field.
+  const weHost = weAreStoredHome && !game.is_away;
+  return weHost ? `${team.name} vs ${row.awayName}` : `${team.name} @ ${row.homeName}`;
+}
+
 function timezoneBlock(z: OrgTimezone): string[] {
   const lines = ["BEGIN:VTIMEZONE", `TZID:${z.id}`];
   if (z.daylight) {
@@ -164,7 +204,7 @@ export function buildTeamCalendarIcs(input: TeamCalendarInput): TeamCalendarResu
   }
 
   const duration = usableDuration(input.division.game_duration);
-  const updatedAtById = new Map(input.games.map((g) => [g.id, g.updated_at]));
+  const gameById = new Map(input.games.map((g) => [g.id, g]));
   const rows = normalizeExportGames(input.games, { keepCancelled: true });
 
   const lines: string[] = [
@@ -173,7 +213,7 @@ export function buildTeamCalendarIcs(input: TeamCalendarInput): TeamCalendarResu
     "PRODID:-//FieldSlate//Team Calendar//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
-    `X-WR-CALNAME:${escapeText(`${input.team.name} — ${input.season.name}`)}`,
+    `X-WR-CALNAME:${escapeText(calendarName(input))}`,
     `X-WR-TIMEZONE:${zone.id}`,
     "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     "X-PUBLISHED-TTL:PT1H",
@@ -181,14 +221,21 @@ export function buildTeamCalendarIcs(input: TeamCalendarInput): TeamCalendarResu
   ];
 
   for (const r of rows) {
-    const changed = utcStamp(updatedAtById.get(r.id) ?? "");
+    const game = gameById.get(r.id);
+    const changed = utcStamp(game?.updated_at ?? "");
     if (!changed) {
       return {
         ok: false,
         error: `Can't build the calendar: game ${r.id} has no readable last-change time.`,
       };
     }
-    const matchup = `${r.homeName} vs ${r.awayName}`;
+    const matchup = game ? teamTitle(input.team, game, r) : null;
+    if (matchup === null) {
+      return {
+        ok: false,
+        error: `Can't build the calendar: game ${r.id} does not involve ${input.team.name}.`,
+      };
+    }
     const place = r.venueName
       ? qualifiedVenueLabel({ name: r.venueName, location: r.locationName ? { name: r.locationName } : null })
       : r.partnerFieldName;
