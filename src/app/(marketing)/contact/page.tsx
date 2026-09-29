@@ -22,6 +22,16 @@ export default function ContactPage() {
             delete personal data). We respond within{" "}
             <span className="font-medium text-[#0C1F3F]">2 business days</span>.
           </p>
+          <p className="mt-3 text-sm leading-relaxed text-gray-600">
+            Call or text:{" "}
+            <a
+              href="tel:+17072067869"
+              className="whitespace-nowrap font-medium text-[#22C55E] hover:underline"
+            >
+              (707) 206-7869
+            </a>{" "}
+            — 8am–8pm Pacific. If I miss you, I&apos;ll call back same day.
+          </p>
           <p className="mt-3 text-xs text-gray-500">
             You can also email us directly at{" "}
             <a
