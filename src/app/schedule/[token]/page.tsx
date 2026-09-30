@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { SITE_URL } from "@/lib/site";
@@ -37,6 +38,10 @@ import {
 } from "@/lib/interleague/recipient-schedule";
 
 export const dynamic = "force-dynamic";
+
+// The URL is the credential: never for search engines. next.config.mjs sets
+// the X-Robots-Tag header on this path too; this is the in-page twin.
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 type Game = RecipientConfirmedGame;
 

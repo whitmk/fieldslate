@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { InviteForm } from "@/components/interleague/invite-form";
 import { InviteHeader, InviteFooter } from "@/components/interleague/invite-shell";
@@ -7,6 +8,10 @@ import { hostLeagueName, pageMode } from "@/lib/interleague/signed-in-accept";
 import { renderSignedInInvite, type InvitePayload } from "./signed-in-invite-page";
 
 export const dynamic = "force-dynamic";
+
+// The URL is the credential: never for search engines. next.config.mjs sets
+// the X-Robots-Tag header on this path too; this is the in-page twin.
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 // Wall-clock UTC date (matches lib/utils/game-time.ts): read the literal date
 // substring instead of letting `new Date()` apply a timezone offset.
