@@ -146,13 +146,17 @@ begin
 end;
 $fn$;
 
--- Current token of a team (as postgres).
+-- Current token of a team (as postgres). plpgsql, NOT sql: a SQL-language
+-- body is validated at CREATE time, and team_calendar_links does not exist
+-- until the DO block below applies the migration (run 1 died here).
 create function pg_temp.h99_token(p_team uuid)
 returns text
-language sql
+language plpgsql
 as $fn$
-  select token from public.team_calendar_links
-   where team_id = p_team and status <> 'replaced';
+begin
+  return (select token from public.team_calendar_links
+           where team_id = p_team and status <> 'replaced');
+end;
 $fn$;
 
 -- The reader, called as anon with a token.
