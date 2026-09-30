@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CALENDAR_HELP_FAQ, calendarHelpFaqJsonLd } from "@/lib/calendar/help-faq";
 
 // Public, static help page for parents and coaches: how to add a team's
 // calendar link to each calendar app. Deliberately carries NO token and NO
@@ -7,6 +8,10 @@ import Link from "next/link";
 // index and to forward. Keep the Google Calendar note: subscribing "from
 // URL" only exists on the desktop site, and people otherwise try the phone
 // app first and give up.
+//
+// The "Questions" section and its FAQPage JSON-LD both render from
+// CALENDAR_HELP_FAQ (src/lib/calendar/help-faq.ts) — never write a question
+// here directly, or the visible list and the structured data drift.
 
 export const metadata: Metadata = {
   title: "Add your team's schedule to your calendar · FieldSlate",
@@ -30,6 +35,10 @@ function Section({ id, title, children }: { id: string; title: string; children:
 export default function CalendarHelpPage() {
   return (
     <div className="bg-white">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(calendarHelpFaqJsonLd()) }}
+      />
       <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
         <div className="border-b border-gray-100 pb-8">
           <h1 className="text-3xl font-bold tracking-tight text-[#0C1F3F] sm:text-4xl">
@@ -138,40 +147,12 @@ export default function CalendarHelpPage() {
 
           <Section id="faq" title="Questions">
             <dl className="flex flex-col gap-4">
-              <div>
-                <dt className="text-sm font-semibold text-[#0C1F3F]">A game says CANCELLED. Is it rained out?</dt>
-                <dd className="mt-1 text-sm leading-relaxed text-gray-600">
-                  Yes — a cancelled game stays on your calendar, crossed out, rather than
-                  disappearing. If the league reschedules it, the same game moves to its new time.
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-semibold text-[#0C1F3F]">The link says it isn&apos;t recognized or was replaced.</dt>
-                <dd className="mt-1 text-sm leading-relaxed text-gray-600">
-                  The league issued a new link for your team. Ask your coach for the current one
-                  and add it the same way.
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-semibold text-[#0C1F3F]">Are playoff games included?</dt>
-                <dd className="mt-1 text-sm leading-relaxed text-gray-600">
-                  Not yet. Regular-season games only, for now.
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-semibold text-[#0C1F3F]">Who can see my team&apos;s schedule?</dt>
-                <dd className="mt-1 text-sm leading-relaxed text-gray-600">
-                  Anyone with the link — the same as a printed schedule. It contains team names,
-                  dates, times and fields, and nothing about players, coaches or families.
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-semibold text-[#0C1F3F]">Can I add it to a shared family calendar?</dt>
-                <dd className="mt-1 text-sm leading-relaxed text-gray-600">
-                  Add it on each person&apos;s account, or on the account your family shares. A
-                  subscribed calendar belongs to the account that added it.
-                </dd>
-              </div>
+              {CALENDAR_HELP_FAQ.map(({ question, answer }) => (
+                <div key={question}>
+                  <dt className="text-sm font-semibold text-[#0C1F3F]">{question}</dt>
+                  <dd className="mt-1 text-sm leading-relaxed text-gray-600">{answer}</dd>
+                </div>
+              ))}
             </dl>
           </Section>
         </div>

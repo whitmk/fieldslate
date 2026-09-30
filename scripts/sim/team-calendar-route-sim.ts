@@ -37,6 +37,7 @@ import {
   type ReaderStatus,
 } from "../../src/lib/calendar/links";
 import { SITE_URL } from "../../src/lib/site";
+import { CALENDAR_HELP_FAQ, calendarHelpFaqJsonLd } from "../../src/lib/calendar/help-faq";
 
 const failures: string[] = [];
 function assert(cond: boolean, tag: string, label: string) {
@@ -147,10 +148,30 @@ section("P", () => {
   for (const app of ["iPhone", "Google Calendar", "Android", "Outlook", "Skylight"]) {
     assert(help.includes(app), "P5", `covers ${app}`);
   }
-  assert(/Playoff/i.test(help) && /Not yet/.test(help), "P6", "says playoff games aren't included yet");
+  // Re-keyed to the FAQ array: the questions no longer live in the page source.
+  assert(CALENDAR_HELP_FAQ.some((e) => /playoff/i.test(e.question) && /Not yet/.test(e.answer)),
+    "P6", "says playoff games aren't included yet");
   assert(/Synced Calendars/.test(help) && /Sync new calendar/.test(help) && /Calendar URL/.test(help) && /not the webcal/.test(help),
     "P8", "Skylight: Synced Calendars → Sync new calendar → Calendar URL, https not webcal");
   assert(!/robots: \{ index: false/.test(help), "P7", "the help page is indexable (it carries nothing secret)");
+
+  // FAQPage: one array, rendered as the visible list AND the JSON-LD.
+  assert(/CALENDAR_HELP_FAQ\.map\(/.test(help) && /calendarHelpFaqJsonLd\(\)/.test(help) && /application\/ld\+json/.test(help),
+    "P9", "the help page renders the list from CALENDAR_HELP_FAQ and the JSON-LD from calendarHelpFaqJsonLd");
+  assert(!/<dt[^>]*>[^{]/.test(help), "P10", "no question is written into the page directly (every <dt> renders from the array)");
+  const ld = calendarHelpFaqJsonLd();
+  assert(ld["@type"] === "FAQPage" && ld.mainEntity.length === CALENDAR_HELP_FAQ.length && CALENDAR_HELP_FAQ.length >= 7,
+    "P11", `FAQPage carries every entry (${ld.mainEntity.length} of ${CALENDAR_HELP_FAQ.length})`);
+  assert(ld.mainEntity.every((q, i) => q.name === CALENDAR_HELP_FAQ[i].question && q.acceptedAnswer.text === CALENDAR_HELP_FAQ[i].answer),
+    "P12", "JSON-LD text equals the array, entry by entry");
+  assert(CALENDAR_HELP_FAQ.every((e) => !/[<>*\[\]]/.test(e.question + e.answer) && !/[0-9a-f]{64}/.test(e.answer)),
+    "P13", "answers are plain text with no markup and no token");
+  const post = read("content/blog/league-scheduling-companion.md");
+  for (const e of CALENDAR_HELP_FAQ.filter((x) => /phones\?$|Skylight/.test(x.question))) {
+    assert(post.includes(`question: "${e.question}"`) && post.includes(`answer: "${e.answer}"`),
+      "P14", `the post's calendar FAQ matches word-for-word: ${e.question}`);
+  }
+  assert(CALENDAR_HELP_FAQ.filter((x) => /phones\?$|Skylight/.test(x.question)).length === 2, "P15", "both calendar questions from the post are present");
 });
 
 if (failures.length) {
