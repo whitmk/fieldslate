@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OrgNameCard } from "@/components/settings/org-name-card";
 import { TeamMembersCard } from "@/components/settings/team-members-card";
+import { OrgTimezoneCard } from "@/components/settings/org-timezone-card";
+import { DEFAULT_ORG_TIMEZONE } from "@/lib/calendar/timezones";
 import type { Profile } from "@/types/database";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 
@@ -12,7 +14,7 @@ export default async function SettingsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   const currentOrgId = await getCurrentOrgId(supabase, user!.id);
 
-  const [{ data: rawProfile }, { data: firstLeague }] = await Promise.all([
+  const [{ data: rawProfile }, { data: firstLeague }, { data: orgRow }] = await Promise.all([
     // Reading the caller's OWN profile row stays scoped to user.id — that's
     // their personal profile (name, email), not org-scoped data.
     supabase.from("profiles").select("*").eq("id", user!.id).single(),
@@ -23,8 +25,14 @@ export default async function SettingsPage() {
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle(),
+    // The timezone is ORG-scoped: it lives on the org owner's row, which an
+    // invited admin can read (org-mate SELECT policy) but not write — the
+    // card saves through set_org_timezone.
+    supabase.from("profiles").select("timezone").eq("id", currentOrgId).maybeSingle(),
   ]);
   const profile = rawProfile as Profile | null;
+  const orgTimezone =
+    (orgRow as { timezone: string } | null)?.timezone ?? DEFAULT_ORG_TIMEZONE;
 
   return (
     <div className="flex flex-col gap-6">
@@ -40,6 +48,8 @@ export default async function SettingsPage() {
       />
 
       <TeamMembersCard userId={user!.id} />
+
+      <OrgTimezoneCard orgId={currentOrgId} initialTimezone={orgTimezone} />
 
       <Card>
         <CardHeader>

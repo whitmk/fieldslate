@@ -956,6 +956,7 @@ export type Database = {
           plan: string
           role: string
           setup_dismissed: boolean
+          timezone: string
           updated_at: string
         }
         Insert: {
@@ -969,6 +970,7 @@ export type Database = {
           plan?: string
           role?: string
           setup_dismissed?: boolean
+          timezone?: string
           updated_at?: string
         }
         Update: {
@@ -982,6 +984,7 @@ export type Database = {
           plan?: string
           role?: string
           setup_dismissed?: boolean
+          timezone?: string
           updated_at?: string
         }
         Relationships: []
