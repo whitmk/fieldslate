@@ -3,6 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users } from "lucide-react";
 import { AddTeamButton } from "@/components/teams/add-team-button";
 import { TeamSnackShackButton } from "@/components/teams/team-snack-shack-button";
+import {
+  TeamCalendarLinkButton,
+  type TeamCalendarLink,
+} from "@/components/teams/team-calendar-link-button";
 import { TeamConstraintsCollapsible } from "@/components/teams/team-constraints-collapsible";
 import { TeamConstraintsSection } from "@/components/schedule/team-constraints-section";
 import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
@@ -43,7 +47,7 @@ export default async function TeamsPage() {
             .order("name", { ascending: true }),
           supabase
             .from("divisions")
-            .select("id, name, league_id")
+            .select("id, name, league_id, locked")
             .eq("league_id", seasonId)
             .order("name", { ascending: true }),
         ])
@@ -53,9 +57,31 @@ export default async function TeamsPage() {
   const teams = (rawTeams as TeamWithDivision[] | null) ?? [];
   // The add-team dropdown is locked to the selected season.
   const leagues = season ? [{ id: season.id, name: season.name }] : [];
-  const divisions =
-    (rawDivisions as { id: string; name: string; league_id: string }[] | null) ??
+  const divisionRows =
+    (rawDivisions as { id: string; name: string; league_id: string; locked: boolean }[] | null) ??
     [];
+  const divisions = divisionRows.map(({ id, name, league_id }) => ({ id, name, league_id }));
+  const lockedByDivision = new Map(divisionRows.map((d) => [d.id, d.locked]));
+
+  // Team calendar links (0099): the CURRENT row per team (active or off),
+  // read under RLS. Links are created by the database when a division is
+  // locked; this page only shows them. The org name feeds the coach message.
+  const teamIds = teams.map((t) => t.id);
+  const [{ data: rawLinks }, { data: orgRow }] = await Promise.all([
+    teamIds.length
+      ? supabase
+          .from("team_calendar_links" as never)
+          .select("team_id, token, status")
+          .in("team_id", teamIds)
+          .neq("status", "replaced")
+      : Promise.resolve({ data: [] as unknown[] }),
+    supabase.from("profiles").select("org_name").eq("id", currentOrgId).maybeSingle(),
+  ]);
+  const linkByTeam = new Map<string, TeamCalendarLink>();
+  for (const row of (rawLinks ?? []) as { team_id: string; token: string; status: "active" | "off" }[]) {
+    linkByTeam.set(row.team_id, { token: row.token, status: row.status });
+  }
+  const orgName = (orgRow as { org_name: string | null } | null)?.org_name ?? null;
 
   const [plan, teamCount] = await Promise.all([
     getOrgPlan(currentOrgId),
@@ -162,11 +188,27 @@ export default async function TeamsPage() {
                       <td className="py-3 font-medium text-gray-900">{team.name}</td>
                       <td className="py-3 text-gray-600">{team.division?.name ?? "—"}</td>
                       <td className="py-2 text-right">
-                        {/* Snack Shack is Elite-only — hide the per-team
-                            email/print entry point for non-Elite tiers. */}
-                        {isElite(plan) && (
-                          <TeamSnackShackButton teamId={team.id} teamName={team.name} />
-                        )}
+                        <div className="inline-flex items-center gap-2">
+                          {/* Team calendar link (0099): shown on every plan so
+                              a Free admin learns it exists; the dialog explains
+                              the Pro/Elite gate. */}
+                          <TeamCalendarLinkButton
+                            teamId={team.id}
+                            teamName={team.name}
+                            orgName={orgName}
+                            seasonName={season?.name ?? null}
+                            plan={plan}
+                            divisionLocked={
+                              team.division_id ? (lockedByDivision.get(team.division_id) ?? false) : false
+                            }
+                            link={linkByTeam.get(team.id) ?? null}
+                          />
+                          {/* Snack Shack is Elite-only — hide the per-team
+                              email/print entry point for non-Elite tiers. */}
+                          {isElite(plan) && (
+                            <TeamSnackShackButton teamId={team.id} teamName={team.name} />
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
