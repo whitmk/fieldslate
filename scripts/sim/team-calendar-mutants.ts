@@ -88,6 +88,18 @@ const MUTANTS: Mutant[] = [
     expect: "CRASH-P",
   },
   {
+    id: "TC22", what: "field address dropped from LOCATION", file: ICS,
+    find: ' + (address ? `, ${address}` : "")',
+    replace: "",
+    expect: "A1",
+  },
+  {
+    id: "TC23", what: "field address written into SUMMARY", file: ICS,
+    find: "`SUMMARY:${escapeText(r.cancelled ? `CANCELLED: ${matchup}` : matchup)}`",
+    replace: "`SUMMARY:${escapeText((r.cancelled ? `CANCELLED: ${matchup}` : matchup) + (address ? ` ${address}` : \"\"))}`",
+    expect: "A4",
+  },
+  {
     id: "TC14", what: "location prints the bare field, dropping the park", file: ICS,
     find: "? qualifiedVenueLabel({ name: r.venueName, location: r.locationName ? { name: r.locationName } : null })",
     replace: "? r.venueName",

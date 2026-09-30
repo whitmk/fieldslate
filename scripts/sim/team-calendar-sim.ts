@@ -16,6 +16,10 @@
 //   N  titles from the feed team's perspective: own team first, "vs" at
 //      home, "@" away; a game the team is not in is refused; calendar name
 //   I  locations (shared rules)
+//   A  the field's street address (0100): appended to LOCATION after the
+//      label, through the escaper; blank adds nothing; never in SUMMARY or
+//      DESCRIPTION; a game-level `address` field is ignored like any other
+//      unnamed input
 //   X  escaping, CRLF, 75-octet folding, multi-byte safety
 //   L  LEAK: fixtures carry a planted game note, coach name/email, contact
 //      email, official and score; none may appear, and every property name
@@ -63,6 +67,12 @@
 //        (first died at [C1], which compared a whole cancelled title. C1 now
 //         checks the prefix only; wording and order belong to N.)
 //   TC21 semicolon escaping removed                             → [X1]
+//   TC22 field address dropped from LOCATION                    → [A1]
+//   TC23 field address written into SUMMARY                     → [A4]
+//        (2026-09-30: section A first ran before X, and TC6 — comma escaping
+//         removed — then died at A1, whose expected line also carries escaped
+//         commas, instead of its own X1. A now runs after X. Same lesson as
+//         TC15/Z7: a new section's position decides which mutant it catches.)
 //
 // A VACUOUS ASSERTION WAS FOUND HERE (2026-09-29). The builder shipped its
 // first draft with semicolons UNESCAPED, and X1/X2 passed anyway: their
@@ -111,6 +121,7 @@ const PLANTED = {
   contact_email: "planted-contact@example.test",
   umpire_name: "PLANTED-UMPIRE Sam Example",
   home_score: 987654,
+  address: "PLANTED-ADDRESS 9 Leak St",
 };
 const PLANTED_STRINGS = [
   "PLANTED", "planted-coach@example.test", "planted-contact@example.test", "987654", "lights out",
@@ -158,6 +169,12 @@ const GAMES: TeamCalendarGame[] = [
   // cancelled game where the feed team is the visitor
   g({ id: "xa", scheduled_at: at("2026-11-28", "12:00"), status: "cancelled", home_team: { name: "QA Pumas" },
       away_team: { name: "QA Tigers" }, home_team_id: "t-pumas", away_team_id: TEAM_ID }),
+  // 0100: a field with a street address (commas, to be escaped), and one whose
+  // address is blank — the reader already resolved venue-else-park.
+  g({ id: "ad1", scheduled_at: at("2026-12-05", "09:00"), away_team: { name: "QA Rooks" },
+      venue: { name: "Field 3", location: { name: "QA Park" }, address: "500 Park Ave, Santa Rosa, CA 95401" } }),
+  g({ id: "ad2", scheduled_at: at("2026-12-06", "09:00"), away_team: { name: "QA Jays" },
+      venue: { name: "QA-Annex", location: null, address: "   " } }),
 ];
 
 function input(over: Partial<TeamCalendarInput> = {}): TeamCalendarInput {
@@ -202,7 +219,7 @@ function build(over: Partial<TeamCalendarInput> = {}) {
 const OPPONENT: Record<string, string> = {
   n1: "QA Bears", n2: "QA Owls", ih: "Riverside Reds", ia1: "Riverside Blues", ia2: "Riverside Greens",
   p1: "TBD", p2: "Riverside Golds", x: "QA Hawks", rp: "Riverside Silvers", late: "QA Night",
-  aw: "QA Lions", xa: "QA Pumas",
+  aw: "QA Lions", xa: "QA Pumas", ad1: "QA Rooks", ad2: "QA Jays",
 };
 const byUid = (events: Event[], id: string) =>
   events.find((e) => (e.get("SUMMARY") ?? "").includes(OPPONENT[id]));
@@ -229,10 +246,10 @@ function main() {
     assert(xa?.get("STATUS") === "CANCELLED" && xa?.get("SUMMARY")?.startsWith("CANCELLED: ") === true, "C2b",
       "a cancelled AWAY game is marked the same way");
     const others = events.filter((e) => e !== x && e !== xa);
-    assert(others.length === 8 && others.every((e) => e.get("STATUS") === "CONFIRMED" && !e.get("SUMMARY")!.startsWith("CANCELLED")),
+    assert(others.length === 10 && others.every((e) => e.get("STATUS") === "CONFIRMED" && !e.get("SUMMARY")!.startsWith("CANCELLED")),
       "C3", "every game that is not cancelled is CONFIRMED and unprefixed (incl. reschedule_pending)");
     assert(!events.some((e) => /RAINED/i.test(e.get("SUMMARY") ?? "")), "C4", 'no title says "RAINED OUT"');
-    assert(events.length === 10, "C5", `10 events from 12 games: 2 pending dropped, 2 cancelled kept (got ${events.length})`);
+    assert(events.length === 12, "C5", `12 events from 14 games: 2 pending dropped, 2 cancelled kept (got ${events.length})`);
     if (x) count("cancelled_event");
   });
 
@@ -265,7 +282,7 @@ function main() {
     // Z2/Z3 run first: they own "events carry the ORG's zone". Z7 below would
     // also notice a hardcoded zone (it would reference an undescribed TZID).
     const ny = build({ org: { name: "QA League", timezone: "America/New_York" } });
-    assert(ny.events.length === 10 && ny.events.every((e) => e.line("DTSTART")!.startsWith("DTSTART;TZID=America/New_York:") &&
+    assert(ny.events.length === 12 && ny.events.every((e) => e.line("DTSTART")!.startsWith("DTSTART;TZID=America/New_York:") &&
       e.line("DTEND")!.startsWith("DTEND;TZID=America/New_York:")), "Z2",
       `an Eastern org's events are labelled Eastern (got: ${ny.events[0]?.line("DTSTART")})`);
     assert(byUid(ny.events, "n1")?.line("DTSTART") === "DTSTART;TZID=America/New_York:20261024T090000", "Z3",
@@ -304,7 +321,7 @@ function main() {
       "Arizona has no daylight block");
     for (const z of ORG_TIMEZONES) {
       const r = build({ org: { name: "QA League", timezone: z.id } });
-      assert(r.head.includes(`TZID:${z.id}`) && r.head.includes(`X-WR-TIMEZONE:${z.id}`) && r.events.length === 10,
+      assert(r.head.includes(`TZID:${z.id}`) && r.head.includes(`X-WR-TIMEZONE:${z.id}`) && r.events.length === 12,
         "Z6", `${z.id} builds and names itself`);
       count("zone_built");
     }
@@ -440,6 +457,31 @@ function main() {
     count("escapes_counted", tally.semi + tally.comma + tally.slash);
   });
 
+  // Runs AFTER X on purpose: A1 carries escaped commas too, and TC6 (comma
+  // escaping removed) must die at X1, the line written for it, not here.
+  section("A", () => {
+    const { events, unfolded } = build();
+    // The backslash is built from its code point so this check shares no
+    // escaping syntax with the code under test (the X7 rule).
+    const BS = String.fromCharCode(92);
+    const ad1 = byUid(events, "ad1");
+    const ad2 = byUid(events, "ad2");
+    // The separator comma is TEXT too, so it is escaped like the address's own.
+    assert(ad1?.line("LOCATION") === `LOCATION:QA Park — Field 3${BS}, 500 Park Ave${BS}, Santa Rosa${BS}, CA 95401`, "A1",
+      `the address follows the label after a comma, every comma escaped (got: ${ad1?.line("LOCATION")})`);
+    assert(ad2?.get("LOCATION") === "QA-Annex", "A2", `a blank address adds nothing (got: ${ad2?.get("LOCATION")})`);
+    assert(byUid(events, "n2")?.get("LOCATION") === "QA Park — Field 2", "A3", "a field with no address key is unchanged");
+    const addr = "500 Park Ave";
+    assert(!(ad1?.get("SUMMARY") ?? "").includes(addr) && !(ad1?.get("DESCRIPTION") ?? "").includes(addr), "A4",
+      `the address is not in SUMMARY or DESCRIPTION (SUMMARY: ${ad1?.get("SUMMARY")})`);
+    const elsewhere = unfolded.split("\r\n").filter((l) => !l.startsWith("LOCATION:") && l.includes(addr));
+    assert(elsewhere.length === 0, "A5", `the address appears on no line but LOCATION (found: ${elsewhere.join(" | ") || "none"})`);
+    assert(!unfolded.includes("PLANTED-ADDRESS") && !unfolded.includes("Leak St"), "A6",
+      "a game-level address field is NOT read — only the named venue field is");
+    if (ad1?.line("LOCATION")?.includes(addr)) count("address_event");
+    if (ad2?.get("LOCATION") === "QA-Annex") count("address_blank_event");
+  });
+
   section("L", () => {
     const { unfolded, events, head } = build();
     const hits = PLANTED_STRINGS.filter((s) => unfolded.toLowerCase().includes(s.toLowerCase()));
@@ -506,7 +548,7 @@ function main() {
     "pending_excluded", "cancelled_event", "start_only_event", "midnight_rollover", "zone_built", "zone_refused",
     "moved_game", "away_event", "tzid_referenced", "home_title", "away_title", "interleague_away_title",
     "cancelled_away_title", "stranger_refused", "escapes_counted", "locationless_event", "folded_lines", "planted_fields_checked", "events_scanned",
-    "stamp_checked",
+    "stamp_checked", "address_event", "address_blank_event",
   ]) {
     const n = counters[c] ?? 0;
     assert(n > 0, `V-${c}`, `counter ${c} = ${n}`);

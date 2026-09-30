@@ -25,10 +25,13 @@
 // Pacific laptop. The one real instant is `updated_at`, emitted in UTC.
 //
 // WHAT IS EMITTED, exhaustively: team names, division name, season name,
-// venue/park/field names, start, end, cancelled status, and the game's id and
-// last-change time. NOTHING ELSE — no game notes, no coach or contact
-// details, no officials, no scores. Every value is read from a NAMED field;
-// never spread or stringify an input object into the output.
+// venue/park/field names, the field's street address when the league entered
+// one (0100 — on the LOCATION line ONLY, after the label, so a phone can open
+// it in Maps; never on an away game, whose field is the partner's), start,
+// end, cancelled status, and the game's id and last-change time. NOTHING
+// ELSE — no game notes, no coach or contact details, no officials, no
+// scores. Every value is read from a NAMED field; never spread or stringify
+// an input object into the output.
 //
 // END TIME = start + the division's game duration. A missing or unusable
 // duration means the event carries a START ONLY — never a guessed length and
@@ -38,7 +41,12 @@ import { normalizeExportGames, type ExportGame } from "@/lib/schedule/export-gam
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import { findOrgTimezone, type OrgTimezone } from "./timezones";
 
-export type TeamCalendarGame = ExportGame & {
+export type TeamCalendarGame = Omit<ExportGame, "venue"> & {
+  /** The shared venue shape plus the field's street address (0100). The
+   *  reader already resolved venue-else-park, trimmed, blank as null. This
+   *  key exists on THIS type only — the CSV builders' ExportGame never
+   *  carries it, so no export can pick it up by accident. */
+  venue: (NonNullable<ExportGame["venue"]> & { address?: string | null }) | null;
   /** A real instant — when the game row last changed. */
   updated_at: string;
   /** `games` stores OUR team here on every interleague game (is_away flags
@@ -236,8 +244,13 @@ export function buildTeamCalendarIcs(input: TeamCalendarInput): TeamCalendarResu
         error: `Can't build the calendar: game ${r.id} does not involve ${input.team.name}.`,
       };
     }
+    // The field's address rides the LOCATION line only (0100), after the
+    // label: "QA Park — Field 2, 500 Park Ave, Santa Rosa, CA". Read from the
+    // named venue field of this game; blank means none. Never on an away
+    // game — the partner's field is theirs and we hold no address for it.
+    const address = game?.venue?.address?.trim() || "";
     const place = r.venueName
-      ? qualifiedVenueLabel({ name: r.venueName, location: r.locationName ? { name: r.locationName } : null })
+      ? qualifiedVenueLabel({ name: r.venueName, location: r.locationName ? { name: r.locationName } : null }) + (address ? `, ${address}` : "")
       : r.partnerFieldName;
 
     lines.push(

@@ -60,6 +60,9 @@ function ok(cond: boolean, name: string, detail = "") {
 const SRC = join(__dirname, "..", "..", "src");
 const read = (...p: string[]) => readFileSync(join(SRC, ...p), "utf8");
 const mentionsNotes = (s: string) => /\bnotes\b/.test(s);
+// 0100: a field's street address is emitted by the calendar feed ONLY. The
+// same outbound surfaces that must never carry a note must never carry it.
+const mentionsAddress = (s: string) => /\baddress\b/i.test(s);
 const counters = { withNoteRendered: 0, withoutNoteRendered: 0, surfacesChecked: 0, omissionFilesChecked: 0 };
 
 function partH() {
@@ -133,6 +136,8 @@ function partO() {
     ["schedule print region", ["components", "schedule", "schedule-print-region.tsx"]],
     ["Sports Connect builder", ["lib", "schedule", "sports-connect-export.ts"]],
     ["generic CSV export", ["components", "divisions", "export-picker-modal.tsx"]],
+    ["generic CSV builder", ["lib", "schedule", "generic-games-export.ts"]],
+    ["shared export selection", ["lib", "schedule", "export-games.ts"]],
     ["partner schedule page", ["app", "schedule", "[token]", "page.tsx"]],
     ["partner respond page", ["app", "reschedule", "[token]", "page.tsx"]],
     ["partner respond form", ["components", "interleague", "reschedule-form.tsx"]],
@@ -144,12 +149,14 @@ function partO() {
   for (const [name, p] of outbound) {
     counters.omissionFilesChecked++;
     ok(!mentionsNotes(read(...p)), `[O1] ${name} never references notes`);
+    ok(!mentionsAddress(read(...p)), `[O1a] ${name} never references a field address`);
   }
   // The panel's own print region: the print block inside the panel must not.
   const panel = read("components", "divisions", "division-schedule-panel.tsx");
   const printStart = panel.indexOf('className="fieldslate-print-region hidden"');
   const printEnd = panel.indexOf("{/* ── Bulk rainout confirmation modal", printStart);
   ok(printStart > 0 && printEnd > printStart && !mentionsNotes(panel.slice(printStart, printEnd)), "[O1b] the division panel's print region never references notes");
+  ok(printStart > 0 && !mentionsAddress(panel.slice(printStart, printEnd)), "[O1c] the division panel's print region never references a field address");
   // O3 — the selects that feed those very surfaces DO carry notes.
   const page = read("app", "(dashboard)", "dashboard", "schedule", "page.tsx");
   ok(page.includes(NOTE_SELECT_FIELDS), "[O3] the Schedule page's shared games select carries NOTE_SELECT_FIELDS");
