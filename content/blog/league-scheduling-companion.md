@@ -12,13 +12,13 @@ faq:
   - question: "Does the other league need a FieldSlate account for interleague games?"
     answer: "No. A partner league receives a link and can accept, decline, or propose a different time without signing up."
   - question: "Can we get the FieldSlate schedule into our other league platform?"
-    answer: "FieldSlate exports game schedules as a CSV with one row per game, including dates, start and end times, teams, and locations. Many league platforms can import schedules from a file like this, as long as team and field names match what's already in your platform, which we'll help you set up. If you use a specific platform, ask us and we'll walk through what works today."
+    answer: "FieldSlate exports game schedules as a CSV with one row per game, including dates, start times, teams, and locations; the Pro and Elite export adds end times. Many league platforms can import schedules from a file like this, as long as team and field names match what's already in your platform, which we'll help you set up. If you use a specific platform, ask us and we'll walk through what works today."
   - question: "Can parents get the schedule on their phones?"
     answer: "Yes, on Pro and Elite. Every team gets its own calendar link once its division's schedule is locked. Families add it to Apple Calendar, Google Calendar, or Outlook once, and games stay current as the schedule changes, including moves and cancellations. Calendar apps check for updates on their own schedule, sometimes only every several hours, so same-day changes like rainouts should still come from the league too."
   - question: "Does the calendar link work with Skylight or other family calendars?"
     answer: "Yes. FieldSlate's team calendar link is a standard subscription link, so any calendar that can add a calendar by URL can use it. On a Skylight, open the Skylight app, go to Synced Calendars, choose Sync new calendar, then Calendar URL, and paste the team's https link. Game changes then flow to the family's wall calendar on Skylight's refresh schedule."
   - question: "How much does FieldSlate cost?"
-    answer: "FieldSlate is free for a single-division league. Paid tiers are $249 or $349 per season, not per player and not a subscription."
+    answer: "FieldSlate is free for a small league: one division, up to six teams, and one active season. Paid tiers are $249 or $349 per season, not per player and not a subscription."
   - question: "What does FieldSlate not do?"
     answer: "FieldSlate is not a registration platform, payment processor, website builder, or team messaging app. Those stay with the tools you already use."
 ---
@@ -56,19 +56,21 @@ The idea is simple: keep what works, and fix what doesn't.
 
 **Use FieldSlate for:** building, publishing, and maintaining the season schedule.
 
-When registration closes and teams are set, you bring your fields, divisions, and teams into FieldSlate, build the schedule, and share it with families: every team gets a calendar link parents add to their phone once, or you can print it, save a PDF, or export it. When it rains, you reschedule in FieldSlate, where the conflicts are checked for you.
+When registration closes and teams are set, you bring your fields, divisions, and teams into FieldSlate, build the schedule, and share it with families: on Pro and Elite, every team gets a calendar link parents add to their phone once, or you can print it, save a PDF, or export it. When it rains, you reschedule in FieldSlate, where the conflicts are checked for you.
 
 ## What FieldSlate handles
 
-- **Multi-division game scheduling** with automatic field-conflict detection, so two games can't land on the same field at the same time.
-- **Coach conflict checks**, so a coach on two teams doesn't end up double-booked.
+- **Multi-division game scheduling** with automatic field-conflict detection, so the schedule won't put two games on the same field at the same time.
+- **Coach conflict checks** that flag when a coach with teams in two divisions is scheduled in two places at once.
 - **Interleague coordination.** Send a partner league a link. They can accept, decline, or propose a different time, without creating an account.
 - **Umpire assignments** alongside the game schedule.
-- **Practice scheduling** on the same fields, checked against games.
+- **Practice scheduling** on the same fields, planned around each field's game days.
 - **Rainout rescheduling** that shows you real open slots instead of a blank date box.
 - **Snack shack shifts** and **playoff brackets**.
 - **Locking and sharing.** Lock a division when it's final, then print it, save a PDF, or export it.
 - **Family calendar links (Pro and Elite).** Every team gets its own link that parents add to Apple Calendar, Google Calendar, Outlook, or a Skylight once. When a game moves or is cancelled, their calendar catches up on its own.
+
+Some features depend on your plan: practices, rainout rescheduling, interleague coordination, and family calendar links are on Pro and Elite; umpire assignments, snack shack shifts, and playoff brackets are on Elite.
 
 ## What FieldSlate doesn't do
 
@@ -84,7 +86,7 @@ If you're evaluating any scheduling tool, including ours, our [six-step demo scr
 
 ## Pricing
 
-FieldSlate is free for a single-division league. Paid tiers are $249 or $349 per season: not per player, and not a subscription.
+FieldSlate is free for a small league: one division, up to six teams, and one active season. Paid tiers are $249 or $349 per season: not per player, and not a subscription.
 
 ## FAQ
 
@@ -98,7 +100,7 @@ Games across multiple divisions with automatic field-conflict detection, practic
 No. A partner league receives a link and can accept, decline, or propose a different time without signing up.
 
 **Can we get the FieldSlate schedule into our other league platform?**
-FieldSlate exports game schedules as a CSV with one row per game, including dates, start and end times, teams, and locations. Many league platforms can import schedules from a file like this, as long as team and field names match what's already in your platform, which we'll help you set up. If you use a specific platform, ask us and we'll walk through what works today.
+FieldSlate exports game schedules as a CSV with one row per game, including dates, start times, teams, and locations; the Pro and Elite export adds end times. Many league platforms can import schedules from a file like this, as long as team and field names match what's already in your platform, which we'll help you set up. If you use a specific platform, ask us and we'll walk through what works today.
 
 **Can parents get the schedule on their phones?**
 Yes, on Pro and Elite. Every team gets its own calendar link once its division's schedule is locked. Families add it to Apple Calendar, Google Calendar, or Outlook once, and games stay current as the schedule changes, including moves and cancellations. Calendar apps check for updates on their own schedule, sometimes only every several hours, so same-day changes like rainouts should still come from the league too.
@@ -107,7 +109,7 @@ Yes, on Pro and Elite. Every team gets its own calendar link once its division's
 Yes. FieldSlate's team calendar link is a standard subscription link, so any calendar that can add a calendar by URL can use it. On a Skylight, open the Skylight app, go to Synced Calendars, choose Sync new calendar, then Calendar URL, and paste the team's https link. Game changes then flow to the family's wall calendar on Skylight's refresh schedule.
 
 **How much does FieldSlate cost?**
-FieldSlate is free for a single-division league. Paid tiers are $249 or $349 per season, not per player and not a subscription.
+FieldSlate is free for a small league: one division, up to six teams, and one active season. Paid tiers are $249 or $349 per season, not per player and not a subscription.
 
 **What does FieldSlate not do?**
 FieldSlate is not a registration platform, payment processor, website builder, or team messaging app. Those stay with the tools you already use.
