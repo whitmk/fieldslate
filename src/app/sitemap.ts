@@ -10,6 +10,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/privacy` },
     { url: `${SITE_URL}/terms-of-service` },
     { url: `${SITE_URL}/blog` },
+    { url: `${SITE_URL}/help/calendar` },
   ];
   const postRoutes: MetadataRoute.Sitemap = getAllPosts().map((post) => ({
     url: `${SITE_URL}/blog/${post.slug}`,

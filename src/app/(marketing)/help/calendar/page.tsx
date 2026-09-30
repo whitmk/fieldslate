@@ -1,0 +1,175 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+
+// Public, static help page for parents and coaches: how to add a team's
+// calendar link to each calendar app. Deliberately carries NO token and NO
+// team data — it is linked from the coach message, so it must be safe to
+// index and to forward. Keep the Google Calendar note: subscribing "from
+// URL" only exists on the desktop site, and people otherwise try the phone
+// app first and give up.
+
+export const metadata: Metadata = {
+  title: "Add your team's schedule to your calendar · FieldSlate",
+  description:
+    "How to add a FieldSlate team calendar link to iPhone, Google Calendar, Android and Outlook, and what to expect when games change.",
+};
+
+function Step({ children }: { children: React.ReactNode }) {
+  return <li className="pl-1 text-sm leading-relaxed text-gray-600">{children}</li>;
+}
+
+function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+  return (
+    <section id={id} className="scroll-mt-24">
+      <h2 className="text-xl font-bold text-[#0C1F3F]">{title}</h2>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+export default function CalendarHelpPage() {
+  return (
+    <div className="bg-white">
+      <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
+        <div className="border-b border-gray-100 pb-8">
+          <h1 className="text-3xl font-bold tracking-tight text-[#0C1F3F] sm:text-4xl">
+            Add your team&apos;s schedule to your calendar
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-gray-600">
+            Your league sent you a calendar link for your team. Add it once and every game
+            shows up in the calendar app you already use, and the games update themselves when
+            the league moves one. The link looks like{" "}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">https://www.thefieldslate.com/calendar/…</code>{" "}
+            or starts with <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">webcal://</code>.
+          </p>
+          <p className="mt-3 text-xs text-gray-500">
+            Don&apos;t have a link? Ask your coach or league — it isn&apos;t on this page.
+          </p>
+        </div>
+
+        <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">Same-day changes still come from the league.</p>
+          <p className="mt-1 leading-relaxed">
+            Calendar apps check for updates on their own schedule, not the moment something
+            changes. Apple usually checks within a few hours; Google Calendar can take up to a
+            day. So a rainout called at 2pm may not reach your phone before a 4pm game. Treat the
+            calendar as your season overview, and the league&apos;s message as the word on today.
+          </p>
+        </div>
+
+        <nav className="mt-8 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          {[
+            ["iphone", "iPhone & iPad"],
+            ["google", "Google Calendar"],
+            ["android", "Android"],
+            ["outlook", "Outlook"],
+            ["faq", "Questions"],
+          ].map(([id, label]) => (
+            <a key={id} href={`#${id}`} className="font-medium text-[#22C55E] hover:underline">
+              {label}
+            </a>
+          ))}
+        </nav>
+
+        <div className="mt-10 flex flex-col gap-10">
+          <Section id="iphone" title="iPhone, iPad and Mac">
+            <ol className="list-decimal space-y-2 pl-5">
+              <Step>Tap the link that starts with <strong>webcal://</strong> in the message from your coach.</Step>
+              <Step>Your phone opens the Calendar app and asks whether to subscribe. Tap <strong>Subscribe</strong>.</Step>
+              <Step>Tap <strong>Done</strong>. The team&apos;s games now appear in your calendar.</Step>
+            </ol>
+            <p className="mt-3 text-sm text-gray-500">
+              If tapping the link does nothing, copy the <strong>https://</strong> version instead and
+              go to Settings → Calendar → Accounts → Add Account → Other → Add Subscribed Calendar,
+              then paste it.
+            </p>
+          </Section>
+
+          <Section id="google" title="Google Calendar">
+            <p className="text-sm leading-relaxed text-gray-600">
+              <strong>This has to be done from a computer</strong>, at calendar.google.com. The
+              Google Calendar phone app can&apos;t add a calendar from a link. Once it&apos;s added
+              on the computer, it shows up in the phone app on its own.
+            </p>
+            <ol className="mt-3 list-decimal space-y-2 pl-5">
+              <Step>On a computer, open <strong>calendar.google.com</strong> and sign in.</Step>
+              <Step>In the left column, next to <strong>Other calendars</strong>, click the <strong>+</strong>.</Step>
+              <Step>Choose <strong>From URL</strong>.</Step>
+              <Step>Paste the <strong>https://</strong> link from your coach and click <strong>Add calendar</strong>.</Step>
+              <Step>On your phone, open the Google Calendar app, go to Settings, tap your account, and make sure the new calendar is switched on.</Step>
+            </ol>
+            <p className="mt-3 text-sm text-gray-500">
+              Google refreshes subscribed calendars on its own schedule, often several hours and
+              sometimes up to a day. Changes will arrive; they just won&apos;t be instant.
+            </p>
+          </Section>
+
+          <Section id="android" title="Android">
+            <p className="text-sm leading-relaxed text-gray-600">
+              Most Android phones use Google Calendar, so follow the Google Calendar steps above
+              from a computer; the calendar then appears in the phone app. If you use Samsung
+              Calendar or another app that&apos;s signed in with a Google account, the same applies.
+            </p>
+          </Section>
+
+          <Section id="outlook" title="Outlook">
+            <ol className="list-decimal space-y-2 pl-5">
+              <Step>Open Outlook on the web (outlook.com or your Microsoft 365 account) and go to <strong>Calendar</strong>.</Step>
+              <Step>Choose <strong>Add calendar</strong>, then <strong>Subscribe from web</strong>.</Step>
+              <Step>Paste the <strong>https://</strong> link from your coach, give the calendar a name, and click <strong>Import</strong>.</Step>
+            </ol>
+            <p className="mt-3 text-sm text-gray-500">
+              The Outlook desktop and phone apps pick up the calendar from your account. Outlook
+              refreshes subscribed calendars on its own schedule, usually within a few hours.
+            </p>
+          </Section>
+
+          <Section id="faq" title="Questions">
+            <dl className="flex flex-col gap-4">
+              <div>
+                <dt className="text-sm font-semibold text-[#0C1F3F]">A game says CANCELLED. Is it rained out?</dt>
+                <dd className="mt-1 text-sm leading-relaxed text-gray-600">
+                  Yes — a cancelled game stays on your calendar, crossed out, rather than
+                  disappearing. If the league reschedules it, the same game moves to its new time.
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-semibold text-[#0C1F3F]">The link says it isn&apos;t recognized or was replaced.</dt>
+                <dd className="mt-1 text-sm leading-relaxed text-gray-600">
+                  The league issued a new link for your team. Ask your coach for the current one
+                  and add it the same way.
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-semibold text-[#0C1F3F]">Are playoff games included?</dt>
+                <dd className="mt-1 text-sm leading-relaxed text-gray-600">
+                  Not yet. Regular-season games only, for now.
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-semibold text-[#0C1F3F]">Who can see my team&apos;s schedule?</dt>
+                <dd className="mt-1 text-sm leading-relaxed text-gray-600">
+                  Anyone with the link — the same as a printed schedule. It contains team names,
+                  dates, times and fields, and nothing about players, coaches or families.
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-semibold text-[#0C1F3F]">Can I add it to a shared family calendar?</dt>
+                <dd className="mt-1 text-sm leading-relaxed text-gray-600">
+                  Add it on each person&apos;s account, or on the account your family shares. A
+                  subscribed calendar belongs to the account that added it.
+                </dd>
+              </div>
+            </dl>
+          </Section>
+        </div>
+
+        <div className="mt-12 border-t border-gray-100 pt-6 text-center">
+          <Link href="/" className="text-sm text-gray-500 transition-colors hover:text-[#0C1F3F]">
+            &larr; FieldSlate home
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -130,7 +130,24 @@ section("S", () => {
     assert(/robots: \{ index: false, follow: false \}/.test(read(p)), "S8", `${p} exports robots noindex`);
   }
   const sitemap = read("src/app/sitemap.ts");
-  assert(!/calendar\/|schedule\/|invite\/|reschedule\//.test(sitemap), "S9", "no token-addressed route is in the sitemap");
+  assert(!/calendar\/\$|calendar\/\[|schedule\/|invite\/|reschedule\//.test(sitemap), "S9", "no token-addressed route is in the sitemap");
+  assert(/help\/calendar/.test(sitemap), "S10", "the public help page IS in the sitemap");
+});
+
+section("P", () => {
+  // The public help page: no token, no team data, the Google-from-a-computer
+  // note, the refresh-lag warning, and every app it promises to cover.
+  const help = read("src/app/(marketing)/help/calendar/page.tsx");
+  assert(!/[0-9a-f]{64}/.test(help), "P1", "no 64-hex token anywhere in the help page");
+  assert(!/webcal:\/\/www\.|\/calendar\/[0-9a-f]/.test(help), "P2", "no concrete feed URL in the help page");
+  assert(/calendar\.google\.com/.test(help) && /from a computer/i.test(help) && /Other calendars/.test(help) && /From URL/.test(help),
+    "P3", "Google Calendar: from a computer, Other calendars → From URL");
+  assert(/on their own schedule/i.test(help) && /rainout/i.test(help), "P4", "says apps refresh on their own schedule; rainouts come from the league");
+  for (const app of ["iPhone", "Google Calendar", "Android", "Outlook"]) {
+    assert(help.includes(app), "P5", `covers ${app}`);
+  }
+  assert(/Playoff/i.test(help) && /Not yet/.test(help), "P6", "says playoff games aren't included yet");
+  assert(!/robots: \{ index: false/.test(help), "P7", "the help page is indexable (it carries nothing secret)");
 });
 
 if (failures.length) {
