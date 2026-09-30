@@ -70,7 +70,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0098.** The repo files are the record, not the
+  **Latest migration: 0099.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -2720,6 +2720,84 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   day the division doesn't play — neither server gate checks playing days. The
   live AA proposal for Tue 2026-09-29 would pass both gates. The picker never
   offers such a day.
+
+## Team calendar feed (.ics) — 0099, applied 2026-09-29
+
+- **What it is.** One link per team that a parent adds to their phone's
+  calendar once; the team's games then update themselves. The link IS the
+  credential: `/calendar/<64-hex token>.ics` on www, plus a `webcal://` twin
+  for one-tap subscribe on Apple devices. Pro and Elite only.
+- **Links are created by the DATABASE, never by an admin action:** when a
+  division is LOCKED (`team_calendar_links_on_division_lock`), when a team
+  is inserted into or moved into a locked division (the two `teams`
+  triggers), and by 0099's backfill (12 teams, 3 SRALL divisions). The admin
+  dialog on the Teams page only shows/copies, regenerates, or turns off/on.
+  **"Exactly one current link per team" is a partial unique index** on
+  `team_calendar_links(team_id) where status <> 'replaced'`: a team can never
+  hold two working links, and a link an admin turned OFF is a current row, so
+  re-locking never resurrects it. `replaced` rows are kept so an old link
+  answers "replaced", not "unknown".
+- **The gate is `locked`, NOT `posted`.** `posted` clears itself on any game
+  change, including a rainout — the exact moment the feed matters — so it
+  cannot gate a live feed. An UNLOCKED division answers 503 + Retry-After
+  (a temporary error, so calendar apps keep their last copy), never an empty
+  calendar (which would wipe every game from parents' phones).
+- **The reader, `get_team_calendar_by_token(text)`, takes only the token,
+  names every column it returns, and returns NO team data unless the status
+  is `ok`.** Statuses: unknown / revoked / off / expired / plan / unlocked /
+  ok, mapped to HTTP in `src/lib/calendar/links.ts` (`feedRefusalFor`). It
+  excludes `pending_interleague` in SQL and `normalizeExportGames`
+  (`keepCancelled: true`) excludes it again in TypeScript; cancelled games ARE
+  returned and appear as "CANCELLED: …" with STATUS:CANCELLED rather than
+  vanishing. Nothing in the feed: game notes, `teams.contact_email`, coach
+  metadata in `divisions.settings`, scores, officials. Playoff games are NOT
+  included (parallel table) — v1 says so in the dialog and the help page.
+- **Expiry is 7 days after `leagues.end_date`, with "today" computed in the
+  ORG's timezone in the database** (`now() at time zone profiles.timezone`),
+  never `current_date` — the auto-archive helper's UTC-date bug must not be
+  inherited. Archived seasons are expired at once.
+- **`profiles.timezone`** (7 US IANA zones, CHECK-constrained, default
+  Pacific; the same list as `ORG_TIMEZONES` in `src/lib/calendar/timezones.ts`
+  — change one, change the other) is written ONLY through `set_org_timezone`.
+  Under 0098 the column has no user grant and the trigger would refuse a
+  direct write; the Settings card calls the function. It LABELS wall-clock
+  game times (DTSTART;TZID=…) and never converts them. **Still reading server
+  time instead of this column, listed and unchanged:** `auto-archive.ts`,
+  `derived-status.ts`, the Schedule page's `todayLocalDateString`, and the
+  `Date.now()` past-game checks on the token schedule page and the reschedule
+  route.
+- **`is_org_member` is the admin gate because every member is an admin
+  today** — see the Database section for what changes if a coach role is
+  added.
+- **Titles are from the feed team's side** ("Expos vs Bears" at home, "Expos
+  @ Lions" away, decided by team ID never by name) — CALENDAR-ONLY; the CSV
+  exports keep host-first order. Calendar name is "Team — Org Season", with
+  the org left out when the season name already contains it. A VTIMEZONE is
+  emitted for the org zone; end = start + division `game_duration`, and an
+  unusable duration yields a start-only event, never a guessed length. UID is
+  `game-<id>@thefieldslate.com`, so a moved game updates in place.
+- **Every feed response is `Cache-Control: private, no-store` and
+  `X-Robots-Tag: noindex, nofollow`** — a regenerated link must die on the next
+  request, which shared caching would defeat. `next.config.mjs` also sets the
+  no-index header on `/schedule`, `/invite`, `/reschedule` and `/calendar`,
+  and the three token pages export `robots: { index: false }`. The public
+  `/help/calendar` page is the opposite: indexable, in the sitemap, and
+  carries no token and no team data.
+- **Known limits, stated in the product:** calendar apps refresh on their own
+  schedule (Google can take many hours), so same-day changes like rainouts
+  still come from the league; regenerating a division deletes and re-creates
+  game rows, so UIDs change (a locked division cannot be regenerated, which is
+  most of the protection); anyone holding the link can read the schedule
+  (same as a printed one). No rate limit exists in the codebase — a Vercel
+  firewall rule is the lever if load ever matters.
+- **Harnesses.** `scripts/sim/team-calendar-links-sim.sql` (SQL, run
+  2026-09-29 against production and rolled back: green, 5 mutants incl.
+  `current_date` for expiry — that one is only distinguishable 5pm–3am
+  Pacific and the harness asserts the window; read its run log: runs 1 and 2
+  were harness faults), `npm run sim:team-calendar` (the builder, three host
+  timezones, 21 mutants), `npm run sim:team-calendar-route` (URLs, refusal
+  map, coach message, help page, wiring; 7 mutants), and `sim:games-export`
+  pins the `keepCancelled` opt-in.
 
 ## Interleague Case A — a signed-in league accepts onto its own schedule (2026-09-28)
 
