@@ -70,7 +70,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0097.** The repo files are the record, not the
+  **Latest migration: 0098.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -83,8 +83,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `md5(prosrc)` against the repo file's body. Established 2026-07-23 after
   0079 was first applied from a trimmed copy and had to be re-applied.
 - **`profiles` IS COLUMN-GRANTED: a signed-in user may update FOUR columns of
-  their own row and nothing else (0098 — NOT YET APPLIED as of 2026-09-29;
-  until it is, the hole below is live).** RLS decides which ROWS a user may
+  their own row and nothing else (0098, applied to production 2026-09-29
+  evening; md5(prosrc) verified against the repo file).** RLS decides which ROWS a user may
   update, never which COLUMNS. Before 0098, `authenticated` held table-level
   UPDATE, the only policy was `auth.uid() = id`, and the table had no triggers,
   so any signed-in user could set their own `plan`, `comped` and
