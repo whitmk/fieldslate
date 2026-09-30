@@ -100,7 +100,33 @@
 --   CM4  anon granted EXECUTE on regenerate                  → A1
 --   CM5  partial index predicate removed                     → X1
 --
--- RUN LOG: not yet run.
+-- RUN LOG (2026-09-29, ~8pm Pacific, against production, rolled back; leak
+-- check clean after every run). 0099 was NOT applied when this was run.
+--
+--   RUN 1 — died before the migration: h99_token was a SQL-language function,
+--     whose body is validated at CREATE time, and the table it reads did not
+--     exist yet. HARNESS fault. Fix: plpgsql.
+--   RUN 2 — the migration applied cleanly (its own verification block passed)
+--     but every pass crashed in FIXTURE SETUP on games_opponent_required
+--     (away_team_id OR interleague_org_id): the pending fixture had neither.
+--     HARNESS fault. Fix: a scratch partner card. Every fixture write was
+--     then audited against the live CHECKs, required columns, FKs and
+--     triggers of all six tables it touches (see FIXTURES AUDITED above).
+--   RUN 3 — GREEN. Baseline: zero failures. Counters: backfilled_teams 12,
+--     linked_on_lock 4, games_returned 6, pending_excluded 1,
+--     cancelled_included 1, planted_scanned 10, history_row_inserted 1,
+--     regenerated 1, turned_off 1, expiry_boundary_checked 1,
+--     team_insert_linked 1, team_move_linked 1. No zero or absent counter.
+--     CM1 → KILLED at [P1]  (then L1 saw the pending partner's name, R1 got 7)
+--     CM2 → KILLED at [L1]  (planted note, score and the key "notes" leaked;
+--                            L2 saw the extra key "raw")
+--     CM3 → KILLED at [S8]  (end date + 7 read as expired under current_date;
+--                            the Honolulu/UTC dates differed, S8-window held)
+--     CM4 → KILLED at [A1]
+--     CM5 → KILLED at [X1]  (and regenerate / turn on then failed on the
+--                            plain unique index, as the predicate exists to
+--                            prevent)
+--     AFTER MUTANTS: zero failures.
 
 select set_config('lock_timeout', '3s', true),
        set_config('statement_timeout', '60s', true);
