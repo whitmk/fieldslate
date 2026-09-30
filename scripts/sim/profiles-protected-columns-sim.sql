@@ -83,8 +83,41 @@
 --   PM5  subtraction replaced by a list of three columns   → C-pending_plan
 --   PM6  the caller check removed (nobody is restricted)   → C-plan
 --
--- MUTATION LOG: not yet run. Record the first failure of each mutant here
--- after the first run; do not claim a kill that was not observed.
+-- RUN LOG (2026-09-29, 18:3x Pacific, against production, rolled back; leak
+-- check clean after each run). 0098 was NOT applied when this was run.
+--
+--   RUN 1 — baseline RED, and the fault was the HARNESS, not the fix:
+--     C-plan, C-mixed and C-unchanged failed with "OK rows=1". The test
+--     account is already Elite and comped, and the harness wrote the literals
+--     'elite' and `true` — so "change the plan" changed nothing, and the
+--     trigger correctly let a non-change through. The same flaw made L1 (the
+--     comping runbook) pass without proving anything, and made PM5 look like
+--     it died at the wrong assertion.
+--     FIX: every test value is now an EXPRESSION that differs from the row's
+--     current value (`case when plan = 'elite' then 'pro' else 'elite' end`,
+--     `not comped`), and H0 and L1 read the row back to prove it moved.
+--     Never test a refusal with a value the row might already hold.
+--
+--   RUN 2 — baseline GREEN, zero failures, no zero counter:
+--     H0   the hole is real: a signed-in user changed their own plan, comp
+--          flag and promo code (OK rows=1, read back)
+--     refused_by_privilege 9 · refused_by_trigger 9 · editable_saved 4 ·
+--     legitimate_writers_ok 4 (L1 postgres, L2 SECURITY DEFINER, L3 the real
+--     process_checkout_event as service_role, L5 handle_new_user)
+--     PM1 → KILLED at [C-plan]   (12 failures; S1 also names the cause)
+--     PM2 → KILLED at [C-plan]   (C-comped did NOT fail: the mutant is specific)
+--     PM3 → KILLED at [A-plan]   — and the refusal that replaced "permission
+--                                  denied" was the TRIGGER's. With the column
+--                                  grant widened, the second layer held.
+--     PM4 → KILLED at [A-plan]   — same: all nine columns still refused, by
+--                                  the trigger.
+--     PM5 → KILLED at [C-pending_plan]
+--     PM6 → KILLED at [C-plan]
+--     AFTER MUTANTS: zero failures.
+--
+--   NOT EXERCISED, stated: `anon` against the trigger layer. anon has no
+--   session, so RLS (`auth.uid() = id`) matches no row and the trigger never
+--   fires for it. anon is refused by privileges (E-anon).
 
 select set_config('lock_timeout', '3s', true),
        set_config('statement_timeout', '60s', true);
@@ -120,19 +153,25 @@ begin
 end;
 $fn$;
 
--- A value that DIFFERS from the current one, as SQL text, by column type.
+-- An EXPRESSION that differs from the row's current value whatever that value
+-- is — never a fixed literal. The first run used 'elite' and `true` against a
+-- test account that is already Elite and comped, so "change the plan" was no
+-- change at all and the trigger correctly let it through.
 create function pg_temp.h98_new_value(p_col text, p_type text)
 returns text
 language sql
 as $fn$
   select case
-    when p_col = 'plan'         then quote_literal('elite')
-    when p_col = 'pending_plan' then quote_literal('elite')
-    when p_col = 'role'         then quote_literal('viewer')
+    when p_col = 'plan'
+      then 'case when plan = ''elite'' then ''pro'' else ''elite'' end'
+    when p_col = 'pending_plan'
+      then 'case when pending_plan = ''elite'' then ''pro'' else ''elite'' end'
+    when p_col = 'role'
+      then 'case when role = ''viewer'' then ''manager'' else ''viewer'' end'
     when p_type = 'boolean'     then format('not %I', p_col)
     when p_type = 'uuid'        then 'gen_random_uuid()'
     when p_type like 'timestamp%' then format('%I + interval ''1 day''', p_col)
-    else quote_literal('h98-changed')
+    else format('coalesce(%I, '''') || ''-h98''', p_col)
   end;
 $fn$;
 
@@ -177,7 +216,7 @@ begin
   end loop;
 
   v_res := pg_temp.h98_try('authenticated', p_uid, format(
-    'update public.profiles set org_name = %L, plan = %L where id = %L', 'H98 Mixed', 'elite', p_uid));
+    'update public.profiles set org_name = %L, comped = not comped where id = %L', 'H98 Mixed', p_uid));
   if v_res not like 'ERR 42501 permission denied%' then
     v_fails := array_append(v_fails, 'A-mixed: ' || v_res);
   end if;
@@ -275,7 +314,7 @@ begin
     end loop;
 
     v_res := pg_temp.h98_try('authenticated', p_uid, format(
-      'update public.profiles set org_name = %L, comped = true where id = %L', 'H98 Mixed', p_uid));
+      'update public.profiles set org_name = %L, comped = not comped where id = %L', 'H98 Mixed', p_uid));
     if v_res not like 'ERR 42501 profiles_protected_column:%' then
       v_fails := array_append(v_fails, 'C-mixed: ' || v_res);
     end if;
@@ -306,9 +345,14 @@ begin
 
   -- ── L: every legitimate writer still works ───────────────────────────────
   begin
-    update public.profiles set plan = 'elite', comped = true where id = p_uid;
+    -- Differing values, so this is a real change whatever the account holds.
+    update public.profiles
+       set plan = case when plan = 'elite' then 'pro' else 'elite' end,
+           comped = not comped
+     where id = p_uid;
     select * into v_row from public.profiles where id = p_uid;
-    if v_row.plan <> 'elite' or not v_row.comped then
+    if v_row.plan is not distinct from v_before.plan
+       or v_row.comped is not distinct from v_before.comped then
       v_fails := array_append(v_fails, 'L1: comping runbook update did not take');
     else v_legit := v_legit + 1; end if;
     raise exception 'H98_ROLLBACK';
@@ -359,7 +403,7 @@ begin
   end;
 
   v_res := pg_temp.h98_try('service_role', null, format(
-    'update public.profiles set plan = %L where id = %L', 'elite', p_uid));
+    'update public.profiles set plan = %L where id = %L', 'pro', p_uid));
   if v_res not like 'ERR 42501 permission denied%' then
     v_fails := array_append(v_fails, 'L4: ' || v_res);
   end if;
@@ -447,8 +491,14 @@ begin
   -- H0: the hole, before the fix.
   begin
     v_hole := pg_temp.h98_try('authenticated', v_uid, format(
-      'update public.profiles set plan = %L, comped = true, pending_promo = %L where id = %L',
-      'elite', 'H98', v_uid));
+      'update public.profiles set plan = case when plan = ''elite'' then ''pro'' else ''elite'' end, comped = not comped, pending_promo = %L where id = %L',
+      'H98', v_uid));
+    -- Read back: the write must have actually CHANGED the row.
+    if v_hole = 'OK rows=1' and not exists (
+         select 1 from public.profiles p
+          where p.id = v_uid and p.pending_promo = 'H98') then
+      v_hole := 'OK rows=1 BUT the row did not change';
+    end if;
     raise exception 'H98_ROLLBACK';
   exception when others then
     if sqlerrm <> 'H98_ROLLBACK' then

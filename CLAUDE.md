@@ -109,7 +109,17 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     `profiles-protected-columns-build.ts`. It applies the migration inside a
     transaction that always rolls back, so it can run BEFORE the migration is
     applied. It holds SHARE ROW EXCLUSIVE on `profiles` (blocks writes, not
-    reads) for the run.
+    reads) for the run. Run 2026-09-29 against production, rolled back: zero
+    failures, 6 mutants each killed first at its own assertion, leak check
+    clean. Read its run log — the first run was red because the HARNESS wrote
+    values the test account already held.
+  - **NOTHING SYNCS `profiles.email` FROM `auth.users`** (verified 2026-09-29):
+    the only trigger on `auth.users` is the INSERT-only `on_auth_user_created`,
+    no function sets `profiles.email`, and the app has no change-email screen.
+    All 20 rows match today because nothing has ever changed an email. If a
+    change-email feature is built, `profiles.email` goes stale unless a
+    SECURITY DEFINER trigger on `auth.users` UPDATE copies it — which would
+    pass 0098 (it runs as its owner). A client-side write would be refused.
   - **STILL OPEN, same class, not fixed by 0098:** plan LIMITS are enforced in
     the create RPCs only (`create_league` season cap, `create_division_atomic`,
     `create_team`, `create_interleague_org`), while RLS lets an org member
