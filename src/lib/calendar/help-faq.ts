@@ -32,7 +32,7 @@ export const CALENDAR_HELP_FAQ: readonly HelpFaqEntry[] = [
   {
     question: "Who can see my team's schedule?",
     answer:
-      "Anyone with the link — the same as a printed schedule. It contains team names, dates, times and fields, and nothing about players, coaches or families.",
+      "Anyone with the link — the same as a printed schedule. It contains team names, dates, times and fields, plus a field's street address when the league has entered one, and nothing about players, coaches or families.",
   },
   {
     question: "Can I add it to a shared family calendar?",

@@ -70,7 +70,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0099.** The repo files are the record, not the
+  **Latest migration: 0100.** The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -2386,6 +2386,20 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   way) but confusing, and the card already carries an empty-state note about
   it. **Do not "fix" this for one flag only** — the quirk is identical for both
   and they must stay consistent.
+- **Street address (0100) — `venues.address` and `locations.address`, ONE
+  reader.** Both columns existed unused since 0001/0085 (every row null on
+  2026-09-30). The field's own address wins; a blank one falls to its park's.
+  The rules live in `src/lib/venues/address.ts` (`normalizeAddress`: trim,
+  collapse whitespace, blank-as-null; `effectiveAddress`: the TypeScript twin
+  of the reader's coalesce) and the 0100 CHECKs (200 characters, no control
+  characters) are the backstop. Written by exactly three surfaces — the shared
+  `VenueEditForm`, the Venues page add form, and the park heading's rename;
+  the picker's quick-create stays name-only. **Shown to admins on the Venues
+  page and to families in the team calendar feed's LOCATION line, and NOWHERE
+  else**: no CSV, no print region, no partner page, no email. `sim:game-notes`
+  O1a/O1c scan the outbound files for `address` exactly as they do for
+  `notes`; `sim:venue-address` (+ mutants) pins the writers and the card.
+  `city` / `state` on both tables stay dead (backlog).
 
 ## Division wizard — game days and `day_windows`
 
@@ -2752,6 +2766,22 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   vanishing. Nothing in the feed: game notes, `teams.contact_email`, coach
   metadata in `divisions.settings`, scores, officials. Playoff games are NOT
   included (parallel table) — v1 says so in the dialog and the help page.
+- **The field's street address IS in the feed, on the LOCATION line only
+  (0100).** The reader emits one added key inside `venue`, `address` — the
+  venue's own, else its park's, trimmed, blank as null (`coalesce(nullif(
+  btrim(v.address), ''), nullif(btrim(loc.address), ''))`) — and the builder
+  appends it to the label after a comma, through the escaper, so a phone
+  opens the field in Maps. Never on an away game (the partner's field). The
+  key lives on `TeamCalendarGame`'s venue type only; `ExportGame`, which the
+  CSV builders share, never carries it. `anon` and `service_role` hold no
+  SELECT on `venues` or `locations`, so this SECURITY DEFINER reader is the
+  only anonymous path to the value. The help page's "who can see" answer and
+  the Teams dialog both say the address is in the feed. Harnesses:
+  `scripts/sim/venue-address-calendar-sim.sql` (assembled by
+  `venue-address-calendar-build.ts`; applies 0100 in an always-rolled-back
+  transaction — NOTE it holds ACCESS EXCLUSIVE on `venues` and `locations`
+  for the run, blocking reads and writes of both), `sim:team-calendar`
+  section A (+ TC22/TC23), `sim:game-notes` O1a/O1c.
 - **Expiry is 7 days after `leagues.end_date`, with "today" computed in the
   ORG's timezone in the database** (`now() at time zone profiles.timezone`),
   never `current_date` — the auto-archive helper's UTC-date bug must not be

@@ -228,7 +228,9 @@ export function TeamCalendarLinkButton(props: Props) {
                   </div>
 
                   <p className="text-xs text-gray-500">
-                    Playoff games aren&apos;t included yet. Calendar apps refresh on their own schedule (Google
+                    Families see team names, dates, times and fields, plus a field&apos;s street address if
+                    you&apos;ve entered one on the Venues page — nothing else. Playoff games aren&apos;t included
+                    yet. Calendar apps refresh on their own schedule (Google
                     Calendar can take several hours), so same-day changes like rainouts should still come from
                     the league.{" "}
                     <a href={CALENDAR_HELP_PATH} target="_blank" rel="noreferrer" className="font-medium text-[#22C55E] hover:underline">
