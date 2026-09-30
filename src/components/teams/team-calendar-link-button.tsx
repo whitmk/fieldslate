@@ -202,7 +202,7 @@ export function TeamCalendarLinkButton(props: Props) {
 
                   <div className="flex flex-col gap-1.5">
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-                      Google Calendar, Android, Outlook — add from URL
+                      Google Calendar, Android, Outlook, Skylight — add from URL
                     </p>
                     <div className="flex items-center gap-2">
                       <code className="min-w-0 flex-1 truncate rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-700">

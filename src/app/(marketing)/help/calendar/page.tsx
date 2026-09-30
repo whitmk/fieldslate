@@ -11,7 +11,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Add your team's schedule to your calendar · FieldSlate",
   description:
-    "How to add a FieldSlate team calendar link to iPhone, Google Calendar, Android and Outlook, and what to expect when games change.",
+    "How to add a FieldSlate team calendar link to iPhone, Google Calendar, Android, Outlook and Skylight, and what to expect when games change.",
 };
 
 function Step({ children }: { children: React.ReactNode }) {
@@ -63,6 +63,7 @@ export default function CalendarHelpPage() {
             ["google", "Google Calendar"],
             ["android", "Android"],
             ["outlook", "Outlook"],
+            ["skylight", "Skylight"],
             ["faq", "Questions"],
           ].map(([id, label]) => (
             <a key={id} href={`#${id}`} className="font-medium text-[#22C55E] hover:underline">
@@ -121,6 +122,17 @@ export default function CalendarHelpPage() {
             <p className="mt-3 text-sm text-gray-500">
               The Outlook desktop and phone apps pick up the calendar from your account. Outlook
               refreshes subscribed calendars on its own schedule, usually within a few hours.
+            </p>
+          </Section>
+
+          <Section id="skylight" title="Skylight (family wall calendar)">
+            <ol className="list-decimal space-y-2 pl-5">
+              <Step>Open the <strong>Skylight app</strong>.</Step>
+              <Step>Go to <strong>Synced Calendars</strong> → <strong>Sync new calendar</strong> → <strong>Calendar URL</strong>.</Step>
+              <Step>Paste the <strong>https://</strong> link from your coach (not the webcal one).</Step>
+            </ol>
+            <p className="mt-3 text-sm text-gray-500">
+              Games appear on the Skylight and update on Skylight&apos;s own refresh schedule.
             </p>
           </Section>
 

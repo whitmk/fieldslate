@@ -110,6 +110,7 @@ section("C", () => {
   const noOrg = coachMessage({ teamName: "Expos", orgName: null, seasonName: null, token: TOKEN });
   assert(noOrg.startsWith("Add the Expos game schedule to your"), "C6", `no org, no season → clean sentence (got: ${noOrg.split("\n")[0]})`);
   assert(!/[<>]/.test(m), "C7", "plain text, no markup");
+  assert(/Skylight/.test(m) && m.indexOf("Skylight") < m.indexOf(u.https), "C8", "names Skylight beside the https link (it takes the https form, not webcal)");
 });
 
 section("S", () => {
@@ -143,10 +144,12 @@ section("P", () => {
   assert(/calendar\.google\.com/.test(help) && /from a computer/i.test(help) && /Other calendars/.test(help) && /From URL/.test(help),
     "P3", "Google Calendar: from a computer, Other calendars → From URL");
   assert(/on their own schedule/i.test(help) && /rainout/i.test(help), "P4", "says apps refresh on their own schedule; rainouts come from the league");
-  for (const app of ["iPhone", "Google Calendar", "Android", "Outlook"]) {
+  for (const app of ["iPhone", "Google Calendar", "Android", "Outlook", "Skylight"]) {
     assert(help.includes(app), "P5", `covers ${app}`);
   }
   assert(/Playoff/i.test(help) && /Not yet/.test(help), "P6", "says playoff games aren't included yet");
+  assert(/Synced Calendars/.test(help) && /Sync new calendar/.test(help) && /Calendar URL/.test(help) && /not the webcal/.test(help),
+    "P8", "Skylight: Synced Calendars → Sync new calendar → Calendar URL, https not webcal");
   assert(!/robots: \{ index: false/.test(help), "P7", "the help page is indexable (it carries nothing secret)");
 });
 

@@ -90,7 +90,7 @@ export function feedRefusalFor(status: Exclude<ReaderStatus, "ok">): FeedRefusal
 
 /** The message a coach pastes into the family email. Both links, because the
  *  webcal one is one tap on an iPhone and the https one is what Google
- *  Calendar and Outlook ask for. */
+ *  Calendar, Outlook and Skylight ask for. */
 export function coachMessage(input: {
   teamName: string;
   orgName: string | null;
@@ -106,7 +106,7 @@ export function coachMessage(input: {
     `iPhone or Mac — tap this link, then tap Subscribe:`,
     webcal,
     ``,
-    `Google Calendar, Android or Outlook — add this address as a calendar "from URL" (Google Calendar needs this done from a computer at calendar.google.com; it then shows on your phone):`,
+    `Google Calendar, Android, Outlook or Skylight — add this address as a calendar "from URL" (Google Calendar needs this done from a computer at calendar.google.com; it then shows on your phone):`,
     https,
     ``,
     `Step-by-step instructions: ${calendarHelpUrl()}`,
