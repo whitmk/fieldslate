@@ -30,9 +30,19 @@
 --
 -- ROWS TOUCHED (all rolled back): the "test" org (bbf9afe1…, Elite, season
 -- "QA Fall 2026"): its profile row (plan, timezone), its season row
--- (archived_at, end_date), one division (locked on/off), two of its teams
--- (contact_email), one of its games (notes, home_score), plus scratch teams
--- and games named HARNESS-0099. The "Test 2" org's owner id is used as the
+-- (archived_at, end_date), one division (locked on/off, a planted coach in
+-- settings), two of its teams (contact_email), one of its games (notes,
+-- home_score), plus scratch teams, games and one partner card
+-- (interleague_orgs) named HARNESS-0099.
+--
+-- FIXTURES AUDITED AGAINST THE LIVE CATALOG (2026-09-29): every CHECK, NOT
+-- NULL-without-default, FK and trigger on games, teams, divisions, leagues,
+-- profiles and interleague_orgs. Notably: games_opponent_required (away team
+-- OR partner card — run 2 died on it), enforce_division_lock (all game
+-- writes happen while D1 is unlocked), set_games_notes_attribution (sets
+-- notes_updated_by to auth.uid(), null as postgres, FK allows null),
+-- interleague_orgs requires owner_id/name/admin_email and has NO cap
+-- trigger, profiles' 0098 trigger passes postgres. The "Test 2" org's owner id is used as the
 -- NON-member caller; nothing of Test 2's is written. The backfill also creates
 -- (rolled-back) links for the live locked divisions of other orgs — reads
 -- only, no row of theirs is changed.
@@ -194,7 +204,7 @@ declare
   v_a        uuid;  v_b uuid;   v_a_name text;
   v_g_pend   uuid;  v_g_canc uuid;  v_g_plant uuid;  v_g_noA uuid;
   v_tok      text;  v_tok2 text;  v_tok3 text;
-  v_t        uuid;
+  v_t        uuid;  v_partner uuid;
   v_r        jsonb; v_call jsonb;
   v_res      text;
   v_n        integer; v_n2 integer;
@@ -257,8 +267,17 @@ begin
    where id = v_d1;
 
   -- Scratch games for A: one pending interleague, one cancelled.
-  insert into public.games (league_id, home_team_id, away_team_id, scheduled_at, status, external_team_name)
-  values (v_season, v_a, null, '2026-12-05T10:00:00+00:00', 'pending_interleague', 'HARNESS-0099 Pending Partner')
+  -- games_opponent_required: away_team_id OR interleague_org_id must be set,
+  -- so a pending game needs a partner card. The test org has none; make a
+  -- scratch one (rolled back). interleague_orgs has no cap trigger — the
+  -- partner cap lives in the create_interleague_org RPC, not the table.
+  insert into public.interleague_orgs (owner_id, name, admin_email)
+  values (v_org, 'HARNESS-0099 Partner Org', 'harness-0099@example.test')
+  returning id into v_partner;
+  insert into public.games (league_id, home_team_id, away_team_id, interleague_org_id,
+                            scheduled_at, status, external_team_name)
+  values (v_season, v_a, null, v_partner,
+          '2026-12-05T10:00:00+00:00', 'pending_interleague', 'HARNESS-0099 Pending Partner')
   returning id into v_g_pend;
   insert into public.games (league_id, home_team_id, away_team_id, scheduled_at, status)
   values (v_season, v_a, v_b, '2026-12-06T10:00:00+00:00', 'cancelled')
@@ -326,13 +345,14 @@ begin
   v_txt := lower(v_r::text);
   v_bad := array[]::text[];
   foreach v_res in array array['planted-note-99', 'lights out', 'planted-coach-99', 'planted-99@example.test',
-                                'planted-coach-99@example.test', '987654321', 'contact_email', 'notes'] loop
+                                'planted-coach-99@example.test', '987654321', 'contact_email', 'notes',
+                                'harness-0099 pending partner', 'harness-0099@example.test'] loop
     if position(v_res in v_txt) > 0 then v_bad := array_append(v_bad, v_res); end if;
   end loop;
   if array_length(v_bad, 1) is not null then
     v_fails := array_append(v_fails, 'L1: planted data in the feed: ' || array_to_string(v_bad, ' | '));
   end if;
-  c := c || jsonb_build_object('planted_scanned', 8);
+  c := c || jsonb_build_object('planted_scanned', 10);
 
   select array_agg(distinct k) into v_keys
     from jsonb_array_elements(coalesce(v_r -> 'games', '[]'::jsonb)) g, jsonb_object_keys(g) k;
