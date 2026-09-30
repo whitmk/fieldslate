@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/client";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { VenueEditForm } from "@/components/venues/venue-edit-form";
 import { LocationPicker } from "@/components/venues/location-picker";
+import { ADDRESS_MAX_LENGTH, effectiveAddress, normalizeAddress } from "@/lib/venues/address";
 import type { Venue, Location } from "@/types/database";
 import {
   DAY_KEYS,
@@ -60,6 +61,7 @@ export function VenuesPageClient({
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState("");
   const [addLocationId, setAddLocationId] = useState<string | null>(null);
+  const [addAddress, setAddAddress] = useState("");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -83,18 +85,21 @@ export function VenuesPageClient({
   // reference integrity to guard, no RPC needed).
   const [renamingLocationId, setRenamingLocationId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
+  const [renameAddress, setRenameAddress] = useState("");
   const [renameSaving, setRenameSaving] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
 
   function startRenameLocation(loc: Location) {
     setRenamingLocationId(loc.id);
     setRenameName(loc.name);
+    setRenameAddress(loc.address ?? "");
     setRenameError(null);
   }
 
   function cancelRenameLocation() {
     setRenamingLocationId(null);
     setRenameName("");
+    setRenameAddress("");
     setRenameError(null);
   }
 
@@ -120,7 +125,7 @@ export function VenuesPageClient({
     const supabase = createClient();
     const { error } = await supabase
       .from("locations")
-      .update({ name } as never)
+      .update({ name, address: normalizeAddress(renameAddress) } as never)
       .eq("id", loc.id);
     if (error) {
       // 23505 = the 0086 unique index firing on a race the app guard above
@@ -190,6 +195,7 @@ export function VenuesPageClient({
       .insert([{
         name: addName.trim(),
         location_id: addLocationId,
+        address: normalizeAddress(addAddress),
         owner_id: currentOrgId,
       }] as never)
       .select("*")
@@ -233,6 +239,7 @@ export function VenuesPageClient({
       <DisplayCard
         key={venue.id}
         venue={venue}
+        locationAddress={venue.location_id ? locations.find((l) => l.id === venue.location_id)?.address ?? null : null}
         onEdit={() => setEditId(venue.id)}
         onDelete={() => setDeleteTarget(venue)}
       />
@@ -306,7 +313,23 @@ export function VenuesPageClient({
                 onLocationsChanged={loadLocations}
               />
             </div>
+            <div className="flex min-w-[16rem] flex-1 flex-col gap-1">
+              <label className="text-xs font-medium text-gray-500">Street address (optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. 123 Main St, Santa Rosa, CA 95401"
+                value={addAddress}
+                onChange={(e) => setAddAddress(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                maxLength={ADDRESS_MAX_LENGTH}
+                className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              />
+            </div>
           </div>
+          <p className="text-xs text-gray-400">
+            The address is shown to families in the team calendar feed only, so their phone can
+            open the field in Maps. Leave it blank to use the park&apos;s address.
+          </p>
           <div className="flex items-center gap-2">
             <button
               onClick={handleAdd}
@@ -317,7 +340,7 @@ export function VenuesPageClient({
               {adding ? "Adding…" : "Add venue"}
             </button>
             <button
-              onClick={() => { setShowAdd(false); setAddName(""); setAddLocationId(null); setAddError(null); }}
+              onClick={() => { setShowAdd(false); setAddName(""); setAddLocationId(null); setAddAddress(""); setAddError(null); }}
               className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition-colors hover:text-gray-700"
             >
               Cancel
@@ -390,6 +413,19 @@ export function VenuesPageClient({
                         Cancel
                       </button>
                     </div>
+                    <div className="flex items-center gap-2 pl-6">
+                      <input
+                        value={renameAddress}
+                        placeholder="Street address (optional) — shown to families in the calendar feed"
+                        onChange={(e) => setRenameAddress(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRenameLocation(loc);
+                          if (e.key === "Escape") cancelRenameLocation();
+                        }}
+                        maxLength={ADDRESS_MAX_LENGTH}
+                        className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/30"
+                      />
+                    </div>
                     {renameError && <p className="pl-6 text-xs text-red-500">{renameError}</p>}
                   </div>
                 ) : (
@@ -400,6 +436,9 @@ export function VenuesPageClient({
                       <span className="text-xs font-normal text-gray-400">
                         {locVenues.length} field{locVenues.length === 1 ? "" : "s"}
                       </span>
+                      {loc.address && (
+                        <span className="truncate text-xs font-normal text-gray-400">· {loc.address}</span>
+                      )}
                     </h2>
                     <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                       <button
@@ -485,14 +524,18 @@ export function VenuesPageClient({
 
 function DisplayCard({
   venue,
+  locationAddress,
   onEdit,
   onDelete,
 }: {
   venue: Venue;
+  /** The park's address, for the fallback the feed also applies. */
+  locationAddress?: string | null;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const availability = parseAvailability(venue.availability);
+  const address = effectiveAddress(venue, { address: locationAddress });
   const openDays = DAY_KEYS.filter((k) => availability[k]);
 
   return (
@@ -511,7 +554,7 @@ function DisplayCard({
             </button>
           )}
         </div>
-        {venue.address && <p className="text-xs text-gray-400">{venue.address}</p>}
+        {address && <p className="text-xs text-gray-400">{address}</p>}
         {(venue.city || venue.state) && (
           <p className="text-xs text-gray-400">{[venue.city, venue.state].filter(Boolean).join(", ")}</p>
         )}

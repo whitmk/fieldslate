@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, Loader2, Lock, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { LocationPicker } from "@/components/venues/location-picker";
+import { ADDRESS_MAX_LENGTH, normalizeAddress } from "@/lib/venues/address";
 import type { Venue } from "@/types/database";
 import {
   DAY_KEYS,
@@ -119,6 +120,7 @@ export function VenueEditForm({
   const derivedGameDays = gameDays ?? new Map<DayKey, number>();
   const [name, setName] = useState(venue.name);
   const [locationId, setLocationId] = useState<string | null>(venue.location_id);
+  const [address, setAddress] = useState(venue.address ?? "");
   const [draft, setDraft] = useState<AvailabilityDraft>(() =>
     draftFromAvailability(parseAvailability(venue.availability)),
   );
@@ -211,6 +213,7 @@ export function VenueEditForm({
       .update({
         name: name.trim(),
         location_id: locationId,
+        address: normalizeAddress(address),
         availability: availability as never,
         availability_configured: hasAnyDayConfigured(availability),
       } as never)
@@ -247,6 +250,21 @@ export function VenueEditForm({
             Group this field under a park or complex (e.g. Monroe Complex).
             Location is for labeling only — scheduling still books this venue as
             one field.
+          </p>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500">Street address (optional)</label>
+          <input
+            type="text"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            maxLength={ADDRESS_MAX_LENGTH}
+            placeholder="e.g. 123 Main St, Santa Rosa, CA 95401"
+            className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+          />
+          <p className="text-xs text-gray-400">
+            Shown to families in the team calendar feed so their phone can open the field in
+            Maps. Not printed, not exported. Leave blank to use the park&apos;s address.
           </p>
         </div>
       </div>
