@@ -139,7 +139,7 @@ tells the truth about who's free and why.
 | Email | Tier | Why | Date |
 |---|---|---|---|
 | whitking10@gmail.com | Elite | Founder / dashboard owner | — |
-| whitmellonking@gmail.com | Elite | Founder smoke-test account | — |
+| whitmellonking@gmail.com | Elite | Proof/QA test org (org_name "test", the target of the SQL proof harnesses) and founder smoke-test account | — |
 | whitking10+test2@gmail.com | Elite | Founder smoke-test account | — |
 | jennifer.m.medici@gmail.com | Elite | Beta user | — |
 | (add SRA org-owner email) | Elite | Founding league — Fall Ball | — |
