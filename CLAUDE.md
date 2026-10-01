@@ -2767,7 +2767,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   metadata in `divisions.settings`, scores, officials. Playoff games are NOT
   included (parallel table) — v1 says so in the dialog and the help page.
 - **The field's street address IS in the feed, on the LOCATION line only
-  (0100).** The reader emits one added key inside `venue`, `address` — the
+  (0100, applied 2026-09-30 after a first-run-green proof; md5(prosrc)
+  verified against the repo file).** The reader emits one added key inside `venue`, `address` — the
   venue's own, else its park's, trimmed, blank as null (`coalesce(nullif(
   btrim(v.address), ''), nullif(btrim(loc.address), ''))`) — and the builder
   appends it to the label after a comma, through the escaper, so a phone

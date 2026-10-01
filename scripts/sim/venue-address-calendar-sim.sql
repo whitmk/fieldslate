@@ -72,7 +72,23 @@
 --   CM3  address ALSO emitted at game level                  → A4
 --   CM4  venues CHECK loosened to 300 characters             → C1
 --
--- RUN LOG: not yet run.
+-- RUN LOG (2026-09-30, ~19:10 Pacific, against production, rolled back; leak
+-- check clean: no HARNESS-0100 rows, no constraints, reader md5 = 0099's,
+-- test org links 0, Majors unlocked as before). 0100 was NOT applied when
+-- this was run; it was applied right after, md5(prosrc) =
+-- 235e480fd14c7580504558e0366b376c = the repo file's body.
+--
+--   RUN 1 — GREEN on the first run. Baseline: zero failures. Counters:
+--     venue_keys_scanned 3, venue_address 1, park_fallback 1, null_address 1,
+--     leak_scanned 2, check_refused 4, check_accepted 2,
+--     partner_prosrc_scanned 3, grants_checked 1. No zero or absent counter.
+--     CM1 → KILLED at [A2]  (park fallback gone: null came back)
+--     CM2 → KILLED at [A1]  (untrimmed: the padded value came back; A2 also
+--                            fell, with the whitespace-only value)
+--     CM3 → KILLED at [A4]  (game key "address" off the allowlist; A5 then
+--                            saw the string outside venue.address)
+--     CM4 → KILLED at [C1]  (201 characters accepted)
+--     AFTER MUTANTS: zero failures.
 
 select set_config('lock_timeout', '3s', true),
        set_config('statement_timeout', '15s', true);
