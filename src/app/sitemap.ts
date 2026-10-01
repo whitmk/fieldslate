@@ -7,6 +7,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${SITE_URL}/` },
     { url: `${SITE_URL}/contact` },
+    { url: `${SITE_URL}/demo` },
     { url: `${SITE_URL}/privacy` },
     { url: `${SITE_URL}/terms-of-service` },
     { url: `${SITE_URL}/blog` },

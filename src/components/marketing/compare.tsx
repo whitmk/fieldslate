@@ -171,7 +171,15 @@ export function Compare() {
             integration.
           </p>
 
-          <p className="mt-6 text-xs text-gray-400">
+          <p className="mt-6 text-sm text-gray-600">
+            Want to see it on your own season?{" "}
+            <Link href="/demo" className="font-medium text-[#16a34a] underline underline-offset-2 hover:text-[#0C1F3F]">
+              Request a demo
+            </Link>
+            .
+          </p>
+
+          <p className="mt-4 text-xs text-gray-400">
             Based on each vendor&apos;s publicly available information as of September 2026. See
             something out of date?{" "}
             <Link href="/contact" className="font-medium text-gray-500 underline underline-offset-2 hover:text-[#0C1F3F]">

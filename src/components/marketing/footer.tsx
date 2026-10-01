@@ -24,6 +24,7 @@ export function Footer() {
             <Link href="/#compare" className="text-sm text-white/40 transition-colors hover:text-white">Compare</Link>
             <Link href="/#pricing" className="text-sm text-white/40 transition-colors hover:text-white">Pricing</Link>
             <Link href="/blog" className="text-sm text-white/40 transition-colors hover:text-white">Blog</Link>
+            <Link href="/demo" className="text-sm text-white/40 transition-colors hover:text-white">Request a demo</Link>
             <Link href="/contact" className="text-sm text-white/40 transition-colors hover:text-white">Contact</Link>
             <Link href="/privacy" className="text-sm text-white/40 transition-colors hover:text-white">Privacy</Link>
             <Link href="/terms-of-service" className="text-sm text-white/40 transition-colors hover:text-white">Terms of Service</Link>

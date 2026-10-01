@@ -169,6 +169,14 @@ export function Pricing() {
             </div>
           ))}
         </div>
+
+        <p className="mx-auto mt-10 max-w-2xl text-center text-sm text-gray-500">
+          Not sure which plan fits your league?{" "}
+          <Link href="/demo" className="font-medium text-[#16a34a] underline underline-offset-2 hover:text-[#0C1F3F]">
+            Request a demo
+          </Link>{" "}
+          and Whit will walk you through it.
+        </p>
       </div>
     </section>
   );

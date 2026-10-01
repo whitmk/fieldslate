@@ -44,6 +44,15 @@ export function Hero() {
                 Start free →
               </Button>
             </Link>
+            <Link href="/demo">
+              <Button
+                size="lg"
+                variant="ghost"
+                className="border border-white/20 px-8 text-white hover:bg-white/10 hover:text-white"
+              >
+                Request a demo
+              </Button>
+            </Link>
             <Link href="#how-it-works">
               <Button
                 size="lg"
