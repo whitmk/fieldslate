@@ -111,14 +111,26 @@ export function Compare() {
                 {COMPARE_ROWS.map((row, i) => (
                   <Fragment key={row}>
                     {i === PAIRS_WITH_PLATFORM_FROM && (
-                      <tr>
-                        <td
-                          colSpan={3}
-                          className="border-t border-gray-100 bg-gray-50/60 px-3 pb-2 pt-5 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:px-4"
-                        >
-                          Pairs with your registration platform
-                        </td>
-                      </tr>
+                      <>
+                        <tr>
+                          <td
+                            colSpan={3}
+                            className="border-t border-gray-100 bg-gray-50/60 px-3 pb-1 pt-5 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:px-4"
+                          >
+                            Pairs with your registration platform
+                          </td>
+                        </tr>
+                        {/* Its own row, text-only like the label above. (The few pixels
+                            of inner scroll seen at 375px come from the competitor
+                            HEADER — long uppercase names overflow their column — not
+                            from this row; see the follow-up on the header.) */}
+                        <tr>
+                          <td colSpan={3} className="bg-gray-50/60 px-3 pb-3 text-xs text-gray-500 sm:px-4">
+                            Export your schedule as a CSV and import it into the platform your league
+                            already uses.
+                          </td>
+                        </tr>
+                      </>
                     )}
                     <tr className="border-t border-gray-100">
                       <th scope="row" className="px-3 py-3 text-left font-medium leading-snug text-[#0C1F3F] sm:px-4">
