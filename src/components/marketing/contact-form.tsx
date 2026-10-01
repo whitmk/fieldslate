@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Send, X } from "lucide-react";
+import { HONEYPOT_FIELD } from "@/lib/forms/spam";
 
 const REQUEST_TYPES = [
   "General inquiry",
@@ -22,6 +23,8 @@ export function ContactForm() {
   const [email, setEmail] = useState("");
   const [requestType, setRequestType] = useState<RequestType | "">("");
   const [message, setMessage] = useState("");
+  // Honeypot: never shown, never filled by a person (see src/lib/forms/spam.ts).
+  const [honeypot, setHoneypot] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +56,7 @@ export function ContactForm() {
           email: trimmedEmail,
           request_type: requestType,
           message: trimmedMessage,
+          [HONEYPOT_FIELD]: honeypot,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -99,7 +103,7 @@ export function ContactForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-5 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8"
+      className="relative flex flex-col gap-5 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8"
       noValidate
     >
       {error && (
@@ -119,6 +123,20 @@ export function ContactForm() {
           </button>
         </div>
       )}
+
+      {/* Honeypot — off-screen, skipped by tab and screen readers; bots fill it. */}
+      <div aria-hidden="true" className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden">
+        <label htmlFor="contact-website">Website</label>
+        <input
+          id="contact-website"
+          name={HONEYPOT_FIELD}
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+          value={honeypot}
+          onChange={(e) => setHoneypot(e.target.value)}
+        />
+      </div>
 
       <Field label="Name" htmlFor="contact-name" required>
         <input

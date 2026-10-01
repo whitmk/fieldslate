@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { sendEmail } from "@/lib/email";
 import { SITE_URL } from "@/lib/site";
+import {
+  RATE_LIMIT_MESSAGE,
+  clientAddress,
+  isHoneypotFilled,
+  isRateLimited,
+} from "@/lib/forms/spam";
 
 export const runtime = "nodejs";
 
@@ -39,11 +45,20 @@ export async function POST(request: Request) {
     email?: unknown;
     request_type?: unknown;
     message?: unknown;
-  };
+  } & Record<string, unknown>;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  // Spam, before anything is read or sent (shared with the demo form). A
+  // honeypot hit gets a normal-looking success and nothing else happens.
+  if (isHoneypotFilled(body)) {
+    return NextResponse.json({ ok: true });
+  }
+  if (isRateLimited(clientAddress(request.headers))) {
+    return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
   }
 
   const name = typeof body.name === "string" ? body.name.trim() : "";
@@ -115,7 +130,7 @@ export async function POST(request: Request) {
     </div>
     <div style="padding:14px 24px;border-top:1px solid #f3f4f6;background:#fafafa;">
       <p style="margin:0;color:#9ca3af;font-size:11px;">
-        Reply directly to this thread — the requester's email is in the From metadata above.
+        Reply to this email to answer the requester — replies go to ${escapeHtml(email)}, not to the app's sender address.
       </p>
     </div>
   </div>
@@ -132,7 +147,7 @@ export async function POST(request: Request) {
     message,
   ].join("\n");
 
-  const result = await sendEmail(CONTACT_INBOX, subject, html, text);
+  const result = await sendEmail(CONTACT_INBOX, subject, html, text, { replyTo: email });
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
