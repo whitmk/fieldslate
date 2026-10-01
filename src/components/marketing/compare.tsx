@@ -88,21 +88,26 @@ export function Compare() {
           </div>
 
           <div className="mt-4 overflow-x-auto rounded-2xl border border-gray-100">
-            <table className="w-full min-w-[20rem] table-fixed border-collapse text-sm">
+            {/* Column split and header sizing were measured at 375px and 320px
+                across EVERY dropdown value (the longest name, "LeagueLobster",
+                decides): 40/30/30, 11px header text and px-2 below sm keep every
+                name inside its cell with no inner scroll at 375px. Never break a
+                name mid-word or truncate it. */}
+            <table className="w-full min-w-[16rem] table-fixed border-collapse text-sm">
               <colgroup>
-                <col className="w-[46%]" />
-                <col className="w-[27%]" />
-                <col className="w-[27%]" />
+                <col className="w-[40%]" />
+                <col className="w-[30%]" />
+                <col className="w-[30%]" />
               </colgroup>
               <thead>
-                <tr className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  <th scope="col" className="px-3 py-3 sm:px-4">
+                <tr className="bg-gray-50 text-left text-[11px] font-semibold text-gray-500 sm:text-xs">
+                  <th scope="col" className="px-2 py-3 sm:px-4">
                     Feature
                   </th>
-                  <th scope="col" className="px-3 py-3 text-[#0C1F3F] sm:px-4">
+                  <th scope="col" className="px-2 py-3 text-[#0C1F3F] sm:px-4">
                     {FIELDSLATE.name}
                   </th>
-                  <th scope="col" className="px-3 py-3 sm:px-4">
+                  <th scope="col" className="px-2 py-3 sm:px-4">
                     {competitor.name}
                   </th>
                 </tr>
@@ -115,7 +120,7 @@ export function Compare() {
                         <tr>
                           <td
                             colSpan={3}
-                            className="border-t border-gray-100 bg-gray-50/60 px-3 pb-1 pt-5 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:px-4"
+                            className="border-t border-gray-100 bg-gray-50/60 px-2 pb-1 pt-5 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:px-4"
                           >
                             Pairs with your registration platform
                           </td>
@@ -125,7 +130,7 @@ export function Compare() {
                             HEADER — long uppercase names overflow their column — not
                             from this row; see the follow-up on the header.) */}
                         <tr>
-                          <td colSpan={3} className="bg-gray-50/60 px-3 pb-3 text-xs text-gray-500 sm:px-4">
+                          <td colSpan={3} className="bg-gray-50/60 px-2 pb-3 text-xs text-gray-500 sm:px-4">
                             Export your schedule as a CSV and import it into the platform your league
                             already uses.
                           </td>
@@ -133,13 +138,13 @@ export function Compare() {
                       </>
                     )}
                     <tr className="border-t border-gray-100">
-                      <th scope="row" className="px-3 py-3 text-left font-medium leading-snug text-[#0C1F3F] sm:px-4">
+                      <th scope="row" className="px-2 py-3 text-left font-medium leading-snug text-[#0C1F3F] sm:px-4">
                         {row}
                       </th>
-                      <td className="px-3 py-3 sm:px-4">
+                      <td className="px-2 py-3 sm:px-4">
                         <ValueCell value={FIELDSLATE.values[i]} />
                       </td>
-                      <td className="px-3 py-3 sm:px-4">
+                      <td className="px-2 py-3 sm:px-4">
                         <ValueCell value={competitor.values[i]} />
                       </td>
                     </tr>
