@@ -17,6 +17,9 @@ export function MarketingNavbar() {
           <Link href="#how-it-works" className="text-sm text-white/70 transition-colors hover:text-white">
             How it works
           </Link>
+          <Link href="#compare" className="text-sm text-white/70 transition-colors hover:text-white">
+            Compare
+          </Link>
           <Link href="#pricing" className="text-sm text-white/70 transition-colors hover:text-white">
             Pricing
           </Link>

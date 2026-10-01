@@ -1,6 +1,7 @@
 import { Hero } from "@/components/marketing/hero";
 import { Features } from "@/components/marketing/features";
 import { HowItWorks } from "@/components/marketing/how-it-works";
+import { Compare } from "@/components/marketing/compare";
 import { Pricing } from "@/components/marketing/pricing";
 import { MarketingNavbar } from "@/components/marketing/navbar";
 import { Footer } from "@/components/marketing/footer";
@@ -32,6 +33,7 @@ export default function HomePage() {
         <Hero />
         <Features />
         <HowItWorks />
+        <Compare />
         <Pricing />
       </main>
       <Footer />
