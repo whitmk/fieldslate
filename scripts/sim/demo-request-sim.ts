@@ -12,7 +12,12 @@
 //      form never builds a URL from the answers
 //
 // Mutants (`npm run sim:demo-request:mutants`): each applied to the real
-// source, each required to die FIRST at its own tag.
+// source, each required to die FIRST at its own tag. MUTATION LOG
+// (2026-09-30): DM5 (interleague dropped from the label map) first died at
+// E4, because E2 iterated the lib's own EMAIL_ORDER — a key missing from the
+// map vanished from the loop — and E3 compared an indexOf of -1. The keys
+// are now a literal list and E3/E3b require the key to be present. 8/8
+// killed at their own tag after the fix.
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -80,13 +85,23 @@ section("E", () => {
   const d = (validateDemoRequest(FULL) as { ok: true; data: DemoRequest }).data;
   const { subject, text, html } = buildDemoEmail(d, "https://www.thefieldslate.com");
   assert(subject === "Demo request — QA Little League (Baseball/softball)" && subject === demoEmailSubject(d), "E1", `subject is exact (got: ${subject})`);
-  for (const k of EMAIL_ORDER) {
-    assert(text.includes(`${LABELS[k]}: `), `E2-${k}`, `text body carries the label "${LABELS[k]}"`);
+  // The expected keys are a LITERAL list, never EMAIL_ORDER from the lib: a
+  // key dropped from the lib's map would otherwise drop out of this loop too
+  // and pass by absence (the DM5 lesson).
+  const EXPECTED_KEYS: (keyof DemoRequest)[] = [
+    "name", "email", "league_name", "role", "sport", "plays_interleague", "phone", "divisions_teams", "fields_parks",
+    "current_scheduling_tool", "registration_platform", "next_season_start", "timezone", "best_times", "notes",
+  ];
+  for (const k of EXPECTED_KEYS) {
+    const label = LABELS[k];
+    assert(typeof label === "string" && text.includes(`${label}: `), `E2-${k}`, `text body carries a label for ${k} (${label ?? "MISSING"})`);
   }
-  const posInText = (label: string) => text.indexOf(label + ": ");
-  assert(posInText(LABELS.plays_interleague) < posInText(LABELS.phone) && posInText(LABELS.plays_interleague) < posInText(LABELS.divisions_teams),
+  const posInText = (label: string | undefined) => (label ? text.indexOf(label + ": ") : -1);
+  const il = posInText(LABELS.plays_interleague);
+  assert(il >= 0 && il < posInText(LABELS.phone) && il < posInText(LABELS.divisions_teams),
     "E3", "interleague is listed near the top, before phone and league details");
-  assert(EMAIL_ORDER.indexOf("plays_interleague") <= 5, "E3b", "interleague is within the first six rows");
+  const ilIndex = EMAIL_ORDER.indexOf("plays_interleague");
+  assert(ilIndex >= 0 && ilIndex <= 5, "E3b", `interleague is within the first six rows (index ${ilIndex})`);
   const minimal = (validateDemoRequest({ name: "A", email: "a@b.co", league_name: "L", role: "Other", sport: "Other" }) as { ok: true; data: DemoRequest }).data;
   const m = buildDemoEmail(minimal, "https://www.thefieldslate.com");
   const blankCount = (m.text.match(new RegExp(`: ${BLANK}$`, "gm")) ?? []).length;

@@ -1621,6 +1621,72 @@ export type Database = {
           },
         ]
       }
+      demo_requests: {
+        Row: {
+          best_times: string | null
+          created_at: string
+          current_scheduling_tool: string | null
+          divisions_teams: string | null
+          email: string
+          email_error: string | null
+          email_sent: boolean
+          fields_parks: string | null
+          id: string
+          league_name: string
+          name: string
+          next_season_start: string | null
+          notes: string | null
+          phone: string | null
+          plays_interleague: string | null
+          registration_platform: string | null
+          role: string
+          sport: string
+          timezone: string | null
+        }
+        Insert: {
+          best_times?: string | null
+          created_at?: string
+          current_scheduling_tool?: string | null
+          divisions_teams?: string | null
+          email: string
+          email_error?: string | null
+          email_sent?: boolean
+          fields_parks?: string | null
+          id?: string
+          league_name: string
+          name: string
+          next_season_start?: string | null
+          notes?: string | null
+          phone?: string | null
+          plays_interleague?: string | null
+          registration_platform?: string | null
+          role: string
+          sport: string
+          timezone?: string | null
+        }
+        Update: {
+          best_times?: string | null
+          created_at?: string
+          current_scheduling_tool?: string | null
+          divisions_teams?: string | null
+          email?: string
+          email_error?: string | null
+          email_sent?: boolean
+          fields_parks?: string | null
+          id?: string
+          league_name?: string
+          name?: string
+          next_season_start?: string | null
+          notes?: string | null
+          phone?: string | null
+          plays_interleague?: string | null
+          registration_platform?: string | null
+          role?: string
+          sport?: string
+          timezone?: string | null
+        }
+        Relationships: []
+      }
       venues: {
         Row: {
           address: string | null

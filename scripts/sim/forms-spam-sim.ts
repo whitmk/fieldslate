@@ -10,7 +10,12 @@
 //      the hidden field
 //
 // Mutants (`npm run sim:forms-spam:mutants`): each applied to the real
-// source, each required to die FIRST at its own tag.
+// source, each required to die FIRST at its own tag. MUTATION LOG
+// (2026-09-30): SM4 (a refusal recorded as a submission) first died at R5,
+// because address "a" had been refused at R2 and that recorded refusal kept
+// it over the limit at the window's end. Moving R6 ahead then made SM5 (the
+// window never slides) die at R6. R5 and R6 now each run on their own fresh
+// address, R5 first. 6/6 killed at their own tag after that.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -58,14 +63,17 @@ section("R", () => {
   assert(passed === RATE_LIMIT_MAX, "R1", `the first ${RATE_LIMIT_MAX} submissions pass (got ${passed})`);
   assert(isRateLimited("a", t0 + RATE_LIMIT_MAX), "R2", "the next one is refused");
   assert(!isRateLimited("b", t0 + RATE_LIMIT_MAX), "R3", "another address is unaffected");
-  assert(isRateLimited("a", t0 + RATE_LIMIT_WINDOW_MS - 1), "R4", "still refused just inside the window");
-  assert(!isRateLimited("a", t0 + RATE_LIMIT_WINDOW_MS + 1), "R5", "allowed once the first submission leaves the window");
-  // A refusal must not count as a submission: refuse twice at t0+RATE_LIMIT_MAX+1,
-  // then at window end the oldest REAL hit expires and one more passes.
-  _resetRateLimitForTests();
+  // Each of the next two runs on its OWN fresh address, in this order, so a
+  // mutant dies at the line written for it (mutation log, SM4/SM5):
+  //   R5 — the window slides: five hits, then allowed once they expire.
+  //   R6 — a refusal is not a submission: five hits, two refusals, then
+  //        still allowed once the five expire.
+  for (let i = 0; i < RATE_LIMIT_MAX; i++) isRateLimited("d", t0 + i);
+  assert(!isRateLimited("d", t0 + RATE_LIMIT_WINDOW_MS + 1), "R5", "allowed once the first submission leaves the window");
   for (let i = 0; i < RATE_LIMIT_MAX; i++) isRateLimited("c", t0 + i);
   isRateLimited("c", t0 + 100); isRateLimited("c", t0 + 200);
   assert(!isRateLimited("c", t0 + RATE_LIMIT_WINDOW_MS + 1), "R6", "refused attempts do not extend the window");
+  assert(isRateLimited("a", t0 + RATE_LIMIT_WINDOW_MS - 1), "R4", "still refused just inside the window");
   assert(RATE_LIMIT_MAX >= 5 && RATE_LIMIT_WINDOW_MS <= 10 * 60 * 1000, "R7", "generous: at least 5 per at most 10 minutes");
   assert(/try again/i.test(RATE_LIMIT_MESSAGE) && !/error|429|limit/i.test(RATE_LIMIT_MESSAGE), "R8", "the message is friendly, not a raw error");
   count("rate_limited"); count("rate_allowed");
