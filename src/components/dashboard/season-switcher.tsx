@@ -82,7 +82,7 @@ export function SeasonSwitcher({ seasons, currentSeasonId }: Props) {
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="md:relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -99,7 +99,7 @@ export function SeasonSwitcher({ seasons, currentSeasonId }: Props) {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-full z-40 mt-1 w-72 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg"
+          className="absolute left-2 right-2 top-full z-40 mt-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg md:left-auto md:right-0 md:w-72"
         >
           <div className="border-b border-gray-100 px-3 py-2">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-400">

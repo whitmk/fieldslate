@@ -1039,7 +1039,7 @@ export function InterleaguePageClient({
             </button>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
@@ -1132,7 +1132,7 @@ export function InterleaguePageClient({
                 {reschedError}
               </p>
             )}
-            <div className="overflow-hidden rounded-xl border border-orange-200 bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-xl border border-orange-200 bg-white shadow-sm">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-orange-100 bg-orange-50 text-left text-xs font-medium uppercase tracking-wide text-orange-700">
@@ -1267,7 +1267,7 @@ export function InterleaguePageClient({
                 </button>
               </div>
             )}
-            <div className="overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-xl border border-amber-200 bg-white shadow-sm">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-amber-100 bg-amber-50 text-left text-xs font-medium uppercase tracking-wide text-amber-700">
@@ -1455,7 +1455,7 @@ export function InterleaguePageClient({
                 </p>
               </div>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+              <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-400">

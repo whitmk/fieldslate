@@ -1366,7 +1366,7 @@ export function DivisionSchedulePanel({
                           : ""
                       }`}
                     >
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-y-1.5 sm:flex-nowrap">
                       {/* Left: checkbox (select mode) or rain icon (cancelled) + time + teams */}
                       <div className="flex min-w-0 items-center gap-3">
                         {selectMode && !isCancelled ? (
@@ -1404,8 +1404,9 @@ export function DivisionSchedulePanel({
                         )}
                       </div>
 
-                      {/* Right: venue + action */}
-                      <div className="ml-3 flex flex-shrink-0 items-center gap-2">
+                      {/* Right: venue + action. Below sm this takes its own line
+                          (basis-full) so the team names keep their width. */}
+                      <div className="flex basis-full flex-wrap items-center justify-end gap-2 pl-[76px] sm:ml-3 sm:basis-auto sm:flex-shrink-0 sm:flex-nowrap sm:pl-0">
                         {game.venue?.name ? (
                           <span className={`text-xs ${isCancelled ? "text-gray-300" : "text-gray-400"}`}>
                             {game.venue.name}
@@ -1421,7 +1422,7 @@ export function DivisionSchedulePanel({
                         ) : null}
 
                         {isCancelled ? (
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
                             <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-400">
                               Rained out
                             </span>

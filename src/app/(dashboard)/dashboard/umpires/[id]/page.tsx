@@ -247,7 +247,7 @@ export default async function UmpireSchedulePage({
         conflicts={conflicts}
       />
 
-      <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none">
+      <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm print:overflow-visible print:rounded-none print:border-0 print:shadow-none">
         {rows.length === 0 ? (
           <div className="px-6 py-12 text-center text-sm text-gray-500">
             No games assigned yet.

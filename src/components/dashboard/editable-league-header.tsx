@@ -78,10 +78,10 @@ export function EditableLeagueHeader({
 
   return (
     <>
-      <div className="flex items-start justify-between">
-        <div className="flex flex-col gap-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-bold text-[#0C1F3F]">{name}</h1>
+            <h1 className="break-words text-2xl font-bold text-[#0C1F3F]">{name}</h1>
             <span
               className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${sportClassName}`}
             >
@@ -104,7 +104,7 @@ export function EditableLeagueHeader({
           </div>
           <p className="text-sm text-gray-500">{season}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-shrink-0 items-center gap-2">
           <span
             className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${
               status === "active"

@@ -533,7 +533,7 @@ export default async function SchedulePage({
             {season ? `Games in ${season.name}.` : "No active season."}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ViewModeToggle mode={mode} />
           <SchedulePrintButton />
           <AddGameButton

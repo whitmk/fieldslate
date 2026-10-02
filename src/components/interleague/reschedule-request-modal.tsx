@@ -86,8 +86,8 @@ export function RescheduleRequestModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => e.target === e.currentTarget && !busy && onClose()}
     >
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+      <div className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-100 px-6 py-4">
           <div>
             <h2 className="text-base font-semibold text-[#0C1F3F]">{title}</h2>
             <p className="mt-0.5 text-xs text-gray-500">{matchup}</p>
@@ -112,7 +112,7 @@ export function RescheduleRequestModal({
               note: note.trim() || undefined,
             });
           }}
-          className="flex flex-col gap-4 px-6 py-5"
+          className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5"
         >
           {intro && (
             <p className="rounded-lg border border-purple-100 bg-purple-50 px-3 py-2 text-xs text-purple-700">

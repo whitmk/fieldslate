@@ -50,11 +50,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <MobileSidebarProvider>
-      <div className="flex h-screen overflow-hidden bg-gray-50 print:h-auto print:overflow-visible print:bg-white">
+      <div className="flex h-dvh overflow-hidden bg-gray-50 print:h-auto print:overflow-visible print:bg-white">
         <Sidebar plan={plan} orgId={currentOrgId} />
         <div className="flex flex-1 flex-col overflow-hidden print:overflow-visible">
           <Topbar />
-          <main className="flex-1 overflow-y-auto p-6 print:overflow-visible print:p-0">{children}</main>
+          <main className="flex-1 overflow-y-auto p-4 md:p-6 print:overflow-visible print:p-0">{children}</main>
         </div>
       </div>
     </MobileSidebarProvider>
