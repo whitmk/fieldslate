@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { CalendarX, Plus, X, AlertTriangle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 type BlackoutRow = { id: string; date: string; label: string | null };
 
@@ -46,6 +47,8 @@ export function BlackoutDatesPanel({ leagueId, initialAffectedGames }: Props) {
   const [newLabel, setNewLabel] = useState("");
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  // The row whose removal is awaiting confirmation (the X asks first).
+  const [removeTarget, setRemoveTarget] = useState<BlackoutRow | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -257,9 +260,9 @@ export function BlackoutDatesPanel({ leagueId, initialAffectedGames }: Props) {
                 </div>
               </div>
               <button
-                onClick={() => handleRemove(b.id)}
+                onClick={() => setRemoveTarget(b)}
                 disabled={removingId === b.id}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-red-50 hover:text-red-400 disabled:opacity-40"
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-red-50 hover:text-red-400 disabled:opacity-40"
                 aria-label="Remove blackout date"
               >
                 <X className="h-4 w-4" />
@@ -267,6 +270,21 @@ export function BlackoutDatesPanel({ leagueId, initialAffectedGames }: Props) {
             </li>
           ))}
         </ul>
+      )}
+
+      {removeTarget && (
+        <ConfirmDialog
+          title={`Remove the blackout on ${fmtDate(removeTarget.date)}?`}
+          detail={removeTarget.label ?? undefined}
+          confirmLabel="Remove"
+          tone="danger"
+          onCancel={() => setRemoveTarget(null)}
+          onConfirm={() => {
+            const id = removeTarget.id;
+            setRemoveTarget(null);
+            void handleRemove(id);
+          }}
+        />
       )}
     </div>
   );

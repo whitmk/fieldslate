@@ -15,6 +15,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { rainoutConfirmCopy } from "@/lib/schedule/rainout-confirm";
 import { padRoleLabels } from "@/lib/utils/official-title";
 import { createClient } from "@/lib/supabase/client";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
@@ -167,6 +169,9 @@ export function ScheduleList({
   const router = useRouter();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
+  // The game whose rainout is awaiting confirmation. Both the phone card and
+  // the row menu go through handleRainout, so both ask first.
+  const [rainoutTarget, setRainoutTarget] = useState<ScheduleGame | null>(null);
   // "Reschedule" — routed per game (move vs rainout picker, request flow,
   // upsell, or a refusal shown under the row). See use-schedule-reschedule.
   const lockedSet = useMemo(() => new Set(lockedDivisionIds), [lockedDivisionIds]);
@@ -198,9 +203,13 @@ export function ScheduleList({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  async function handleRainout(game: ScheduleGame) {
-    setRainoutId(game.id);
+  function handleRainout(game: ScheduleGame) {
     setOpenMenuId(null);
+    setRainoutTarget(game);
+  }
+
+  async function performRainout(game: ScheduleGame) {
+    setRainoutId(game.id);
     const supabase = createClient();
     await supabase
       .from("games")
@@ -311,6 +320,25 @@ export function ScheduleList({
 
       {reschedule.modals}
       {note.modal}
+
+      {rainoutTarget && (() => {
+        const g = rainoutTarget;
+        const venue = venueLabel(g);
+        const copy = rainoutConfirmCopy(g.scheduled_at, matchupLabel(g), venue === "—" ? null : venue);
+        return (
+          <ConfirmDialog
+            title={copy.title}
+            detail={copy.detail}
+            confirmLabel={copy.confirmLabel}
+            icon={<CloudRain className="h-5 w-5" />}
+            onCancel={() => setRainoutTarget(null)}
+            onConfirm={() => {
+              setRainoutTarget(null);
+              void performRainout(g);
+            }}
+          />
+        );
+      })()}
 
       {detailGame && (
         <GameDetailModal game={detailGame} onClose={() => setDetailGame(null)} />

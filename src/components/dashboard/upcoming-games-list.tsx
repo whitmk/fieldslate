@@ -16,6 +16,8 @@ import {
 } from "@/lib/schedule/schedule-page-reschedule-route";
 import { logActivity } from "@/lib/activity-log";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { rainoutConfirmCopy } from "@/lib/schedule/rainout-confirm";
 
 export type UpcomingGame = {
   id: string;
@@ -47,6 +49,8 @@ export function UpcomingGamesList({ initialGames, canReschedule = false, lockedD
   const router = useRouter();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
+  // The game whose rainout is awaiting confirmation (the menu item asks first).
+  const [rainoutTarget, setRainoutTarget] = useState<UpcomingGame | null>(null);
   const lockedSet = useMemo(() => new Set(lockedDivisionIds), [lockedDivisionIds]);
   const note = useGameNoteEditor({ logSource: "dashboard upcoming games" });
   // Routed per game: ordinary → move picker (Pro); interleague → request.
@@ -148,7 +152,10 @@ export function UpcomingGamesList({ initialGames, canReschedule = false, lockedD
               {openMenuId === game.id && (
                 <div className="absolute right-0 top-8 z-30 w-44 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg">
                   <button
-                    onClick={() => handleRainout(game)}
+                    onClick={() => {
+                      setOpenMenuId(null);
+                      setRainoutTarget(game);
+                    }}
                     className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
                   >
                     <CloudRain className="h-3.5 w-3.5 text-blue-400" />
@@ -191,6 +198,29 @@ export function UpcomingGamesList({ initialGames, canReschedule = false, lockedD
 
       {reschedule.modals}
       {note.modal}
+
+      {rainoutTarget && (() => {
+        const g = rainoutTarget;
+        const opponent = g.away_team?.name ?? g.external_team_name ?? g.interleague_org?.name ?? "Away";
+        const copy = rainoutConfirmCopy(
+          g.scheduled_at,
+          `${g.home_team?.name ?? "Home"} vs ${opponent}`,
+          g.venue?.name ?? g.proposed_venue_name ?? null,
+        );
+        return (
+          <ConfirmDialog
+            title={copy.title}
+            detail={copy.detail}
+            confirmLabel={copy.confirmLabel}
+            icon={<CloudRain className="h-5 w-5" />}
+            onCancel={() => setRainoutTarget(null)}
+            onConfirm={() => {
+              setRainoutTarget(null);
+              void handleRainout(g);
+            }}
+          />
+        );
+      })()}
     </>
   );
 }

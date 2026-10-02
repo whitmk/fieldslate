@@ -60,9 +60,9 @@ export function MoveGameIcon({
       disabled={locked}
       title={title}
       aria-label={title}
-      className={`flex h-7 w-7 items-center justify-center rounded-lg ${ROW_ICON_REVEAL} transition-all hover:bg-green-50 hover:text-[#22C55E] disabled:cursor-not-allowed disabled:opacity-50`}
+      className={`flex h-10 w-10 items-center justify-center rounded-lg ${ROW_ICON_REVEAL} transition-all hover:bg-green-50 hover:text-[#22C55E] disabled:cursor-not-allowed disabled:opacity-50`}
     >
-      <CalendarClock className="h-3.5 w-3.5" />
+      <CalendarClock className="h-4 w-4" />
     </button>
   );
 }

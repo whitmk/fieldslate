@@ -42,6 +42,8 @@ import {
 } from "@/lib/schedule/division-lock";
 import { AutoAssignUmpiresButton } from "@/components/umpires/auto-assign-button";
 import { ROW_ICON_REVEAL } from "@/components/ui/row-icon-reveal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { rainoutConfirmCopy } from "@/lib/schedule/rainout-confirm";
 import { MoveGameIcon, MoveNoticeLine } from "./move-game-row";
 import { useGameNoteEditor } from "@/components/schedule/use-game-note-editor";
 import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
@@ -189,6 +191,8 @@ export function DivisionSchedulePanel({
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
   const [coachConflicts, setCoachConflicts] = useState<CoachConflict[]>([]);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
+  // The game whose rainout is awaiting confirmation (the cloud icon asks first).
+  const [rainoutTarget, setRainoutTarget] = useState<GameRow | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<GameRow | null>(null);
   const [addGameOpen, setAddGameOpen] = useState(false);
 
@@ -949,6 +953,28 @@ export function DivisionSchedulePanel({
           (delete_team_if_unblocked, p_commit=false). On a blocked result the
           modal STAYS OPEN with the reason and no delete button — the whole
           point of Defect 2's fix is that the "why" is readable at the action. */}
+      {rainoutTarget && (() => {
+        const copy = rainoutConfirmCopy(
+          rainoutTarget.scheduled_at,
+          `${rainoutTarget.home_team?.name ?? "Home"} vs ${opponentName(rainoutTarget)}`,
+          rainoutTarget.venue?.name ?? rainoutTarget.proposed_venue_name ?? null,
+        );
+        return (
+          <ConfirmDialog
+            title={copy.title}
+            detail={copy.detail}
+            confirmLabel={copy.confirmLabel}
+            icon={<CloudRain className="h-5 w-5" />}
+            onCancel={() => setRainoutTarget(null)}
+            onConfirm={() => {
+              const g = rainoutTarget;
+              setRainoutTarget(null);
+              void handleRainOut(g);
+            }}
+          />
+        );
+      })()}
+
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
@@ -1428,16 +1454,17 @@ export function DivisionSchedulePanel({
                           /* Rainout cloud + "Reschedule game" sit as a tight
                              pair. Rained-out rows take the branch above and
                              get neither (they have their own Reschedule). */
-                          <div className="flex items-center gap-0.5">
+                          <div className="flex items-center gap-1.5">
                             <button
-                              onClick={() => handleRainOut(game)}
+                              onClick={() => setRainoutTarget(game)}
                               disabled={isRaining}
                               title="Mark as rained out"
-                              className={`flex h-7 w-7 items-center justify-center rounded-lg ${ROW_ICON_REVEAL} transition-all hover:bg-blue-50 hover:text-blue-400 disabled:opacity-50`}
+                              aria-label="Mark as rained out"
+                              className={`flex h-10 w-10 items-center justify-center rounded-lg ${ROW_ICON_REVEAL} transition-all hover:bg-blue-50 hover:text-blue-400 disabled:opacity-50`}
                             >
                               {isRaining
-                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                : <CloudRain className="h-3.5 w-3.5" />}
+                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                : <CloudRain className="h-4 w-4" />}
                             </button>
                             <MoveGameIcon
                               locked={locked}
