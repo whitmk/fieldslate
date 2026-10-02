@@ -267,6 +267,19 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   section (what readers see) and the frontmatter `faq` list (what search
   engines see) — so any FAQ edit must update both or they silently drift.
 
+## Homepage testimonial
+
+- **`src/components/marketing/testimonial.tsx` (2026-10-02) is the SRALL
+  testimonial between the Hero and Features.** The stat strip, the two
+  quotes and `FULL_REVIEW` are the reviewer's words VERBATIM — never edit
+  them, including the em dash, the "+" and the all-caps first line.
+  Attribution "Jenn M." / "Santa Rosa American Little League, Scheduler" was
+  confirmed by her on 2026-10-02; the disclosure line beneath it (founding
+  league, free first season) stays. Server component, native `<details>`
+  for the full review, homepage hex literals not `fs-*` tokens. Deliberately
+  NO star rating and NO Review JSON-LD — self-published reviews are not
+  eligible for rich results, so markup would only invite a manual action.
+
 ## Playoffs
 
 - **Playoff advancement is client-side by design.** Saving a result
