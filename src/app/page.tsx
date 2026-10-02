@@ -1,4 +1,5 @@
 import { Hero } from "@/components/marketing/hero";
+import { Testimonial } from "@/components/marketing/testimonial";
 import { Features } from "@/components/marketing/features";
 import { HowItWorks } from "@/components/marketing/how-it-works";
 import { Compare } from "@/components/marketing/compare";
@@ -31,6 +32,7 @@ export default function HomePage() {
       <MarketingNavbar />
       <main className="flex-1">
         <Hero />
+        <Testimonial />
         <Features />
         <HowItWorks />
         <Compare />
