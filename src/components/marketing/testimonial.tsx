@@ -12,9 +12,9 @@
 
 import { Quote } from "lucide-react";
 
-// TODO: replace with the reviewer's name once she has given permission. Do
-// not invent a name or a title.
-const ATTRIBUTION = "[NAME — pending permission], Santa Rosa American Little League";
+// Attribution confirmed by the reviewer 2026-10-02.
+const ATTRIBUTION_NAME = "Jenn M.";
+const ATTRIBUTION_ROLE = "Santa Rosa American Little League, Scheduler";
 
 const DISCLOSURE = "Founding league — received FieldSlate free during its first season.";
 
@@ -23,9 +23,17 @@ const QUOTE =
 
 const SECOND_LINE = "No more time suck spreadsheets. It's all here in one cute little package.";
 
-// TODO: paste the complete review text here, verbatim. While it is null the
-// "Read the full review" toggle is not rendered at all.
-const FULL_REVIEW = null as string | null;
+// The complete review, verbatim, one paragraph per entry. Rendered under the
+// "Read the full review" toggle with whitespace-pre-line, so each entry is a
+// line on its own.
+const FULL_REVIEW = [
+  "THE BEST PART OF OUR LITTLE LEAGUE SEASON WAS FIELDSLATE!",
+  "259 games. 6 leagues. 54 teams. 9 venues. 11 weeks.",
+  "Sounds like a scheduler's nightmare — but with FieldSlate it was an absolute breeze!",
+  "User-friendly season set up + well-thought out magic and Voila! What would have taken painstaking days was a series of questions that considers all the little things: field prep timelines, game times by division, field access, team/coach availability, and type of play.",
+  "MVP features that I didn't know I needed, but now can't live without: rainouts/reschedules that identifies remaining field availability, ridiculously simple interleague features, game schedules as PDFs and export to digital calendars, snack shack/umpire sign ups by venue, multi-user access, and top-level season reports.",
+  "No more time suck spreadsheets. It's all here in one cute little package. Buckle up, FieldSlate will take your scheduling to the next level.",
+].join("\n");
 
 const STATS: { value: string; label: string }[] = [
   { value: "259", label: "games" },
@@ -78,20 +86,19 @@ export function Testimonial() {
             </p>
           </blockquote>
           <figcaption className="mt-8">
-            <p className="text-sm font-semibold text-[#0C1F3F]">{ATTRIBUTION}</p>
+            <p className="text-sm font-semibold text-[#0C1F3F]">{ATTRIBUTION_NAME}</p>
+            <p className="mt-0.5 text-sm text-gray-600">{ATTRIBUTION_ROLE}</p>
             <p className="mt-1 text-xs text-gray-400">{DISCLOSURE}</p>
           </figcaption>
 
-          {FULL_REVIEW && (
-            <details className="mt-8 text-left">
-              <summary className="inline-block cursor-pointer text-sm font-medium text-[#16a34a] underline underline-offset-2 hover:text-[#0C1F3F]">
-                Read the full review
-              </summary>
-              <div className="mt-4 whitespace-pre-line rounded-2xl border border-gray-100 bg-white p-6 text-base leading-7 text-gray-600">
-                {FULL_REVIEW}
-              </div>
-            </details>
-          )}
+          <details className="mt-8">
+            <summary className="inline-block cursor-pointer text-sm font-medium text-[#16a34a] underline underline-offset-2 hover:text-[#0C1F3F]">
+              Read the full review
+            </summary>
+            <div className="mt-4 whitespace-pre-line text-left rounded-2xl border border-gray-100 bg-white p-6 text-base leading-7 text-gray-600">
+              {FULL_REVIEW}
+            </div>
+          </details>
         </figure>
       </div>
     </section>
