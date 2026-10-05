@@ -44,6 +44,7 @@ import { AutoAssignUmpiresButton } from "@/components/umpires/auto-assign-button
 import { ROW_ICON_REVEAL } from "@/components/ui/row-icon-reveal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { rainoutConfirmCopy } from "@/lib/schedule/rainout-confirm";
+import { markGameRainedOut } from "@/lib/schedule/rainout-write";
 import { MoveGameIcon, MoveNoticeLine } from "./move-game-row";
 import { useGameNoteEditor } from "@/components/schedule/use-game-note-editor";
 import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
@@ -193,6 +194,11 @@ export function DivisionSchedulePanel({
   const [rainoutId, setRainoutId] = useState<string | null>(null);
   // The game whose rainout is awaiting confirmation (the cloud icon asks first).
   const [rainoutTarget, setRainoutTarget] = useState<GameRow | null>(null);
+  // Confirm-dialog state for the write: busy while the UPDATE is in flight (so
+  // the button cannot be tapped twice), error when it failed or touched no row
+  // (the dialog stays open and says so; nothing is logged or refreshed).
+  const [rainoutBusy, setRainoutBusy] = useState(false);
+  const [rainoutError, setRainoutError] = useState<string | null>(null);
   const [rescheduleGame, setRescheduleGame] = useState<GameRow | null>(null);
   const [addGameOpen, setAddGameOpen] = useState(false);
 
@@ -692,10 +698,16 @@ export function DivisionSchedulePanel({
     );
   }
 
-  async function handleRainOut(game: GameRow) {
+  /** Returns true on a one-row success; false (with the dialog's error set)
+   *  when the write errored or touched no row — then nothing is logged. */
+  async function handleRainOut(game: GameRow): Promise<boolean> {
     setRainoutId(game.id);
-    const supabase = createClient();
-    await supabase.from("games").update({ status: "cancelled" } as never).eq("id", game.id);
+    const result = await markGameRainedOut(game.id);
+    if (!result.ok) {
+      setRainoutId(null);
+      setRainoutError(result.message);
+      return false;
+    }
     console.log("[logActivity] before call: rainout_logged (handleRainOut)", { leagueId, divisionId });
     const _r3 = await logActivity(
       leagueId,
@@ -708,6 +720,7 @@ export function DivisionSchedulePanel({
     router.refresh();
     onScheduleChange?.();
     setRainoutId(null);
+    return true;
   }
 
   // ── Bulk rainout helpers ──────────────────────────────────────────────────────
@@ -968,11 +981,22 @@ export function DivisionSchedulePanel({
             detail={copy.detail}
             confirmLabel={copy.confirmLabel}
             icon={<CloudRain className="h-5 w-5" />}
-            onCancel={() => setRainoutTarget(null)}
-            onConfirm={() => {
-              const g = rainoutTarget;
+            busy={rainoutBusy}
+            error={rainoutError}
+            onCancel={() => {
+              if (rainoutBusy) return;
               setRainoutTarget(null);
-              void handleRainOut(g);
+              setRainoutError(null);
+            }}
+            onConfirm={() => {
+              if (rainoutBusy) return;
+              const g = rainoutTarget;
+              setRainoutBusy(true);
+              setRainoutError(null);
+              void handleRainOut(g).then((ok) => {
+                setRainoutBusy(false);
+                if (ok) setRainoutTarget(null);
+              });
             }}
           />
         );

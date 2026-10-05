@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { rainoutConfirmCopy } from "@/lib/schedule/rainout-confirm";
+import { markGameRainedOut } from "@/lib/schedule/rainout-write";
 import { padRoleLabels } from "@/lib/utils/official-title";
 import { createClient } from "@/lib/supabase/client";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
@@ -172,6 +173,11 @@ export function ScheduleList({
   // The game whose rainout is awaiting confirmation. Both the phone card and
   // the row menu go through handleRainout, so both ask first.
   const [rainoutTarget, setRainoutTarget] = useState<ScheduleGame | null>(null);
+  // Confirm-dialog state for the write: busy while the UPDATE is in flight (so
+  // the button cannot be tapped twice), error when it failed or touched no row
+  // (the dialog stays open and says so; nothing is logged or refreshed).
+  const [rainoutBusy, setRainoutBusy] = useState(false);
+  const [rainoutError, setRainoutError] = useState<string | null>(null);
   // "Reschedule" — routed per game (move vs rainout picker, request flow,
   // upsell, or a refusal shown under the row). See use-schedule-reschedule.
   const lockedSet = useMemo(() => new Set(lockedDivisionIds), [lockedDivisionIds]);
@@ -208,13 +214,16 @@ export function ScheduleList({
     setRainoutTarget(game);
   }
 
-  async function performRainout(game: ScheduleGame) {
+  /** Returns true on a one-row success; false (with the dialog's error set)
+   *  when the write errored or touched no row — then nothing is logged. */
+  async function performRainout(game: ScheduleGame): Promise<boolean> {
     setRainoutId(game.id);
-    const supabase = createClient();
-    await supabase
-      .from("games")
-      .update({ status: "cancelled" } as never)
-      .eq("id", game.id);
+    const result = await markGameRainedOut(game.id);
+    if (!result.ok) {
+      setRainoutId(null);
+      setRainoutError(result.message);
+      return false;
+    }
     await logActivity(
       game.league_id,
       game.home_team?.division_id ?? null,
@@ -223,6 +232,7 @@ export function ScheduleList({
     );
     setRainoutId(null);
     router.refresh();
+    return true;
   }
 
   if (games.length === 0) {
@@ -367,10 +377,21 @@ export function ScheduleList({
             detail={copy.detail}
             confirmLabel={copy.confirmLabel}
             icon={<CloudRain className="h-5 w-5" />}
-            onCancel={() => setRainoutTarget(null)}
-            onConfirm={() => {
+            busy={rainoutBusy}
+            error={rainoutError}
+            onCancel={() => {
+              if (rainoutBusy) return;
               setRainoutTarget(null);
-              void performRainout(g);
+              setRainoutError(null);
+            }}
+            onConfirm={() => {
+              if (rainoutBusy) return;
+              setRainoutBusy(true);
+              setRainoutError(null);
+              void performRainout(g).then((ok) => {
+                setRainoutBusy(false);
+                if (ok) setRainoutTarget(null);
+              });
             }}
           />
         );

@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal, CloudRain, CalendarClock, Loader2, MapPin } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { useScheduleReschedule } from "@/components/schedule/use-schedule-reschedule";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
@@ -18,6 +17,7 @@ import { logActivity } from "@/lib/activity-log";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { rainoutConfirmCopy } from "@/lib/schedule/rainout-confirm";
+import { markGameRainedOut } from "@/lib/schedule/rainout-write";
 
 export type UpcomingGame = {
   id: string;
@@ -51,6 +51,11 @@ export function UpcomingGamesList({ initialGames, canReschedule = false, lockedD
   const [rainoutId, setRainoutId] = useState<string | null>(null);
   // The game whose rainout is awaiting confirmation (the menu item asks first).
   const [rainoutTarget, setRainoutTarget] = useState<UpcomingGame | null>(null);
+  // Confirm-dialog state for the write: busy while the UPDATE is in flight (so
+  // the button cannot be tapped twice), error when it failed or touched no row
+  // (the dialog stays open and says so; nothing is logged or refreshed).
+  const [rainoutBusy, setRainoutBusy] = useState(false);
+  const [rainoutError, setRainoutError] = useState<string | null>(null);
   const lockedSet = useMemo(() => new Set(lockedDivisionIds), [lockedDivisionIds]);
   const note = useGameNoteEditor({ logSource: "dashboard upcoming games" });
   // Routed per game: ordinary → move picker (Pro); interleague → request.
@@ -74,14 +79,17 @@ export function UpcomingGamesList({ initialGames, canReschedule = false, lockedD
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  async function handleRainout(game: UpcomingGame) {
+  /** Returns true on a one-row success; false (with the dialog's error set)
+   *  when the write errored or touched no row — then nothing is logged. */
+  async function handleRainout(game: UpcomingGame): Promise<boolean> {
     setRainoutId(game.id);
     setOpenMenuId(null);
-    const supabase = createClient();
-    await supabase
-      .from("games")
-      .update({ status: "cancelled" } as never)
-      .eq("id", game.id);
+    const result = await markGameRainedOut(game.id);
+    if (!result.ok) {
+      setRainoutId(null);
+      setRainoutError(result.message);
+      return false;
+    }
     console.log("[logActivity] before call: rainout_logged (upcoming-games-list)", { leagueId: game.league_id });
     const _r = await logActivity(
       game.league_id,
@@ -92,6 +100,7 @@ export function UpcomingGamesList({ initialGames, canReschedule = false, lockedD
     console.log("[logActivity] result (upcoming-games-list):", _r);
     setRainoutId(null);
     router.refresh();
+    return true;
   }
 
   function handleRescheduleClick(game: UpcomingGame) {
@@ -213,10 +222,21 @@ export function UpcomingGamesList({ initialGames, canReschedule = false, lockedD
             detail={copy.detail}
             confirmLabel={copy.confirmLabel}
             icon={<CloudRain className="h-5 w-5" />}
-            onCancel={() => setRainoutTarget(null)}
-            onConfirm={() => {
+            busy={rainoutBusy}
+            error={rainoutError}
+            onCancel={() => {
+              if (rainoutBusy) return;
               setRainoutTarget(null);
-              void handleRainout(g);
+              setRainoutError(null);
+            }}
+            onConfirm={() => {
+              if (rainoutBusy) return;
+              setRainoutBusy(true);
+              setRainoutError(null);
+              void handleRainout(g).then((ok) => {
+                setRainoutBusy(false);
+                if (ok) setRainoutTarget(null);
+              });
             }}
           />
         );

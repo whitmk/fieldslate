@@ -12,10 +12,10 @@ import {
   Clock,
   Loader2,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { rainoutConfirmCopy } from "@/lib/schedule/rainout-confirm";
+import { markGameRainedOut } from "@/lib/schedule/rainout-write";
 import { logActivity } from "@/lib/activity-log";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
 import { useScheduleReschedule } from "./use-schedule-reschedule";
@@ -116,6 +116,11 @@ export function ScheduleCalendar({
   // The game whose rainout is awaiting confirmation. The popover stays open
   // underneath so a Cancel lands the admin back where they were.
   const [rainoutTarget, setRainoutTarget] = useState<ScheduleGame | null>(null);
+  // Confirm-dialog state for the write: busy while the UPDATE is in flight (so
+  // the button cannot be tapped twice), error when it failed or touched no row
+  // (the dialog stays open and says so; nothing is logged or refreshed).
+  const [rainoutBusy, setRainoutBusy] = useState(false);
+  const [rainoutError, setRainoutError] = useState<string | null>(null);
   // "Reschedule" — the SAME routing as the list row menu (shared hook): the
   // picker variant is chosen per game, and a refusal is shown inside the
   // popover rather than closing it on nothing.
@@ -195,14 +200,18 @@ export function ScheduleCalendar({
   const cells = buildGrid(month);
   const [, mo] = month.split("-").map(Number);
 
-  async function handleRainout(game: ScheduleGame) {
+  /** Returns true on a one-row success; false (with the dialog's error set)
+   *  when the write errored or touched no row — then nothing is logged and
+   *  the popover stays where it was. */
+  async function handleRainout(game: ScheduleGame): Promise<boolean> {
     setActionLoadingId(game.id);
+    const result = await markGameRainedOut(game.id);
+    if (!result.ok) {
+      setActionLoadingId(null);
+      setRainoutError(result.message);
+      return false;
+    }
     setSelected(null);
-    const supabase = createClient();
-    await supabase
-      .from("games")
-      .update({ status: "cancelled" } as never)
-      .eq("id", game.id);
     await logActivity(
       game.league_id,
       game.home_team?.division_id ?? null,
@@ -211,6 +220,7 @@ export function ScheduleCalendar({
     );
     setActionLoadingId(null);
     router.refresh();
+    return true;
   }
 
   function openPopover(e: React.MouseEvent, pill: GamePill) {
@@ -522,10 +532,21 @@ export function ScheduleCalendar({
             detail={copy.detail}
             confirmLabel={copy.confirmLabel}
             icon={<CloudRain className="h-5 w-5" />}
-            onCancel={() => setRainoutTarget(null)}
-            onConfirm={() => {
+            busy={rainoutBusy}
+            error={rainoutError}
+            onCancel={() => {
+              if (rainoutBusy) return;
               setRainoutTarget(null);
-              void handleRainout(g);
+              setRainoutError(null);
+            }}
+            onConfirm={() => {
+              if (rainoutBusy) return;
+              setRainoutBusy(true);
+              setRainoutError(null);
+              void handleRainout(g).then((ok) => {
+                setRainoutBusy(false);
+                if (ok) setRainoutTarget(null);
+              });
             }}
           />
         );

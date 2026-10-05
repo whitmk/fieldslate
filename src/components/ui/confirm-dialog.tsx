@@ -17,6 +17,9 @@ interface Props {
   tone?: "danger" | "default";
   icon?: ReactNode;
   busy?: boolean;
+  /** A failed action: the dialog stays open and says why. Confirm stays
+   *  enabled so the admin can retry; Cancel closes. */
+  error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -28,6 +31,7 @@ export function ConfirmDialog({
   tone = "default",
   icon,
   busy = false,
+  error = null,
   onConfirm,
   onCancel,
 }: Props) {
@@ -67,6 +71,11 @@ export function ConfirmDialog({
             </h3>
             {detail && <p className="mt-1 text-sm text-gray-500">{detail}</p>}
           </div>
+          {error && (
+            <p role="alert" className="w-full rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-left text-sm text-red-600">
+              {error}
+            </p>
+          )}
         </div>
         <div className="flex gap-2 px-6 py-5">
           <button
