@@ -3374,44 +3374,48 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
 
 ## Mobile follow-ups (from the 2026-10-02 phone audit)
 
-Shipped so far: marketing mobile nav; confirm dialogs on single-game rainout
-and blackout removal with 40px row targets; the layout batch (stat grid,
-panel rows, request modal scroll, scrollable umpire/interleague tables,
-h-dvh shell, in-viewport switcher menus, wrapping Schedule actions, p-4
-content padding); division rows, stacked Schedule filters, the overview
-width fix and 16px selects on the overview and Schedule filters; the topbar
-org/season switchers (dead bell removed); and batch 3 — the Schedule phone
-card's "…" menu sharing `GameActionsMenu` with the desktop row (same items,
-same handlers, rainout disabled on cancelled/completed games), the calendar
-popover clamped on screen below md, and its rainout behind the shared
-confirm.
+Shipped (2026-10-02 → 2026-10-05): marketing mobile nav; confirm dialogs on
+single-game rainout and blackout removal with 40px row targets; the layout
+batch (stat grid, panel rows, request modal scroll, scrollable
+umpire/interleague tables, h-dvh shell, in-viewport switcher menus, wrapping
+Schedule actions, p-4 content padding); division rows, stacked Schedule
+filters, the overview width fix; the topbar org/season switchers (dead bell
+removed); batch 3 — the Schedule phone card's "…" menu sharing
+`GameActionsMenu` with the desktop row (same items, same handlers, rainout
+disabled on cancelled/completed games), the calendar popover clamped on
+screen below md and its rainout behind the shared confirm; batch 4 — every
+hover-only row icon on `ROW_ICON_REVEAL` with 36px targets (division panel
+roster, venues page location header and venue cards — the header row is
+`group/loc`, each card a plain `group`, so reveals are per element —
+interleague partner orgs, practices grid pencil), `max-h-[85dvh]` scrolling
+bodies on the team snack shack, pay report, game detail and venue/location
+delete dialogs, and a button-sized "Enter a time manually"; batch 5 — the
+phone calendar's per-day count badges opening the existing day modal, the
+week grid's `w-24 sm:w-40` field column and 40px chevrons, icon-only 40px
+Teams/snack-shack row actions below md, and the low items (footer and legal
+contents links `py-2`, consent notes `text-xs`, 40px drawer and team-member
+buttons, stacked settings danger zone).
 
-Still open, in rough priority order:
+**16px form fields are ONE RULE in `globals.css`, not per-field classes
+(decided 2026-10-05).** Below 640px every `input` (except checkbox, radio,
+range, file), `select` and `textarea` is `font-size: 1rem`; the selector's
+specificity beats a `text-xs`/`text-sm` utility and the max-width media
+query keeps desktop sizes. It covers every field, present and future — do
+not add `text-base sm:text-sm` to new fields (the five selects that carry
+it from before are redundant, not the pattern). iOS Safari zooms the page
+when a focused field is under 16px and does not zoom back; never "fix"
+that with `maximum-scale=1` or `user-scalable=no`.
 
-- **16px form fields below sm, app-wide sweep.** iOS Safari zooms the page
-  when a focused input/select/textarea is under 16px and does not zoom back.
-  Only the overview Season select and the four Schedule filter selects are
-  fixed (`text-base sm:text-sm`); every other `text-sm`/`text-xs` field in
-  the dashboard still triggers it. Never fix this with `maximum-scale=1` or
-  `user-scalable=no`.
+Still open:
+
 - **Rainout writes ignore their error (both Schedule page surfaces).**
   `performRainout` (`schedule-list.tsx`) and the calendar's `handleRainout`
   (`schedule-calendar.tsx`) never read the result of the `games` UPDATE, so
   a refused write (RLS, lock trigger, network) still logs "marked as rained
   out" to the activity log and refreshes as if it succeeded. Check the error,
   skip the log entry, and surface the refusal at the action.
-- Hover-only controls still on raw `opacity-0 group-hover:opacity-100`
-  (invisible but tappable on touch): division panel roster rename/delete
-  (~:921), venues page location rename/delete (~:443) and venue edit/delete
-  (~:575), interleague org edit/delete (~:1089), practices grid venue pencil
-  (~:854). Convert to `ROW_ICON_REVEAL`; venues needs named groups.
-- Modals with no `max-h`: team snack-shack, pay report, game detail, venue
-  delete dialogs, calendar day-detail.
-- Tables whose action column sits off-screen right on a phone: Teams, snack
-  shack schedule; umpires page header actions overflow.
-- Brand colour drift: `fs-navy` is `#0b1c39`, the homepage literal is
+- **Brand colour drift:** `fs-navy` is `#0b1c39`, the homepage literal is
   `#0C1F3F` (150 files). One decision, one migration pass.
-- Footer and legal-page links are 16–20px tall; add vertical padding.
 
 ## Open items
 
