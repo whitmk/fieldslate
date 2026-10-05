@@ -599,11 +599,12 @@ export function DivisionSection({
 
               return (
                 <div key={div.id}>
-                  <div className="flex w-full items-center gap-4 px-6 py-4">
-                    {/* Left: icon + name + dates */}
+                  <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-6 py-4 sm:flex-nowrap">
+                    {/* Left: icon + name + dates. Below sm this is its own line
+                        (basis-full) so the date range is never squeezed. */}
                     <button
                       onClick={() => setExpandedId(isExpanded ? null : div.id)}
-                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      className="flex min-w-0 flex-1 basis-full items-center gap-3 text-left sm:basis-auto"
                     >
                       <DivisionBallIcon sport={leagueSport} index={idx} />
                       <div className="min-w-0">
@@ -663,8 +664,9 @@ export function DivisionSection({
                       </div>
                     </div>
 
-                    {/* Right: team count + status badge + view/fix + edit + chevron */}
-                    <div className="flex flex-shrink-0 items-center gap-2.5">
+                    {/* Right: team count + status badge + view/fix + edit + chevron.
+                        Below sm: a third line, right-aligned. */}
+                    <div className="flex basis-full flex-shrink-0 items-center justify-end gap-2.5 sm:basis-auto sm:justify-start">
                       {/* Team count */}
                       <span className="hidden items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 sm:inline-flex">
                         <Users className="h-3 w-3" />

@@ -29,7 +29,7 @@ export async function Topbar() {
       <div className="flex items-center">
         <MobileMenuButton />
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         {currentOrgId && memberships.length > 0 ? (
           <OrgSwitcher memberships={memberships} currentOrgId={currentOrgId} />
         ) : null}

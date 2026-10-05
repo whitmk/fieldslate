@@ -76,8 +76,8 @@ export function SeasonSelector({
     : [];
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="flex min-w-0 items-center gap-2">
         <label htmlFor="overview-season" className="text-sm text-gray-500">
           Season
         </label>
@@ -85,7 +85,7 @@ export function SeasonSelector({
           id="overview-season"
           value={selectedValue}
           onChange={(e) => handleSeasonChange(e.target.value)}
-          className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+          className="h-9 min-w-0 max-w-full rounded-lg border border-gray-200 bg-white px-3 text-base text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20 sm:text-sm"
         >
           <option value="all">All seasons</option>
           {activeSeasons.map((s) => (

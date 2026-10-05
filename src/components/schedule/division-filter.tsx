@@ -24,7 +24,7 @@ export function DivisionFilter({ divisions, selectedId }: Props) {
         const qs = params.toString();
         router.push(`/dashboard/schedule${qs ? `?${qs}` : ""}`);
       }}
-      className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+      className="h-9 w-full min-w-0 rounded-lg border border-gray-200 bg-white px-3 text-base text-gray-700 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20 sm:w-auto sm:text-sm"
     >
       <option value="">All divisions</option>
       {divisions.map((d) => (

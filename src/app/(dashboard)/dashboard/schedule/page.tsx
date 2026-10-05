@@ -557,7 +557,7 @@ export default async function SchedulePage({
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle>All Games</CardTitle>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
               {divisions.length > 0 && (
                 <DivisionFilter
                   divisions={divisions}
