@@ -79,7 +79,7 @@ export function OrgSwitcher({ memberships, currentOrgId }: Props) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex min-w-0 max-w-[220px] items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+        className="flex min-h-11 w-full min-w-0 max-w-[220px] items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm sm:min-h-0 font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
         aria-haspopup="menu"
         aria-expanded={open}
       >

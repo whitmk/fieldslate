@@ -82,11 +82,11 @@ export function SeasonSwitcher({ seasons, currentSeasonId }: Props) {
   }
 
   return (
-    <div ref={ref} className="min-w-0 md:relative">
+    <div ref={ref} className="min-w-0 shrink-0 sm:shrink md:relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex min-w-0 max-w-[130px] items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:max-w-[200px]"
+        className="flex min-h-11 w-full min-w-0 max-w-[130px] items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:min-h-0 sm:max-w-[200px]"
         aria-haspopup="menu"
         aria-expanded={open}
         title={current.season ? `${current.name} · ${current.season}` : current.name}

@@ -1,4 +1,3 @@
-import { Bell } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrgId, listMemberships } from "@/lib/orgs/context";
 import { getCurrentSeasonId, listActiveSeasons } from "@/lib/seasons/context";
@@ -36,9 +35,6 @@ export async function Topbar() {
         {currentOrgId ? (
           <SeasonSwitcher seasons={seasons} currentSeasonId={currentSeasonId} />
         ) : null}
-        <button className="flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/10 hover:text-white">
-          <Bell className="h-4 w-4" />
-        </button>
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#22C55E]/20 ring-1 ring-[#22C55E]/30">
           <span className="text-xs font-semibold text-[#22C55E]">{initials}</span>
         </div>
