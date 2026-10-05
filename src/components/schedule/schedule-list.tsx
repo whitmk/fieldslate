@@ -307,14 +307,50 @@ export function ScheduleList({
           rows (modals are rendered once below, shared by both views). */}
       <ul className="flex flex-col gap-3 md:hidden">
         {games.map((g) => (
+          <Fragment key={g.id}>
           <GameCard
-            key={g.id}
             game={g}
             onRainout={() => handleRainout(g)}
             onAddOfficial={() => setDetailGame(g)}
             onEditNote={() => note.open(g)}
             rainoutLoading={rainoutId === g.id}
+            isMenuOpen={openMenuId === g.id}
+            onMenuToggle={() => setOpenMenuId(openMenuId === g.id ? null : g.id)}
+            onReschedule={() => {
+              setOpenMenuId(null);
+              reschedule.open(g);
+            }}
+            onRequestReschedule={() => {
+              setOpenMenuId(null);
+              reschedule.open(g);
+            }}
+            canReschedule={canReschedule}
+            rescheduleLockTitle={rescheduleItemLockTitle(
+              { status: g.status, interleague_org_id: g.interleague_org_id ?? null },
+              !!g.home_team?.division_id && lockedSet.has(g.home_team.division_id),
+              g.home_team?.division?.name ?? "This division",
+            )}
+            onViewDetails={() => {
+              setOpenMenuId(null);
+              setDetailGame(g);
+            }}
+            onDelete={() => {
+              setOpenMenuId(null);
+              setDeleteGame(g);
+            }}
           />
+          {/* A refused "Reschedule" says why, directly under THAT card. */}
+          {reschedule.notice?.gameId === g.id && (
+            <li>
+              <MoveNoticeLine
+                message={reschedule.notice.message}
+                link={reschedule.notice.link}
+                onDismiss={reschedule.clearNotice}
+                inset="mx-0"
+              />
+            </li>
+          )}
+          </Fragment>
         ))}
       </ul>
 
@@ -366,8 +402,16 @@ export function ScheduleList({
 }
 
 // Statuses where marking a rainout makes no sense — the game is already
-// rained out or already played. The button stays visible but disabled.
+// rained out or already played. The button stays visible but disabled —
+// on the phone card's Rainout button AND the "Mark as rained out" item of
+// the shared actions menu (desktop row and card alike).
 const RAINOUT_BLOCKED_STATUSES = new Set(["cancelled", "completed"]);
+
+function rainoutBlockedTitle(status: string): string | undefined {
+  if (status === "cancelled") return "Already rained out";
+  if (status === "completed") return "Game completed";
+  return undefined;
+}
 
 
 interface GameCardProps {
@@ -376,9 +420,31 @@ interface GameCardProps {
   onAddOfficial: () => void;
   onEditNote: () => void;
   rainoutLoading: boolean;
+  isMenuOpen: boolean;
+  onMenuToggle: () => void;
+  onReschedule: () => void;
+  onRequestReschedule: () => void;
+  canReschedule: boolean;
+  rescheduleLockTitle: string | null;
+  onViewDetails: () => void;
+  onDelete: () => void;
 }
 
-function GameCard({ game, onRainout, onAddOfficial, onEditNote, rainoutLoading }: GameCardProps) {
+function GameCard({
+  game,
+  onRainout,
+  onAddOfficial,
+  onEditNote,
+  rainoutLoading,
+  isMenuOpen,
+  onMenuToggle,
+  onReschedule,
+  onRequestReschedule,
+  canReschedule,
+  rescheduleLockTitle,
+  onViewDetails,
+  onDelete,
+}: GameCardProps) {
   return (
     <li className="rounded-xl border border-gray-200 bg-white p-4">
       <div className="flex items-start justify-between gap-2">
@@ -400,8 +466,35 @@ function GameCard({ game, onRainout, onAddOfficial, onEditNote, rainoutLoading }
           >
             {gameStatusLabel(game.status)}
           </Badge>
+          <button
+            onClick={onMenuToggle}
+            disabled={rainoutLoading}
+            aria-label="Game actions"
+            aria-expanded={isMenuOpen}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
+          >
+            {rainoutLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <MoreHorizontal className="h-5 w-5" />
+            )}
+          </button>
         </div>
       </div>
+      {isMenuOpen && (
+        <GameActionsMenu
+          game={game}
+          canReschedule={canReschedule}
+          rescheduleLockTitle={rescheduleLockTitle}
+          onRainout={onRainout}
+          onRequestReschedule={onRequestReschedule}
+          onReschedule={onReschedule}
+          onViewDetails={onViewDetails}
+          onDelete={onDelete}
+          className="mt-3 w-full"
+          touch
+        />
+      )}
       <div className="mt-4 flex gap-2">
         <Button
           variant="secondary"
@@ -423,6 +516,90 @@ function GameCard({ game, onRainout, onAddOfficial, onEditNote, rainoutLoading }
         </Button>
       </div>
     </li>
+  );
+}
+
+// ── Game actions menu ────────────────────────────────────────────────────────
+// ONE list of items, rendered by the desktop row menu AND the phone card, so
+// the two cannot drift: same items, same order, same handlers, per game
+// state. `touch` only enlarges the tap targets; it adds no item.
+
+interface GameActionsMenuProps {
+  game: ScheduleGame;
+  canReschedule: boolean;
+  rescheduleLockTitle: string | null;
+  onRainout: () => void;
+  onRequestReschedule: () => void;
+  onReschedule: () => void;
+  onViewDetails: () => void;
+  onDelete: () => void;
+  className?: string;
+  touch?: boolean;
+}
+
+function GameActionsMenu({
+  game,
+  canReschedule,
+  rescheduleLockTitle,
+  onRainout,
+  onRequestReschedule,
+  onReschedule,
+  onViewDetails,
+  onDelete,
+  className = "",
+  touch = false,
+}: GameActionsMenuProps) {
+  // An interleague game's time is changed by REQUEST: a confirmed game
+  // (whatever its date — a makeup for a played-out day is normal) or a
+  // rained-out one (a makeup proposal). Free.
+  const canRequestReschedule =
+    !!game.interleague_org_id &&
+    (game.status === "scheduled" || game.status === "cancelled");
+  const item = `flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50${touch ? " min-h-11" : ""}`;
+  return (
+    <div
+      role="menu"
+      className={`overflow-hidden rounded-xl border border-gray-100 bg-white text-left shadow-lg ${className}`}
+    >
+      <button
+        onClick={onRainout}
+        disabled={RAINOUT_BLOCKED_STATUSES.has(game.status)}
+        title={rainoutBlockedTitle(game.status)}
+        className={`${item} disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent`}
+      >
+        <CloudRain className="h-3.5 w-3.5 text-blue-400" />
+        Mark as rained out
+      </button>
+      {canRequestReschedule ? (
+        <button onClick={onRequestReschedule} className={item}>
+          <Repeat className="h-3.5 w-3.5 text-[#22C55E]" />
+          {game.status === "cancelled" ? "Propose makeup time" : "Request reschedule"}
+        </button>
+      ) : rescheduleItemVisible(game.status, canReschedule, !!game.interleague_org_id) ? (
+        <button
+          onClick={onReschedule}
+          disabled={!!rescheduleLockTitle}
+          title={rescheduleLockTitle ?? undefined}
+          className={`${item} disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent`}
+        >
+          <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
+          Reschedule
+        </button>
+      ) : null}
+      <button onClick={onViewDetails} className={`${item} text-left`}>
+        <Eye className="h-3.5 w-3.5 text-gray-400" />
+        View details
+      </button>
+      {/* Always enabled — click-then-block. The RPC decides; blocked
+          games get the explanation dialog, not a disabled item. */}
+      <button
+        onClick={onDelete}
+        className={`flex w-full items-center gap-2.5 border-t border-gray-100 px-3.5 py-2.5 text-sm text-red-600 transition-colors hover:bg-red-50${touch ? " min-h-11" : ""}`}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        Delete game
+      </button>
+    </div>
   );
 }
 
@@ -461,12 +638,6 @@ function GameRowCells({
   seasonRoleNames,
   sport,
 }: GameRowProps) {
-  // An interleague game's time is changed by REQUEST: a confirmed game
-  // (whatever its date — a makeup for a played-out day is normal) or a
-  // rained-out one (a makeup proposal). Free.
-  const canRequestReschedule =
-    !!game.interleague_org_id &&
-    (game.status === "scheduled" || game.status === "cancelled");
   const umpiresPerGame = Number(game.home_team?.division?.umpires_per_game ?? 0);
   // Build slot labels from the season's official_roles (padded sport-aware) —
   // the exact recipe the modal/assign path uses to write game_umpires.role.
@@ -548,50 +719,17 @@ function GameRowCells({
         </button>
         </span>
         {isMenuOpen && (
-          <div className="absolute right-0 top-9 z-30 w-48 overflow-hidden rounded-xl border border-gray-100 bg-white text-left shadow-lg">
-            <button
-              onClick={onRainout}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
-            >
-              <CloudRain className="h-3.5 w-3.5 text-blue-400" />
-              Mark as rained out
-            </button>
-            {canRequestReschedule ? (
-              <button
-                onClick={onRequestReschedule}
-                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
-              >
-                <Repeat className="h-3.5 w-3.5 text-[#22C55E]" />
-                {game.status === "cancelled" ? "Propose makeup time" : "Request reschedule"}
-              </button>
-            ) : rescheduleItemVisible(game.status, canReschedule, !!game.interleague_org_id) ? (
-              <button
-                onClick={onReschedule}
-                disabled={!!rescheduleLockTitle}
-                title={rescheduleLockTitle ?? undefined}
-                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
-              >
-                <CalendarClock className="h-3.5 w-3.5 text-[#22C55E]" />
-                Reschedule
-              </button>
-            ) : null}
-            <button
-              onClick={onViewDetails}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
-            >
-              <Eye className="h-3.5 w-3.5 text-gray-400" />
-              View details
-            </button>
-            {/* Always enabled — click-then-block. The RPC decides; blocked
-                games get the explanation dialog, not a disabled item. */}
-            <button
-              onClick={onDelete}
-              className="flex w-full items-center gap-2.5 border-t border-gray-100 px-3.5 py-2.5 text-sm text-red-600 transition-colors hover:bg-red-50"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Delete game
-            </button>
-          </div>
+          <GameActionsMenu
+            game={game}
+            canReschedule={canReschedule}
+            rescheduleLockTitle={rescheduleLockTitle}
+            onRainout={onRainout}
+            onRequestReschedule={onRequestReschedule}
+            onReschedule={onReschedule}
+            onViewDetails={onViewDetails}
+            onDelete={onDelete}
+            className="absolute right-0 top-9 z-30 w-48"
+          />
         )}
       </td>
     </tr>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeft,
@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { rainoutConfirmCopy } from "@/lib/schedule/rainout-confirm";
 import { logActivity } from "@/lib/activity-log";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
 import { useScheduleReschedule } from "./use-schedule-reschedule";
@@ -111,6 +113,9 @@ export function ScheduleCalendar({
     pill: GamePill;
   } | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  // The game whose rainout is awaiting confirmation. The popover stays open
+  // underneath so a Cancel lands the admin back where they were.
+  const [rainoutTarget, setRainoutTarget] = useState<ScheduleGame | null>(null);
   // "Reschedule" — the SAME routing as the list row menu (shared hook): the
   // picker variant is chosen per game, and a refusal is shown inside the
   // popover rather than closing it on nothing.
@@ -125,17 +130,38 @@ export function ScheduleCalendar({
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
+  // Below md, keep the popover fully on screen: openPopover anchors it under
+  // the pill, so a pill in the bottom rows used to open it past the bottom
+  // edge with its actions unreachable. Measured after render (the height
+  // depends on the game), then shifted up just enough. Desktop is untouched.
+  useLayoutEffect(() => {
+    if (!selected || !popoverRef.current) return;
+    if (window.innerWidth >= 768) return;
+    const r = popoverRef.current.getBoundingClientRect();
+    // openPopover's x clamp assumes 280px; the popover is w-72 (288px), so
+    // on a 375px screen it still ran 8px past the right edge. Clamp both axes
+    // from the measured box.
+    const maxTop = window.innerHeight - r.height - 8;
+    const maxLeft = window.innerWidth - r.width - 8;
+    const y = r.top > maxTop ? Math.max(8, maxTop) : selected.pos.y;
+    const x = r.left > maxLeft ? Math.max(8, maxLeft) : selected.pos.x;
+    if (x !== selected.pos.x || y !== selected.pos.y) {
+      setSelected({ ...selected, pos: { x, y } });
+    }
+  }, [selected]);
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         setSelected(null);
       }
     }
-    if (selected) {
+    // While the rainout confirm is up, clicks on it must not close the popover.
+    if (selected && !rainoutTarget) {
       document.addEventListener("mousedown", handleClickOutside);
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
-  }, [selected]);
+  }, [selected, rainoutTarget]);
 
   function navigateMonth(delta: number) {
     const next = shiftMonth(month, delta);
@@ -306,7 +332,7 @@ export function ScheduleCalendar({
                 left: selected.pos.x,
                 top: selected.pos.y,
               }}
-              className="z-40 w-72 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg"
+              className="z-40 w-72 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg max-md:max-h-[calc(100dvh-1rem)] max-md:overflow-y-auto"
             >
               <div className="border-b border-gray-100 px-4 py-3">
                 <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider">
@@ -368,7 +394,7 @@ export function ScheduleCalendar({
                 </div>
               </div>
               <button
-                onClick={() => handleRainout(pill.data)}
+                onClick={() => setRainoutTarget(pill.data)}
                 disabled={actionLoadingId === pill.data.id}
                 className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
               >
@@ -459,6 +485,28 @@ export function ScheduleCalendar({
 
       {reschedule.modals}
       {note.modal}
+
+      {rainoutTarget && (() => {
+        const g = rainoutTarget;
+        const copy = rainoutConfirmCopy(
+          g.scheduled_at,
+          pillMatchupLabel(g),
+          g.venue?.name ?? g.proposed_venue_name ?? null,
+        );
+        return (
+          <ConfirmDialog
+            title={copy.title}
+            detail={copy.detail}
+            confirmLabel={copy.confirmLabel}
+            icon={<CloudRain className="h-5 w-5" />}
+            onCancel={() => setRainoutTarget(null)}
+            onConfirm={() => {
+              setRainoutTarget(null);
+              void handleRainout(g);
+            }}
+          />
+        );
+      })()}
 
       {detailGame && (
         <GameDetailModal game={detailGame} onClose={() => setDetailGame(null)} />
