@@ -70,7 +70,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration: 0100.** The repo files are the record, not the
+  **Latest migration APPLIED: 0101 (demo_requests).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch (not applied). 0103 (snack shack derived shifts) is written on `feat/snack-shack-derived` and NOT applied — see "Snack shack — derived shifts". Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -3532,6 +3532,45 @@ Still open:
 - **A shift can exceed the max by up to 59 minutes** — that is the absorb
   rule working (120 + a 59-minute leftover), not a bug. The sweep assertion
   bounds it at max+60.
+- **Stage 2 written: migration 0103 (`supabase/migrations/0103_snack_shack_derived_shifts.sql`) — NOT APPLIED.**
+  Three rule columns on `snack_shack_settings` (`open_before_min`,
+  `close_after_min`, `max_shift_min`, defaults 30/30/120, CHECK-bounded) plus
+  `shifts_generated_at`; the table `snack_shack_absorb_choices` keyed
+  UNIQUE (snack_shack_id, date, window_start) with the 0049-shaped
+  `is_org_member` policy and authenticated-only grants; and the SECURITY
+  DEFINER RPC `regenerate_snack_shack_shifts(p_snack_shack_id, p_shifts)`.
+  **The RPC takes the FULL desired derived set** (`[{date, start, end,
+  assigned_team_id}]`, computed by the library in the browser) and in one
+  transaction deletes derived rows not in the set, inserts the new ones, and
+  KEEPS every derived row whose date/start/end matches — **a kept row's
+  assignment is the database's; the team passed for a kept slot is IGNORED**,
+  so a stale client read cannot lose an assignment. Manual rows
+  (`is_recurring=false`) are never read or written. Every element is validated
+  (date, HH:MM[:SS], end after start, team belongs to THIS season, no duplicate
+  slot) before anything is written. EXECUTE: authenticated only (revoked from
+  public + each role first; the migration's final DO block raises if a
+  privilege is wrong). `days_of_week` keeps its meaning; `time_blocks_by_day`
+  stays in place, unread.
+- **Existing data is not migrated by 0103.** Existing blocks are neither read
+  nor written; existing settings rows get the defaults. The real league's 33
+  blocks change only if an admin regenerates.
+- **Locks when 0103 is applied: ACCESS EXCLUSIVE on `snack_shack_settings`**
+  (ADD COLUMN with constant defaults, no rewrite; ADD CONSTRAINT scans 3
+  rows) — blocks every read and write of that table (Snack Shack page, venue
+  delete guard, Teams page snack button embed, both email routes) for under a
+  second, or for the whole migration if applied in one transaction. Nothing on
+  `snack_shack_blocks`, `games`, `teams`, `leagues`, `divisions`.
+- **Harness: `scripts/sim/snack-shack-regenerate-sim.sql`**, assembled by
+  `snack-shack-regenerate-build.ts` (same pre-apply proof pattern as 0098):
+  applies 0103 inside an always-rolled-back batch, fixtures under the "test"
+  org only, asserts the pre-existing rows byte-identical (M2), the defaults on
+  a pre-existing row (M1), privileges (P1), the keep/create/remove contract
+  with ids and reported assignments (R1), the ignored caller assignment on a
+  kept row (R2), the untouched manual row (R3, checked first), idempotence
+  (R5), the non-member/anon refusals (R6/R7), validation (R8), atomicity (R9),
+  and the absorb table's RLS (C1/C2); 6 mutants on the real function body.
+  It holds the same ACCESS EXCLUSIVE lock as the migration for the run
+  (one to two seconds, `lock_timeout` 3s). Not `npm run`-able, not in CI.
 - **Harness: `npm run sim:snack-shifts`** (83 checks × 3 zones, 12
   anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (20 mutants,
   each killed FIRST at its own assertion). Read the MUTATION LOG in the sim
