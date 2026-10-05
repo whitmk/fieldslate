@@ -922,21 +922,24 @@ export function DivisionSchedulePanel({
                         {gameCountByTeam[team.id] ?? 0}
                         {gamesPerTeam > 0 ? ` / ${gamesPerTeam}` : ""} games
                       </span>
-                      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      {/* ROW_ICON_REVEAL: hidden-until-hover on a pointer device,
+                          always visible on touch (the icons used to be invisible but
+                          tappable on a phone). 36px targets. */}
+                      <div className="flex items-center gap-1">
                         <button
                           onClick={() => startEdit(team)}
                           title="Rename team"
-                          className="flex h-6 w-6 items-center justify-center rounded-md text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                          className={`flex h-9 w-9 items-center justify-center rounded-md ${ROW_ICON_REVEAL} transition-all hover:bg-gray-100 hover:text-gray-600`}
                         >
-                          <Pencil className="h-3 w-3" />
+                          <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button
                           onClick={() => openDeleteModal(team)}
                           disabled={locked}
                           title={locked ? lockedReason(divisionName, "deleteTeam") : "Delete team"}
-                          className="flex h-6 w-6 items-center justify-center rounded-md text-gray-300 transition-colors hover:bg-red-50 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-300"
+                          className={`flex h-9 w-9 items-center justify-center rounded-md ${ROW_ICON_REVEAL} transition-all hover:bg-red-50 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-300`}
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </>

@@ -279,10 +279,10 @@ export function GameDetailModal({ game, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-white shadow-2xl"
+        className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-100 px-6 py-4">
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
               Game
@@ -300,7 +300,7 @@ export function GameDetailModal({ game, onClose }: Props) {
           </button>
         </div>
 
-        <div className="flex flex-col gap-4 px-6 py-5">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
           <div className="flex flex-col gap-2 text-sm text-gray-600">
             <div className="flex items-center gap-2">
               <Calendar className="h-3.5 w-3.5 text-gray-300" />

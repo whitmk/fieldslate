@@ -12,6 +12,15 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { ROW_ICON_REVEAL } from "@/components/ui/row-icon-reveal";
+
+// Named-group twin of ROW_ICON_REVEAL for the location header: the header ROW
+// is `group/loc` and each venue card is a plain `group`, so hovering a card
+// reveals only that card's icons and hovering the header reveals only the
+// header's (the section itself carries no group). Same input-type rule:
+// always visible on touch. Complete literal so Tailwind's JIT can read it.
+const LOCATION_ICON_REVEAL =
+  "text-gray-400 can-hover:text-gray-200 can-hover:opacity-0 group-hover/loc:opacity-100";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { VenueEditForm } from "@/components/venues/venue-edit-form";
 import { LocationPicker } from "@/components/venues/location-picker";
@@ -380,7 +389,7 @@ export function VenuesPageClient({
           {locations.map((loc) => {
             const locVenues = venuesByLocation.get(loc.id) ?? [];
             return (
-              <section key={loc.id} className="group flex flex-col gap-3">
+              <section key={loc.id} className="flex flex-col gap-3">
                 {renamingLocationId === loc.id ? (
                   <div className="flex flex-col gap-1 border-b border-gray-100 pb-1.5">
                     <div className="flex items-center gap-2">
@@ -429,7 +438,7 @@ export function VenuesPageClient({
                     {renameError && <p className="pl-6 text-xs text-red-500">{renameError}</p>}
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
+                  <div className="group/loc flex items-center justify-between border-b border-gray-100 pb-1.5">
                     <h2 className="flex items-center gap-2 text-sm font-semibold text-[#0C1F3F]">
                       <MapPin className="h-4 w-4 text-[#22C55E]" />
                       {loc.name}
@@ -440,12 +449,12 @@ export function VenuesPageClient({
                         <span className="truncate text-xs font-normal text-gray-400">· {loc.address}</span>
                       )}
                     </h2>
-                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={() => startRenameLocation(loc)}
                         title="Rename location"
-                        className="rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                        className={`flex h-9 w-9 items-center justify-center rounded-lg ${LOCATION_ICON_REVEAL} transition-all hover:bg-gray-100 hover:text-gray-600`}
                         aria-label={`Rename location ${loc.name}`}
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -454,7 +463,7 @@ export function VenuesPageClient({
                         type="button"
                         onClick={() => setDeleteLocationTarget(loc)}
                         title="Delete location"
-                        className="rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500"
+                        className={`flex h-9 w-9 items-center justify-center rounded-lg ${LOCATION_ICON_REVEAL} transition-all hover:bg-red-50 hover:text-red-500`}
                         aria-label={`Delete location ${loc.name}`}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -572,17 +581,17 @@ function DisplayCard({
           </div>
         )}
       </div>
-      <div className="ml-2 flex flex-shrink-0 items-center gap-0.5 opacity-0 transition-all group-hover:opacity-100">
+      <div className="ml-2 flex flex-shrink-0 items-center gap-0.5">
         <button
           onClick={onEdit}
-          className="rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-600"
+          className={`flex h-9 w-9 items-center justify-center rounded-lg ${ROW_ICON_REVEAL} transition-all hover:bg-gray-100 hover:text-gray-600`}
           aria-label="Edit venue"
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={onDelete}
-          className="rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500"
+          className={`flex h-9 w-9 items-center justify-center rounded-lg ${ROW_ICON_REVEAL} transition-all hover:bg-red-50 hover:text-red-500`}
           aria-label="Delete venue"
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -685,12 +694,12 @@ function DeleteVenueDialog({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => e.target === e.currentTarget && !busy && onClose()}
     >
-      <div className="flex w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center gap-2 border-b border-gray-100 px-6 py-4">
+      <div className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl">
+        <div className="flex flex-shrink-0 items-center gap-2 border-b border-gray-100 px-6 py-4">
           <Trash2 className="h-4 w-4 text-red-500" />
           <h2 className="text-base font-semibold text-[#0C1F3F]">Delete venue</h2>
         </div>
-        <div className="flex flex-col gap-3 px-6 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
           {blocked ? (
             <>
               <p className="text-sm text-gray-700">
@@ -722,7 +731,7 @@ function DeleteVenueDialog({
             </p>
           )}
         </div>
-        <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
+        <div className="flex flex-shrink-0 justify-end gap-2 border-t border-gray-100 px-6 py-4">
           {blocked ? (
             <button
               type="button"
@@ -810,12 +819,12 @@ function DeleteLocationDialog({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => e.target === e.currentTarget && !busy && onClose()}
     >
-      <div className="flex w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center gap-2 border-b border-gray-100 px-6 py-4">
+      <div className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl">
+        <div className="flex flex-shrink-0 items-center gap-2 border-b border-gray-100 px-6 py-4">
           <Trash2 className="h-4 w-4 text-red-500" />
           <h2 className="text-base font-semibold text-[#0C1F3F]">Delete location</h2>
         </div>
-        <div className="flex flex-col gap-3 px-6 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
           {blocked ? (
             <>
               <p className="text-sm text-gray-700">
@@ -849,7 +858,7 @@ function DeleteLocationDialog({
             </p>
           )}
         </div>
-        <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
+        <div className="flex flex-shrink-0 justify-end gap-2 border-t border-gray-100 px-6 py-4">
           {blocked ? (
             <button
               type="button"

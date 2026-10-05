@@ -872,12 +872,12 @@ export function RainoutRescheduleModal({
         {/* The escape hatch: deliberate, secondary, below the list — the
             interleague picker's pattern. MOVE variant only. */}
         {manualAllowed && !manual && !done && !picked && !guardRefusal && (
-          <div className="flex flex-shrink-0 items-center justify-between border-t border-gray-100 px-6 py-3">
+          <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-gray-100 px-6 py-2">
             <p className="text-[11px] text-gray-400">Need a time or field that isn&rsquo;t listed?</p>
             <button
               type="button"
               onClick={() => setManual(true)}
-              className="text-xs text-gray-400 underline underline-offset-2 hover:text-gray-600"
+              className="inline-flex min-h-10 items-center rounded-lg px-2 text-xs text-gray-400 underline underline-offset-2 hover:bg-gray-50 hover:text-gray-600"
             >
               Enter a time manually
             </button>

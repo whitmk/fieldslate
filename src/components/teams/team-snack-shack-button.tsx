@@ -152,11 +152,11 @@ export function TeamSnackShackButton({ teamId, teamName }: Props) {
           onClick={handleClose}
         >
           <div
-            className="flex w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl"
+            className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+            <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-100 px-6 py-4">
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
                   Snack Shack Schedule
@@ -178,7 +178,7 @@ export function TeamSnackShackButton({ teamId, teamName }: Props) {
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin text-gray-300" />

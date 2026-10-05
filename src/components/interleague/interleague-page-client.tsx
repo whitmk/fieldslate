@@ -21,6 +21,7 @@ import {
   RotateCw,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { ROW_ICON_REVEAL } from "@/components/ui/row-icon-reveal";
 import type { InterleagueOrg, InterleagueInvite } from "@/types/database";
 import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
 import {
@@ -1086,17 +1087,17 @@ export function InterleaguePageClient({
                           <Mail className="h-3.5 w-3.5" />
                           Send invite
                         </button>
-                        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <div className="flex items-center gap-1">
                           <button
                             onClick={() => openEdit(org)}
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#0C1F3F]"
+                            className={`flex h-9 w-9 items-center justify-center rounded-lg ${ROW_ICON_REVEAL} transition-all hover:bg-gray-100 hover:text-[#0C1F3F]`}
                             aria-label="Edit org"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={() => setDeleteTarget(org)}
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                            className={`flex h-9 w-9 items-center justify-center rounded-lg ${ROW_ICON_REVEAL} transition-all hover:bg-red-50 hover:text-red-500`}
                             aria-label="Delete org"
                           >
                             <Trash2 className="h-3.5 w-3.5" />

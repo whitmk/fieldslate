@@ -168,9 +168,8 @@ export function PayReportModal({ seasonPaySettings, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="flex w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl print:max-w-none print:rounded-none print:shadow-none"
+        className="flex max-h-[85dvh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl print:max-h-none print:max-w-none print:rounded-none print:shadow-none"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxHeight: "90vh" }}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 print:hidden">
@@ -210,7 +209,7 @@ export function PayReportModal({ seasonPaySettings, onClose }: Props) {
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-auto px-6 py-4">
+        <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-6 w-6 animate-spin text-gray-400" />

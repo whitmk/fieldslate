@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { ROW_ICON_REVEAL } from "@/components/ui/row-icon-reveal";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { VenueEditModal } from "@/components/venues/venue-edit-form";
 import type { Venue as VenueRecord } from "@/types/database";
@@ -848,10 +849,10 @@ export function PracticesPageClient({
                           disabled={venueEditLoading === venue.id}
                           aria-label={`Edit ${venue.name}`}
                           title="Edit venue details"
-                          className={`ml-auto flex-shrink-0 rounded p-1 text-gray-300 transition-all hover:bg-gray-100 hover:text-gray-600 ${
+                          className={`ml-auto flex h-9 w-9 flex-shrink-0 items-center justify-center rounded transition-all hover:bg-gray-100 hover:text-gray-600 ${
                             venueEditLoading === venue.id
-                              ? "opacity-100"
-                              : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+                              ? "text-gray-400 opacity-100"
+                              : `${ROW_ICON_REVEAL} focus-visible:opacity-100`
                           }`}
                         >
                           {venueEditLoading === venue.id ? (

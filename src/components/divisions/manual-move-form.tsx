@@ -465,12 +465,12 @@ export function ManualMoveForm({
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <button
           type="button"
           onClick={onBack}
           disabled={saving}
-          className="text-xs text-[#22C55E] underline underline-offset-2 disabled:opacity-50"
+          className="inline-flex min-h-10 items-center text-xs text-[#22C55E] underline underline-offset-2 disabled:opacity-50"
         >
           Back to available times
         </button>
