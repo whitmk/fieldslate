@@ -157,7 +157,7 @@ export default async function UmpiresPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Officials</h1>
           <p className="mt-1 text-sm text-gray-500">
@@ -166,7 +166,7 @@ export default async function UmpiresPage() {
               : "No active season."}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {anyPayTracking && umpires.length > 0 && (
             <PayReportButton seasonPaySettings={seasonPaySettings} />
           )}

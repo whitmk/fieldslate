@@ -108,10 +108,12 @@ export function TeamCalendarLinkButton(props: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F]"
+        aria-label="Team calendar link"
+        title="Team calendar link"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-xs font-medium text-gray-600 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F] md:h-auto md:w-auto md:gap-1.5 md:px-2.5 md:py-1.5"
       >
-        <CalendarDays className="h-3 w-3" />
-        Calendar
+        <CalendarDays className="h-4 w-4 md:h-3 md:w-3" />
+        <span className="hidden md:inline">Calendar</span>
       </button>
 
       {open && (

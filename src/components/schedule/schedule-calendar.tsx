@@ -276,7 +276,7 @@ export function ScheduleCalendar({
             return (
               <div
                 key={idx}
-                className={`min-h-[110px] border-gray-50 p-1.5 ${
+                className={`min-h-[72px] border-gray-50 p-1.5 sm:min-h-[110px] ${
                   (idx + 1) % 7 === 0 ? "" : "border-r"
                 } ${isLastRow ? "" : "border-b"} ${
                   inMonth ? "bg-white" : "bg-gray-50/40"
@@ -295,7 +295,30 @@ export function ScheduleCalendar({
                     {cell.getDate()}
                   </span>
                 </div>
-                <div className="flex flex-col gap-1">
+                {/* Below sm the seven columns are ~40px wide, so pills read as
+                    one character. The phone shows a count badge that opens the
+                    day modal instead; the pills render from sm up, unchanged. */}
+                {cellPills.length > 0 && (() => {
+                  const rained = cellPills.filter((p) => p.data.status === "cancelled").length;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setDayDetail(cellDate)}
+                      aria-label={`${cellPills.length} game${cellPills.length === 1 ? "" : "s"} on ${fmtGameDate(cellDate)}${rained ? `, ${rained} rained out` : ""}`}
+                      className={`flex w-full flex-col items-center rounded-md px-0.5 py-1 text-center sm:hidden ${isPast ? "bg-gray-50 text-gray-400" : "bg-orange-50 text-orange-800"}`}
+                    >
+                      <span className="text-sm font-bold leading-tight tabular-nums">{cellPills.length}</span>
+                      <span className="text-[10px] leading-tight">{cellPills.length === 1 ? "game" : "games"}</span>
+                      {rained > 0 && (
+                        <span className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] leading-tight text-blue-500">
+                          <CloudRain className="h-2.5 w-2.5" />
+                          {rained}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })()}
+                <div className="hidden flex-col gap-1 sm:flex">
                   {visible.map((pill) => (
                     <PillButton
                       key={`game-${pill.data.id}`}
@@ -457,7 +480,7 @@ export function ScheduleCalendar({
               onClick={() => setDayDetail(null)}
             >
               <div
-                className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
+                className="max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
                 <h3 className="mb-3 text-base font-bold text-[#0C1F3F]">

@@ -116,18 +116,18 @@ export function ScheduleWeekGrid({
             type="button"
             onClick={() => navigateWeek(-1)}
             aria-label="Previous week"
-            className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            className="flex h-10 w-10 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <span className="min-w-[11rem] text-center text-sm font-semibold text-gray-900">
+          <span className="text-center text-sm font-semibold text-gray-900 sm:min-w-[11rem]">
             {weekLabel(weekStart)}
           </span>
           <button
             type="button"
             onClick={() => navigateWeek(1)}
             aria-label="Next week"
-            className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            className="flex h-10 w-10 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -186,7 +186,7 @@ export function ScheduleWeekGrid({
           <table className="w-full min-w-[64rem] border-collapse text-sm">
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 w-40 border-b border-gray-200 bg-white px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <th className="sticky left-0 z-10 w-24 border-b border-gray-200 bg-white px-3 py-2 sm:w-40 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Field
                 </th>
                 {DAY_KEYS.map((day, i) => (

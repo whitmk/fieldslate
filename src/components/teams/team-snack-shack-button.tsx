@@ -140,10 +140,11 @@ export function TeamSnackShackButton({ teamId, teamName }: Props) {
       <button
         onClick={handleOpen}
         title="View snack shack schedule"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F]"
+        aria-label="View snack shack schedule"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-xs font-medium text-gray-500 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F] md:h-auto md:w-auto md:gap-1.5 md:px-2.5 md:py-1.5"
       >
-        <ShoppingBag className="h-3.5 w-3.5" />
-        Snack shack
+        <ShoppingBag className="h-4 w-4 md:h-3.5 md:w-3.5" />
+        <span className="hidden md:inline">Snack shack</span>
       </button>
 
       {open && (

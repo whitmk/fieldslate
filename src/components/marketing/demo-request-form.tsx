@@ -232,7 +232,7 @@ export function DemoRequestForm() {
         {submitting ? "Sending…" : "Request a demo"}
       </button>
 
-      <p className="text-center text-[11px] text-gray-400">
+      <p className="text-center text-xs text-gray-400">
         We use what you share here only to set up and prepare for your demo.
       </p>
     </form>

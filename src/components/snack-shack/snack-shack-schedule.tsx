@@ -118,7 +118,7 @@ export function SnackShackSchedule({ snackShackId, blocks, teams }: Props) {
                       <button
                         onClick={() => saveEdit(block.id)}
                         disabled={saving === block.id}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#22C55E] text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
+                        className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#22C55E] text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50 md:h-7 md:w-7"
                         aria-label="Save"
                       >
                         {saving === block.id ? (
@@ -129,7 +129,7 @@ export function SnackShackSchedule({ snackShackId, blocks, teams }: Props) {
                       </button>
                       <button
                         onClick={() => setEditingId(null)}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100"
+                        className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 md:h-7 md:w-7"
                         aria-label="Cancel"
                       >
                         <X className="h-3.5 w-3.5" />
@@ -159,7 +159,7 @@ export function SnackShackSchedule({ snackShackId, blocks, teams }: Props) {
                     <button
                       onClick={() => startEdit(block)}
                       aria-label="Edit assignment"
-                      className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-gray-100 hover:text-[#0C1F3F]"
+                      className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-gray-100 hover:text-[#0C1F3F] md:h-7 md:w-7"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>

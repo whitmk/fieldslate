@@ -14,6 +14,23 @@ body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
+/* Phone form fields are 16px. iOS Safari zooms the whole page when a focused
+   input/select/textarea is under 16px and does not zoom back out, which is
+   what "the page opens zoomed in" on an iPhone was. One rule here instead of
+   a class on every field: it covers every existing field and every future
+   one, and it only applies below the sm breakpoint (640px), so desktop keeps
+   its text-sm / text-xs sizes. The selector's specificity (0,1,1) beats a
+   text-xs / text-sm utility (0,1,0) on the element. Checkboxes, radios and
+   ranges are exempt — they never trigger the zoom. Never "fix" this with
+   maximum-scale=1 or user-scalable=no. */
+@media (max-width: 639.98px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

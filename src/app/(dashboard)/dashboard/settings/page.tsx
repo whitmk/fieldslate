@@ -83,7 +83,7 @@ export default async function SettingsPage() {
           <CardTitle>Danger Zone</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between rounded-lg border border-red-100 bg-red-50 p-4">
+          <div className="flex flex-col gap-3 rounded-lg border border-red-100 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-medium text-gray-900">Delete account</p>
               <p className="text-xs text-gray-500">Permanently remove your account and all data.</p>

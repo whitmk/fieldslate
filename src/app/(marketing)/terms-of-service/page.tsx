@@ -157,7 +157,7 @@ export default function TermsOfServicePage() {
               <li key={item.id}>
                 <a
                   href={`#${item.id}`}
-                  className="text-[#22C55E] hover:underline"
+                  className="inline-block py-2 text-[#22C55E] hover:underline"
                 >
                   {item.label}
                 </a>

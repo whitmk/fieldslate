@@ -19,16 +19,16 @@ export function Footer() {
 
           {/* Nav */}
           <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 sm:justify-end">
-            <Link href="/#features" className="text-sm text-white/40 transition-colors hover:text-white">Features</Link>
-            <Link href="/#how-it-works" className="text-sm text-white/40 transition-colors hover:text-white">How it works</Link>
-            <Link href="/#compare" className="text-sm text-white/40 transition-colors hover:text-white">Compare</Link>
-            <Link href="/#pricing" className="text-sm text-white/40 transition-colors hover:text-white">Pricing</Link>
-            <Link href="/blog" className="text-sm text-white/40 transition-colors hover:text-white">Blog</Link>
-            <Link href="/demo" className="text-sm text-white/40 transition-colors hover:text-white">Request a demo</Link>
-            <Link href="/contact" className="text-sm text-white/40 transition-colors hover:text-white">Contact</Link>
-            <Link href="/privacy" className="text-sm text-white/40 transition-colors hover:text-white">Privacy</Link>
-            <Link href="/terms-of-service" className="text-sm text-white/40 transition-colors hover:text-white">Terms of Service</Link>
-            <Link href="/login" className="text-sm text-white/40 transition-colors hover:text-white">Sign in</Link>
+            <Link href="/#features" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Features</Link>
+            <Link href="/#how-it-works" className="py-2 text-sm text-white/40 transition-colors hover:text-white">How it works</Link>
+            <Link href="/#compare" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Compare</Link>
+            <Link href="/#pricing" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Pricing</Link>
+            <Link href="/blog" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Blog</Link>
+            <Link href="/demo" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Request a demo</Link>
+            <Link href="/contact" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Contact</Link>
+            <Link href="/privacy" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Privacy</Link>
+            <Link href="/terms-of-service" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Terms of Service</Link>
+            <Link href="/login" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Sign in</Link>
           </nav>
         </div>
 

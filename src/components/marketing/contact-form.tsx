@@ -211,7 +211,7 @@ export function ContactForm() {
         {submitting ? "Sending…" : "Send message"}
       </button>
 
-      <p className="text-center text-[11px] text-gray-400">
+      <p className="text-center text-xs text-gray-400">
         We use your email only to respond to this request.
       </p>
     </form>

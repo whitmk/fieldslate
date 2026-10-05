@@ -148,7 +148,7 @@ export function TeamMembersClient({
                 <button
                   type="button"
                   onClick={() => setConfirmRemove(m)}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                   title="Remove admin"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -276,7 +276,7 @@ function PendingInviteRow({
               type="button"
               disabled={busy !== null}
               onClick={() => call("/api/orgs/invitations/resend", "resend")}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-60"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-60"
               title="Resend"
             >
               {busy === "resend" ? (
@@ -289,7 +289,7 @@ function PendingInviteRow({
               type="button"
               disabled={busy !== null}
               onClick={() => call("/api/orgs/invitations/revoke", "revoke")}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
               title="Revoke"
             >
               {busy === "revoke" ? (
@@ -363,7 +363,7 @@ function InviteAdminModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100"
+            className="flex h-10 w-10 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100"
           >
             <X className="h-4 w-4" />
           </button>
