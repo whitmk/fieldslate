@@ -3418,12 +3418,20 @@ Still open:
   chained, the picker's zero-rows pattern — an error OR zero rows is a
   failure, nothing is logged, and the shared `ConfirmDialog` stays open in an
   error state (busy while in flight, so no double tap). Only a one-row
-  success logs and refreshes, exactly as before. **Still unchecked, reported
-  2026-10-05, not fixed:** the division panel's BULK rainout
-  (`handleBulkRainOut`, `.in("id", ids)` with no result read, then N log
-  entries) and both log-rainout modal writes (`handleMarkRainout`,
-  `handleMarkMultipleRainouts`). Same defect, multi-row shape: fix needs a
-  rows-affected-vs-ids comparison and a partial-failure message.
+  success logs and refreshes, exactly as before. **The multi-game writers are checked
+  too (2026-10-05):** the division panel's bulk rainout and the log-rainout
+  modal's single and multi flows. Multi-row writes go through
+  `markGamesRainedOut` (`.in("id", ids)` + `.select("id")`), which returns
+  the ids that actually changed; the caller logs ONLY those, and
+  `bulkRainoutMessage` words the rest ("3 of 5 games were marked as rained
+  out. 2 couldn't be saved — they may have been changed or deleted. Refresh
+  and try again." / "None of the N games could be marked…"). On any
+  shortfall the modal stays open with the message and only the unsaved
+  games remain selected (the modal reloads its list so the saved ones drop
+  out); a request error counts as nothing saved. A full success behaves
+  exactly as before. Every single-game and multi-game rainout write in the
+  product is now checked; `grep -rn 'status: "cancelled"' src` should show
+  no bare `games.update` without a result read.
 - **Brand colour drift:** `fs-navy` is `#0b1c39`, the homepage literal is
   `#0C1F3F` (150 files). One decision, one migration pass.
 
