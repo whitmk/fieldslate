@@ -3432,6 +3432,19 @@ Still open:
   exactly as before. Every single-game and multi-game rainout write in the
   product is now checked; `grep -rn 'status: "cancelled"' src` should show
   no bare `games.update` without a result read.
+- **"Remove Rainout" is an unchecked write, on top of its known gaps.**
+  `handleRestore` in `rained-out-stat-card.tsx` (the season page's rained-out
+  card) sends `games.update({ status: "scheduled" })` and discards the
+  result — the same pattern the rainout writers had before 2026-10-05 — then
+  drops the game from the card's local list BEFORE the result is known and
+  refreshes. A refused or zero-row write therefore makes the game vanish
+  from the card while staying rained out, with no error and no activity-log
+  entry (it writes none even on success). Pre-existing gaps it also still
+  has: no plan gate and no interleague awareness (restoring a rained-out
+  interleague game does not tell the partner). Fix shape: chain
+  `.select("id")`, treat zero rows as failure, keep the row until the write
+  confirms, log the restore, and route interleague games to the request
+  flow.
 - **Brand colour drift:** `fs-navy` is `#0b1c39`, the homepage literal is
   `#0C1F3F` (150 files). One decision, one migration pass.
 
