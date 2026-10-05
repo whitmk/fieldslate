@@ -3408,12 +3408,22 @@ that with `maximum-scale=1` or `user-scalable=no`.
 
 Still open:
 
-- **Rainout writes ignore their error (both Schedule page surfaces).**
-  `performRainout` (`schedule-list.tsx`) and the calendar's `handleRainout`
-  (`schedule-calendar.tsx`) never read the result of the `games` UPDATE, so
-  a refused write (RLS, lock trigger, network) still logs "marked as rained
-  out" to the activity log and refreshes as if it succeeded. Check the error,
-  skip the log entry, and surface the refusal at the action.
+- **FIXED 2026-10-05 — single-game rainout writes are checked.** All FOUR
+  writers (division panel cloud `handleRainOut`, dashboard upcoming-games
+  `handleRainout`, Schedule list `performRainout`, Schedule calendar
+  `handleRainout`) used to send the `games` UPDATE and discard its result, so
+  a refused or no-op write still logged "marked as rained out" and refreshed
+  as if it succeeded. They now share `markGameRainedOut`
+  (`src/lib/schedule/rainout-write.ts`): the same UPDATE with `.select("id")`
+  chained, the picker's zero-rows pattern — an error OR zero rows is a
+  failure, nothing is logged, and the shared `ConfirmDialog` stays open in an
+  error state (busy while in flight, so no double tap). Only a one-row
+  success logs and refreshes, exactly as before. **Still unchecked, reported
+  2026-10-05, not fixed:** the division panel's BULK rainout
+  (`handleBulkRainOut`, `.in("id", ids)` with no result read, then N log
+  entries) and both log-rainout modal writes (`handleMarkRainout`,
+  `handleMarkMultipleRainouts`). Same defect, multi-row shape: fix needs a
+  rows-affected-vs-ids comparison and a partial-failure message.
 - **Brand colour drift:** `fs-navy` is `#0b1c39`, the homepage literal is
   `#0C1F3F` (150 files). One decision, one migration pass.
 
