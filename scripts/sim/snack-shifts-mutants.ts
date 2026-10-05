@@ -9,6 +9,7 @@
 import { runMutants, type Mutant } from "./mutant-runner";
 
 const LIB = "src/lib/snack-shack/derive-shifts.ts";
+const PLAN = "src/lib/snack-shack/regenerate-plan.ts";
 
 const MUTANTS: Mutant[] = [
   {
@@ -130,6 +131,36 @@ const MUTANTS: Mutant[] = [
     find: "  const dates = new Set([...a.keys(), ...b.keys()]);",
     replace: "  const dates = new Set([...a.keys()]);",
     expect: "T1",
+  },
+  {
+    id: "SM21", what: "past dates not frozen — a derived shift for a past date is added", file: PLAN,
+    find: "  const derivedUpcoming = flattenShifts(input.derivation).filter((s) => s.date >= today);",
+    replace: "  const derivedUpcoming = flattenShifts(input.derivation);",
+    expect: "F1",
+  },
+  {
+    id: "SM22", what: "past rows dropped from the payload (the RPC would delete them)", file: PLAN,
+    find: "  const pastRows = storedDerived.filter((r) => r.date < today);",
+    replace: "  const pastRows = storedDerived.filter(() => false);",
+    expect: "F1",
+  },
+  {
+    id: "SM23", what: "staleness reports past dates too", file: PLAN,
+    find: "    flattenShifts(derivation).filter((s) => s.date >= today),\n    stored.filter((r) => r.date >= today),",
+    replace: "    flattenShifts(derivation),\n    stored,",
+    expect: "F3",
+  },
+  {
+    id: "SM24", what: "equity not seeded with the frozen past rows", file: PLAN,
+    find: "  const assigned = assignNewShifts(rec.create, input.teams, [...pastRows, ...rec.keep], input.preference, input.maps);",
+    replace: "  const assigned = assignNewShifts(rec.create, input.teams, rec.keep, input.preference, input.maps);",
+    expect: "F4",
+  },
+  {
+    id: "SM25", what: "same-start pairs reported as remove + add, never 'changed'", file: PLAN,
+    find: "      const idx = added.findIndex((a, i) => !usedAdded.has(i) && a.start === normalizeTime(r.start_time));",
+    replace: "      const idx = -1;",
+    expect: "F2",
   },
 ];
 

@@ -58,7 +58,7 @@ export default async function SnackShackPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Snack Shack</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Manage team coverage assignments for the snack shack.
+            Shifts made from the game schedule, with a team on each one.
           </p>
         </div>
         <Card>
@@ -93,6 +93,10 @@ export default async function SnackShackPage() {
     home_venue_ids: unknown;
     scheduling_preference: string;
     updated_at: string;
+    open_before_min: number;
+    close_after_min: number;
+    max_shift_min: number;
+    shifts_generated_at: string | null;
   }[];
 
   // Load teams for the selected season

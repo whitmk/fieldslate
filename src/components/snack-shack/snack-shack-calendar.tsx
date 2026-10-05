@@ -139,11 +139,11 @@ export function SnackShackCalendar({ blocks, teams, startDate, endDate }: Props)
         <div className="flex items-center gap-3 text-[11px] text-gray-500">
           <span className="inline-flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
-            Recurring
+            From schedule
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
-            One-off
+            Added by hand
           </span>
         </div>
       </div>
@@ -248,7 +248,7 @@ function AssignmentPill({
       onClick={onClick}
       className={`flex w-full flex-col gap-0.5 rounded px-1.5 py-1 text-left text-[11px] transition-colors ${base}`}
       title={`${teamLabel} · ${fmtTime(block.start_time)} – ${fmtTime(block.end_time)} · ${
-        block.is_recurring ? "Recurring" : "One-off"
+        block.is_recurring ? "From schedule" : "Added by hand"
       }`}
     >
       <span className="flex items-center gap-1.5 truncate font-semibold">

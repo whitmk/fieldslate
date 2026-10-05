@@ -3574,8 +3574,46 @@ Still open:
   Run 2026-10-05: green, 6/6 mutants killed at their own tag; run 1 died at
   the first fixture insert because `INSERT … SELECT` does not coerce bare
   string literals (VALUES does) — cast fixture literals in a SELECT list.
-- **Harness: `npm run sim:snack-shifts`** (83 checks × 3 zones, 12
-  anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (20 mutants,
+- **Stage 3 (UI + wrapper, 2026-10-05, on `feat/snack-shack-derived`):**
+  - **PAST DATES ARE FROZEN BY THE CALLER, NOT THE RPC.** `buildRegeneratePlan`
+    (`src/lib/snack-shack/regenerate-plan.ts`) computes "today" in the ORG's
+    timezone (`todayInTimezone(profiles.timezone)`, never the browser's or the
+    server's date) and passes every stored derived row dated before today
+    through to the RPC unchanged, so the RPC keeps it; a derived shift for a
+    past date is never added. The RPC has no notion of today. Harness part F
+    + mutants SM21/SM22 pin it; the staleness notice is upcoming-only (SM23);
+    the equity pick for new shifts is seeded with the frozen past rows (SM24).
+  - **Regenerate ALWAYS previews.** `useShiftPlan` loads inputs through
+    `loadShiftInputs` (every read throws; the games read is `fetchAllRows`,
+    complete-or-throw; blackouts are not read) and computes the plan;
+    `RegeneratePreviewModal` shows shifts added / removed / changed by date (a
+    same-start, different-end pair is one "changed" shift, SM25) and every
+    assignment that would change (`assignmentChangeLines`, verbatim); Confirm
+    sends `plan.desired` to `regenerate_snack_shack_shifts` and logs
+    `snack_shack_shifts_regenerated` with `regenerateLogMessage`; Cancel writes
+    nothing. The wizard no longer generates — its Review step saves settings
+    only.
+  - **Legacy seasons** (`shifts_generated_at` null with derived rows) show
+    `LEGACY_SHIFTS_NOTICE` verbatim on the page and in the preview.
+  - **The Days/Blocks steps are gone**; `StepHours` is the rule (offsets,
+    longest shift with `maxShiftHelpText` — it says a leftover under 60 can
+    extend a shift up to 59 minutes — and the days the shack can open).
+    `time_blocks_by_day` is written back untouched and read by nothing.
+  - **Per-day leftover control** (`AbsorbChoiceControl`) writes
+    `snack_shack_absorb_choices` under RLS and reloads the plan; manual shifts
+    use the one `AddOneOffModal` from both the season-level button and the
+    per-day "Add a shift on this day"; the list groups rows by date with the
+    derived window, the closed-day list is upcoming-only.
+  - `src/types/database.ts` is HAND-MAINTAINED (its `Functions` map is kept
+    EMPTY on purpose — a real entry re-types every other `rpc()` call and
+    broke two gate files); RPCs use `@ts-expect-error` at the call site. The
+    0103 table and columns were added by hand in the generator's shape.
+  - Verified look-only through a throwaway scratch route (deleted): the page,
+    the preview, the Hours step, the leftover control; the fail-loud banner
+    renders when a read refuses. Not exercised against live data; no org's
+    shifts were regenerated.
+- **Harness: `npm run sim:snack-shifts`** (102 checks × 3 zones, 14
+  anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (25 mutants,
   each killed FIRST at its own assertion). Read the MUTATION LOG in the sim
   header: the first run had five killed at the wrong line, all harness
   ordering faults, and the section order now exists because of them.

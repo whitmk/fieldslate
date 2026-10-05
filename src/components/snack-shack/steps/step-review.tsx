@@ -4,12 +4,11 @@ import { useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ORDERED_DAYS } from "@/components/divisions/wizard-types";
-import { generateSnackShackSchedule } from "@/lib/snack-shack/generate-schedule";
+import { fmtDuration } from "./step-hours";
 import type { SnackShackWizardData, DayCode } from "../wizard-types";
 
 interface Props {
   data: SnackShackWizardData;
-  leagueId: string;
   existingId?: string;
   onEdit: (step: number) => void;
   onComplete: () => void;
@@ -65,27 +64,15 @@ function fmtDate(d: string) {
   });
 }
 
-function fmtTime(t: string) {
-  if (!t) return "";
-  const [h, m] = t.split(":").map(Number);
-  const ampm = h < 12 ? "am" : "pm";
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${h12}:${String(m).padStart(2, "0")}${ampm}`;
-}
-
 export function StepReview({
   data,
-  leagueId,
   existingId,
   onEdit,
   onComplete,
 }: Props) {
   const [saving, setSaving] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [done, setDone] = useState(false);
-  const [generated, setGenerated] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [blocksCreated, setBlocksCreated] = useState(0);
 
   async function upsertSettings(): Promise<string | null> {
     const supabase = createClient();
@@ -97,6 +84,9 @@ export function StepReview({
       time_blocks_by_day: data.time_blocks_by_day,
       home_venue_ids: data.home_venue_ids,
       scheduling_preference: data.scheduling_preference,
+      open_before_min: data.open_before_min,
+      close_after_min: data.close_after_min,
+      max_shift_min: data.max_shift_min,
       updated_at: new Date().toISOString(),
     };
 
@@ -118,38 +108,7 @@ export function StepReview({
     setError(null);
     const id = await upsertSettings();
     setSaving(false);
-    if (id) {
-      setDone(true);
-      setGenerated(false);
-    }
-  }
-
-  async function handleGenerate() {
-    setGenerating(true);
-    setError(null);
-    const id = await upsertSettings();
-    if (!id) {
-      setGenerating(false);
-      return;
-    }
-
-    // Clear existing recurring blocks before regenerating
-    const supabase = createClient();
-    await supabase
-      .from("snack_shack_blocks")
-      .delete()
-      .eq("snack_shack_id", id)
-      .eq("is_recurring", true);
-
-    const result = await generateSnackShackSchedule(id, leagueId, data);
-    setGenerating(false);
-    if (!result.success) {
-      setError(result.error ?? "Generation failed");
-      return;
-    }
-    setBlocksCreated(result.blocksCreated);
-    setDone(true);
-    setGenerated(true);
+    if (id) setDone(true);
   }
 
   const activeDayLabels = ORDERED_DAYS.filter((d) =>
@@ -158,11 +117,6 @@ export function StepReview({
     .map((d) => d.label)
     .join(", ");
 
-  const totalBlocks = data.days_of_week.reduce((sum, day) => {
-    const blocks = data.time_blocks_by_day[day as DayCode] ?? [];
-    return sum + blocks.length;
-  }, 0);
-
   if (done) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
@@ -170,13 +124,10 @@ export function StepReview({
           <CheckCircle2 className="h-8 w-8 text-[#22C55E]" />
         </div>
         <div>
-          <h3 className="text-lg font-semibold text-[#0C1F3F]">
-            {generated ? "Schedule generated!" : "Settings saved!"}
-          </h3>
+          <h3 className="text-lg font-semibold text-[#0C1F3F]">Settings saved</h3>
           <p className="mt-1 text-sm text-gray-500">
-            {generated
-              ? `${blocksCreated} block${blocksCreated !== 1 ? "s" : ""} created for your Snack Shack schedule.`
-              : "Your Snack Shack settings have been saved. Generate the schedule from the Snack Shack page."}
+            Shifts are made from the game schedule. Use &ldquo;Generate shifts&rdquo; on the
+            Snack Shack page — you&rsquo;ll see exactly what will change before anything is written.
           </p>
         </div>
         <button
@@ -194,7 +145,7 @@ export function StepReview({
       <div>
         <h3 className="text-lg font-semibold text-[#0C1F3F]">Review</h3>
         <p className="mt-0.5 text-sm text-gray-500">
-          Confirm your Snack Shack settings before saving or generating the schedule.
+          Confirm your Snack Shack settings. Shifts are generated from the page, with a preview first.
         </p>
       </div>
 
@@ -203,54 +154,14 @@ export function StepReview({
         <Row label="Close" value={fmtDate(data.end_date)} />
       </ReviewSection>
 
-      <ReviewSection title="Schedule" onEdit={() => onEdit(1)}>
-        <Row
-          label="Days open"
-          value={activeDayLabels || "None selected"}
-        />
-        <Row
-          label="Blocks/day"
-          value={
-            totalBlocks > 0
-              ? `${totalBlocks} block${totalBlocks !== 1 ? "s" : ""} across ${data.days_of_week.length} day${data.days_of_week.length !== 1 ? "s" : ""}`
-              : "No blocks defined"
-          }
-        />
+      <ReviewSection title="Hours" onEdit={() => onEdit(1)}>
+        <Row label="Opens" value={data.open_before_min === 0 ? "When the first game starts" : `${data.open_before_min} min before the first game`} />
+        <Row label="Closes" value={data.close_after_min === 0 ? "When the last game ends" : `${data.close_after_min} min after the last game ends`} />
+        <Row label="Longest shift" value={`${fmtDuration(data.max_shift_min)} (a leftover under an hour can extend a shift)`} />
+        <Row label="Days open" value={activeDayLabels || "None selected"} />
       </ReviewSection>
 
-      {/* Per-day block summary */}
-      {data.days_of_week.length > 0 && (
-        <ReviewSection title="Time blocks" onEdit={() => onEdit(2)}>
-          {ORDERED_DAYS.filter((d) =>
-            data.days_of_week.includes(d.key as DayCode),
-          ).map(({ key, label }) => {
-            const blocks = data.time_blocks_by_day[key as DayCode] ?? [];
-            return (
-              <div key={key} className="flex items-start gap-4 py-2.5">
-                <span className="w-28 flex-shrink-0 text-xs font-medium uppercase tracking-wide text-gray-400">
-                  {label}
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {blocks.length === 0 ? (
-                    <span className="text-sm text-gray-300">No blocks</span>
-                  ) : (
-                    blocks.map((b) => (
-                      <span
-                        key={b.id}
-                        className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
-                      >
-                        {fmtTime(b.start)}–{fmtTime(b.end)}
-                      </span>
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </ReviewSection>
-      )}
-
-      <ReviewSection title="Venues & preference" onEdit={() => onEdit(3)}>
+      <ReviewSection title="Venues & preference" onEdit={() => onEdit(2)}>
         <Row
           label="Home venues"
           value={
@@ -277,23 +188,9 @@ export function StepReview({
 
       <div className="flex flex-col gap-2.5">
         <button
-          onClick={handleGenerate}
-          disabled={saving || generating || !data.start_date || !data.end_date}
-          className="w-full rounded-xl bg-[#22C55E] py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {generating ? (
-            <span className="inline-flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Generating…
-            </span>
-          ) : (
-            "Generate schedule"
-          )}
-        </button>
-        <button
           onClick={handleSave}
-          disabled={saving || generating || !data.start_date || !data.end_date}
-          className="w-full rounded-xl border border-gray-200 py-3 text-sm font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-700 disabled:opacity-50"
+          disabled={saving || !data.start_date || !data.end_date || data.days_of_week.length === 0}
+          className="w-full rounded-xl bg-[#22C55E] py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving ? (
             <span className="inline-flex items-center gap-2">
@@ -301,7 +198,7 @@ export function StepReview({
               Saving…
             </span>
           ) : (
-            "Save (don't generate)"
+            "Save settings"
           )}
         </button>
       </div>

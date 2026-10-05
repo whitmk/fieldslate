@@ -1160,37 +1160,49 @@ export type Database = {
       }
       snack_shack_settings: {
         Row: {
+          close_after_min: number
           created_at: string
           days_of_week: Json
           end_date: string
           home_venue_ids: Json
           id: string
+          max_shift_min: number
+          open_before_min: number
           scheduling_preference: string
           season_id: string
+          shifts_generated_at: string | null
           start_date: string
           time_blocks_by_day: Json
           updated_at: string
         }
         Insert: {
+          close_after_min?: number
           created_at?: string
           days_of_week?: Json
           end_date: string
           home_venue_ids?: Json
           id?: string
+          max_shift_min?: number
+          open_before_min?: number
           scheduling_preference?: string
           season_id: string
+          shifts_generated_at?: string | null
           start_date: string
           time_blocks_by_day?: Json
           updated_at?: string
         }
         Update: {
+          close_after_min?: number
           created_at?: string
           days_of_week?: Json
           end_date?: string
           home_venue_ids?: Json
           id?: string
+          max_shift_min?: number
+          open_before_min?: number
           scheduling_preference?: string
           season_id?: string
+          shifts_generated_at?: string | null
           start_date?: string
           time_blocks_by_day?: Json
           updated_at?: string
@@ -1201,6 +1213,44 @@ export type Database = {
             columns: ["season_id"]
             isOneToOne: true
             referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      snack_shack_absorb_choices: {
+        Row: {
+          choice: string
+          created_at: string
+          date: string
+          id: string
+          snack_shack_id: string
+          updated_at: string
+          window_start: string
+        }
+        Insert: {
+          choice: string
+          created_at?: string
+          date: string
+          id?: string
+          snack_shack_id: string
+          updated_at?: string
+          window_start: string
+        }
+        Update: {
+          choice?: string
+          created_at?: string
+          date?: string
+          id?: string
+          snack_shack_id?: string
+          updated_at?: string
+          window_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "snack_shack_absorb_choices_snack_shack_id_fkey"
+            columns: ["snack_shack_id"]
+            isOneToOne: false
+            referencedRelation: "snack_shack_settings"
             referencedColumns: ["id"]
           },
         ]
@@ -1921,3 +1971,4 @@ export type InterleagueInviteResponse = Database["public"]["Tables"]["interleagu
 export type InterleagueRescheduleRequest = Database["public"]["Tables"]["interleague_reschedule_requests"]["Row"];
 export type OrganizationMember = Database["public"]["Tables"]["organization_members"]["Row"];
 export type OrganizationInvitation = Database["public"]["Tables"]["organization_invitations"]["Row"];
+export type SnackShackAbsorbChoice = Database["public"]["Tables"]["snack_shack_absorb_choices"]["Row"];

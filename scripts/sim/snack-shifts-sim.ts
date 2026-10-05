@@ -31,6 +31,12 @@
 //      the equity counter is seeded with the kept rows.
 //   T  STALENESS: the diff names exactly the dates that differ, including a
 //      date that lost all its games and a date whose shifts merely moved.
+//   F  THE PLAN (regenerate-plan.ts): stored derived rows BEFORE today (in
+//      the org's zone) ride the RPC payload unchanged and no derived shift
+//      for a past date is added; upcoming unchanged rows are kept; a
+//      same-start/different-end pair is a "changed" shift; staleness looks
+//      at upcoming dates only; the equity pick is seeded with frozen past
+//      rows; todayInTimezone; the legacy notice; the max-shift help text.
 //   X  WALL-CLOCK: a 19:45 end on a +00 wall-clock stays 19:45 in every host
 //      zone; the library never hands scheduled_at to `new Date`.
 //
@@ -84,6 +90,15 @@ import {
   type StoredAbsorbChoice,
   type StoredShiftRow,
 } from "../../src/lib/snack-shack/derive-shifts";
+import {
+  LEGACY_SHIFTS_NOTICE,
+  assignmentChangeLines,
+  buildRegeneratePlan,
+  legacyShiftsNotice,
+  maxShiftHelpText,
+  todayInTimezone,
+  upcomingStaleness,
+} from "../../src/lib/snack-shack/regenerate-plan";
 
 const ROOT = join(__dirname, "../..");
 const failures: string[] = [];
@@ -117,6 +132,8 @@ const counters = {
   exactly60Stands: 0,
   shortShiftStands: 0,
   singleShiftWindow: 0,
+  frozenPastRows: 0,
+  changedShifts: 0,
 };
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -411,6 +428,69 @@ section("T: staleness diff", () => {
   // A new game day with no stored rows at all: flagged.
   const extra = [...games, game("2026-10-03", "10:00", 120)];
   ok(stalenessDiff(flattenShifts(deriveShifts(extra, RULE, [])), stored).differingDates.join(",") === "2026-10-03", "T1", "a new game day with no stored shifts is flagged");
+});
+
+// ─── F: the regenerate plan ──────────────────────────────────────────────────
+
+section("F: past dates frozen, preview, upcoming staleness", () => {
+  const TODAY = "2026-10-10";
+  // 10-03 is PAST: the schedule now derives one 3-hour shift there, but the
+  // stored rows (two shifts, Bears and Cubs) must ride through untouched.
+  // 10-17 is upcoming: the first shift is unchanged, the second's END moved.
+  const games = [game("2026-10-03", "10:00", 150), game("2026-10-17", "10:00", 120), game("2026-10-17", "12:00", 90)];
+  // 10-03: 09:30–13:00 = 210 → 120 + 90 (two shifts, 09:30-11:30 + 11:30-13:00) — differs from stored.
+  // 10-17: 09:30–14:00 = 270 → 120 + 120 + 30 → absorbed last → 09:30-11:30, 11:30-14:00.
+  const derivation = deriveShifts(games, RULE, []);
+  const stored: StoredShiftRow[] = [
+    { id: "p1", date: "2026-10-03", start_time: "09:30:00", end_time: "11:30:00", assigned_team_id: "bears", is_recurring: true },
+    { id: "p2", date: "2026-10-03", start_time: "11:30:00", end_time: "12:30:00", assigned_team_id: "cubs", is_recurring: true },
+    { id: "u1", date: "2026-10-17", start_time: "09:30:00", end_time: "11:30:00", assigned_team_id: "expos", is_recurring: true },
+    { id: "u2", date: "2026-10-17", start_time: "11:30:00", end_time: "13:30:00", assigned_team_id: null, is_recurring: true },
+    { id: "m1", date: "2026-10-03", start_time: "08:00:00", end_time: "09:30:00", assigned_team_id: "giants", is_recurring: false },
+  ];
+  const teams = [{ id: "giants", name: "Giants" }, { id: "bears", name: "Bears" }, { id: "cubs", name: "Cubs" }, { id: "expos", name: "Expos" }];
+  const plan = buildRegeneratePlan({ derivation, stored, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY });
+  const past = plan.desired.filter((d) => d.date === "2026-10-03");
+  ok(JSON.stringify(past) === JSON.stringify([
+    { date: "2026-10-03", start: "09:30", end: "11:30", assigned_team_id: "bears" },
+    { date: "2026-10-03", start: "11:30", end: "12:30", assigned_team_id: "cubs" },
+  ]), "F1", "stored rows before today ride the payload EXACTLY as stored (no derived 11:30-13:00, nothing dropped, teams kept)", JSON.stringify(past));
+  ok(plan.frozenPast === 2 && !plan.dayChanges.some((d) => d.date === "2026-10-03"), "F1", "frozenPast=2 and the past date appears in no change list");
+  counters.frozenPastRows += plan.frozenPast;
+  const up = plan.desired.filter((d) => d.date === "2026-10-17");
+  ok(JSON.stringify(up.map((d) => `${d.start}-${d.end}`)) === JSON.stringify(["09:30-11:30", "11:30-14:00"]) && up[0].assigned_team_id === "expos" && up[1].assigned_team_id !== null, "F2", "upcoming: the unchanged shift keeps Expos; the changed slot is new and assigned (WHO is F4's line)", JSON.stringify(up));
+  ok(plan.kept === 1 && plan.dayChanges.length === 1 && plan.dayChanges[0].date === "2026-10-17"
+     && plan.dayChanges[0].changed.length === 1 && plan.dayChanges[0].added.length === 0 && plan.dayChanges[0].removed.length === 0, "F2", "the 11:30 pair (end 13:30 → 14:00) is ONE 'changed' shift, not a removal plus an addition", JSON.stringify(plan.dayChanges));
+  counters.changedShifts += plan.dayChanges.reduce((n, d) => n + d.changed.length, 0);
+  ok(plan.assignmentChanges.length === 1 && plan.assignmentChanges[0].kind === "changed" && plan.assignmentChanges[0].fromTeamId === null && plan.assignmentChanges[0].toTeamId !== null, "F2", "the assignment change lists unassigned → a team on the changed shift", JSON.stringify(plan.assignmentChanges));
+  ok(plan.hasChanges, "F2", "the plan reports changes");
+  // Staleness: 10-03 differs but is past → not reported; 10-17 differs → reported.
+  const st = upcomingStaleness(derivation, stored, TODAY);
+  ok(st.differingDates.join(",") === "2026-10-17", "F3", "staleness over upcoming dates only — the past 10-03 is not reported", st.differingDates.join(","));
+  // Equity seeded with the frozen past rows: Bears and Cubs already hold one each, Expos is kept → Giants.
+  ok(up[1].assigned_team_id === "giants" && plan.assignmentChanges[0].kind === "changed" && plan.assignmentChanges[0].toTeamId === "giants", "F4", "the new shift goes to the only team holding nothing (frozen Bears/Cubs count, kept Expos counts) — Giants, and the change line says so");
+  // A removed row with a team, and a plain addition on another day.
+  const games2 = [game("2026-10-17", "10:00", 120), game("2026-10-24", "10:00", 120)];
+  const plan2 = buildRegeneratePlan({ derivation: deriveShifts(games2, RULE, []), stored, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY });
+  // 10-17: 09:30–12:30 = 180 → 120 + 60 → 09:30-11:30 (kept, expos), 11:30-12:30 (changed from 11:30-13:30). 10-24: same → two added.
+  const kinds = plan2.assignmentChanges.map((c) => c.kind).join(",");
+  ok(kinds === "changed,added,added", "F5", "kinds: the 10-17 same-start pair is 'changed'; the new day's shifts are 'added'", kinds + " " + JSON.stringify(plan2.assignmentChanges));
+  const lines = assignmentChangeLines(plan2.assignmentChanges, (id) => teams.find((t) => t.id === id)?.name ?? id ?? "?");
+  ok(lines[0] === "2026-10-17 11:30: ends 13:30 → 12:30, unassigned → Giants" && lines[1].startsWith("2026-10-24 09:30–11:30: new → "), "F6", "the preview lines read as team → team / new → team", JSON.stringify(lines));
+  const plan3 = buildRegeneratePlan({ derivation: deriveShifts([], RULE, []), stored, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY });
+  ok(plan3.assignmentChanges.some((c) => c.kind === "removed" && c.fromTeamId === "expos") && plan3.desired.length === 2 && plan3.frozenPast === 2, "F6", "no upcoming games: upcoming rows are removed (Expos → removed), the past two still ride the payload", JSON.stringify(plan3.assignmentChanges));
+  // todayInTimezone.
+  const t = new Date("2026-10-10T05:30:00Z");
+  ok(todayInTimezone("America/Los_Angeles", t) === "2026-10-09" && todayInTimezone("America/New_York", t) === "2026-10-10", "F7", "05:30Z on Oct 10 is still Oct 9 in Los Angeles and already Oct 10 in New York");
+  let threw = false;
+  try { todayInTimezone("Not/AZone", t); } catch { threw = true; }
+  ok(threw, "F7", "an unknown zone throws rather than guessing");
+  // Legacy notice.
+  ok(legacyShiftsNotice(null, stored) === LEGACY_SHIFTS_NOTICE, "F8", "null shifts_generated_at with derived rows → the legacy notice, verbatim");
+  ok(legacyShiftsNotice(null, stored.filter((r) => !r.is_recurring)) === null && legacyShiftsNotice("2026-10-05T00:00:00Z", stored) === null, "F8", "no derived rows, or a stamped season → no notice");
+  ok(LEGACY_SHIFTS_NOTICE === "These shifts were set up before automatic shifts. Regenerating will rebuild upcoming shifts from the game schedule.", "F8", "the sentence is the approved one");
+  const help = maxShiftHelpText(120);
+  ok(help.includes("2h") && help.includes("under 60 minutes") && help.includes("59 minutes longer"), "F9", "the max-shift help text says the leftover can extend a shift up to 59 minutes", help);
 });
 
 // ─── X: wall-clock, every host zone ──────────────────────────────────────────

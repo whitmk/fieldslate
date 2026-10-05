@@ -3,8 +3,7 @@
 import { useState, useCallback } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { StepDates } from "./steps/step-dates";
-import { StepDays } from "./steps/step-days";
-import { StepTimeBlocks } from "./steps/step-time-blocks";
+import { StepHours } from "./steps/step-hours";
 import { StepVenues } from "./steps/step-venues";
 import { StepPreference } from "./steps/step-preference";
 import { StepReview } from "./steps/step-review";
@@ -12,8 +11,7 @@ import { emptyWizardData, type SnackShackWizardData } from "./wizard-types";
 
 const STEPS = [
   { label: "Dates" },
-  { label: "Days" },
-  { label: "Blocks" },
+  { label: "Hours" },
   { label: "Venues" },
   { label: "Preference" },
   { label: "Review" },
@@ -61,14 +59,12 @@ export function SnackShackWizard({
 
   const stepContent = [
     <StepDates key="dates" data={data} update={update} />,
-    <StepDays key="days" data={data} update={update} />,
-    <StepTimeBlocks key="blocks" data={data} update={update} />,
+    <StepHours key="hours" data={data} update={update} />,
     <StepVenues key="venues" data={data} update={update} leagueId={leagueId} currentOrgId={currentOrgId} />,
     <StepPreference key="pref" data={data} update={update} />,
     <StepReview
       key="review"
       data={data}
-      leagueId={leagueId}
       existingId={existingId}
       onEdit={setStep}
       onComplete={onComplete}

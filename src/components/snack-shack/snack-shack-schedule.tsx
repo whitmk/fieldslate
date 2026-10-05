@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Loader2, Pencil, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -24,6 +24,9 @@ interface Props {
   snackShackId: string;
   blocks: BlockRow[];
   teams: TeamOption[];
+  /** Rendered once above each date's rows (window summary, leftover control,
+   *  per-day add). The list stays a flat table of stored rows. */
+  dayHeader?: (date: string) => ReactNode;
 }
 
 function fmtDate(d: string) {
@@ -41,7 +44,7 @@ function fmtTime(t: string) {
   return `${h12}:${String(m).padStart(2, "0")}${ampm}`;
 }
 
-export function SnackShackSchedule({ snackShackId, blocks, teams }: Props) {
+export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader }: Props) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTeam, setEditTeam] = useState<string>("");
@@ -70,9 +73,9 @@ export function SnackShackSchedule({ snackShackId, blocks, teams }: Props) {
   if (blocks.length === 0) {
     return (
       <div className="flex flex-col items-center py-16 text-center">
-        <p className="text-sm text-gray-500">No blocks scheduled yet.</p>
+        <p className="text-sm text-gray-500">No shifts yet.</p>
         <p className="mt-0.5 text-xs text-gray-400">
-          Use &ldquo;Generate schedule&rdquo; in the wizard, or add one-off blocks above.
+          Use &ldquo;Generate shifts&rdquo; to make them from the game schedule, or add one by hand.
         </p>
       </div>
     );
@@ -85,15 +88,21 @@ export function SnackShackSchedule({ snackShackId, blocks, teams }: Props) {
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wider text-gray-500">
               <th className="pb-3 font-semibold">Date</th>
-              <th className="pb-3 font-semibold">Time block</th>
+              <th className="pb-3 font-semibold">Shift</th>
               <th className="pb-3 font-semibold">Assigned team</th>
               <th className="pb-3 font-semibold">Type</th>
               <th className="pb-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {blocks.map((block) => (
-              <tr key={block.id} className="text-gray-700">
+            {blocks.map((block, i) => (
+              <Fragment key={block.id}>
+              {dayHeader && (i === 0 || blocks[i - 1].date !== block.date) && (
+                <tr className="bg-gray-50/70">
+                  <td colSpan={5} className="px-2 py-2">{dayHeader(block.date)}</td>
+                </tr>
+              )}
+              <tr className="text-gray-700">
                 <td className="py-3 font-medium text-gray-900 tabular-nums">
                   {fmtDate(block.date)}
                 </td>
@@ -146,11 +155,11 @@ export function SnackShackSchedule({ snackShackId, blocks, teams }: Props) {
                 <td className="py-3">
                   {block.is_recurring ? (
                     <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                      Recurring
+                      From schedule
                     </span>
                   ) : (
                     <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-indigo-600">
-                      One-off
+                      Added by hand
                     </span>
                   )}
                 </td>
@@ -166,6 +175,7 @@ export function SnackShackSchedule({ snackShackId, blocks, teams }: Props) {
                   )}
                 </td>
               </tr>
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -188,18 +198,21 @@ export function SnackShackSchedule({ snackShackId, blocks, teams }: Props) {
 
 // ── Add one-off block modal ──────────────────────────────────────────────────
 
-function AddOneOffModal({
+export function AddOneOffModal({
   snackShackId,
   teams,
+  fixedDate,
   onClose,
   onSaved,
 }: {
   snackShackId: string;
   teams: TeamOption[];
+  /** Per-day control: the date is fixed and not editable. */
+  fixedDate?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(fixedDate ?? "");
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("12:00");
   const [teamId, setTeamId] = useState("");
@@ -238,7 +251,7 @@ function AddOneOffModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h2 className="font-semibold text-[#0C1F3F]">Add one-off block</h2>
+          <h2 className="font-semibold text-[#0C1F3F]">{fixedDate ? `Add a shift on ${fmtDate(fixedDate)}` : "Add a shift by hand"}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -250,16 +263,24 @@ function AddOneOffModal({
           </button>
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-6 py-6">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-gray-700">Date</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              required
-              className="h-11 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
-            />
-          </div>
+          <p className="text-xs text-gray-500">
+            {fixedDate
+              ? "Added on top of whatever the schedule produces for this day."
+              : "Any date, whether or not games are scheduled — a tournament, a work party, opening day."}{" "}
+            Not tied to the schedule, so regenerating leaves it alone.
+          </p>
+          {!fixedDate && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-gray-700">Date</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+                className="h-11 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-gray-700">Start time</label>
@@ -326,7 +347,7 @@ function AddOneOffModal({
                   Saving…
                 </>
               ) : (
-                "Add block"
+                "Add shift"
               )}
             </button>
           </div>
@@ -402,7 +423,7 @@ export function BlockEditModal({
               {fmtTime(block.start_time)} – {fmtTime(block.end_time)}
             </p>
             <p className="mt-0.5 text-xs text-gray-400">
-              {block.is_recurring ? "Recurring block" : "One-off block"}
+              {block.is_recurring ? "Made from the schedule" : "Added by hand"}
             </p>
           </div>
 
@@ -467,7 +488,7 @@ export function BlockEditModal({
 // ── Exported trigger component ───────────────────────────────────────────────
 // Placed inline above the schedule on the page
 
-export function AddOneOffBlockButton({
+export function AddOneOffButton({
   snackShackId,
   teams,
 }: {
@@ -483,7 +504,7 @@ export function AddOneOffBlockButton({
         className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F]"
       >
         <Plus className="h-4 w-4" />
-        Add one-off block
+        Add a shift by hand
       </button>
       {open && (
         <AddOneOffModal
