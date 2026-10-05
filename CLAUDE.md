@@ -3372,6 +3372,41 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   `TimeSlotRow` start-time blur-save). Never write an unguarded native
   input value to the DB.
 
+## Mobile follow-ups (from the 2026-10-02 phone audit)
+
+Shipped so far: marketing mobile nav; confirm dialogs on single-game rainout
+and blackout removal with 40px row targets; the layout batch (stat grid,
+panel rows, request modal scroll, scrollable umpire/interleague tables,
+h-dvh shell, in-viewport switcher menus, wrapping Schedule actions, p-4
+content padding); division rows, stacked Schedule filters, the overview
+width fix and 16px selects on the overview and Schedule filters.
+
+Still open, in rough priority order:
+
+- **16px form fields below sm, app-wide sweep.** iOS Safari zooms the page
+  when a focused input/select/textarea is under 16px and does not zoom back.
+  Only the overview Season select and the four Schedule filter selects are
+  fixed (`text-base sm:text-sm`); every other `text-sm`/`text-xs` field in
+  the dashboard still triggers it. Never fix this with `maximum-scale=1` or
+  `user-scalable=no`.
+- Schedule page phone card (`schedule-list.tsx` GameCard) offers only Rainout
+  and Add Official — Reschedule, Delete and View details exist only in the
+  `hidden md:table` row menu.
+- Calendar popover (`schedule-calendar.tsx` `openPopover`) clamps x but not
+  y, so lower-row pills open it below the fold.
+- Hover-only controls still on raw `opacity-0 group-hover:opacity-100`
+  (invisible but tappable on touch): division panel roster rename/delete
+  (~:921), venues page location rename/delete (~:443) and venue edit/delete
+  (~:575), interleague org edit/delete (~:1089), practices grid venue pencil
+  (~:854). Convert to `ROW_ICON_REVEAL`; venues needs named groups.
+- Modals with no `max-h`: team snack-shack, pay report, game detail, venue
+  delete dialogs, calendar day-detail.
+- Tables whose action column sits off-screen right on a phone: Teams, snack
+  shack schedule; umpires page header actions overflow.
+- Brand colour drift: `fs-navy` is `#0b1c39`, the homepage literal is
+  `#0C1F3F` (150 files). One decision, one migration pass.
+- Footer and legal-page links are 16–20px tall; add vertical padding.
+
 ## Open items
 
 - **The reschedule picker's own save has no save-time lock re-read** (the
