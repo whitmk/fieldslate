@@ -1,10 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ORDERED_DAYS } from "@/components/divisions/wizard-types";
-import { generateBracket } from "@/lib/playoffs/generate-bracket";
+import {
+  generateBracket,
+  preflightBracket,
+  type BracketPreflight,
+} from "@/lib/playoffs/generate-bracket";
 import type { PlayoffWizardData, PlayoffFormat } from "../playoff-wizard-types";
 
 interface Props {
@@ -64,10 +68,34 @@ function Row({ label, value }: { label: string; value: string }) {
 export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  // Games the generator couldn't place (slots exhausted or filtered out by
-  // venue hours) — they save with no venue/time for manual assignment.
+  // What the generate run reported: games it could not place (saved as TBD)
+  // and every warning, each with its reason — rendered VERBATIM from
+  // bracket-plan's planWarnings.
   const [tbdCount, setTbdCount] = useState(0);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // PRE-FLIGHT: the same plan the Generate button will run, with nothing
+  // written, so a closed day or a too-small date range is shown BEFORE the
+  // bracket exists rather than discovered on the bracket page.
+  const [preflight, setPreflight] = useState<BracketPreflight | null>(null);
+  const canPreflight =
+    !!data.division_id && !!data.start_date && !!data.end_date && data.venue_assignments.length > 0;
+  useEffect(() => {
+    if (!canPreflight) {
+      setPreflight(null);
+      return;
+    }
+    let stale = false;
+    setPreflight(null);
+    void preflightBracket(leagueId, data).then((r) => {
+      if (!stale) setPreflight(r);
+    });
+    return () => {
+      stale = true;
+    };
+    // The wizard data object is replaced on every edit; re-run on any change.
+  }, [canPreflight, leagueId, data]);
 
   const activeDays = data.playing_days
     .map((day) => {
@@ -125,6 +153,7 @@ export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
         return;
       }
       setTbdCount(result.tbdCount);
+      setWarnings(result.warnings);
     }
 
     setSaved(true);
@@ -146,14 +175,27 @@ export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
             <strong>{data.division_name}</strong> has been saved as a draft.
           </p>
         </div>
-        {tbdCount > 0 && (
+        {warnings.length > 0 && (
           <div className="flex max-w-md items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-left">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
-            <p className="text-xs text-amber-800">
-              {tbdCount} game{tbdCount !== 1 ? "s" : ""} could not be placed —
-              the proposed times fall outside venue availability. Assign{" "}
-              {tbdCount !== 1 ? "them" : "it"} manually from the bracket view.
-            </p>
+            <div className="text-xs text-amber-800">
+              <p className="font-semibold">
+                {tbdCount > 0
+                  ? `${tbdCount} game${tbdCount !== 1 ? "s" : ""} saved without a date, time or field.`
+                  : "Heads up:"}
+              </p>
+              <ul className="mt-1 list-disc space-y-1 pl-4">
+                {warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+              {tbdCount > 0 && (
+                <p className="mt-1.5">
+                  To place {tbdCount !== 1 ? "them" : "it"}: open the bracket, switch to the list view,
+                  and use the calendar button on the game to set its date, time and field.
+                </p>
+              )}
+            </div>
           </div>
         )}
         <button
@@ -243,6 +285,48 @@ export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
             </p>
           )}
         </ReviewSection>
+      )}
+
+      {/* Pre-flight: what Generate will do, before it does it. */}
+      {canPreflight && (
+        preflight === null ? (
+          <div className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Checking dates, fields and hours…
+          </div>
+        ) : !preflight.ok ? (
+          <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{preflight.error}</div>
+        ) : preflight.warnings.length === 0 ? (
+          <div className="flex items-start gap-2 rounded-lg border border-[#22C55E]/30 bg-[#22C55E]/5 px-4 py-3">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#22C55E]" />
+            <p className="text-xs text-gray-700">
+              {preflight.gameCount} game{preflight.gameCount !== 1 ? "s" : ""} will be placed in the{" "}
+              {preflight.slotCount} available slot{preflight.slotCount !== 1 ? "s" : ""}.
+            </p>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+            <div className="text-xs text-amber-800">
+              <p className="font-semibold">
+                {preflight.tbdCount > 0
+                  ? `${preflight.tbdCount} of ${preflight.gameCount} games will have no date, time or field.`
+                  : "Before you generate:"}
+              </p>
+              <ul className="mt-1 list-disc space-y-1 pl-4">
+                {preflight.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+              <p className="mt-1.5">You can still generate; unplaced games can be set from the bracket afterwards.</p>
+            </div>
+          </div>
+        )
+      )}
+      {!canPreflight && (
+        <p className="text-xs text-gray-400">
+          Set a date range and at least one field to preview where the games will land.
+        </p>
       )}
 
       {error && (

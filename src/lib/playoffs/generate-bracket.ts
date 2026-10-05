@@ -1,353 +1,174 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
-import type { PlayoffWizardData, SeededTeam, PlayoffFormat } from "@/components/playoffs/playoff-wizard-types";
-import {
-  dayKeyFromJsDate,
-  isVenueAvailable,
-  parseAvailability,
-  type VenueAvailability,
-} from "@/lib/venues/availability";
+// Playoff bracket generation — the I/O half. Every decision (bracket layout,
+// byes, slot grid, spacing, round ordering, warnings) lives in bracket-plan.ts,
+// which is pure and harness-driven (`npm run sim:playoff-bracket`). This file
+// loads the inputs, runs the plan, and writes the rows. Keep it that way: a
+// scheduling rule added here instead of in bracket-plan.ts is a rule the
+// harness cannot see.
 
-// ─── Result type ──────────────────────────────────────────────────────────────
+import { createClient } from "@/lib/supabase/client";
+import type { PlayoffWizardData, SeededTeam } from "@/components/playoffs/playoff-wizard-types";
+import { parseAvailability } from "@/lib/venues/availability";
+import {
+  DOUBLE_ELIM_SUPPORTED_COUNTS,
+  planBracket,
+  planSettingsFromDivision,
+  type BracketPlan,
+  type PlanInput,
+  type PlanVenue,
+} from "@/lib/playoffs/bracket-plan";
+
+export {
+  buildSingleElimination,
+  buildDoubleElimination,
+  DOUBLE_ELIM_SUPPORTED_COUNTS,
+} from "@/lib/playoffs/bracket-plan";
+
+// ─── Result types ─────────────────────────────────────────────────────────────
 
 export type BracketResult =
-  | { success: true; gamesCreated: number; tbdCount: number }
+  | { success: true; gamesCreated: number; tbdCount: number; warnings: string[] }
   | { success: false; error: string };
 
-// ─── Game row shape ───────────────────────────────────────────────────────────
+/** What the review step shows BEFORE the admin clicks Generate: the same plan
+ *  the generate run would produce, with nothing written. */
+export type BracketPreflight =
+  | { ok: true; gameCount: number; slotCount: number; tbdCount: number; warnings: string[] }
+  | { ok: false; error: string };
 
-interface GameInsert {
-  playoff_id: string;
-  league_id: string;
-  division_id: string;
-  round: string;
-  game_number: number;
-  home_team_id: string | null;
-  away_team_id: string | null;
-  venue_id: string | null;
-  scheduled_date: string | null;
-  start_time: string | null;
-  status: "scheduled";
-}
+// ─── Shared input loading ─────────────────────────────────────────────────────
 
-// ─── Slot helpers ─────────────────────────────────────────────────────────────
+type Supa = ReturnType<typeof createClient>;
 
-const DAY_TO_JS: Record<string, number> = {
-  Su: 0, Mo: 1, Tu: 2, We: 3, Th: 4, Fr: 5, Sa: 6,
-};
+type LoadedInputs =
+  | { ok: true; input: PlanInput; extraWarnings: string[] }
+  | { ok: false; error: string };
 
-function pad2(n: number) { return String(n).padStart(2, "0"); }
-function localDateStr(d: Date) {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-function timeToMinutes(t: string) {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
-}
-function minutesToTimeStr(mins: number) {
-  return `${pad2(Math.floor(mins / 60))}:${pad2(mins % 60)}`;
-}
-
-interface Slot {
-  date: string;
-  time: string;
-  venueId: string;
-}
-
-// Matches the hardcoded 105-min spacing below (90-min game + 15-min buffer).
-// If slot spacing ever switches to division settings, change both together.
-const PLAYOFF_GAME_DURATION_MIN = 90;
-
-/**
- * Returns all available (venue × time) pairs for each valid playoff date,
- * grouped so index 0 = first date, index 1 = second date, etc.
- * Within each date, slots are ordered by time then venue so that multiple
- * games on the same venue within a round are staggered across time windows.
- *
- * Venue hours are a hard filter — a slot the venue isn't open for is never
- * emitted (same rule as the main schedule generator and findFreeSlot).
- */
-function buildSlotsByDate(
+async function loadPlanInputs(
+  supabase: Supa,
+  playoffId: string,
+  leagueId: string,
   data: PlayoffWizardData,
-  venueAvailability: Map<string, VenueAvailability>,
-): Slot[][] {
-  if (!data.start_date || !data.end_date) return [];
-
-  const venueIds = data.venue_assignments.map((v) => v.venue_id);
-  if (!venueIds.length) return [];
-
-  const allowedDays = new Set(
-    data.playing_days.map((d) => DAY_TO_JS[d]).filter((n) => n !== undefined),
-  );
-  if (!allowedDays.size) return [];
-
-  const byDate = new Map<string, Slot[]>();
-  const cur = new Date(data.start_date + "T00:00:00");
-  const end = new Date(data.end_date + "T00:00:00");
-
-  // 90-min game + 15-min buffer = 105-min spacing between start times
-  const interval = 105;
-
-  while (cur <= end) {
-    const dayJS = cur.getDay();
-    const iso = localDateStr(cur);
-
-    if (allowedDays.has(dayJS)) {
-      const dayKey = Object.entries(DAY_TO_JS).find(([, v]) => v === dayJS)?.[0];
-      const win = dayKey ? data.day_windows[dayKey as keyof typeof data.day_windows] : undefined;
-      const earliest = timeToMinutes(win?.start ?? "09:00");
-      const latest = timeToMinutes(win?.end ?? "21:00");
-      const availabilityDay = dayKeyFromJsDate(cur);
-
-      const dateSlots: Slot[] = [];
-      let t = earliest;
-      while (t <= latest) {
-        const time = minutesToTimeStr(t);
-        for (const venueId of venueIds) {
-          // A venue missing from the map passes through — the wizard already
-          // filters to configured venues, so missing means the availability
-          // fetch failed, and blocking every slot would be worse.
-          const av = venueAvailability.get(venueId);
-          if (
-            av &&
-            !isVenueAvailable(av, availabilityDay, time, PLAYOFF_GAME_DURATION_MIN)
-          ) {
-            continue;
-          }
-          dateSlots.push({ date: iso, time, venueId });
-        }
-        t += interval;
-      }
-
-      if (dateSlots.length > 0) byDate.set(iso, dateSlots);
-    }
-
-    cur.setDate(cur.getDate() + 1);
+): Promise<LoadedInputs> {
+  let seeds: SeededTeam[] = data.seeding;
+  if (!seeds.length) {
+    const { data: teams, error } = await supabase
+      .from("teams")
+      .select("id, name")
+      .eq("division_id", data.division_id)
+      .order("name");
+    if (error) return { ok: false, error: error.message };
+    seeds = (teams ?? []).map((t) => ({ team_id: t.id, team_name: t.name }));
   }
 
-  // Map insertion order is chronological since we iterate dates in order
-  return [...byDate.values()];
-}
-
-// ─── Round-robin matchup generation (circle method) ──────────────────────────
-
-function roundRobinRounds(ids: string[]): [string, string][][] {
-  const arr = ids.length % 2 === 0 ? [...ids] : [...ids, "__bye__"];
-  const n = arr.length;
-  const rounds: [string, string][][] = [];
-
-  for (let r = 0; r < n - 1; r++) {
-    const round: [string, string][] = [];
-    for (let i = 0; i < n / 2; i++) {
-      const a = arr[i];
-      const b = arr[n - 1 - i];
-      if (a !== "__bye__" && b !== "__bye__") round.push([a, b]);
-    }
-    rounds.push(round);
-    arr.splice(1, 0, arr.pop()!);
+  if (seeds.length < 2) {
+    return { ok: false, error: "Need at least 2 teams to generate a bracket." };
   }
 
-  return rounds;
-}
-
-// ─── Slot picker — one date bucket per round ──────────────────────────────────
-
-function makeSlotPicker(slotsByDate: Slot[][]) {
-  // Each call to nextRound() advances to the next date bucket.
-  // Within a round, slots are consumed sequentially (venue-staggered within
-  // each time window, so same-venue games are at different times).
-  let dateIdx = 0;
-  let slotInDate = 0;
-  let lastRound = "";
-
-  return function pickSlot(round: string): Slot | null {
-    if (round !== lastRound) {
-      if (lastRound !== "") dateIdx++;
-      lastRound = round;
-      slotInDate = 0;
-    }
-    const bucket = slotsByDate[Math.min(dateIdx, slotsByDate.length - 1)] ?? [];
-    return bucket[slotInDate++] ?? null;
-  };
-}
-
-// ─── Single elimination ────────────────────────────────────────────────────────
-
-// Exported (like buildDoubleElimination) so the advancement mapping in
-// advancement.ts can be verified against real generator output.
-export function buildSingleElimination(
-  seeds: SeededTeam[],
-  playoffId: string,
-  leagueId: string,
-  divisionId: string,
-  slotsByDate: Slot[][],
-): GameInsert[] {
-  const n = seeds.length;
-  if (n < 2) return [];
-
-  const bracketSize = Math.pow(2, Math.ceil(Math.log2(n)));
-  const teamSlots: (SeededTeam | null)[] = seeds.slice();
-  while (teamSlots.length < bracketSize) teamSlots.push(null);
-
-  const games: GameInsert[] = [];
-  let gameNumber = 1;
-  const pick = makeSlotPicker(slotsByDate);
-
-  // Round 1: pair seed 1 vs N, 2 vs N-1, etc. Skip bye pairs.
-  const r1Label = "R1";
-  for (let i = 0; i < bracketSize / 2; i++) {
-    const home = teamSlots[i];
-    const away = teamSlots[bracketSize - 1 - i];
-    if (home && away) {
-      const slot = pick(r1Label);
-      games.push({
-        playoff_id: playoffId, league_id: leagueId, division_id: divisionId,
-        round: r1Label, game_number: gameNumber++,
-        home_team_id: home.team_id, away_team_id: away.team_id,
-        venue_id: slot?.venueId ?? null,
-        scheduled_date: slot?.date ?? null,
-        start_time: slot?.time ?? null,
-        status: "scheduled",
-      });
-    }
-  }
-
-  // Subsequent rounds — TBD placeholders, each on the next date
-  let round = 2;
-  let roundSize = bracketSize / 4;
-  while (roundSize >= 1) {
-    const label = roundSize === 1 ? "F" : roundSize === 2 ? "SF" : `R${round}`;
-    for (let i = 0; i < roundSize; i++) {
-      const slot = pick(label);
-      games.push({
-        playoff_id: playoffId, league_id: leagueId, division_id: divisionId,
-        round: label, game_number: gameNumber++,
-        home_team_id: null, away_team_id: null,
-        venue_id: slot?.venueId ?? null,
-        scheduled_date: slot?.date ?? null,
-        start_time: slot?.time ?? null,
-        status: "scheduled",
-      });
-    }
-    round++;
-    roundSize = roundSize / 2;
-  }
-
-  return games;
-}
-
-// ─── Double elimination ────────────────────────────────────────────────────────
-
-// The only team counts the double-elim generator + advancement mapping
-// support. Any other count silently drops "bye" teams from the bracket
-// entirely (e.g. 3 teams → seed 1 never plays), and >32 needs round labels
-// ROUND_ORDER doesn't know. generateBracket rejects everything else until
-// bye handling exists. (buildSingleElimination drops bye teams the same way
-// — its validation should join this when byes are tackled.)
-export const DOUBLE_ELIM_SUPPORTED_COUNTS = [2, 4, 8, 16, 32];
-
-// Exported so the advancement mapping in advancement.ts can be verified
-// against real generator output (see that file's header).
-export function buildDoubleElimination(
-  seeds: SeededTeam[],
-  playoffId: string,
-  leagueId: string,
-  divisionId: string,
-  slotsByDate: Slot[][],
-): GameInsert[] {
-  const n = seeds.length;
-  if (n < 2) return [];
-
-  const bracketSize = Math.pow(2, Math.ceil(Math.log2(n)));
-  const games: GameInsert[] = [];
-  let gameNumber = 1;
-  const pick = makeSlotPicker(slotsByDate);
-
-  function mkGame(round: string, homeId: string | null, awayId: string | null): GameInsert {
-    const slot = pick(round);
+  if (
+    data.format === "double_elimination" &&
+    !DOUBLE_ELIM_SUPPORTED_COUNTS.includes(seeds.length)
+  ) {
     return {
-      playoff_id: playoffId, league_id: leagueId, division_id: divisionId,
-      round, game_number: gameNumber++,
-      home_team_id: homeId, away_team_id: awayId,
-      venue_id: slot?.venueId ?? null,
-      scheduled_date: slot?.date ?? null,
-      start_time: slot?.time ?? null,
-      status: "scheduled",
+      ok: false,
+      error:
+        `Double elimination needs exactly 2, 4, 8, 16, or 32 teams — this division has ${seeds.length}. ` +
+        `Adjust the division's teams or pick a different format (bye rounds aren't supported for double elimination yet).`,
     };
   }
 
-  // WB Round 1 (known matchups)
-  const wbR1Count = bracketSize / 2;
-  for (let i = 0; i < wbR1Count; i++) {
-    const home = seeds[i] ?? null;
-    const away = seeds[bracketSize - 1 - i] ?? null;
-    if (home && away) games.push(mkGame("WB-R1", home.team_id, away.team_id));
+  // Spacing comes from the division: duration + buffer. A missing setting is
+  // defaulted AND reported (bracket-plan's planSettingsFromDivision), never
+  // assumed silently.
+  const { data: div, error: divErr } = await supabase
+    .from("divisions")
+    .select("name, settings")
+    .eq("id", data.division_id)
+    .single();
+  if (divErr || !div) {
+    return { ok: false, error: "Couldn't read the division's game duration and buffer, so no bracket was generated." };
   }
+  const divRow = div as { name: string; settings: unknown };
+  const settings = planSettingsFromDivision(divRow.settings);
 
-  // WB subsequent rounds
-  let wbRound = 2;
-  let wbSize = wbR1Count / 2;
-  while (wbSize >= 1) {
-    const label = wbSize === 1 ? "WB-F" : `WB-R${wbRound}`;
-    for (let i = 0; i < wbSize; i++) games.push(mkGame(label, null, null));
-    wbRound++;
-    wbSize = wbSize / 2;
-  }
-
-  // LB rounds
-  const totalWbRounds = Math.log2(bracketSize);
-  let lbSize = bracketSize / 4;
-  for (let lbR = 1; lbR <= (totalWbRounds - 1) * 2; lbR++) {
-    const count = Math.max(1, Math.ceil(lbSize));
-    const label = lbR === (totalWbRounds - 1) * 2 ? "LB-F" : `LB-R${lbR}`;
-    for (let i = 0; i < count; i++) games.push(mkGame(label, null, null));
-    if (lbR % 2 === 0) lbSize = Math.max(1, lbSize / 2);
-  }
-
-  games.push(mkGame("GF", null, null));
-  games.push(mkGame("GF-R", null, null));
-
-  return games;
-}
-
-// ─── Round robin ─────────────────────────────────────────────────────────────
-
-function buildRoundRobin(
-  seeds: SeededTeam[],
-  playoffId: string,
-  leagueId: string,
-  divisionId: string,
-  slotsByDate: Slot[][],
-): GameInsert[] {
-  const ids = seeds.map((s) => s.team_id);
-  if (ids.length < 2) return [];
-
-  const rounds = roundRobinRounds(ids);
-  const games: GameInsert[] = [];
-  let gameNumber = 1;
-  const pick = makeSlotPicker(slotsByDate);
-
-  rounds.forEach((round, rIdx) => {
-    const label = `RR${rIdx + 1}`;
-    round.forEach(([homeId, awayId]) => {
-      const slot = pick(label);
-      games.push({
-        playoff_id: playoffId, league_id: leagueId, division_id: divisionId,
-        round: label, game_number: gameNumber++,
-        home_team_id: homeId, away_team_id: awayId,
-        venue_id: slot?.venueId ?? null,
-        scheduled_date: slot?.date ?? null,
-        start_time: slot?.time ?? null,
-        status: "scheduled",
+  const extraWarnings: string[] = [];
+  const venueIds = data.venue_assignments.map((v) => v.venue_id);
+  const venues: PlanVenue[] = [];
+  if (venueIds.length > 0) {
+    const { data: venueRows, error: venueErr } = await supabase
+      .from("venues")
+      .select("id, name, availability")
+      .in("id", venueIds);
+    const byId = new Map(
+      ((venueRows ?? []) as { id: string; name: string; availability: unknown }[]).map((v) => [v.id, v]),
+    );
+    if (venueErr) {
+      extraWarnings.push(
+        "Couldn't read the fields' hours, so playoff times were not checked against them. Check each field's hours on the Venues page.",
+      );
+    }
+    for (const id of venueIds) {
+      const row = byId.get(id);
+      venues.push({
+        id,
+        name: row?.name ?? "Field",
+        // A venue missing from the read passes through unfiltered — the
+        // wizard only offers configured venues, so missing means the fetch
+        // failed, and blocking every slot would be worse.
+        availability: row ? parseAvailability(row.availability) : null,
       });
-    });
-  });
+    }
+  }
 
-  return games;
+  return {
+    ok: true,
+    extraWarnings,
+    input: {
+      format: data.format,
+      seeds,
+      ids: { playoffId, leagueId, divisionId: data.division_id },
+      grid: {
+        startDate: data.start_date,
+        endDate: data.end_date,
+        playingDays: data.playing_days,
+        dayWindows: data.day_windows,
+        venues,
+        durationMin: settings.durationMin,
+        bufferMin: settings.bufferMin,
+      },
+      settings,
+      divisionName: divRow.name || data.division_name,
+    },
+  };
 }
 
-// ─── Main export ─────────────────────────────────────────────────────────────
+function runPlan(loaded: Extract<LoadedInputs, { ok: true }>): BracketPlan {
+  const plan = planBracket(loaded.input);
+  return { ...plan, warnings: [...loaded.extraWarnings, ...plan.warnings] };
+}
+
+// ─── Pre-flight (review step) ─────────────────────────────────────────────────
+
+/** Runs the plan with a placeholder playoff id and writes nothing. */
+export async function preflightBracket(
+  leagueId: string,
+  data: PlayoffWizardData,
+): Promise<BracketPreflight> {
+  const supabase = createClient();
+  const loaded = await loadPlanInputs(supabase, "preflight", leagueId, data);
+  if (!loaded.ok) return { ok: false, error: loaded.error };
+  const plan = runPlan(loaded);
+  return {
+    ok: true,
+    gameCount: plan.games.length,
+    slotCount: plan.slots.length,
+    tbdCount: plan.tbdCount,
+    warnings: plan.warnings,
+  };
+}
+
+// ─── Generate ─────────────────────────────────────────────────────────────────
 
 export async function generateBracket(
   playoffId: string,
@@ -356,51 +177,15 @@ export async function generateBracket(
 ): Promise<BracketResult> {
   const supabase = createClient();
 
-  let seeds: SeededTeam[] = data.seeding;
-  if (!seeds.length) {
-    const { data: teams, error } = await supabase
-      .from("teams")
-      .select("id, name")
-      .eq("division_id", data.division_id)
-      .order("name");
-    if (error) return { success: false, error: error.message };
-    seeds = (teams ?? []).map((t) => ({ team_id: t.id, team_name: t.name }));
-  }
+  // Every read and validation runs BEFORE the delete below, so an invalid or
+  // unreadable re-generate never wipes an existing bracket.
+  const loaded = await loadPlanInputs(supabase, playoffId, leagueId, data);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const plan = runPlan(loaded);
 
-  if (seeds.length < 2) {
-    return { success: false, error: "Need at least 2 teams to generate a bracket." };
+  if (!plan.games.length) {
+    return { success: false, error: "No games could be generated." };
   }
-
-  // Must run before the games delete below so an invalid re-generate never
-  // wipes an existing bracket.
-  if (
-    data.format === "double_elimination" &&
-    !DOUBLE_ELIM_SUPPORTED_COUNTS.includes(seeds.length)
-  ) {
-    return {
-      success: false,
-      error:
-        `Double elimination needs exactly 2, 4, 8, 16, or 32 teams — this division has ${seeds.length}. ` +
-        `Adjust the division's teams or pick a different format (bye rounds aren't supported yet).`,
-    };
-  }
-
-  // Venue hours for the slot filter — the wizard only carries venue ids.
-  // A failed fetch leaves the map empty, which passes slots through
-  // unfiltered (see buildSlotsByDate) rather than blocking the bracket.
-  const venueIds = data.venue_assignments.map((v) => v.venue_id);
-  const venueAvailability = new Map<string, VenueAvailability>();
-  if (venueIds.length > 0) {
-    const { data: venueRows } = await supabase
-      .from("venues")
-      .select("id, availability")
-      .in("id", venueIds);
-    for (const v of (venueRows ?? []) as { id: string; availability: unknown }[]) {
-      venueAvailability.set(v.id, parseAvailability(v.availability));
-    }
-  }
-
-  const slotsByDate = buildSlotsByDate(data, venueAvailability);
 
   const { error: delErr } = await supabase
     .from("playoff_games")
@@ -408,22 +193,7 @@ export async function generateBracket(
     .eq("playoff_id", playoffId);
   if (delErr) return { success: false, error: delErr.message };
 
-  let games: GameInsert[];
-  const fmt: PlayoffFormat = data.format;
-
-  if (fmt === "single_elimination") {
-    games = buildSingleElimination(seeds, playoffId, leagueId, data.division_id, slotsByDate);
-  } else if (fmt === "double_elimination") {
-    games = buildDoubleElimination(seeds, playoffId, leagueId, data.division_id, slotsByDate);
-  } else {
-    games = buildRoundRobin(seeds, playoffId, leagueId, data.division_id, slotsByDate);
-  }
-
-  if (!games.length) {
-    return { success: false, error: "No games could be generated." };
-  }
-
-  const { error: insErr } = await supabase.from("playoff_games").insert(games as never[]);
+  const { error: insErr } = await supabase.from("playoff_games").insert(plan.games as never[]);
   if (insErr) return { success: false, error: insErr.message };
 
   await supabase
@@ -431,10 +201,10 @@ export async function generateBracket(
     .update({ status: "active", updated_at: new Date().toISOString() } as never)
     .eq("id", playoffId);
 
-  // Games whose slot fell through to null (slots exhausted, or every
-  // candidate filtered out by venue hours) — surfaced by the wizard so the
-  // commissioner knows to place them manually.
-  const tbdCount = games.filter((g) => g.scheduled_date === null).length;
-
-  return { success: true, gamesCreated: games.length, tbdCount };
+  return {
+    success: true,
+    gamesCreated: plan.games.length,
+    tbdCount: plan.tbdCount,
+    warnings: plan.warnings,
+  };
 }

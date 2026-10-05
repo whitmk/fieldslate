@@ -291,6 +291,59 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   result entry becomes real. The single- and double-elim mappings live in
   `src/lib/playoffs/advancement.ts` (pure, testable — see its header for
   the movement rules and edit semantics).
+- **The generator is split: `src/lib/playoffs/bracket-plan.ts` is PURE and
+  decides everything; `generate-bracket.ts` only loads inputs and writes
+  rows** (2026-10-05, branch `fix/playoff-generator`, after SRALL 50/70's
+  bracket came out with three games at 9:00 AM on one field and the top two
+  seeds never playing). A scheduling rule added to the I/O file is a rule the
+  harness cannot see — add it to the plan. `preflightBracket` runs the same
+  plan with nothing written, and the review step shows its warnings BEFORE
+  the Generate button.
+- **Single elimination handles byes; double elimination and round robin do
+  NOT and remain untested.** `standardSeedOrder` lays out the bracket so
+  seeds 1 and 2 are in opposite halves (8: 1v8, 4v5 | 2v7, 3v6); a bye team
+  is written into its round-2 slot AT GENERATION TIME; and `game_number` is
+  the BRACKET POSITION (round-1 position p is number p+1, a bye pair leaves
+  its number unused; later rounds continue consecutively — see
+  `singleElimFirstNumber`). Advancement resolves the target by that number,
+  never by index in the round's compacted row list; a number that is not
+  found (a legacy bracket with byes) falls back to row order. Six teams: 3v6
+  and 4v5 in round 1, seed 1 plays the 4/5 winner, seed 2 the 3/6 winner.
+- **Spacing is the division's `game_duration` + `buffer_minutes`**
+  (`planSettingsFromDivision`; a missing value defaults to 90/15 AND is
+  reported in the warnings). The playoff planner uses the END-BY window rule
+  (the reschedule picker's), for the day window and the field's hours — so a
+  9:00–17:00 Saturday fits two 180-minute games, not three, even though the
+  regular-season generator (start-only) would place three. Deliberate; the
+  stricter rule is the one the founder approved for the picker.
+- **Slots are ONE chronological list; rounds consume it in order and never
+  wrap.** A later round starts no earlier than the previous round's last game
+  end + buffer (slots passed over are counted as `skippedForOrder`, and the
+  TBD warning says so). When slots run out the game is saved with NO date,
+  time or field and reported — never clamped onto the last date. Every
+  playing date in the range gets a diagnostic (`ok` / `closed` / `too_short`)
+  and `planWarnings` names the dates, weekday and field. Warnings are
+  rendered VERBATIM by the review pre-flight and the success screen — never
+  hand-write one.
+- **Manual edit: `EditPlayoffGameModal` (calendar button on every unfinished
+  game in the bracket list and cards)** sets date, time and field. Conflicts
+  are the reschedule picker's manual-entry check (`manualMoveConflicts` via
+  `src/lib/playoffs/edit-game.ts`) against BOTH the season's `games` and
+  every other `playoff_games` row at that field — notices, never gates. The
+  save chains `.select("id")`; zero rows is an error. Logged as
+  `playoff_game_rescheduled`. The export modal's CSV still hardcodes a
+  90-minute end time (`addMinsFmt(g.start_time, 90)`) — not touched.
+- **The Dates step starts from the division's own playing days and windows**
+  (`playoffDefaultsFromDivision`, applied when a division is picked; orphan
+  windows for non-playing days are dropped). Still editable.
+- **Playoff games are NOT in the team calendar feed, the Schedule page, the
+  prints or the CSVs** — only the Playoffs page and its export read
+  `playoff_games`. The feed also expires 7 days after `leagues.end_date`, so a
+  bracket scheduled after the season end is unreachable there regardless.
+- **Harness: `npm run sim:playoff-bracket`** (229 checks, 10 anti-vacuity
+  counters; parts A–H + S) and `npm run sim:playoff-bracket:mutants` (13
+  mutants applied to the real source, each required to die FIRST at its own
+  assertion). Read the sim's header before touching any of this.
 
 ## Game deletion (single game)
 

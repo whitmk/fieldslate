@@ -328,8 +328,11 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
                           <div className="border-t border-gray-50 p-4">
                             <BracketView
                               playoffId={playoff.id}
+                              leagueId={playoff.league_id}
+                              divisionId={playoff.division_id}
                               divisionName={playoff.division?.name ?? ""}
                               format={playoff.format}
+                              playingDays={playoff.playing_days ?? []}
                             />
                           </div>
                         )}

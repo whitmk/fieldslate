@@ -52,6 +52,8 @@
     "sim:invite-page": "TZ=UTC npx tsx scripts/sim/invite-page-sim.ts",
     "sim:request-reschedule": "npx tsx scripts/sim/request-reschedule-sim.ts",
     "sim:location-filter": "npx tsx scripts/sim/location-filter-sim.ts",
+    "sim:playoff-bracket": "TZ=UTC npx tsx scripts/sim/playoff-bracket-sim.ts",
+    "sim:playoff-bracket:mutants": "npx tsx scripts/sim/playoff-bracket-mutants.ts",
     "sim:week-grid": "TZ=UTC npx tsx scripts/sim/week-grid-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/week-grid-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/week-grid-sim.ts"
   },
   "dependencies": {

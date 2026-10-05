@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { Layers } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type { PlayoffWizardData } from "../playoff-wizard-types";
+import { playoffDefaultsFromDivision } from "@/lib/playoffs/bracket-plan";
+import { DEFAULT_PLAYOFF_DATA, type PlayoffWizardData } from "../playoff-wizard-types";
 
 interface Props {
   data: PlayoffWizardData;
@@ -11,7 +12,7 @@ interface Props {
   leagueId: string;
 }
 
-type DivisionRow = { id: string; name: string; team_count: number };
+type DivisionRow = { id: string; name: string; team_count: number; settings: unknown };
 
 export function StepDivision({ data, update, leagueId }: Props) {
   const [divisions, setDivisions] = useState<DivisionRow[]>([]);
@@ -24,7 +25,7 @@ export function StepDivision({ data, update, leagueId }: Props) {
       const [{ data: divData }, { data: playoffData }] = await Promise.all([
         supabase
           .from("divisions")
-          .select("id, name, team_count")
+          .select("id, name, team_count, settings")
           .eq("league_id", leagueId)
           .order("name"),
         supabase
@@ -103,6 +104,11 @@ export function StepDivision({ data, update, leagueId }: Props) {
                     division_id: div.id,
                     division_name: div.name,
                     seeding: [],
+                    // The Dates step starts from the division's OWN playing
+                    // days and windows (a Saturday-only division should not
+                    // start from the wizard's Sa+Su 9–5 default). Still
+                    // editable there.
+                    ...playoffDefaultsFromDivision(div.settings, DEFAULT_PLAYOFF_DATA),
                   })
                 }
                 className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${

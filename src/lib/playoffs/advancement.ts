@@ -3,10 +3,22 @@
 // against generated brackets.
 //
 // Single elimination (buildSingleElimination: R1 → R2… → SF → F) advances the
-// winner positionally: game ⌊i/2⌋ of the next round, slot by i%2; losers are
-// out. The double-elim mapping is derived from the bracket
-// buildDoubleElimination emits for bracketSize = 2^m (for BOTH formats, team
-// counts must be exact powers of two — the generators silently drop bye teams
+// winner by BRACKET POSITION: a game's position in its round is
+// `game_number - singleElimFirstNumber(round, B)` (bracket-plan.ts numbers
+// rounds positionally; a round-1 bye pair leaves its number unused), and the
+// winner goes to next-round position ⌊p/2⌋, slot by p%2; losers are out.
+// NEVER by index in the round's list of rows: with byes the first round is
+// shorter than the bracket, and compacted indices sent both round-1 winners
+// into the same semifinal while the bye seeds never played (SRALL 50/70,
+// 2026-10-05). A bye team is already sitting in its next-round slot; only the
+// winner's own slot is written, so the pre-placed opponent is never touched.
+// Legacy brackets generated before positional numbering had no gaps, so the
+// formula resolves to the same rows; if a number is not found (an old bracket
+// WITH byes) the row at that index is used as before.
+//
+// The double-elim mapping is derived from the bracket
+// buildDoubleElimination emits for bracketSize = 2^m (for that format, team
+// counts must be exact powers of two — its generator silently drops bye teams
 // otherwise):
 //
 //   WB-R1 (bracketSize/2 games) … WB-R(m-1), WB-F     — m rounds
@@ -33,6 +45,11 @@
 // overwriting any stale occupants — but only while every downstream target is
 // unplayed. If a target already has a winner, the whole save is blocked so an
 // edit can never corrupt a played game.
+
+import {
+  singleElimFirstNumber,
+  singleElimRoundSize,
+} from "@/lib/playoffs/bracket-plan";
 
 export interface GameRow {
   id: string;
@@ -85,6 +102,19 @@ function groupRounds(allGames: GameRow[]): Map<string, GameRow[]> {
 
 // ─── Single elimination ───────────────────────────────────────────────────────
 
+/** A game's bracket position within its round. Positional numbering first;
+ *  the row's index in the round as a fallback for legacy brackets. */
+export function singleElimPosition(
+  game: GameRow,
+  roundIdx: number,
+  bracketSize: number,
+  roundGames: GameRow[],
+): number {
+  const p = game.game_number - singleElimFirstNumber(roundIdx, bracketSize);
+  if (p >= 0 && p < singleElimRoundSize(roundIdx, bracketSize)) return p;
+  return roundGames.findIndex((g) => g.id === game.id);
+}
+
 export function computeSingleElimAdvancement(
   game: GameRow,
   winnerId: string,
@@ -97,15 +127,22 @@ export function computeSingleElimAdvancement(
   // Championship (or unknown round) — nothing to advance to.
   if (roundIdx === -1 || roundIdx === roundOrder.length - 1) return { writes: [] };
 
-  const i = rounds.get(game.round)!.findIndex((g) => g.id === game.id);
+  // Every round after the first is complete, so the round count fixes the
+  // bracket size even when round 1 is short because of byes.
+  const bracketSize = Math.pow(2, roundOrder.length);
+  const pos = singleElimPosition(game, roundIdx, bracketSize, rounds.get(game.round)!);
+  if (pos < 0) return { writes: [] };
+
   const next = rounds.get(roundOrder[roundIdx + 1])!;
-  const target = next[Math.floor(i / 2)];
+  const targetPos = Math.floor(pos / 2);
+  const targetNumber = singleElimFirstNumber(roundIdx + 1, bracketSize) + targetPos;
+  const target = next.find((g) => g.game_number === targetNumber) ?? next[targetPos];
   if (!target) return { writes: [] };
 
   const writes: SlotWrite[] = [{
     gameId: target.id,
     round: target.round,
-    field: i % 2 === 0 ? "home_team_id" : "away_team_id",
+    field: pos % 2 === 0 ? "home_team_id" : "away_team_id",
     teamId: winnerId,
   }];
   return checkBlocked(writes, rounds) ?? { writes };

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { CalendarDays, List, Trophy, Clock, ClipboardEdit } from "lucide-react";
+import { CalendarDays, List, Trophy, Clock, ClipboardEdit, CalendarClock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { EnterResultModal } from "@/components/playoffs/enter-result-modal";
+import { EditPlayoffGameModal } from "@/components/playoffs/edit-playoff-game-modal";
 import type { PlayoffGame } from "@/types/database";
 
 export interface GameWithTeams extends PlayoffGame {
@@ -17,8 +18,12 @@ export interface GameWithTeams extends PlayoffGame {
 
 interface Props {
   playoffId: string;
+  leagueId: string;
+  divisionId: string;
   divisionName: string;
   format: string;
+  /** The playoff's playing days — the edit modal's "doesn't play on …" notice. */
+  playingDays: string[];
 }
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
@@ -81,10 +86,12 @@ function GameCard({
   game,
   isChampionship,
   onEnterResult,
+  onEdit,
 }: {
   game: GameWithTeams;
   isChampionship: boolean;
   onEnterResult: () => void;
+  onEdit: () => void;
 }) {
   const homeWon = game.winner_id === game.home_team_id;
   const awayWon = game.winner_id === game.away_team_id;
@@ -119,31 +126,44 @@ function GameCard({
         isDone={isDone}
       />
 
-      {(game.scheduled_date || game.venue_name) && bothTeams && (
-        <div className="border-t border-gray-50 px-2.5 py-1.5">
-          {game.scheduled_date && (
-            <p className="text-[10px] text-gray-400">
-              {fmtDate(game.scheduled_date)}
-              {game.start_time ? ` · ${fmtTime(game.start_time)}` : ""}
-            </p>
-          )}
-          {game.venue_name && (
-            <p className="truncate text-[10px] text-gray-400">{game.venue_name}</p>
-          )}
-        </div>
-      )}
+      {/* Date/field line — shown for every game, so an unplaced (TBD) game
+          reads "No date yet" instead of hiding the gap. */}
+      <div className="border-t border-gray-50 px-2.5 py-1.5">
+        {game.scheduled_date ? (
+          <p className="text-[10px] text-gray-400">
+            {fmtDate(game.scheduled_date)}
+            {game.start_time ? ` · ${fmtTime(game.start_time)}` : ""}
+          </p>
+        ) : (
+          <p className="text-[10px] italic text-amber-600">No date yet</p>
+        )}
+        {game.venue_name && (
+          <p className="truncate text-[10px] text-gray-400">{game.venue_name}</p>
+        )}
+      </div>
 
-      {bothTeams && (
-        <div className="border-t border-gray-50 px-2 py-1.5">
+      <div className="flex border-t border-gray-50 px-2 py-1.5">
+        {bothTeams && (
           <button
             onClick={onEnterResult}
-            className="flex w-full items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-[#0C1F3F] hover:bg-gray-50"
+            className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-[#0C1F3F] hover:bg-gray-50"
           >
             <ClipboardEdit className="h-3 w-3" />
             {isDone ? "Edit result" : "Enter result"}
           </button>
-        </div>
-      )}
+        )}
+        {!isDone && (
+          <button
+            onClick={onEdit}
+            aria-label="Set date, time and field"
+            title="Set date, time and field"
+            className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-gray-500 hover:bg-gray-50 hover:text-[#0C1F3F]"
+          >
+            <CalendarClock className="h-3 w-3" />
+            {game.scheduled_date ? "Move" : "Set time"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -187,11 +207,13 @@ function ListGameRow({
   idx,
   isChampionship,
   onEnterResult,
+  onEdit,
 }: {
   game: GameWithTeams;
   idx: number;
   isChampionship: boolean;
   onEnterResult: () => void;
+  onEdit: () => void;
 }) {
   const bothTeams = !!game.home_team_id && !!game.away_team_id;
   const isDone = game.status === "completed";
@@ -240,7 +262,7 @@ function ListGameRow({
             {fmtDate(game.scheduled_date)}
           </span>
         ) : (
-          <span className="text-xs text-gray-300">No date</span>
+          <span className="text-xs font-medium text-amber-600">No date yet</span>
         )}
         {game.start_time && (
           <span className="flex items-center gap-1 text-xs text-gray-400">
@@ -267,6 +289,17 @@ function ListGameRow({
         <span className="rounded-full bg-[#22C55E]/10 px-2 py-0.5 text-xs font-medium text-[#22C55E]">
           Final
         </span>
+      )}
+
+      {!isDone && (
+        <button
+          onClick={onEdit}
+          aria-label="Set date, time and field"
+          title="Set date, time and field"
+          className="flex min-h-9 min-w-9 items-center justify-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+        >
+          <CalendarClock className="h-3.5 w-3.5" />
+        </button>
       )}
 
       {bothTeams && (
@@ -300,10 +333,12 @@ function BracketTree({
   rounds,
   championshipRound,
   onEnterResult,
+  onEdit,
 }: {
   rounds: [string, GameWithTeams[]][];
   championshipRound: string | null;
   onEnterResult: (game: GameWithTeams) => void;
+  onEdit: (game: GameWithTeams) => void;
 }) {
   if (rounds.length === 0) return null;
 
@@ -370,6 +405,7 @@ function BracketTree({
               game={game}
               isChampionship={game.round === championshipRound}
               onEnterResult={() => onEnterResult(game)}
+              onEdit={() => onEdit(game)}
             />
           </div>
         ))
@@ -384,10 +420,12 @@ function ColumnView({
   rounds,
   championshipRound,
   onEnterResult,
+  onEdit,
 }: {
   rounds: [string, GameWithTeams[]][];
   championshipRound: string | null;
   onEnterResult: (game: GameWithTeams) => void;
+  onEdit: (game: GameWithTeams) => void;
 }) {
   return (
     <div className="flex items-start gap-8">
@@ -403,6 +441,7 @@ function ColumnView({
                 game={g}
                 isChampionship={g.round === championshipRound}
                 onEnterResult={() => onEnterResult(g)}
+                onEdit={() => onEdit(g)}
               />
             ))}
           </div>
@@ -414,11 +453,12 @@ function ColumnView({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function BracketView({ playoffId, divisionName, format }: Props) {
+export function BracketView({ playoffId, leagueId, divisionId, divisionName, format, playingDays }: Props) {
   const [games, setGames] = useState<GameWithTeams[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"bracket" | "list">("list");
   const [activeGame, setActiveGame] = useState<GameWithTeams | null>(null);
+  const [editingGame, setEditingGame] = useState<GameWithTeams | null>(null);
 
   const loadGames = useCallback(async () => {
     const supabase = createClient();
@@ -481,9 +521,19 @@ export function BracketView({ playoffId, divisionName, format }: Props) {
   const championshipRound = CHAMPIONSHIP_ROUNDS.has(lastRound ?? "") ? lastRound : null;
 
   const useBracketTree = format === "single_elimination";
+  const unplaced = games.filter((g) => !g.scheduled_date).length;
 
   return (
     <div className="flex flex-col gap-3">
+      {unplaced > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <CalendarClock className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+          <p className="text-xs text-amber-800">
+            {unplaced} game{unplaced === 1 ? " has" : "s have"} no date, time or field yet. Use the
+            calendar button on a game to set one.
+          </p>
+        </div>
+      )}
       {/* Header + view toggle */}
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-[#0C1F3F]">{divisionName}</p>
@@ -514,6 +564,7 @@ export function BracketView({ playoffId, divisionName, format }: Props) {
               idx={i}
               isChampionship={g.round === championshipRound}
               onEnterResult={() => setActiveGame(g)}
+              onEdit={() => setEditingGame(g)}
             />
           ))}
         </div>
@@ -524,15 +575,34 @@ export function BracketView({ playoffId, divisionName, format }: Props) {
               rounds={rounds}
               championshipRound={championshipRound}
               onEnterResult={setActiveGame}
+              onEdit={setEditingGame}
             />
           ) : (
             <ColumnView
               rounds={rounds}
               championshipRound={championshipRound}
               onEnterResult={setActiveGame}
+              onEdit={setEditingGame}
             />
           )}
         </div>
+      )}
+
+      {editingGame && (
+        <EditPlayoffGameModal
+          game={editingGame}
+          roundLabel={roundLabel(editingGame.round)}
+          leagueId={leagueId}
+          divisionId={divisionId}
+          divisionName={divisionName}
+          playingDays={playingDays}
+          onClose={() => setEditingGame(null)}
+          onSaved={async () => {
+            setEditingGame(null);
+            setLoading(true);
+            await loadGames();
+          }}
+        />
       )}
 
       {activeGame && (
