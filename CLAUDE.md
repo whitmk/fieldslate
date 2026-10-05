@@ -3501,6 +3501,43 @@ Still open:
 - **Brand colour drift:** `fs-navy` is `#0b1c39`, the homepage literal is
   `#0C1F3F` (150 files). One decision, one migration pass.
 
+## Snack shack — derived shifts (in progress, branch `feat/snack-shack-derived`)
+
+- **Stage 1 landed: the pure library `src/lib/snack-shack/derive-shifts.ts`
+  decides everything; nothing else may hold a rule.** Which games count
+  (attached `home_venue_ids` only, `countsAsScheduledGame`), the day window
+  (open N before the first start, close N after the last END, per-game
+  duration via `planSettingsFromDivision` with the `durationDefaulted` flag
+  reported as "assumed 90 minutes"), gaps (a break ≥ 60 min splits the day
+  UNLESS the offsets make the windows touch or overlap, then one window),
+  the days filter (a counting game on a closed weekday → `closedDays`, no
+  shifts), division (fewest shifts ≤ max, leftover LAST), the leftover
+  absorb (UNDER 60 min with 2+ shifts → first / last / split-to-the-minute
+  with odd minutes on the EARLIER shifts; default `last`; exactly 60 stands),
+  the absorb key (DATE + WINDOW START "HH:MM", never an index; a stored
+  choice whose window moved or is no longer short → `staleChoices`, default
+  applies), regenerate reconciliation (a stored derived row with the same
+  date/start/end is KEPT with its assignment; manual `is_recurring=false`
+  rows are never in any list), the equity pick seeded from the kept rows,
+  and the staleness diff (dates whose stored derived shifts differ from the
+  derivation, rendered by `stalenessSummary` verbatim).
+- **Wall-clock only.** Date and time come from `scheduled_at` by substring;
+  the weekday from `dayKeyFromIsoDate`. A close past midnight is clamped at
+  24:00 and reported (`clampedDates`) because `time` cannot hold it. The sim
+  runs under three host zones and asserts the library never hands a stored
+  timestamp to `new Date`.
+- **Blackout dates are deliberately NOT consulted.** The games are the
+  truth; a game hand-placed on a blackout date still brings a crowd. The
+  old fixed-block generator skipped blackouts; the derived model does not.
+- **A shift can exceed the max by up to 59 minutes** — that is the absorb
+  rule working (120 + a 59-minute leftover), not a bug. The sweep assertion
+  bounds it at max+60.
+- **Harness: `npm run sim:snack-shifts`** (83 checks × 3 zones, 12
+  anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (20 mutants,
+  each killed FIRST at its own assertion). Read the MUTATION LOG in the sim
+  header: the first run had five killed at the wrong line, all harness
+  ordering faults, and the section order now exists because of them.
+
 ## Open items
 
 - **The reschedule picker's own save has no save-time lock re-read** (the
