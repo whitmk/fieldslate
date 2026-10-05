@@ -95,7 +95,30 @@
 --   PM5  kept rows take the caller's assignment                → R2
 --   PM6  the team-in-season check removed                      → R8-team
 --
--- RUN LOG: see the bottom of this file after the run.
+-- RUN LOG (2026-10-05, ~16:15 Pacific, against production, rolled back; leak
+-- check clean). 0103 was applied for real right after, at 23:19 UTC.
+--
+--   RUN 1 — the batch aborted at the FIRST fixture insert, before the
+--     migration or any lock: `INSERT … SELECT '2026-11-01'` is a TEXT literal
+--     (unlike VALUES, a SELECT list does not coerce bare literals to the
+--     column type). Harness fault, not a migration fault. Fixed with ::date
+--     and ::uuid casts on the fixture selects.
+--
+--   RUN 2 — green:
+--     BASELINE failures (0): []
+--     PM1 → KILLED at [R1]      (kept=3 created=2 removed=0; the 13:30–15:30
+--                                row survived because its end was ignored)
+--     PM2 → KILLED at [R3]      (the manual row was deleted — removed=2)
+--     PM3 → KILLED at [R6]      (a non-member removed all four rows)
+--     PM4 → KILLED at [R8-dup]
+--     PM5 → KILLED at [R2]      (Bears → Giants on the kept row)
+--     PM6 → KILLED at [R8-team]
+--     AFTER MUTANTS failures: []
+--     prosrc md5: 49e746c769c2f8ec0315b6d5ad275d68 — equals the md5 of the
+--     repo file's function body AND the live body after the real apply.
+--   Leak check after the run: 0 columns, 0 table, 0 function, 0 fixture
+--   leagues/teams; blocks md5 1157ed70e476d7387dec32cc75bcf35b (107 rows)
+--   unchanged from before the run.
 
 select set_config('lock_timeout', '3s', true),
        set_config('statement_timeout', '60s', true);
@@ -133,9 +156,9 @@ select
   gen_random_uuid() as nobody;
 
 insert into public.leagues (id, name, sport, season, owner_id, start_date, end_date)
-select league_a, 'H103 Fixture A', 'Baseball', 'Fall 2026', owner, '2026-11-01', '2026-12-20' from h103_fx
+select league_a, 'H103 Fixture A', 'Baseball', 'Fall 2026', owner, '2026-11-01'::date, '2026-12-20'::date from h103_fx
 union all
-select league_b, 'H103 Fixture B', 'Baseball', 'Fall 2026', owner, '2026-11-01', '2026-12-20' from h103_fx;
+select league_b, 'H103 Fixture B', 'Baseball', 'Fall 2026', owner, '2026-11-01'::date, '2026-12-20'::date from h103_fx;
 
 insert into public.divisions (id, league_id, name, settings)
 select division_a, league_a, 'H103 Minors', '{"game_duration": 120, "buffer_minutes": 30, "playing_days": ["Sa"]}'::jsonb from h103_fx;
@@ -145,12 +168,12 @@ select bears,  league_a, division_a, 'Bears'  from h103_fx union all
 select cubs,   league_a, division_a, 'Cubs'   from h103_fx union all
 select expos,  league_a, division_a, 'Expos'  from h103_fx union all
 select giants, league_a, division_a, 'Giants' from h103_fx union all
-select other_team, league_b, null, 'Other League Team' from h103_fx;
+select other_team, league_b, null::uuid, 'Other League Team' from h103_fx;
 
 -- The settings row goes in BEFORE the migration: M1 proves the defaults land
 -- on a row that already existed.
 insert into public.snack_shack_settings (id, season_id, start_date, end_date, days_of_week, time_blocks_by_day, home_venue_ids, scheduling_preference)
-select snack, league_a, '2026-11-01', '2026-12-20', '["Sa"]'::jsonb, '{}'::jsonb, '[]'::jsonb, 'prefer_off_days' from h103_fx;
+select snack, league_a, '2026-11-01'::date, '2026-12-20'::date, '["Sa"]'::jsonb, '{}'::jsonb, '[]'::jsonb, 'prefer_off_days' from h103_fx;
 
 -- Resets the fixture blocks to their starting state. Called at the top of
 -- every assertion pass so each mutant sees the same rows.

@@ -70,7 +70,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration APPLIED: 0101 (demo_requests).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch (not applied). 0103 (snack shack derived shifts) is written on `feat/snack-shack-derived` and NOT applied — see "Snack shack — derived shifts". Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
+  **Latest migration APPLIED: 0103 (snack shack derived shifts, applied 2026-10-05 23:19 UTC; md5(prosrc) `49e746c769c2f8ec0315b6d5ad275d68` verified against the repo file).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -3532,7 +3532,7 @@ Still open:
 - **A shift can exceed the max by up to 59 minutes** — that is the absorb
   rule working (120 + a 59-minute leftover), not a bug. The sweep assertion
   bounds it at max+60.
-- **Stage 2 written: migration 0103 (`supabase/migrations/0103_snack_shack_derived_shifts.sql`) — NOT APPLIED.**
+- **Stage 2 APPLIED 2026-10-05: migration 0103 (`supabase/migrations/0103_snack_shack_derived_shifts.sql`)**, after a green rolled-back proof run (see the harness RUN LOG). Live: columns present with defaults 30/30/120 on all 3 existing settings rows, `shifts_generated_at` null everywhere, absorb table empty, blocks md5 unchanged (107 rows), privileges exactly as stated, md5(prosrc) matches.
   Three rule columns on `snack_shack_settings` (`open_before_min`,
   `close_after_min`, `max_shift_min`, defaults 30/30/120, CHECK-bounded) plus
   `shifts_generated_at`; the table `snack_shack_absorb_choices` keyed
@@ -3551,9 +3551,9 @@ Still open:
   public + each role first; the migration's final DO block raises if a
   privilege is wrong). `days_of_week` keeps its meaning; `time_blocks_by_day`
   stays in place, unread.
-- **Existing data is not migrated by 0103.** Existing blocks are neither read
-  nor written; existing settings rows get the defaults. The real league's 33
-  blocks change only if an admin regenerates.
+- **Existing data was not migrated by 0103.** Existing blocks were neither read
+  nor written (checksum-proven); existing settings rows got the defaults. The
+  real league's 33 blocks change only if an admin regenerates.
 - **Locks when 0103 is applied: ACCESS EXCLUSIVE on `snack_shack_settings`**
   (ADD COLUMN with constant defaults, no rewrite; ADD CONSTRAINT scans 3
   rows) — blocks every read and write of that table (Snack Shack page, venue
@@ -3571,6 +3571,9 @@ Still open:
   and the absorb table's RLS (C1/C2); 6 mutants on the real function body.
   It holds the same ACCESS EXCLUSIVE lock as the migration for the run
   (one to two seconds, `lock_timeout` 3s). Not `npm run`-able, not in CI.
+  Run 2026-10-05: green, 6/6 mutants killed at their own tag; run 1 died at
+  the first fixture insert because `INSERT … SELECT` does not coerce bare
+  string literals (VALUES does) — cast fixture literals in a SELECT list.
 - **Harness: `npm run sim:snack-shifts`** (83 checks × 3 zones, 12
   anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (20 mutants,
   each killed FIRST at its own assertion). Read the MUTATION LOG in the sim
