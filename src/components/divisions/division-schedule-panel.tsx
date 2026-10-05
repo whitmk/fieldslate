@@ -44,7 +44,7 @@ import { AutoAssignUmpiresButton } from "@/components/umpires/auto-assign-button
 import { ROW_ICON_REVEAL } from "@/components/ui/row-icon-reveal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { rainoutConfirmCopy } from "@/lib/schedule/rainout-confirm";
-import { markGameRainedOut } from "@/lib/schedule/rainout-write";
+import { markGameRainedOut, markGamesRainedOut, bulkRainoutMessage } from "@/lib/schedule/rainout-write";
 import { MoveGameIcon, MoveNoticeLine } from "./move-game-row";
 import { useGameNoteEditor } from "@/components/schedule/use-game-note-editor";
 import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
@@ -228,6 +228,9 @@ export function DivisionSchedulePanel({
   const [selectedGameIds, setSelectedGameIds] = useState<Set<string>>(new Set());
   const [confirmingBulkRainout, setConfirmingBulkRainout] = useState(false);
   const [bulkRainoutLoading, setBulkRainoutLoading] = useState(false);
+  // Set when the bulk write saved fewer games than were sent; the confirm
+  // modal stays open showing it, with only the unsaved games still selected.
+  const [bulkRainoutError, setBulkRainoutError] = useState<string | null>(null);
 
   // "Reschedule game" — the per-row icon beside the rainout cloud. A click goes
   // wherever routeMoveTarget says: the plain slot picker, the interleague
@@ -805,14 +808,16 @@ export function DivisionSchedulePanel({
     if (selectedGameIds.size === 0) return;
     setBulkRainoutLoading(true);
 
-    const supabase = createClient();
+    setBulkRainoutError(null);
     const ids = Array.from(selectedGameIds);
 
-    await supabase.from("games").update({ status: "cancelled" } as never).in("id", ids);
-
-    const selectedGames = games.filter((g) => selectedGameIds.has(g.id));
+    // Checked write: only the games whose row actually changed get a log
+    // entry; the rest stay selected and the modal says what happened.
+    const result = await markGamesRainedOut(ids);
+    const savedSet = new Set(result.savedIds);
+    const savedGames = games.filter((g) => savedSet.has(g.id));
     await Promise.all(
-      selectedGames.map((g) =>
+      savedGames.map((g) =>
         logActivity(
           leagueId,
           divisionId,
@@ -822,9 +827,18 @@ export function DivisionSchedulePanel({
       ),
     );
 
-    await fetchGames();
-    router.refresh();
-    onScheduleChange?.();
+    if (result.savedIds.length > 0) {
+      await fetchGames();
+      router.refresh();
+      onScheduleChange?.();
+    }
+    const message = bulkRainoutMessage(result.savedIds.length, ids.length);
+    if (message) {
+      setSelectedGameIds(new Set(result.failedIds));
+      setBulkRainoutError(message);
+      setBulkRainoutLoading(false);
+      return;
+    }
     exitSelectMode();
     setBulkRainoutLoading(false);
   }
@@ -1650,9 +1664,14 @@ export function DivisionSchedulePanel({
                   </li>
                 ))}
             </ul>
+            {bulkRainoutError && (
+              <p role="alert" className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+                {bulkRainoutError}
+              </p>
+            )}
             <div className="mt-5 flex justify-end gap-2">
               <button
-                onClick={() => setConfirmingBulkRainout(false)}
+                onClick={() => { setConfirmingBulkRainout(false); setBulkRainoutError(null); }}
                 disabled={bulkRainoutLoading}
                 className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-gray-300 disabled:opacity-50"
               >

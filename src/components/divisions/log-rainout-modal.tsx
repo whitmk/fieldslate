@@ -10,6 +10,7 @@ import { useScheduleReschedule } from "@/components/schedule/use-schedule-resche
 import { MoveNoticeLine } from "./move-game-row";
 import { rescheduleItemVisible } from "@/lib/schedule/schedule-page-reschedule-route";
 import { logActivity } from "@/lib/activity-log";
+import { markGameRainedOut, markGamesRainedOut, bulkRainoutMessage } from "@/lib/schedule/rainout-write";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import type { Division } from "@/types/database";
 
@@ -58,6 +59,9 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
   const [gamesLoading, setGamesLoading] = useState(false);
   const [selectedGame, setSelectedGame] = useState<GameOption | null>(null);
   const [marking, setMarking] = useState(false);
+  // The single write failed or touched no row: shown at the button, nothing
+  // logged, the game stays selected so the admin can retry.
+  const [markError, setMarkError] = useState<string | null>(null);
   const [markedGame, setMarkedGame] = useState<GameOption | null>(null);
   // The handoff after marking: routed per game — an ordinary game opens the
   // rainout picker (Pro), an interleague game opens the makeup request (Free).
@@ -74,6 +78,9 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [multiSaving, setMultiSaving] = useState(false);
   const [multiDoneCount, setMultiDoneCount] = useState(0);
+  // The multi write saved fewer games than were sent: shown in the footer,
+  // only the unsaved games stay selected, the list reloads.
+  const [multiError, setMultiError] = useState<string | null>(null);
 
   useEffect(() => {
     if (mode !== "single") return;
@@ -180,11 +187,13 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
   async function handleMarkRainout() {
     if (!selectedGame) return;
     setMarking(true);
-    const supabase = createClient();
-    await supabase
-      .from("games")
-      .update({ status: "cancelled" } as never)
-      .eq("id", selectedGame.id);
+    setMarkError(null);
+    const result = await markGameRainedOut(selectedGame.id);
+    if (!result.ok) {
+      setMarkError(result.message);
+      setMarking(false);
+      return;
+    }
     console.log("[logActivity] before call: rainout_logged (handleMarkRainout)", { leagueId, divisionId });
     const _r = await logActivity(
       leagueId,
@@ -201,14 +210,12 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
   async function handleMarkMultipleRainouts() {
     if (!selectedIds.size) return;
     setMultiSaving(true);
-    const supabase = createClient();
+    setMultiError(null);
     const ids = Array.from(selectedIds);
-    await supabase
-      .from("games")
-      .update({ status: "cancelled" } as never)
-      .in("id", ids);
+    // Checked write: log only the games whose row actually changed.
+    const result = await markGamesRainedOut(ids);
     await Promise.all(
-      ids.map(async (id) => {
+      result.savedIds.map(async (id) => {
         const g = multiGames.find((mg) => mg.id === id);
         if (!g) return;
         await logActivity(
@@ -219,6 +226,19 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
         );
       })
     );
+    const message = bulkRainoutMessage(result.savedIds.length, ids.length);
+    if (message) {
+      // Some or all did not save: stay on the list with the unsaved games
+      // still selected, reload it so the saved ones drop out, and say so.
+      setSelectedIds(new Set(result.failedIds));
+      setMultiError(message);
+      setMultiSaving(false);
+      if (result.savedIds.length > 0) {
+        onRainedOut();
+        await loadMultiGames();
+      }
+      return;
+    }
     setMultiDoneCount(ids.length);
     setMultiSaving(false);
     onRainedOut();
@@ -378,6 +398,11 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
                 <p className="text-sm text-gray-600">
                   Marking this game as rained out will cancel it. You can reschedule it to a new slot immediately or come back to it later.
                 </p>
+                {markError && (
+                  <p role="alert" className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+                    {markError}
+                  </p>
+                )}
                 <button
                   onClick={handleMarkRainout}
                   disabled={marking}
@@ -591,6 +616,11 @@ export function LogRainoutModal({ leagueId, divisions, onClose, onRainedOut, can
         {/* ── Multi sticky footer ──────────────────────────────────────────── */}
         {mode === "multi" && multiDoneCount === 0 && !multiLoading && multiGames.length > 0 && (
           <div className="flex-shrink-0 border-t border-gray-100 px-6 py-4">
+            {multiError && (
+              <p role="alert" className="mb-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+                {multiError}
+              </p>
+            )}
             <button
               onClick={handleMarkMultipleRainouts}
               disabled={selectedIds.size === 0 || multiSaving}
