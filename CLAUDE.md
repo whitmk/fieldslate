@@ -3379,7 +3379,12 @@ and blackout removal with 40px row targets; the layout batch (stat grid,
 panel rows, request modal scroll, scrollable umpire/interleague tables,
 h-dvh shell, in-viewport switcher menus, wrapping Schedule actions, p-4
 content padding); division rows, stacked Schedule filters, the overview
-width fix and 16px selects on the overview and Schedule filters.
+width fix and 16px selects on the overview and Schedule filters; the topbar
+org/season switchers (dead bell removed); and batch 3 — the Schedule phone
+card's "…" menu sharing `GameActionsMenu` with the desktop row (same items,
+same handlers, rainout disabled on cancelled/completed games), the calendar
+popover clamped on screen below md, and its rainout behind the shared
+confirm.
 
 Still open, in rough priority order:
 
@@ -3389,11 +3394,12 @@ Still open, in rough priority order:
   fixed (`text-base sm:text-sm`); every other `text-sm`/`text-xs` field in
   the dashboard still triggers it. Never fix this with `maximum-scale=1` or
   `user-scalable=no`.
-- Schedule page phone card (`schedule-list.tsx` GameCard) offers only Rainout
-  and Add Official — Reschedule, Delete and View details exist only in the
-  `hidden md:table` row menu.
-- Calendar popover (`schedule-calendar.tsx` `openPopover`) clamps x but not
-  y, so lower-row pills open it below the fold.
+- **Rainout writes ignore their error (both Schedule page surfaces).**
+  `performRainout` (`schedule-list.tsx`) and the calendar's `handleRainout`
+  (`schedule-calendar.tsx`) never read the result of the `games` UPDATE, so
+  a refused write (RLS, lock trigger, network) still logs "marked as rained
+  out" to the activity log and refreshes as if it succeeded. Check the error,
+  skip the log entry, and surface the refusal at the action.
 - Hover-only controls still on raw `opacity-0 group-hover:opacity-100`
   (invisible but tappable on touch): division panel roster rename/delete
   (~:921), venues page location rename/delete (~:443) and venue edit/delete
