@@ -70,7 +70,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration APPLIED: 0103 (snack shack derived shifts, applied 2026-10-05 23:19 UTC; md5(prosrc) `49e746c769c2f8ec0315b6d5ad275d68` verified against the repo file).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103. **0104 (snack shack shift notes + cash people) is WRITTEN on `feat/snack-shack-notes-cash` and NOT applied.** Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
+  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -3612,8 +3612,8 @@ Still open:
     the preview, the Hours step, the leftover control; the fail-loud banner
     renders when a read refuses. Not exercised against live data; no org's
     shifts were regenerated.
-- **Shift notes + "in charge of cash" (0104, written 2026-10-05, NOT APPLIED;
-  branch `feat/snack-shack-notes-cash`).** Decided, same rules as game notes:
+- **Shift notes + "in charge of cash" (0104, APPLIED 2026-10-06 02:54 UTC after
+  a first-run-green rolled-back proof; branch `feat/snack-shack-notes-cash`).** Decided, same rules as game notes:
   a NOTE on any shift (500 chars, attribution by the BEFORE UPDATE trigger
   `set_snack_shack_blocks_notes_attribution`, copied from 0095) and an
   optional CASH PERSON, a FK to `snack_shack_cash_people` (one list per
@@ -3640,14 +3640,20 @@ Still open:
   and the shift hook (`use-shift-note-editor.tsx`) both render it and own
   their own write + log. Cash people are managed on the page
   (`cash-people-card.tsx`), not in the wizard.
-- **Locks when 0104 is applied: ACCESS EXCLUSIVE on `snack_shack_blocks`**
+- **Locks 0104 took when applied: ACCESS EXCLUSIVE on `snack_shack_blocks`**
   (ADD COLUMN ×4, ADD CHECK; ~110 rows, instant) and **SHARE ROW EXCLUSIVE on
   `profiles`** (the notes_updated_by FK — blocks profile WRITES for that
   statement: org-name saves, setup dismiss, Stripe plan updates, signups).
   Harness: `scripts/sim/snack-shack-notes-cash-sim.sql` (assembled by
   `snack-shack-notes-cash-build.ts`; applies 0104 rolled back, test org only,
   re-runs the 0103 R-series, N1–N7, 6 mutants incl. the FK flipped to NO
-  ACTION and the trigger re-stamp). NOT YET RUN.
+  ACTION and the trigger re-stamp). Run 2026-10-06 against production,
+  rolled back: GREEN on the first run, 6/6 mutants killed first at their
+  own tag, leak check clean, no other active backend; 0104 applied right
+  after and verified live (see the harness RUN LOG). Existing blocks were
+  byte-identical on their original columns afterward; no row carries a
+  note or cash person and the cash-people table is empty until an admin
+  uses the feature.
 - **Harness: `npm run sim:snack-shifts`** (108 checks × 3 zones, 16
   anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (27 mutants,
   each killed FIRST at its own assertion). Read the MUTATION LOG in the sim

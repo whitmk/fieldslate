@@ -461,3 +461,32 @@ $h104$;
 --   (select count(*) from pg_proc where proname = 'set_snack_shack_blocks_notes_attribution') as trg_fn_must_be_0,
 --   (select count(*) from leagues where name like 'H104 Fixture%') as leagues_must_be_0,
 --   (select md5(coalesce(string_agg(b::text, '|' order by b.id), '')) from snack_shack_blocks b) as blocks_md5_must_match_pre_run;
+
+-- ── RUN LOG ─────────────────────────────────────────────────────────────────
+-- 2026-10-06 02:53 UTC — run 1 against production, "test" org fixtures only,
+-- rolled back. GREEN ON THE FIRST RUN (the batch above, unmodified):
+--   BASELINE failures (0): []
+--   PM1 carry-forward removed            → KILLED, first failure [N2] (then N3, N4)
+--   PM2 re-stamps the regenerating admin → KILLED, first failure [N3]
+--   PM3 kept rows cleared                → KILLED, first failure [N1] (then N5 ×2)
+--   PM4 cash FK made NO ACTION           → KILLED, first failure [N5] (23503 on the delete)
+--   PM5 trigger no longer stamps author  → KILLED, first failure [N6]
+--   PM6 lost not reported                → KILLED, first failure [N4]
+--   AFTER MUTANTS failures: []
+--   prosrc md5 inside the batch: regenerate 7881278e78eb8a513d0ae678f378f6a2,
+--   attribution trigger 6190ad28b15a7a7cef1566230b75832d — both equal the
+--   bodies computed from the repo file, so the text proven is the text applied.
+-- Leak check after the batch: new columns 0, cash_people table 0, trigger fn 0,
+-- fixture leagues/teams 0, snack_shack_blocks md5 (b::text, 110 rows)
+-- 20e1a4f1af65d53bba60826bec2cd6a6 = pre-run, live regenerate body still
+-- 0103's (49e746c769c2f8ec0315b6d5ad275d68). No other active backend before or
+-- after; lock_timeout never fired.
+--
+-- 0104 APPLIED right after, 2026-10-06 02:54 UTC (catalog 20261006025451
+-- "snack_shack_notes_cash"), verbatim from the repo file. Verified live: both
+-- md5s as above; EXECUTE on the RPC = authenticated only; the trigger function
+-- callable by no role; snack_shack_cash_people SELECT/INSERT/UPDATE/DELETE =
+-- authenticated only, RLS on, one ALL policy; both FKs ON DELETE SET NULL;
+-- the 500 CHECK; the attribution trigger enabled (O); both indexes; blocks
+-- byte-identical on their original columns (same md5, 110 rows), zero rows
+-- with a note or cash person; cash_people empty.
