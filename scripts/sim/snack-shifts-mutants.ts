@@ -209,14 +209,14 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "NM6", what: "game-day fallback to an off-day team is not flagged", file: LIB,
-    find: "      else if (offDay.length > 0) { candidates = fewest(offDay); flag = \"preference_not_met\"; }",
-    replace: "      else if (offDay.length > 0) { candidates = fewest(offDay); }",
+    find: "      else if (offDay.length > 0) { candidates = offDay; flag = \"preference_not_met\"; }",
+    replace: "      else if (offDay.length > 0) { candidates = offDay; }",
     expect: "A7",
   },
   {
     id: "NM7", what: "off-day busy pick is not flagged", file: LIB,
-    find: "      if (free.length > 0) candidates = free;\n      else flag = \"preference_not_met\";",
-    replace: "      if (free.length > 0) candidates = free;",
+    find: "      if (free.length > 0) candidates = free;\n      else { candidates = tie; flag = \"preference_not_met\"; }",
+    replace: "      if (free.length > 0) candidates = free;\n      else { candidates = tie; }",
     expect: "A8",
   },
   {
@@ -224,6 +224,12 @@ const MUTANTS: Mutant[] = [
     find: "    if (g.status === \"cancelled\") continue;\n    const startMin = hhmmToMin(g.start);",
     replace: "    if (!countsAsScheduledGame(g.status)) continue;\n    const startMin = hhmmToMin(g.start);",
     expect: "A8",
+  },
+  {
+    id: "NM10", what: "preference tiers BEFORE equity — a team at the park with more shifts is promoted", file: LIB,
+    find: "    const tie = fewest(pool);\n",
+    replace: "    const tie = pool;\n",
+    expect: "A7",
   },
   {
     id: "NM9", what: "a stored team that plays during the shift is not reported as a conflict", file: LIB,

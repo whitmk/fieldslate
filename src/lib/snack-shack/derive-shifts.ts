@@ -423,16 +423,15 @@ export function reconcileWithStored(derived: ShiftSlot[], stored: StoredShiftRow
 //      playoff game with a date — from GAME_BUFFER_BEFORE_MIN before the start
 //      to the game's end (start + its division's duration) plus
 //      GAME_BUFFER_AFTER_MIN. Cancelled games don't count.
-//   2. Prefer game days: the preferred teams are those with a game that day at
-//      a snack-shack venue, home OR away, that the hard rule left eligible.
-//      None → teams not playing that day → any eligible team. Leaving tier 1
-//      is reported as `preference_not_met`.
-//   3. Prefer off days: soft, and evenness wins as before — the fewest-shift
-//      teams are found first and the preference only filters among them; when
-//      they all play that day one of them is picked and `preference_not_met`
-//      is set.
-//   4. Within the chosen pool: fewest shifts so far (seeded with the kept
-//      rows), then alphabetical by name, then id.
+//   2. EQUITY NEXT, in both modes: the eligible teams with the fewest shifts
+//      so far (seeded with the kept rows). The preference never promotes a
+//      team past that group.
+//   3. The preference breaks the tie inside that group. Game days: at a
+//      snack-shack venue that day, home OR away (already clear of the shift),
+//      then not playing that day, then anyone in the group. Off days: not
+//      playing that day, then anyone in the group. Leaving the first tier is
+//      reported as `preference_not_met`.
+//   4. Then alphabetical by name, then id.
 //   5. No eligible team at all → the shift is left UNASSIGNED and flagged
 //      `unfilled`. Never a fallback to a team that is playing.
 // The index is built from REGULAR and PLAYOFF games alike; the derivation
@@ -572,21 +571,24 @@ export function assignNewShifts(
       out.push({ ...slot, assignedTeamId: null, flag: "unfilled" });
       continue;
     }
+    // Rule 2 — fewest shifts next, in BOTH modes; the preference only breaks
+    // the tie inside that group.
+    const tie = fewest(pool);
     let candidates: PickTeam[];
     let flag: AssignmentFlag | null = null;
     if (preference === "prefer_game_days") {
-      // Rule 2 — tiers first, then fewest shifts within the tier.
-      const atShack = pool.filter((t) => teamGamesOn(index, t.id, slot.date).some((g) => g.atShackVenue));
-      const offDay = pool.filter((t) => teamGamesOn(index, t.id, slot.date).length === 0);
-      if (atShack.length > 0) candidates = fewest(atShack);
-      else if (offDay.length > 0) { candidates = fewest(offDay); flag = "preference_not_met"; }
-      else { candidates = fewest(pool); flag = "preference_not_met"; }
+      // Rule 3 — within the tie: at the park (home or away, already clear of
+      // the shift), then not playing that day, then anyone in the tie.
+      const atShack = tie.filter((t) => teamGamesOn(index, t.id, slot.date).some((g) => g.atShackVenue));
+      const offDay = tie.filter((t) => teamGamesOn(index, t.id, slot.date).length === 0);
+      if (atShack.length > 0) candidates = atShack;
+      else if (offDay.length > 0) { candidates = offDay; flag = "preference_not_met"; }
+      else { candidates = tie; flag = "preference_not_met"; }
     } else {
-      // Rule 3 — evenness first, the preference only among the fewest.
-      candidates = fewest(pool);
-      const free = candidates.filter((t) => teamGamesOn(index, t.id, slot.date).length === 0);
+      // Rule 3 — within the tie: the free teams, else anyone in the tie.
+      const free = tie.filter((t) => teamGamesOn(index, t.id, slot.date).length === 0);
       if (free.length > 0) candidates = free;
-      else flag = "preference_not_met";
+      else { candidates = tie; flag = "preference_not_met"; }
     }
     const picked = candidates[0];
     count[picked.id]++;

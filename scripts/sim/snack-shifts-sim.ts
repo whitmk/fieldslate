@@ -33,10 +33,12 @@
 //      game starts 15 minutes after the shift; the hard rule runs BEFORE
 //      equity (an eligible team with one more shift beats a blocked team with
 //      fewer); with nobody free the shift is UNASSIGNED and flagged, never a
-//      playing team; game days prefer a team at the park (home OR away) whose
-//      game clears the shift, then off-day teams, then anyone, flagging the
-//      fallback; off days keep evenness first and flag a busy pick; a seeded
-//      sweep of 300 random Saturdays runs the same check on every pick.
+//      playing team; EQUITY NEXT in both modes (a team at the park with one
+//      more shift is not promoted past the fewest-shift group); the preference
+//      breaks the tie — game days: at the park (home OR away), then not
+//      playing that day, then anyone, flagging the fallback; off days: free
+//      teams, else a busy one, flagged; a seeded sweep of 300 random
+//      Saturdays runs the same check on every pick.
 //   P  PRESERVATION: a stored derived row whose date/start/end is unchanged is
 //      kept with its assignment; a changed one is removed (its assignment
 //      reported) and the new slot is assigned; manual rows are never touched;
@@ -95,6 +97,10 @@
 //   SM18 (equity not seeded) died at [A8] — A8 seeded a kept row to give
 //       Charlie a shift. It now assigns TWO slots in one call instead, so
 //       the seeding is exercised nowhere before [P5].
+// 2026-10-06, later the same day: the picker went EQUITY-FIRST in both modes
+// (the first cut ran the game-day tiers before equity). A7 was re-keyed to a
+// three-slot fixture that only equity-first passes, and NM10 (tiers before
+// equity) was added: 37/37 killed at their own assertion, first run.
 // The sweep did not produce an unfilled shift (12 teams, ≤8 games); the
 // unfilled case is pinned by A3/A6's fixed fixtures and by NM5.
 // Also from the first run: four fixtures accidentally carried a ≥60-minute
@@ -512,21 +518,26 @@ section("A: assignment is checked against game intervals, not dates", () => {
   counters.unfilledShifts += 1;
   ok(assignmentFlagLine("unfilled", "prefer_game_days") === "No team is free — every team plays during this shift (within 30 minutes of a game).", "A6", "the unfilled sentence, verbatim");
 
-  // A7 — game days prefer a team AT THE PARK, home OR away, whose game clears
-  // the shift; tier 1 wins over a zero-count off-day team.
-  const g7 = ag([{ home: "delta", away: "charlie", date: "2026-10-17", start: "12:30", dur: 60 }]);
-  const a7 = assignNewShifts([SLOT], T, [], "prefer_game_days", assignmentIndexFromGames(g7, HOME));
-  ok(a7[0].assignedTeamId === "charlie" && a7[0].flag === null, "A7", "game days: Charlie, the AWAY team of a 12:30 game at the park, is preferred over Alpha/Bravo (no game)", `${a7[0].assignedTeamId}`);
-  // A team at ANOTHER park that day is not tier 1.
+  // A7 — game days: EQUITY FIRST, the park tier only breaks the tie. Charlie
+  // (home) and Delta (away) play 12:30 at a shack venue; Alpha and Bravo have
+  // no game. Three slots in ONE call (no kept seeding, so SM18 stays P5's):
+  // slot 1 → Charlie (tie of four, park tier: Charlie, Delta → alphabetical);
+  // slot 2 → Delta (tie is now Alpha, Bravo, Delta; park tier: Delta);
+  // slot 3 → Alpha, flagged (tie is Alpha, Bravo — nobody at the park — so the
+  // off-day tier). Tiers-first would hand slot 3 back to Charlie.
+  const g7 = ag([{ home: "charlie", away: "delta", date: "2026-10-17", start: "12:30", dur: 60 }]);
+  const a7 = assignNewShifts([{ date: "2026-10-17", start: "08:00", end: "09:30" }, SLOT, { date: "2026-10-17", start: "11:00", end: "12:00" }], T, [], "prefer_game_days", assignmentIndexFromGames(g7, HOME));
+  ok(a7.map((a) => `${a.assignedTeamId}:${a.flag}`).join(",") === "charlie:null,delta:null,alpha:preference_not_met", "A7", "game days, equity first: Charlie, then Delta (both at the park, away counts), then Alpha flagged — Charlie (1 shift, at the park) is not promoted over the 0-shift teams", a7.map((a) => `${a.assignedTeamId}:${a.flag}`).join(","));
+  counters.gameDayFallbacks += 1;
+  // A team at ANOTHER park that day is not the park tier.
   const g7b = ag([{ home: "alpha", away: "bravo", date: "2026-10-17", start: "12:30", dur: 60, venue: "perry" }]);
   const a7b = assignNewShifts([SLOT], T, [], "prefer_game_days", assignmentIndexFromGames(g7b, HOME));
   ok(a7b[0].assignedTeamId === "charlie" && a7b[0].flag === "preference_not_met", "A7", "game days with nobody at the park: an off-day team (Charlie) and the fallback is flagged", `${a7b[0].assignedTeamId} ${a7b[0].flag}`);
   counters.gameDayFallbacks += 1;
-  // Tier 3: everyone plays that day, only one clears the shift, elsewhere.
+  // Last tier: everyone plays that day, only Charlie/Delta clear the shift, elsewhere.
   const g7c = ag([{ home: "alpha", away: "bravo", date: "2026-10-17", start: "10:00", dur: 60 }, { home: "charlie", away: "delta", date: "2026-10-17", start: "13:00", dur: 60, venue: "perry" }]);
   const a7c = assignNewShifts([SLOT], T, [], "prefer_game_days", assignmentIndexFromGames(g7c, HOME));
-  ok(a7c[0].assignedTeamId === "charlie" && a7c[0].flag === "preference_not_met", "A7", "game days, tier 3: everyone plays that day, Charlie/Delta clear the shift (elsewhere) → Charlie, flagged", `${a7c[0].assignedTeamId} ${a7c[0].flag}`);
-  counters.gameDayFallbacks += 1;
+  ok(a7c[0].assignedTeamId === "charlie" && a7c[0].flag === "preference_not_met", "A7", "game days, last tier: everyone plays that day, Charlie/Delta clear the shift (elsewhere) → Charlie, flagged", `${a7c[0].assignedTeamId} ${a7c[0].flag}`);
   ok(assignmentFlagLine("preference_not_met", "prefer_game_days") === "Not at the park that day — every team playing here is busy during this shift.", "A7", "the game-day fallback sentence, verbatim");
 
   // A8 — off days: evenness first; a busy pick is flagged. Two slots in ONE

@@ -14,6 +14,17 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   environment workarounds.
 - When in doubt, repo — it's the reviewed, versioned, recoverable store.
 
+## Live customer data — the standing rule
+
+- **NEVER write to Santa Rosa American Little League's data (the real
+  league, org `8fde72f9…`, season "SRALL - Fall 2026") unless the founder
+  does it themself or says the words "write it."** That covers SQL through
+  the Supabase MCP, regenerates, reassignments, emails, anything. Report what
+  you would change, exactly, and stop. A general "do it" or "fix it" is not
+  "write it." Acceptance testing happens in the test org (`SRALL`, owner
+  `aa21d01c…`) only. Recorded 2026-10-06 after a one-off, explicitly
+  instructed manual reassign of the Oct 17 snack shack shift.
+
 ## Deployment & environment
 
 - **Production-only.** Every push to `main` auto-deploys to production via
@@ -3632,12 +3643,15 @@ Still open:
      Cancelled games don't count. The index (`assignmentIndexFromGames`) is
      built from `games` AND `playoff_games` (the loader reads both; the
      derivation still opens the shack from `games` only).
-  2. **Prefer game days:** tier 1 = eligible teams with a game that day at a
-     shack venue, HOME OR AWAY; then teams not playing that day; then any
-     eligible team. Fewest shifts, then name, within the tier. Leaving tier 1
-     sets `preference_not_met`.
-  3. **Prefer off days:** soft, evenness first as before — fewest shifts
-     among the eligible, then the free ones; all busy → one of them, flagged.
+  2. **Equity next, in BOTH modes (decided 2026-10-06, replacing a
+     tiers-first draft that used 38 of 54 teams in the real league):** the
+     eligible teams with the fewest shifts so far, seeded with frozen and
+     kept rows. The preference never promotes a team past that group.
+  3. **The preference breaks the tie inside that group.** Game days: at a
+     shack venue that day, HOME OR AWAY (already clear of the shift), then
+     not playing that day, then anyone in the group. Off days: not playing
+     that day, else anyone in the group. Leaving the first tier sets
+     `preference_not_met`. Then name, then id.
   4. **Nobody eligible → the shift is UNASSIGNED and flagged `unfilled`.**
      Never a fallback to a playing team; `assigned_team_id` null in the RPC
      payload is a real outcome now. The plan carries `flagged` for the preview;
@@ -3652,7 +3666,8 @@ Still open:
     LITERAL 30, never the imported constant) over fixed fixtures and a seeded
     sweep of 300 Saturdays × 2 modes; nine mutants NM1–NM9 (buffer removed,
     away ignored, playoff ignored, filter after equity, fallback to a playing
-    team, both missing flags, pending not busy, stored conflict not reported).
+    team, both missing flags, pending not busy, stored conflict not reported)
+    plus NM10 (tiers before equity, killed by the re-keyed A7).
     Run 2026-10-06: 36/36 killed at their own assertion on the second pass
     (three harness ordering faults on the first — read the sim's MUTATION
     LOG). `npm run sim:snack-shifts` 148 checks × 3 zones, 23 counters.
