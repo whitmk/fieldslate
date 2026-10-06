@@ -365,6 +365,10 @@ export type StoredShiftRow = {
   end_time: string;
   assigned_team_id: string | null;
   is_recurring: boolean;
+  /** 0104: the internal note and cash person, so the plan can say which a
+   *  regenerate would carry or lose. Optional: the derivation ignores them. */
+  notes?: string | null;
+  cash_person_id?: string | null;
 };
 
 export type Reconciliation = {

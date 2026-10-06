@@ -115,7 +115,7 @@ export async function loadShiftInputs(settings: SnackShackSettingsInput, orgId: 
     ({ from, to, exactCount }) =>
       supabase
         .from("snack_shack_blocks")
-        .select("id, date, start_time, end_time, assigned_team_id, is_recurring", exactCount ? { count: "exact" } : undefined)
+        .select("id, date, start_time, end_time, assigned_team_id, is_recurring, notes, cash_person_id", exactCount ? { count: "exact" } : undefined)
         .eq("snack_shack_id", settings.id)
         .order("date")
         .order("start_time")
@@ -173,6 +173,9 @@ export type RegenerateResult = {
   removed: number;
   removed_assignments: { date: string; start: string; end: string; team_id: string }[];
   created_shifts: { date: string; start: string; end: string; team_id: string | null }[];
+  /** 0104 */
+  carried: number;
+  lost: { date: string; start: string; end: string; notes: string | null; cash_person_id: string | null }[];
 };
 
 /** Writes the plan through the atomic RPC. Throws on refusal. */
@@ -192,6 +195,8 @@ export async function commitRegenerate(settingsId: string, desired: RpcShift[]):
     removed: Number(r.removed ?? 0),
     removed_assignments: r.removed_assignments ?? [],
     created_shifts: r.created_shifts ?? [],
+    carried: Number(r.carried ?? 0),
+    lost: r.lost ?? [],
   };
 }
 
@@ -199,5 +204,7 @@ export async function commitRegenerate(settingsId: string, desired: RpcShift[]):
 export function regenerateLogMessage(r: RegenerateResult, frozenPast: number): string {
   const parts = [`${r.created} added`, `${r.removed} removed`, `${r.kept} kept`];
   if (frozenPast > 0) parts.push(`${frozenPast} past shift${frozenPast === 1 ? "" : "s"} left as they were`);
+  if (r.carried > 0) parts.push(`${r.carried} note${r.carried === 1 ? "" : "s"}/cash carried to a changed shift`);
+  if (r.lost.length > 0) parts.push(`${r.lost.length} note${r.lost.length === 1 ? "" : "s"}/cash on removed shifts dropped`);
   return `Snack shack shifts regenerated from the game schedule — ${parts.join(", ")}.`;
 }

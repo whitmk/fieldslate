@@ -162,6 +162,18 @@ const MUTANTS: Mutant[] = [
     replace: "      const idx = -1;",
     expect: "F2",
   },
+  {
+    id: "SM26", what: "carried not reported (changed rows' note/cash silently dropped from the preview)", file: PLAN,
+    find: "      if (hasInternal(c.from)) {\n        carried.push(",
+    replace: "      if (false) {\n        carried.push(",
+    expect: "F10",
+  },
+  {
+    id: "SM27", what: "lost not reported (removed rows' note/cash vanish silently)", file: PLAN,
+    find: "      if (hasInternal(r)) {\n        lost.push(",
+    replace: "      if (false) {\n        lost.push(",
+    expect: "F11",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/snack-shifts-sim.ts", timezones: ["UTC"], mutants: MUTANTS });

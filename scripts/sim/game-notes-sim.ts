@@ -27,6 +27,18 @@
 //   GM5  GameNoteLine drops the full-text title                → [R2]
 //   GM6  the Schedule page's select drops NOTE_SELECT_FIELDS   → [O3]
 //   GM7  the empty icon goes back to hover-revealed              → [R1b]
+//   GM8  (0104) the snack shack print region renders the note    → [O1-snack-print]
+//   GM9  (0104) the team email route selects notes               → [O1-snack]
+//   GM10 (0104) the print-all template renders the cash person   → [O1-snack-print-all]
+//   GM11 (0104) the Snack Shack page select drops the fields     → [O3-snack]
+//   GM8–GM11 run through scripts/sim/game-notes-mutants.ts (mutant-runner).
+// RESULT (2026-10-05, GM8–GM11): 4/4 killed, each FIRST at its own assertion
+// — on the SECOND run. The first run was a harness fault twice over: this
+// file printed "FAIL [tag]" without the colon the shared runner parses, so
+// every kill read as "KILLED AT THE WRONG ASSERTION — first failure (none)";
+// and the page-select assertion matched the IMPORT line, so GM11 (the select
+// dropping the fields) SURVIVED a vacuous check. Both fixed: the line is
+// "FAIL: [tag]" now, and [O3-snack] matches the interpolated select string.
 // RESULT (GM7, 2026-09-28): killed at [R1b] alone.
 // RESULT: 6/6 killed, each FIRST (and only) at its own assertion. GM1 is the
 // one the design exists for: the print region rendering `{g.notes}` from the
@@ -54,7 +66,8 @@ function ok(cond: boolean, name: string, detail = "") {
   checks++;
   if (!cond) {
     fails++;
-    console.log(`  FAIL ${name}${detail ? ` — ${detail}` : ""}`);
+    // "FAIL: [tag]" — the shape scripts/sim/mutant-runner.ts attributes kills by.
+    console.log(`  FAIL: ${name}${detail ? ` — ${detail}` : ""}`);
   }
 }
 const SRC = join(__dirname, "..", "..", "src");
@@ -63,6 +76,9 @@ const mentionsNotes = (s: string) => /\bnotes\b/.test(s);
 // 0100: a field's street address is emitted by the calendar feed ONLY. The
 // same outbound surfaces that must never carry a note must never carry it.
 const mentionsAddress = (s: string) => /\baddress\b/i.test(s);
+// 0104: a snack shack shift's note and cash person are internal too. The same
+// outbound rule, plus the cash column/embed names.
+const mentionsCash = (s: string) => /cash_person|cashPerson|cash_people/.test(s);
 const counters = { withNoteRendered: 0, withoutNoteRendered: 0, surfacesChecked: 0, omissionFilesChecked: 0 };
 
 function partH() {
@@ -151,6 +167,42 @@ function partO() {
     ok(!mentionsNotes(read(...p)), `[O1] ${name} never references notes`);
     ok(!mentionsAddress(read(...p)), `[O1a] ${name} never references a field address`);
   }
+  // 0104 — the snack shack's outbound paths: two email routes, the Teams page
+  // button (its own select + print region), and the page client's TWO print
+  // paths as SLICES (the file as a whole legitimately mentions notes for the
+  // row). The page select must CARRY the fields while the slices never do —
+  // the same shape that caught the game-notes print leak.
+  const snackOutbound: [string, string[]][] = [
+    ["snack shack full-schedule email route", ["app", "api", "snack-shack", "[id]", "email", "route.ts"]],
+    ["snack shack team email route", ["app", "api", "snack-shack", "team", "[teamId]", "email", "route.ts"]],
+    ["teams page snack shack button", ["components", "teams", "team-snack-shack-button.tsx"]],
+  ];
+  for (const [name, p] of snackOutbound) {
+    counters.omissionFilesChecked++;
+    const src = read(...p);
+    ok(!mentionsNotes(src), `[O1-snack] ${name} never references notes`);
+    ok(!mentionsCash(src), `[O1-snack-cash] ${name} never references a cash person`);
+  }
+  const snackPage = read("components", "snack-shack", "snack-shack-page-client.tsx");
+  const snackPrintStart = snackPage.indexOf('className="fieldslate-snack-print-ready"');
+  const snackPrintEnd = snackPage.indexOf("</div>\n\n    </>", snackPrintStart);
+  ok(snackPrintStart > 0 && snackPrintEnd > snackPrintStart, "[O1-snack-print] the snack shack print region slice was found");
+  const snackPrintSlice = snackPage.slice(snackPrintStart, snackPrintEnd);
+  ok(!mentionsNotes(snackPrintSlice) && !mentionsCash(snackPrintSlice), "[O1-snack-print] the snack shack full-schedule print region never references notes or a cash person");
+  const docStart = snackPage.indexOf("w.document.write(`<!doctype html>");
+  const docEnd = snackPage.indexOf("w.document.close();", docStart);
+  const pagesStart = snackPage.indexOf("const pages = teamsWithBlocks");
+  ok(docStart > 0 && docEnd > docStart && pagesStart > 0 && pagesStart < docStart, "[O1-snack-print-all] the print-all-team-schedules slice was found");
+  const docSlice = snackPage.slice(pagesStart, docEnd);
+  ok(!mentionsNotes(docSlice) && !mentionsCash(docSlice), "[O1-snack-print-all] the print-all-team-schedules template never references notes or a cash person");
+  counters.omissionFilesChecked += 2;
+  const snackPageServer = read("app", "(dashboard)", "dashboard", "snack-shack", "page.tsx");
+  // The SELECT STRING must interpolate the constant — the import line alone
+  // would make this vacuous (GM11 survived exactly that way on the first run).
+  ok(snackPageServer.includes("team:teams(name), ${SHIFT_NOTE_SELECT_FIELDS}`"), "[O3-snack] the Snack Shack page's blocks select carries SHIFT_NOTE_SELECT_FIELDS (so the print regions receive the fields they must not render)");
+  const shiftNotes = read("lib", "snack-shack", "shift-notes.ts");
+  ok(shiftNotes.includes("notes, notes_updated_at") && shiftNotes.includes("cash_person_id, cash_person:snack_shack_cash_people(name)"), "[O3-snack] SHIFT_NOTE_SELECT_FIELDS names the note and cash columns");
+
   // The panel's own print region: the print block inside the panel must not.
   const panel = read("components", "divisions", "division-schedule-panel.tsx");
   const printStart = panel.indexOf('className="fieldslate-print-region hidden"');
@@ -189,11 +241,20 @@ function partS() {
       !read("components", "schedule", "add-game-modal.tsx").includes("GameNote"),
     "[S2] no note in the log-rainout picker or the add-game modal (decided)",
   );
+  // 2026-10-05: the modal body is the shared NoteEditorModal (also used for
+  // snack shack shift notes); the hook keeps the write and the log.
   const editor = read("components", "schedule", "use-game-note-editor.tsx");
+  const modal = read("components", "schedule", "note-editor-modal.tsx");
   ok(
-    editor.includes("NOTE_PRIVACY_LINE") && editor.includes("Remove note") && editor.includes("maxLength={NOTE_MAX_CHARS}") &&
+    modal.includes("NOTE_PRIVACY_LINE") && modal.includes("Remove note") && modal.includes("maxLength={NOTE_MAX_CHARS}") &&
+      editor.includes("<NoteEditorModal") &&
       editor.includes(".update({ notes: value } as never)") && editor.includes(".select(NOTE_SELECT_FIELDS)"),
-    "[S3] the editor: privacy line, Remove note, the 500 count, a note-only write that reads the fresh row back",
+    "[S3] the editor: privacy line, Remove note, the 500 count (in the shared modal), a note-only write that reads the fresh row back (in the hook)",
+  );
+  const shiftEditor = read("components", "snack-shack", "use-shift-note-editor.tsx");
+  ok(
+    shiftEditor.includes("<NoteEditorModal") && shiftEditor.includes(".update({ notes: value } as never)") && shiftEditor.includes(".select(SHIFT_NOTE_SELECT_FIELDS)"),
+    "[S3b] the shift-note editor renders the SAME modal and does a note-only write that reads the fresh row back",
   );
 }
 

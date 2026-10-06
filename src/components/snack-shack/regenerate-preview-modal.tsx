@@ -24,6 +24,8 @@ const span = (s: string, e: string) => `${fmtTime(s)} – ${fmtTime(e)}`;
 interface Props {
   plan: RegeneratePlan;
   teamName: (id: string | null) => string;
+  /** 0104: the cash person's name, or null for none. */
+  cashName?: (id: string | null) => string | null;
   /** The calmer notice for shifts made before automatic shifts. */
   legacyNotice: string | null;
   busy: boolean;
@@ -32,7 +34,7 @@ interface Props {
   onCancel: () => void;
 }
 
-export function RegeneratePreviewModal({ plan, teamName, legacyNotice, busy, error, onConfirm, onCancel }: Props) {
+export function RegeneratePreviewModal({ plan, teamName, cashName = () => null, legacyNotice, busy, error, onConfirm, onCancel }: Props) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     cancelRef.current?.focus();
@@ -112,6 +114,32 @@ export function RegeneratePreviewModal({ plan, teamName, legacyNotice, busy, err
                   </ul>
                 </div>
               ))}
+
+              {plan.carried.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-[#0C1F3F]">Notes and cash people carried to the changed shift</p>
+                  <ul className="mt-1 flex flex-col gap-0.5 text-sm text-gray-700">
+                    {plan.carried.map((c) => (
+                      <li key={`k-${c.date}-${c.start}`}>
+                        {fmtDate(c.date)} {fmtTime(c.start)}: {c.notes ? `“${c.notes}”` : ""}{c.notes && c.cashPersonId ? " · " : ""}{c.cashPersonId ? `cash: ${cashName(c.cashPersonId) ?? "a name"}` : ""} → moves to {fmtTime(c.start)} – {fmtTime(c.toEnd)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {plan.lost.length > 0 && (
+                <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+                  <p className="text-sm font-semibold text-red-800">Notes and cash people on removed shifts — gone after Confirm</p>
+                  <ul className="mt-1 flex flex-col gap-0.5 text-sm text-red-800">
+                    {plan.lost.map((l) => (
+                      <li key={`l-${l.date}-${l.start}`}>
+                        {fmtDate(l.date)} {span(l.start, l.end)}: {l.notes ? `“${l.notes}”` : ""}{l.notes && l.cashPersonId ? " · " : ""}{l.cashPersonId ? `cash: ${cashName(l.cashPersonId) ?? "a name"}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {lines.length > 0 && (
                 <div>

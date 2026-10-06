@@ -26,6 +26,9 @@ import { closedDayLine, stalenessSummary, type DerivedDay } from "@/lib/snack-sh
 import { legacyShiftsNotice, upcomingStaleness } from "@/lib/snack-shack/regenerate-plan";
 import { commitRegenerate, regenerateLogMessage } from "@/lib/snack-shack/generate-shifts";
 import { logActivity } from "@/lib/activity-log";
+import { CashPeopleCard } from "./cash-people-card";
+import { useShiftNoteEditor } from "./use-shift-note-editor";
+import type { ShiftNoteFields, CashPerson } from "@/lib/snack-shack/shift-notes";
 
 type ViewMode = "list" | "calendar";
 
@@ -47,7 +50,7 @@ type Settings = {
   shifts_generated_at: string | null;
 };
 
-type BlockRaw = {
+type BlockRaw = ShiftNoteFields & {
   id: string;
   snack_shack_id: string;
   date: string;
@@ -65,6 +68,7 @@ interface Props {
   allSettings: Settings[];
   allTeams: TeamRow[];
   allBlocks: BlockRaw[];
+  allCashPeople: (CashPerson & { snack_shack_id: string })[];
   currentOrgId: string;
 }
 
@@ -119,6 +123,7 @@ export function SnackShackPageClient({
   allSettings,
   allTeams,
   allBlocks,
+  allCashPeople,
   currentOrgId,
 }: Props) {
   const router = useRouter();
@@ -151,7 +156,17 @@ export function SnackShackPageClient({
       assigned_team_id: b.assigned_team_id,
       is_recurring: b.is_recurring,
       team_name: b.team?.name ?? null,
+      notes: b.notes ?? null,
+      notes_updated_at: b.notes_updated_at ?? null,
+      notes_editor: b.notes_editor ?? null,
+      cash_person_id: b.cash_person_id ?? null,
+      cash_person: b.cash_person ?? null,
     }));
+  const cashPeople: CashPerson[] = allCashPeople
+    .filter((c) => c.snack_shack_id === settings?.id)
+    .map((c) => ({ id: c.id, name: c.name }));
+  const cashName = (id: string | null) => (id ? cashPeople.find((c) => c.id === id)?.name ?? "a removed name" : null);
+  const noteEditor = useShiftNoteEditor({ leagueId: selectedSeasonId });
 
   const seasonLabel = season ? `${season.name} · ${season.season}` : "";
 
@@ -576,17 +591,23 @@ ${pages}
                   blocks={blocks}
                   teams={teams}
                   dayHeader={dayHeader}
+                  cashPeople={cashPeople}
+                  onEditNote={noteEditor.open}
                 />
               ) : (
                 <SnackShackCalendar
                   blocks={blocks}
                   teams={teams}
+                  cashPeople={cashPeople}
                   startDate={settings.start_date}
                   endDate={settings.end_date}
                 />
               )}
             </CardContent>
           </Card>
+
+          <CashPeopleCard snackShackId={settings.id} people={cashPeople} />
+          {noteEditor.modal}
         </>
       )}
 
@@ -612,6 +633,7 @@ ${pages}
         <RegeneratePreviewModal
           plan={plan}
           teamName={teamName}
+          cashName={cashName}
           legacyNotice={legacy}
           busy={committing}
           error={commitError}

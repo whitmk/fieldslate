@@ -11,6 +11,7 @@ import { isElite } from "@/lib/plan/limits";
 import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
 import { isSetupIncomplete } from "@/lib/setup/derive-step";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
+import { SHIFT_NOTE_SELECT_FIELDS, type ShiftNoteFields, type CashPerson } from "@/lib/snack-shack/shift-notes";
 
 type TeamRow = { id: string; name: string; league_id: string };
 
@@ -109,7 +110,10 @@ export default async function SnackShackPage() {
 
   // Load blocks for all settings IDs
   const settingIds = allSettings.map((s) => s.id);
-  let allBlocks: {
+  // The blocks select CARRIES the internal note + cash fields (0104) so the
+  // row can render them. That is exactly why the print regions and the
+  // email routes must never read them — the game-notes harness pins it.
+  let allBlocks: (ShiftNoteFields & {
     id: string;
     snack_shack_id: string;
     date: string;
@@ -118,17 +122,26 @@ export default async function SnackShackPage() {
     assigned_team_id: string | null;
     is_recurring: boolean;
     team: { name: string } | null;
-  }[] = [];
+  })[] = [];
+  let allCashPeople: (CashPerson & { snack_shack_id: string })[] = [];
 
   if (settingIds.length > 0) {
-    const { data: blocksRaw } = await supabase
-      .from("snack_shack_blocks")
-      .select("id, snack_shack_id, date, start_time, end_time, assigned_team_id, is_recurring, team:teams(name)")
-      .in("snack_shack_id", settingIds)
-      .order("date", { ascending: true })
-      .order("start_time", { ascending: true });
+    const [{ data: blocksRaw }, { data: cashRaw }] = await Promise.all([
+      supabase
+        .from("snack_shack_blocks")
+        .select(`id, snack_shack_id, date, start_time, end_time, assigned_team_id, is_recurring, team:teams(name), ${SHIFT_NOTE_SELECT_FIELDS}`)
+        .in("snack_shack_id", settingIds)
+        .order("date", { ascending: true })
+        .order("start_time", { ascending: true }),
+      supabase
+        .from("snack_shack_cash_people")
+        .select("id, snack_shack_id, name")
+        .in("snack_shack_id", settingIds)
+        .order("name", { ascending: true }),
+    ]);
 
     allBlocks = (blocksRaw as unknown as typeof allBlocks) ?? [];
+    allCashPeople = (cashRaw as unknown as typeof allCashPeople) ?? [];
   }
 
   return (
@@ -145,6 +158,7 @@ export default async function SnackShackPage() {
         allSettings={allSettings}
         allTeams={allTeams}
         allBlocks={allBlocks}
+        allCashPeople={allCashPeople}
         currentOrgId={currentOrgId}
       />
     </div>

@@ -70,7 +70,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration APPLIED: 0103 (snack shack derived shifts, applied 2026-10-05 23:19 UTC; md5(prosrc) `49e746c769c2f8ec0315b6d5ad275d68` verified against the repo file).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
+  **Latest migration APPLIED: 0103 (snack shack derived shifts, applied 2026-10-05 23:19 UTC; md5(prosrc) `49e746c769c2f8ec0315b6d5ad275d68` verified against the repo file).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103. **0104 (snack shack shift notes + cash people) is WRITTEN on `feat/snack-shack-notes-cash` and NOT applied.** Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -3612,8 +3612,44 @@ Still open:
     the preview, the Hours step, the leftover control; the fail-loud banner
     renders when a read refuses. Not exercised against live data; no org's
     shifts were regenerated.
-- **Harness: `npm run sim:snack-shifts`** (102 checks × 3 zones, 14
-  anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (25 mutants,
+- **Shift notes + "in charge of cash" (0104, written 2026-10-05, NOT APPLIED;
+  branch `feat/snack-shack-notes-cash`).** Decided, same rules as game notes:
+  a NOTE on any shift (500 chars, attribution by the BEFORE UPDATE trigger
+  `set_snack_shack_blocks_notes_attribution`, copied from 0095) and an
+  optional CASH PERSON, a FK to `snack_shack_cash_people` (one list per
+  season, keyed by the settings row; unique on lower(btrim(name)); ON DELETE
+  SET NULL — removing a name nulls its shifts in the same statement; the
+  page's confirm shows a pre-flight count that renders "couldn't count" on a
+  failed read, never 0). **Both are INTERNAL: never printed, emailed,
+  exported or shown to teams.** `SHIFT_NOTE_SELECT_FIELDS`
+  (`src/lib/snack-shack/shift-notes.ts`) is the one string the page select
+  carries, and that is the hazard: the print regions render from the same
+  object. `npm run sim:game-notes` scans the two email routes and the Teams
+  page button as files and the page client's TWO print paths as SLICES, and
+  asserts the page select CARRIES the fields; `sim:game-notes:mutants`
+  (GM8–GM11) plants a leak in each and requires its own line to catch it.
+- **Regenerate carries a note and its cash person to the same-start
+  replacement.** 0104 re-creates `regenerate_snack_shack_shifts` (body
+  verbatim from 0103 plus: capture the doomed rows' note, attribution and
+  cash person BEFORE the delete; copy them in the INSERT — in the INSERT, so
+  the UPDATE-only attribution trigger cannot re-stamp the regenerating admin
+  as the author; return `carried` and `lost`). Kept rows are untouched as
+  before. The plan (`regenerate-plan.ts`) lists `carried` and `lost` and the
+  preview shows both, so nothing vanishes silently. **The ONE shared note
+  editor is `src/components/schedule/note-editor-modal.tsx`**; the game hook
+  and the shift hook (`use-shift-note-editor.tsx`) both render it and own
+  their own write + log. Cash people are managed on the page
+  (`cash-people-card.tsx`), not in the wizard.
+- **Locks when 0104 is applied: ACCESS EXCLUSIVE on `snack_shack_blocks`**
+  (ADD COLUMN ×4, ADD CHECK; ~110 rows, instant) and **SHARE ROW EXCLUSIVE on
+  `profiles`** (the notes_updated_by FK — blocks profile WRITES for that
+  statement: org-name saves, setup dismiss, Stripe plan updates, signups).
+  Harness: `scripts/sim/snack-shack-notes-cash-sim.sql` (assembled by
+  `snack-shack-notes-cash-build.ts`; applies 0104 rolled back, test org only,
+  re-runs the 0103 R-series, N1–N7, 6 mutants incl. the FK flipped to NO
+  ACTION and the trigger re-stamp). NOT YET RUN.
+- **Harness: `npm run sim:snack-shifts`** (108 checks × 3 zones, 16
+  anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (27 mutants,
   each killed FIRST at its own assertion). Read the MUTATION LOG in the sim
   header: the first run had five killed at the wrong line, all harness
   ordering faults, and the section order now exists because of them.

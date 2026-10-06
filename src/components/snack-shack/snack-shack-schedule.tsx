@@ -4,8 +4,10 @@ import { Fragment, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Loader2, Pencil, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
+import type { ShiftNoteFields, CashPerson } from "@/lib/snack-shack/shift-notes";
 
-export type BlockRow = {
+export type BlockRow = ShiftNoteFields & {
   id: string;
   date: string;
   start_time: string;
@@ -27,6 +29,10 @@ interface Props {
   /** Rendered once above each date's rows (window summary, leftover control,
    *  per-day add). The list stays a flat table of stored rows. */
   dayHeader?: (date: string) => ReactNode;
+  /** 0104: the season's cash people and the note editor. Internal fields —
+   *  never rendered by a print or email path. */
+  cashPeople?: CashPerson[];
+  onEditNote?: (block: BlockRow) => void;
 }
 
 function fmtDate(d: string) {
@@ -44,12 +50,30 @@ function fmtTime(t: string) {
   return `${h12}:${String(m).padStart(2, "0")}${ampm}`;
 }
 
-export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader }: Props) {
+export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cashPeople = [], onEditNote }: Props) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTeam, setEditTeam] = useState<string>("");
   const [saving, setSaving] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [cashError, setCashError] = useState<string | null>(null);
+
+  async function saveCash(blockId: string, cashPersonId: string | null) {
+    setSaving(blockId);
+    setCashError(null);
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("snack_shack_blocks")
+      .update({ cash_person_id: cashPersonId } as never)
+      .eq("id", blockId)
+      .select("id");
+    setSaving(null);
+    if (error || (data ?? []).length === 0) {
+      setCashError(error?.message ?? "Nothing was saved — refresh and try again.");
+      return;
+    }
+    router.refresh();
+  }
 
   function startEdit(block: BlockRow) {
     setEditingId(block.id);
@@ -90,6 +114,7 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader }: P
               <th className="pb-3 font-semibold">Date</th>
               <th className="pb-3 font-semibold">Shift</th>
               <th className="pb-3 font-semibold">Assigned team</th>
+              <th className="pb-3 font-semibold">Cash</th>
               <th className="pb-3 font-semibold">Type</th>
               <th className="pb-3" />
             </tr>
@@ -99,7 +124,7 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader }: P
               <Fragment key={block.id}>
               {dayHeader && (i === 0 || blocks[i - 1].date !== block.date) && (
                 <tr className="bg-gray-50/70">
-                  <td colSpan={5} className="px-2 py-2">{dayHeader(block.date)}</td>
+                  <td colSpan={6} className="px-2 py-2">{dayHeader(block.date)}</td>
                 </tr>
               )}
               <tr className="text-gray-700">
@@ -108,6 +133,9 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader }: P
                 </td>
                 <td className="py-3 tabular-nums text-gray-600">
                   {fmtTime(block.start_time)} – {fmtTime(block.end_time)}
+                  {onEditNote && (
+                    <GameNoteLine game={block} onClick={() => onEditNote(block)} className="max-w-[16rem]" />
+                  )}
                 </td>
                 <td className="py-3">
                   {editingId === block.id ? (
@@ -153,6 +181,24 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader }: P
                   )}
                 </td>
                 <td className="py-3">
+                  {cashPeople.length === 0 ? (
+                    <span className="text-xs text-gray-300">—</span>
+                  ) : (
+                    <select
+                      value={block.cash_person_id ?? ""}
+                      onChange={(e) => void saveCash(block.id, e.target.value || null)}
+                      disabled={saving === block.id}
+                      aria-label="In charge of cash"
+                      className="h-8 max-w-[10rem] rounded-lg border border-gray-200 px-2 text-xs text-gray-900 focus:border-[#22C55E] focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">No one</option>
+                      {cashPeople.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </td>
+                <td className="py-3">
                   {block.is_recurring ? (
                     <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                       From schedule
@@ -164,15 +210,18 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader }: P
                   )}
                 </td>
                 <td className="py-3 text-right">
-                  {editingId !== block.id && (
-                    <button
-                      onClick={() => startEdit(block)}
-                      aria-label="Edit assignment"
-                      className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-gray-100 hover:text-[#0C1F3F] md:h-7 md:w-7"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                  )}
+                  <div className="flex items-center justify-end gap-0.5">
+                    {onEditNote && <GameNoteIcon game={block} onClick={() => onEditNote(block)} />}
+                    {editingId !== block.id && (
+                      <button
+                        onClick={() => startEdit(block)}
+                        aria-label="Edit assignment"
+                        className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-gray-100 hover:text-[#0C1F3F] md:h-7 md:w-7"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
               </Fragment>
@@ -180,6 +229,10 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader }: P
           </tbody>
         </table>
       </div>
+
+      {cashError && (
+        <p className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">Couldn&rsquo;t save the cash person: {cashError}</p>
+      )}
 
       {showAddModal && (
         <AddOneOffModal
@@ -365,16 +418,19 @@ export function AddOneOffModal({
 export function BlockEditModal({
   block,
   teams,
+  cashPeople = [],
   onClose,
   onSaved,
 }: {
   block: BlockRow;
   teams: TeamOption[];
+  cashPeople?: CashPerson[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const router = useRouter();
   const [teamId, setTeamId] = useState(block.assigned_team_id ?? "");
+  const [cashId, setCashId] = useState(block.cash_person_id ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -384,7 +440,7 @@ export function BlockEditModal({
     const supabase = createClient();
     const { error: dbErr } = await supabase
       .from("snack_shack_blocks")
-      .update({ assigned_team_id: teamId || null } as never)
+      .update({ assigned_team_id: teamId || null, cash_person_id: cashId || null } as never)
       .eq("id", block.id);
     setSaving(false);
     if (dbErr) {
@@ -445,6 +501,22 @@ export function BlockEditModal({
               ))}
             </select>
           </div>
+
+          {cashPeople.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-gray-700">In charge of cash</label>
+              <select
+                value={cashId}
+                onChange={(e) => setCashId(e.target.value)}
+                className="h-11 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+              >
+                <option value="">No one</option>
+                {cashPeople.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {error && (
             <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">

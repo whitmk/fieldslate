@@ -37,6 +37,7 @@
     "sim:regenerate-pending-guard": "TZ=UTC npx tsx scripts/sim/regenerate-pending-guard-sim.ts",
     "sim:picker-overrides": "TZ=UTC npx tsx scripts/sim/picker-overrides-sim.ts",
     "sim:game-notes": "TZ=UTC npx tsx scripts/sim/game-notes-sim.ts",
+    "sim:game-notes:mutants": "npx tsx scripts/sim/game-notes-mutants.ts",
     "sim:venue-address": "npx tsx scripts/sim/venue-address-sim.ts",
     "sim:forms-spam": "npx tsx scripts/sim/forms-spam-sim.ts",
     "sim:forms-spam:mutants": "npx tsx scripts/sim/forms-spam-mutants.ts",

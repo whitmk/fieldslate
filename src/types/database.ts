@@ -1158,6 +1158,38 @@ export type Database = {
           },
         ]
       }
+      snack_shack_cash_people: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          snack_shack_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          snack_shack_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          snack_shack_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "snack_shack_cash_people_snack_shack_id_fkey"
+            columns: ["snack_shack_id"]
+            isOneToOne: false
+            referencedRelation: "snack_shack_settings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       snack_shack_settings: {
         Row: {
           close_after_min: number
@@ -1258,31 +1290,43 @@ export type Database = {
       snack_shack_blocks: {
         Row: {
           assigned_team_id: string | null
+          cash_person_id: string | null
           created_at: string
           date: string
           end_time: string
           id: string
           is_recurring: boolean
+          notes: string | null
+          notes_updated_at: string | null
+          notes_updated_by: string | null
           snack_shack_id: string
           start_time: string
         }
         Insert: {
           assigned_team_id?: string | null
+          cash_person_id?: string | null
           created_at?: string
           date: string
           end_time: string
           id?: string
           is_recurring?: boolean
+          notes?: string | null
+          notes_updated_at?: string | null
+          notes_updated_by?: string | null
           snack_shack_id: string
           start_time: string
         }
         Update: {
           assigned_team_id?: string | null
+          cash_person_id?: string | null
           created_at?: string
           date?: string
           end_time?: string
           id?: string
           is_recurring?: boolean
+          notes?: string | null
+          notes_updated_at?: string | null
+          notes_updated_by?: string | null
           snack_shack_id?: string
           start_time?: string
         }
@@ -1972,3 +2016,4 @@ export type InterleagueRescheduleRequest = Database["public"]["Tables"]["interle
 export type OrganizationMember = Database["public"]["Tables"]["organization_members"]["Row"];
 export type OrganizationInvitation = Database["public"]["Tables"]["organization_invitations"]["Row"];
 export type SnackShackAbsorbChoice = Database["public"]["Tables"]["snack_shack_absorb_choices"]["Row"];
+export type SnackShackCashPerson = Database["public"]["Tables"]["snack_shack_cash_people"]["Row"];

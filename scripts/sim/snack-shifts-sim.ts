@@ -36,7 +36,9 @@
 //      for a past date is added; upcoming unchanged rows are kept; a
 //      same-start/different-end pair is a "changed" shift; staleness looks
 //      at upcoming dates only; the equity pick is seeded with frozen past
-//      rows; todayInTimezone; the legacy notice; the max-shift help text.
+//      rows; todayInTimezone; the legacy notice; the max-shift help text;
+//      (0104) a note/cash person on a changed row is `carried`, on a removed
+//      row `lost`.
 //   X  WALL-CLOCK: a 19:45 end on a +00 wall-clock stays 19:45 in every host
 //      zone; the library never hands scheduled_at to `new Date`.
 //
@@ -63,6 +65,8 @@
 //       exact boundary is [L4]'s line alone.
 //   SM19 (count-only staleness) died at a [T1] case whose shift COUNT also
 //       changed — the same-count-different-time case ([T3]) now runs first.
+// 2026-10-05 (0104): SM26/SM27 (carried / lost dropped from the plan) killed
+// at [F10] / [F11] on the first run; 27/27.
 // Also from the first run: four fixtures accidentally carried a ≥60-minute
 // break and the library split them correctly ([W3], [G6], [L7], [X1]); the
 // real league's Saturdays have no break over 30 minutes across three fields,
@@ -134,6 +138,8 @@ const counters = {
   singleShiftWindow: 0,
   frozenPastRows: 0,
   changedShifts: 0,
+  carriedItems: 0,
+  lostItems: 0,
 };
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -479,6 +485,21 @@ section("F: past dates frozen, preview, upcoming staleness", () => {
   ok(lines[0] === "2026-10-17 11:30: ends 13:30 → 12:30, unassigned → Giants" && lines[1].startsWith("2026-10-24 09:30–11:30: new → "), "F6", "the preview lines read as team → team / new → team", JSON.stringify(lines));
   const plan3 = buildRegeneratePlan({ derivation: deriveShifts([], RULE, []), stored, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY });
   ok(plan3.assignmentChanges.some((c) => c.kind === "removed" && c.fromTeamId === "expos") && plan3.desired.length === 2 && plan3.frozenPast === 2, "F6", "no upcoming games: upcoming rows are removed (Expos → removed), the past two still ride the payload", JSON.stringify(plan3.assignmentChanges));
+  // 0104 — carried / lost. The stored rows gain a note and a cash person.
+  const storedNC: StoredShiftRow[] = stored.map((r) =>
+    r.id === "u2" ? { ...r, notes: "float in the office", cash_person_id: "cash-a" } :
+    r.id === "u1" ? { ...r, cash_person_id: "cash-b" } : r);
+  const planNC = buildRegeneratePlan({ derivation, stored: storedNC, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY });
+  ok(planNC.carried.length === 1 && planNC.carried[0].start === "11:30" && planNC.carried[0].fromEnd === "13:30" && planNC.carried[0].toEnd === "14:00"
+     && planNC.carried[0].notes === "float in the office" && planNC.carried[0].cashPersonId === "cash-a", "F10", "a note + cash person on the CHANGED (same-start) row is reported as carried to the new end", JSON.stringify(planNC.carried));
+  ok(planNC.lost.length === 0, "F10", "nothing is lost when every removed row has a same-start replacement");
+  counters.carriedItems += planNC.carried.length;
+  const planNC2 = buildRegeneratePlan({ derivation: deriveShifts([], RULE, []), stored: storedNC, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY });
+  ok(planNC2.lost.length === 2 && planNC2.lost.map((l) => `${l.start}:${l.notes ?? "-"}:${l.cashPersonId ?? "-"}`).join(",") === "09:30:-:cash-b,11:30:float in the office:cash-a" && planNC2.carried.length === 0,
+     "F11", "with no upcoming games, the two removed rows' note/cash are reported as LOST (the kept-only cash row too)", JSON.stringify(planNC2.lost));
+  counters.lostItems += planNC2.lost.length;
+  ok(buildRegeneratePlan({ derivation, stored, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY }).lost.length === 0, "F11", "a removed row with neither note nor cash is not listed as lost");
+
   // todayInTimezone.
   const t = new Date("2026-10-10T05:30:00Z");
   ok(todayInTimezone("America/Los_Angeles", t) === "2026-10-09" && todayInTimezone("America/New_York", t) === "2026-10-10", "F7", "05:30Z on Oct 10 is still Oct 9 in Los Angeles and already Oct 10 in New York");

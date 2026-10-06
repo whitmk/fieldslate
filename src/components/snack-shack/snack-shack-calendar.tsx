@@ -7,10 +7,14 @@ import {
   type BlockRow,
   type TeamOption,
 } from "./snack-shack-schedule";
+import { GameNoteDot } from "@/components/schedule/game-note";
+import type { CashPerson } from "@/lib/snack-shack/shift-notes";
 
 interface Props {
   blocks: BlockRow[];
   teams: TeamOption[];
+  /** 0104 — internal; the calendar is an admin screen. */
+  cashPeople?: CashPerson[];
   /** Snack shack open-range start (YYYY-MM-DD). Cells outside are dimmed. */
   startDate: string;
   /** Snack shack open-range end (YYYY-MM-DD). Cells outside are dimmed. */
@@ -82,7 +86,7 @@ function initialMonth(startDate: string, endDate: string): string {
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-export function SnackShackCalendar({ blocks, teams, startDate, endDate }: Props) {
+export function SnackShackCalendar({ blocks, teams, cashPeople = [], startDate, endDate }: Props) {
   const today = todayLocal();
   const [month, setMonth] = useState(() => initialMonth(startDate, endDate));
   const [editingBlock, setEditingBlock] = useState<BlockRow | null>(null);
@@ -213,6 +217,7 @@ export function SnackShackCalendar({ blocks, teams, startDate, endDate }: Props)
         <BlockEditModal
           block={editingBlock}
           teams={teams}
+          cashPeople={cashPeople}
           onClose={() => setEditingBlock(null)}
           onSaved={() => setEditingBlock(null)}
         />
@@ -249,7 +254,7 @@ function AssignmentPill({
       className={`flex w-full flex-col gap-0.5 rounded px-1.5 py-1 text-left text-[11px] transition-colors ${base}`}
       title={`${teamLabel} · ${fmtTime(block.start_time)} – ${fmtTime(block.end_time)} · ${
         block.is_recurring ? "From schedule" : "Added by hand"
-      }`}
+      }${block.cash_person?.name ? ` · Cash: ${block.cash_person.name}` : ""}`}
     >
       <span className="flex items-center gap-1.5 truncate font-semibold">
         <span
@@ -257,6 +262,7 @@ function AssignmentPill({
           aria-hidden
         />
         <span className="truncate">{teamLabel}</span>
+        <GameNoteDot game={block} />
       </span>
       <span className="truncate tabular-nums text-[10px] opacity-80">
         {fmtTime(block.start_time)} – {fmtTime(block.end_time)}
