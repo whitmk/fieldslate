@@ -3721,6 +3721,12 @@ Still open:
 
 ## Open items
 
+- **Snack shack last-resort tiebreak is alphabetical, so when shifts < teams
+  the same end of the alphabet is skipped every season. Replace with a
+  rotation (low priority).** (2026-10-06: the real league's from-scratch run
+  gives 46 of 54 teams a shift; the eight skipped are the WSLL teams at the
+  end of the name order.)
+
 - **The reschedule picker's own save has no save-time lock re-read** (the
   manual path gained one 2026-09-26). If the lock is switched on while the
   picker is open, a picked slot still saves — the trigger allowlists the
