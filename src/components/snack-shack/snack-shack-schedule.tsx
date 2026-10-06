@@ -2,10 +2,12 @@
 
 import { Fragment, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Loader2, Pencil, Check } from "lucide-react";
+import { AlertTriangle, Plus, X, Loader2, Pencil, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
 import type { ShiftNoteFields, CashPerson } from "@/lib/snack-shack/shift-notes";
+import { normalizeTime } from "@/lib/snack-shack/derive-shifts";
+import { NEEDS_TEAM, fmtShiftRange, redBannerLine, redSummary, type BlockFlagView } from "@/lib/snack-shack/shift-flags";
 
 export type BlockRow = ShiftNoteFields & {
   id: string;
@@ -33,6 +35,10 @@ interface Props {
    *  never rendered by a print or email path. */
   cashPeople?: CashPerson[];
   onEditNote?: (block: BlockRow) => void;
+  /** Per-row flag views (shift-flags.ts), keyed by block id. Absent while the
+   *  game schedule is still loading or could not be read — then nothing is
+   *  flagged and an empty row reads "Unassigned". Past rows are never here. */
+  flags?: Map<string, BlockFlagView | null>;
 }
 
 function fmtDate(d: string) {
@@ -50,7 +56,7 @@ function fmtTime(t: string) {
   return `${h12}:${String(m).padStart(2, "0")}${ampm}`;
 }
 
-export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cashPeople = [], onEditNote }: Props) {
+export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cashPeople = [], onEditNote, flags }: Props) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTeam, setEditTeam] = useState<string>("");
@@ -105,129 +111,182 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cas
     );
   }
 
+  // Date order, manual shifts among the derived ones.
+  const sorted = [...blocks].sort(
+    (a, b) => a.date.localeCompare(b.date) || normalizeTime(a.start_time).localeCompare(normalizeTime(b.start_time)) || normalizeTime(a.end_time).localeCompare(normalizeTime(b.end_time)) || a.id.localeCompare(b.id),
+  );
+  const viewOf = (b: BlockRow): BlockFlagView | null => flags?.get(b.id) ?? null;
+  const banner = redBannerLine(redSummary(sorted.map(viewOf)));
+
+  const teamCell = (block: BlockRow, view: BlockFlagView | null) => {
+    if (editingId === block.id) {
+      return (
+        <div className="flex items-center gap-2">
+          <select
+            value={editTeam}
+            onChange={(e) => setEditTeam(e.target.value)}
+            className="h-8 max-w-[12rem] rounded-lg border border-gray-200 px-2 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none"
+          >
+            <option value="">Unassigned</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => saveEdit(block.id)}
+            disabled={saving === block.id}
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#22C55E] text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50 md:h-7 md:w-7"
+            aria-label="Save"
+          >
+            {saving === block.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            onClick={() => setEditingId(null)}
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 md:h-7 md:w-7"
+            aria-label="Cancel"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      );
+    }
+    if (block.assigned_team_id) return <span className="font-medium text-gray-900">{block.team_name}</span>;
+    if (view?.needsTeam) return <span className="font-medium text-red-700">{NEEDS_TEAM}</span>;
+    return <span className="text-xs text-gray-400">Unassigned</span>;
+  };
+
+  const statusCell = (view: BlockFlagView | null) => {
+    if (view?.chip) {
+      return (
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700">
+          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-red-500" />
+          {view.chip}
+        </span>
+      );
+    }
+    if (view?.soft) return <span className="text-xs text-gray-500">{view.soft}</span>;
+    return <span className="text-xs text-gray-300">—</span>;
+  };
+
+  const manualTag = (block: BlockRow) =>
+    block.is_recurring ? null : (
+      <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-indigo-600">Manual</span>
+    );
+
+  const cashCell = (block: BlockRow) =>
+    cashPeople.length === 0 ? (
+      <span className="text-xs text-gray-300">—</span>
+    ) : (
+      <select
+        value={block.cash_person_id ?? ""}
+        onChange={(e) => void saveCash(block.id, e.target.value || null)}
+        disabled={saving === block.id}
+        aria-label="In charge of cash"
+        className="h-8 max-w-[10rem] rounded-lg border border-gray-200 px-2 text-xs text-gray-900 focus:border-[#22C55E] focus:outline-none disabled:opacity-50"
+      >
+        <option value="">No one</option>
+        {cashPeople.map((c) => (
+          <option key={c.id} value={c.id}>{c.name}</option>
+        ))}
+      </select>
+    );
+
+  const actions = (block: BlockRow) => (
+    <div className="flex items-center justify-end gap-0.5">
+      {onEditNote && <GameNoteIcon game={block} onClick={() => onEditNote(block)} />}
+      {editingId !== block.id && (
+        <button
+          onClick={() => startEdit(block)}
+          aria-label="Edit assignment"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-gray-100 hover:text-[#0C1F3F] md:h-7 md:w-7"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <>
-      <div className="overflow-x-auto">
+      {banner && (
+        <p className="mb-3 flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <span>{banner}</span>
+        </p>
+      )}
+
+      {/* Desktop: the table. */}
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wider text-gray-500">
               <th className="pb-3 font-semibold">Date</th>
               <th className="pb-3 font-semibold">Shift</th>
               <th className="pb-3 font-semibold">Assigned team</th>
+              <th className="pb-3 font-semibold">Status</th>
               <th className="pb-3 font-semibold">Cash</th>
-              <th className="pb-3 font-semibold">Type</th>
+              <th className="pb-3" />
               <th className="pb-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {blocks.map((block, i) => (
-              <Fragment key={block.id}>
-              {dayHeader && (i === 0 || blocks[i - 1].date !== block.date) && (
-                <tr className="bg-gray-50/70">
-                  <td colSpan={6} className="px-2 py-2">{dayHeader(block.date)}</td>
-                </tr>
-              )}
-              <tr className="text-gray-700">
-                <td className="py-3 font-medium text-gray-900 tabular-nums">
-                  {fmtDate(block.date)}
-                </td>
-                <td className="py-3 tabular-nums text-gray-600">
-                  {fmtTime(block.start_time)} – {fmtTime(block.end_time)}
-                  {onEditNote && (
-                    <GameNoteLine game={block} onClick={() => onEditNote(block)} className="max-w-[16rem]" />
+            {sorted.map((block, i) => {
+              const view = viewOf(block);
+              return (
+                <Fragment key={block.id}>
+                  {dayHeader && (i === 0 || sorted[i - 1].date !== block.date) && (
+                    <tr className="bg-gray-50/70">
+                      <td colSpan={7} className="px-2 py-2">{dayHeader(block.date)}</td>
+                    </tr>
                   )}
-                </td>
-                <td className="py-3">
-                  {editingId === block.id ? (
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={editTeam}
-                        onChange={(e) => setEditTeam(e.target.value)}
-                        className="h-8 rounded-lg border border-gray-200 px-2 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none"
-                      >
-                        <option value="">Unassigned</option>
-                        {teams.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() => saveEdit(block.id)}
-                        disabled={saving === block.id}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#22C55E] text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50 md:h-7 md:w-7"
-                        aria-label="Save"
-                      >
-                        {saving === block.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Check className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setEditingId(null)}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 md:h-7 md:w-7"
-                        aria-label="Cancel"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ) : block.assigned_team_id ? (
-                    <span className="font-medium text-gray-900">
-                      {block.team_name}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-amber-600">Unassigned</span>
-                  )}
-                </td>
-                <td className="py-3">
-                  {cashPeople.length === 0 ? (
-                    <span className="text-xs text-gray-300">—</span>
-                  ) : (
-                    <select
-                      value={block.cash_person_id ?? ""}
-                      onChange={(e) => void saveCash(block.id, e.target.value || null)}
-                      disabled={saving === block.id}
-                      aria-label="In charge of cash"
-                      className="h-8 max-w-[10rem] rounded-lg border border-gray-200 px-2 text-xs text-gray-900 focus:border-[#22C55E] focus:outline-none disabled:opacity-50"
-                    >
-                      <option value="">No one</option>
-                      {cashPeople.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  )}
-                </td>
-                <td className="py-3">
-                  {block.is_recurring ? (
-                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                      From schedule
-                    </span>
-                  ) : (
-                    <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-indigo-600">
-                      Added by hand
-                    </span>
-                  )}
-                </td>
-                <td className="py-3 text-right">
-                  <div className="flex items-center justify-end gap-0.5">
-                    {onEditNote && <GameNoteIcon game={block} onClick={() => onEditNote(block)} />}
-                    {editingId !== block.id && (
-                      <button
-                        onClick={() => startEdit(block)}
-                        aria-label="Edit assignment"
-                        className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-gray-100 hover:text-[#0C1F3F] md:h-7 md:w-7"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-              </Fragment>
-            ))}
+                  <tr className="text-gray-700">
+                    <td className="whitespace-nowrap py-3 pr-4 font-medium text-gray-900 tabular-nums">{fmtDate(block.date)}</td>
+                    <td className="whitespace-nowrap py-3 pr-4 tabular-nums text-gray-600">
+                      {fmtShiftRange(block.start_time, block.end_time)}
+                      {onEditNote && (
+                        <GameNoteLine game={block} onClick={() => onEditNote(block)} className="max-w-[16rem] whitespace-normal" />
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap py-3 pr-4">{teamCell(block, view)}</td>
+                    <td className="py-3 pr-4">{statusCell(view)}</td>
+                    <td className="py-3 pr-4">{cashCell(block)}</td>
+                    <td className="py-3 pr-2">{manualTag(block)}</td>
+                    <td className="py-3 text-right">{actions(block)}</td>
+                  </tr>
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
+      </div>
+
+      {/* Phone: one card per shift. */}
+      <div className="flex flex-col gap-2 md:hidden">
+        {sorted.map((block, i) => {
+          const view = viewOf(block);
+          return (
+            <Fragment key={block.id}>
+              {dayHeader && (i === 0 || sorted[i - 1].date !== block.date) && (
+                <div className="mt-2 rounded-lg bg-gray-50/70 px-2 py-2 first:mt-0">{dayHeader(block.date)}</div>
+              )}
+              <div className={`rounded-xl border px-3 py-2.5 ${view?.red ? "border-red-200" : "border-gray-200"}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="whitespace-nowrap font-semibold text-[#0C1F3F] tabular-nums">{fmtShiftRange(block.start_time, block.end_time)}</span>
+                  {manualTag(block)}
+                </div>
+                <div className="mt-0.5 text-sm">{teamCell(block, view)}</div>
+                {onEditNote && <GameNoteLine game={block} onClick={() => onEditNote(block)} />}
+                {(view?.chip || view?.soft) && <div className="mt-1.5">{statusCell(view)}</div>}
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <div className="min-w-0">{cashPeople.length > 0 ? cashCell(block) : null}</div>
+                  {actions(block)}
+                </div>
+              </div>
+            </Fragment>
+          );
+        })}
       </div>
 
       {cashError && (

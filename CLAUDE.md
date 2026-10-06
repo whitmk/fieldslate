@@ -3660,8 +3660,28 @@ Still open:
      and hand edits). Sentences come from `assignmentFlagLine`, verbatim.
   - Frozen past rows, manual rows, kept assignments on unchanged shifts, the
     derivation and the leftover choices are untouched — a kept row that
-    overlaps stays as it is and the page is where it gets flagged. Flags UI
-    not built yet (mockup first).
+    overlaps stays as it is and the page is where it gets flagged.
+  - **FLAGS UI (mockup v2, approved and built 2026-10-06).** The pure
+    decisions live in `src/lib/snack-shack/shift-flags.ts` and every surface
+    renders them verbatim: RED means only "fix this" — the assigned team
+    plays during the shift (chip "Plays 1:00pm, during this shift") or no
+    team is assigned ("Needs a team" in red in place of the name, plus the
+    chip "No team is free during this shift" ONLY when every team is
+    blocked). Off-preference is plain gray text ("Not at the park that day"
+    / "Plays that day"), never a chip. A row dated before today in the org's
+    zone is NEVER flagged; a manual row gets the red checks only (it was
+    never placed by the preference); the top banner counts red rows only
+    (`redBannerLine`). The list sorts by date with manual shifts among the
+    derived ones, shows a "Manual" tag only on manual rows, and renders a
+    table at `md` and up and one card per shift below it; time ranges share
+    one suffix ("9:30–11:30am", "11:30am–1:30pm", `fmtShiftRange`). While
+    the game schedule is loading or unreadable the page passes no flag map
+    and an empty row reads plain "Unassigned". The preview lists the plan's
+    `flagged` under "After Confirm" (unfilled red, off-preference gray) and
+    a red "N needs a team" pill. Nothing reaches the print region or the
+    email routes (they render their own markup). Harness: sim section U
+    (runs LAST) + mutants UM1–UM4; verified on a deleted scratch route at
+    375px and 1280px.
   - **Harness:** sim section A — the harness's OWN interval check (buffer as a
     LITERAL 30, never the imported constant) over fixed fixtures and a seeded
     sweep of 300 Saturdays × 2 modes; nine mutants NM1–NM9 (buffer removed,
@@ -3670,7 +3690,8 @@ Still open:
     plus NM10 (tiers before equity, killed by the re-keyed A7).
     Run 2026-10-06: 36/36 killed at their own assertion on the second pass
     (three harness ordering faults on the first — read the sim's MUTATION
-    LOG). `npm run sim:snack-shifts` 148 checks × 3 zones, 23 counters.
+    LOG); with NM10 and the flags mutants UM1–UM4, 41/41. `npm run
+    sim:snack-shifts` 169 checks × 3 zones, 26 counters.
 - **Shift notes + "in charge of cash" (0104, APPLIED 2026-10-06 02:54 UTC after
   a first-run-green rolled-back proof; branch `feat/snack-shack-notes-cash`).** Decided, same rules as game notes:
   a NOTE on any shift (500 chars, attribution by the BEFORE UPDATE trigger

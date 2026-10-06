@@ -53,6 +53,12 @@
 //      rows; todayInTimezone; the legacy notice; the max-shift help text;
 //      (0104) a note/cash person on a changed row is `carried`, on a removed
 //      row `lost`.
+//   U  THE PAGE'S FLAGS (shift-flags.ts, mockup v2): red means only "plays
+//      during the shift" or "Needs a team"; off-preference is gray text, not
+//      a chip; a past row is never flagged; a manual row gets the red checks
+//      only; the "No team is free" chip appears only when nobody is free;
+//      the banner counts red items only; the time range shares one suffix.
+//      Runs LAST so no earlier mutant can land here first.
 //   X  WALL-CLOCK: a 19:45 end on a +00 wall-clock stays 19:45 in every host
 //      zone; the library never hands scheduled_at to `new Date`.
 //
@@ -101,6 +107,10 @@
 // (the first cut ran the game-day tiers before equity). A7 was re-keyed to a
 // three-slot fixture that only equity-first passes, and NM10 (tiers before
 // equity) was added: 37/37 killed at their own assertion, first run.
+// 2026-10-06 (flags UI): section U (shift-flags.ts) added LAST so no
+// earlier mutant can land on it; UM1–UM4 (past rows flagged, the
+// nobody-free chip on every empty shift, off-preference red, banner counts
+// gray) killed at their own tag, first run: 41/41.
 // The sweep did not produce an unfilled shift (12 teams, ≤8 games); the
 // unfilled case is pinned by A3/A6's fixed fixtures and by NM5.
 // Also from the first run: four fixtures accidentally carried a ≥60-minute
@@ -148,6 +158,17 @@ import {
   todayInTimezone,
   upcomingStaleness,
 } from "../../src/lib/snack-shack/regenerate-plan";
+import {
+  NEEDS_TEAM,
+  NO_TEAM_FREE_CHIP,
+  SOFT_NOT_AT_PARK,
+  SOFT_PLAYS_THAT_DAY,
+  blockFlagView,
+  fmtShiftRange,
+  previewFlagLine,
+  redBannerLine,
+  redSummary,
+} from "../../src/lib/snack-shack/shift-flags";
 
 const ROOT = join(__dirname, "../..");
 const failures: string[] = [];
@@ -193,6 +214,10 @@ const counters = {
   gameDayFallbacks: 0,
   offDayBusyPicks: 0,
   sweepPicksWithSomeoneBlocked: 0,
+  // U
+  pastRowsUnflagged: 0,
+  redRows: 0,
+  softRows: 0,
 };
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -797,6 +822,63 @@ section("X: wall-clock only", () => {
   const dateCalls = src.match(/new Date\(([^)]*)\)/g) ?? [];
   ok(dateCalls.every((c) => c.includes('"T00:00:00"')) && !src.includes("getTime(") && !src.includes("Date.parse("), "X4", "the library never hands a stored timestamp to new Date — only date strings at local midnight", JSON.stringify(dateCalls));
   ok(src.includes("scheduled_at.substring") || src.includes("iso.substring(11, 16)"), "X4", "time of day is read by substring");
+});
+
+// ─── U: the page's flags ─────────────────────────────────────────────────────
+
+section("U: page flags — red is fix-this, gray is off-preference, past never", () => {
+  ok(fmtShiftRange("09:30:00", "11:30:00") === "9:30–11:30am" && fmtShiftRange("11:30", "13:30") === "11:30am–1:30pm" && fmtShiftRange("11:30", "12:30") === "11:30am–12:30pm" && fmtShiftRange("15:30", "17:45") === "3:30–5:45pm", "U1", "the time range carries one suffix when both ends share it, two when they cross noon");
+  const T = [{ id: "alpha", name: "Alpha" }, { id: "bravo", name: "Bravo" }];
+  const TODAY = "2026-10-10";
+  // Alpha plays 13:00–14:00 at the park; Bravo plays 10:00–11:00 elsewhere.
+  const idx = assignmentIndexFromGames(ag([{ home: "alpha", date: "2026-10-17", start: "13:00", dur: 60 }, { home: "bravo", date: "2026-10-17", start: "10:00", dur: 60, venue: "perry" }]), HOME);
+  const row = (o: Partial<{ date: string; start: string; end: string; team: string | null; manual: boolean }>) => ({
+    date: o.date ?? "2026-10-17", start_time: o.start ?? "12:30", end_time: o.end ?? "14:30", assigned_team_id: o.team === undefined ? "alpha" : o.team, is_recurring: !o.manual,
+  });
+  const view = (b: ReturnType<typeof row>, preference: "prefer_game_days" | "prefer_off_days" = "prefer_game_days") =>
+    blockFlagView({ index: idx, preference, teams: T, today: TODAY, block: b });
+
+  const conflict = view(row({}));
+  ok(!!conflict && conflict.red && !conflict.needsTeam && conflict.chip === "Plays 1:00pm, during this shift" && conflict.soft === null, "U2", "a stored team that plays during the shift → red chip naming the game time", JSON.stringify(conflict));
+  counters.redRows++;
+  const past = view(row({ date: "2026-10-03" }));
+  ok(past === null, "U3", "the same row dated before today is never flagged");
+  counters.pastRowsUnflagged++;
+  const pastEmpty = view(row({ date: "2026-10-03", team: null }));
+  ok(pastEmpty === null, "U3", "a past row with no team is not flagged either");
+  counters.pastRowsUnflagged++;
+  // Needs a team: Bravo is free of a 12:30–14:30 shift → no chip.
+  const needs = view(row({ team: null }));
+  ok(!!needs && needs.red && needs.needsTeam && needs.chip === null, "U4", "an unassigned upcoming shift → red 'Needs a team', no chip when some team is free", JSON.stringify(needs));
+  counters.redRows++;
+  // Nobody free: a 09:30–11:30 shift — Alpha? 13:00 game is clear; make it 12:45–14:30 with Bravo blocked too.
+  const idx2 = assignmentIndexFromGames(ag([{ home: "alpha", date: "2026-10-17", start: "13:00", dur: 60 }, { home: "bravo", date: "2026-10-17", start: "14:00", dur: 60, venue: "perry" }]), HOME);
+  const nobody = blockFlagView({ index: idx2, preference: "prefer_game_days", teams: T, today: TODAY, block: row({ team: null }) });
+  ok(!!nobody && nobody.red && nobody.needsTeam && nobody.chip === NO_TEAM_FREE_CHIP, "U4", "…and the 'No team is free' chip only when every team is blocked", JSON.stringify(nobody));
+  counters.redRows++;
+  ok(NEEDS_TEAM === "Needs a team" && NO_TEAM_FREE_CHIP === "No team is free during this shift", "U4", "the two red strings, verbatim");
+  // Off-preference → gray text, never red.
+  const soft = view(row({ team: "bravo", start: "15:00", end: "17:00" }));
+  ok(!!soft && !soft.red && !soft.needsTeam && soft.chip === null && soft.soft === SOFT_NOT_AT_PARK, "U5", "game days: a stored team with no game at the park → gray 'Not at the park that day'", JSON.stringify(soft));
+  counters.softRows++;
+  const softOff = view(row({ team: "bravo", start: "15:00", end: "17:00" }), "prefer_off_days");
+  ok(!!softOff && !softOff.red && softOff.soft === SOFT_PLAYS_THAT_DAY, "U5", "off days: a stored team that plays that day (clear of the shift) → gray 'Plays that day'", JSON.stringify(softOff));
+  counters.softRows++;
+  ok(view(row({ team: "alpha", start: "15:00", end: "17:00" })) === null, "U5", "game days: a park team clear of the shift → no flag at all");
+  // Manual rows: red checks only.
+  const manualEmpty = view(row({ team: null, manual: true }));
+  ok(!!manualEmpty && manualEmpty.red && manualEmpty.needsTeam && manualEmpty.chip === null, "U6", "a manual shift with no team → red 'Needs a team', no chip");
+  const manualConflict = view(row({ manual: true }));
+  ok(!!manualConflict && manualConflict.red && manualConflict.chip === "Plays 1:00pm, during this shift", "U6", "a manual shift whose team plays during it → red chip");
+  ok(view(row({ team: "bravo", start: "15:00", end: "17:00", manual: true })) === null, "U6", "a manual shift is not judged on the preference");
+  // The banner counts red only.
+  const sum = redSummary([conflict, past, needs, nobody, soft, softOff, null, manualEmpty]);
+  ok(sum.playsDuring === 1 && sum.needsTeam === 3 && sum.total === 4, "U7", "the summary counts red rows only (1 plays during, 3 need a team; the gray and past rows are not counted)", JSON.stringify(sum));
+  ok(redBannerLine(sum) === "4 upcoming shifts need fixing: 1 team plays during its shift, 3 shifts need a team.", "U7", "the banner sentence, verbatim", redBannerLine(sum) ?? "null");
+  ok(redBannerLine(redSummary([soft, past, null])) === null, "U7", "nothing red → no banner");
+  ok(redBannerLine({ playsDuring: 1, needsTeam: 0, total: 1 }) === "1 upcoming shift needs fixing: 1 team plays during its shift.", "U7", "singular form");
+  // Preview lines.
+  ok(previewFlagLine("unfilled", "prefer_game_days").red && previewFlagLine("preference_not_met", "prefer_game_days").text === "not at the park that day" && !previewFlagLine("preference_not_met", "prefer_off_days").red && previewFlagLine("preference_not_met", "prefer_off_days").text === "plays that day", "U8", "the preview's flagged-shift lines: unfilled is red, off-preference is gray with the mode's wording");
 });
 
 // ─── Summary ─────────────────────────────────────────────────────────────────

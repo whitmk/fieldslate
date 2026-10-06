@@ -12,6 +12,7 @@ import { runMutants, type Mutant } from "./mutant-runner";
 
 const LIB = "src/lib/snack-shack/derive-shifts.ts";
 const PLAN = "src/lib/snack-shack/regenerate-plan.ts";
+const FLAGS = "src/lib/snack-shack/shift-flags.ts";
 
 const MUTANTS: Mutant[] = [
   {
@@ -236,6 +237,31 @@ const MUTANTS: Mutant[] = [
     find: "  if (teamBlockedForShift(index, teamId, slot)) return \"conflict\";\n",
     replace: "",
     expect: "A9",
+  },
+  // ── 2026-10-06: the page's flags (section U) ──
+  {
+    id: "UM1", what: "past rows are flagged too", file: FLAGS,
+    find: "  if (block.date < p.today) return null;\n",
+    replace: "",
+    expect: "U3",
+  },
+  {
+    id: "UM2", what: "the 'No team is free' chip shows on every unassigned shift", file: FLAGS,
+    find: "    const nobodyFree = p.teams.length > 0 && p.teams.every((t) => teamBlockedForShift(p.index, t.id, slot));",
+    replace: "    const nobodyFree = true;",
+    expect: "U4",
+  },
+  {
+    id: "UM3", what: "off-preference rendered red", file: FLAGS,
+    find: "  return { red: false, needsTeam: false, chip: null, soft:",
+    replace: "  return { red: true, needsTeam: false, chip: null, soft:",
+    expect: "U5",
+  },
+  {
+    id: "UM4", what: "the banner counts gray rows too", file: FLAGS,
+    find: "    if (!v || !v.red) continue;",
+    replace: "    if (!v) continue;",
+    expect: "U7",
   },
 ];
 

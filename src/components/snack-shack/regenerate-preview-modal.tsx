@@ -8,7 +8,8 @@
 import { useEffect, useRef } from "react";
 import { Loader2, RefreshCw, X } from "lucide-react";
 import { assignmentChangeLines, type RegeneratePlan } from "@/lib/snack-shack/regenerate-plan";
-import type { StoredShiftRow } from "@/lib/snack-shack/derive-shifts";
+import type { SchedulingPreference, StoredShiftRow } from "@/lib/snack-shack/derive-shifts";
+import { NEEDS_TEAM, fmtShiftRange, previewFlagLine } from "@/lib/snack-shack/shift-flags";
 
 function fmtDate(d: string) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -19,10 +20,12 @@ function fmtTime(t: string) {
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return `${h12}:${String(m).padStart(2, "0")}${ampm}`;
 }
-const span = (s: string, e: string) => `${fmtTime(s)} – ${fmtTime(e)}`;
+const span = (s: string, e: string) => fmtShiftRange(s, e);
 
 interface Props {
   plan: RegeneratePlan;
+  /** Words the off-preference lines ("not at the park" vs "plays that day"). */
+  preference: SchedulingPreference;
   teamName: (id: string | null) => string;
   /** 0104: the cash person's name, or null for none. */
   cashName?: (id: string | null) => string | null;
@@ -34,7 +37,7 @@ interface Props {
   onCancel: () => void;
 }
 
-export function RegeneratePreviewModal({ plan, teamName, cashName = () => null, legacyNotice, busy, error, onConfirm, onCancel }: Props) {
+export function RegeneratePreviewModal({ plan, preference, teamName, cashName = () => null, legacyNotice, busy, error, onConfirm, onCancel }: Props) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     cancelRef.current?.focus();
@@ -50,6 +53,7 @@ export function RegeneratePreviewModal({ plan, teamName, cashName = () => null, 
   const changed = plan.dayChanges.reduce((n, d) => n + d.changed.length, 0);
   const lines = assignmentChangeLines(plan.assignmentChanges, teamName);
   const rowSpan = (r: StoredShiftRow) => span(r.start_time, r.end_time);
+  const needsTeam = plan.flagged.filter((f) => f.flag === "unfilled").length;
 
   return (
     <div
@@ -86,6 +90,11 @@ export function RegeneratePreviewModal({ plan, teamName, cashName = () => null, 
             {plan.frozenPast > 0 && (
               <span className="rounded-full bg-gray-100 px-2.5 py-1 font-semibold text-gray-600">
                 {plan.frozenPast === 1 ? "1 past shift left as it is" : `${plan.frozenPast} past shifts left as they are`}
+              </span>
+            )}
+            {needsTeam > 0 && (
+              <span className="rounded-full bg-red-50 px-2.5 py-1 font-semibold text-red-700">
+                {needsTeam === 1 ? "1 needs a team" : `${needsTeam} need a team`}
               </span>
             )}
           </div>
@@ -138,6 +147,26 @@ export function RegeneratePreviewModal({ plan, teamName, cashName = () => null, 
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {plan.flagged.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-[#0C1F3F]">After Confirm</p>
+                  <ul className="mt-1 flex flex-col gap-0.5 text-sm text-gray-700">
+                    {plan.flagged.map((f) => {
+                      const line = previewFlagLine(f.flag, preference);
+                      return (
+                        <li key={`f-${f.date}-${f.start}`} className="tabular-nums">
+                          {fmtDate(f.date)}, {span(f.start, f.end)}:{" "}
+                          {f.teamId ? teamName(f.teamId) : <span className="font-medium text-red-700">{NEEDS_TEAM}</span>}
+                          {" — "}
+                          <span className={line.red ? "text-red-700" : "text-gray-500"}>{line.text}</span>.
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="mt-1 text-xs text-gray-400">Only new shifts are listed here. Past shifts are never flagged.</p>
                 </div>
               )}
 

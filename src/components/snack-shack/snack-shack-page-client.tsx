@@ -29,6 +29,7 @@ import { logActivity } from "@/lib/activity-log";
 import { CashPeopleCard } from "./cash-people-card";
 import { useShiftNoteEditor } from "./use-shift-note-editor";
 import type { ShiftNoteFields, CashPerson } from "@/lib/snack-shack/shift-notes";
+import { blockFlagView, type BlockFlagView } from "@/lib/snack-shack/shift-flags";
 
 type ViewMode = "list" | "calendar";
 
@@ -181,6 +182,15 @@ export function SnackShackPageClient({
   }, [inputs]);
 
   const staleness = inputs ? upcomingStaleness(inputs.derivation, inputs.stored, inputs.today) : null;
+  // Per-row flags (shift-flags.ts). Absent until the game schedule has loaded;
+  // past rows come back null from the library and are never flagged.
+  const flags = useMemo(() => {
+    if (!inputs) return undefined;
+    const m = new Map<string, BlockFlagView | null>();
+    for (const b of blocks) m.set(b.id, blockFlagView({ index: inputs.index, preference: inputs.preference, teams, today: inputs.today, block: b }));
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- blocks/teams are rebuilt every render; inputs changes when the schedule does
+  }, [inputs, allBlocks, allTeams, selectedSeasonId]);
   const stalenessLine = staleness ? stalenessSummary(staleness) : null;
   const legacy = settings && inputs ? legacyShiftsNotice(settings.shifts_generated_at, inputs.stored) : null;
   const upcomingClosedDays = inputs ? inputs.derivation.closedDays.filter((c) => c.date >= inputs.today) : [];
@@ -593,6 +603,7 @@ ${pages}
                   dayHeader={dayHeader}
                   cashPeople={cashPeople}
                   onEditNote={noteEditor.open}
+                  flags={flags}
                 />
               ) : (
                 <SnackShackCalendar
@@ -632,6 +643,7 @@ ${pages}
       {previewOpen && plan && settings && (
         <RegeneratePreviewModal
           plan={plan}
+          preference={inputs?.preference ?? "prefer_game_days"}
           teamName={teamName}
           cashName={cashName}
           legacyNotice={legacy}
