@@ -25,6 +25,18 @@
 //      minute with the odd minutes on the EARLIER shifts; exactly 60 stands;
 //      90 stands; the choice is keyed by date+window start and a choice whose
 //      window moved is reported stale and the default applies.
+//   A  ASSIGNMENT (2026-10-06): every pick is checked against GAME INTERVALS,
+//      never dates, by the harness's OWN overlap check (`sim-side` below, not
+//      the library's): a team is never given a shift that overlaps one of its
+//      games from 30 minutes before the start to the end — home, away,
+//      playoff, pending, at any venue; the buffer alone excludes a team whose
+//      game starts 15 minutes after the shift; the hard rule runs BEFORE
+//      equity (an eligible team with one more shift beats a blocked team with
+//      fewer); with nobody free the shift is UNASSIGNED and flagged, never a
+//      playing team; game days prefer a team at the park (home OR away) whose
+//      game clears the shift, then off-day teams, then anyone, flagging the
+//      fallback; off days keep evenness first and flag a busy pick; a seeded
+//      sweep of 300 random Saturdays runs the same check on every pick.
 //   P  PRESERVATION: a stored derived row whose date/start/end is unchanged is
 //      kept with its assignment; a changed one is removed (its assignment
 //      reported) and the new slot is assigned; manual rows are never touched;
@@ -46,7 +58,10 @@
 // defaulted, split windows, merged-by-overlap days, closed-day games, kept
 // assignments, removed rows that carried an assignment, stale choices,
 // assumed durations, an exactly-60 leftover standing, a ≥60 short shift
-// standing, a window with a single shift.
+// standing, a window with a single shift; (A) teams excluded ONLY by the
+// buffer, by an away game, by a playoff game; shifts left unfilled; game-day
+// picks that fell out of tier 1; off-day picks of a busy team; sweep picks
+// made with at least one team blocked.
 //
 // ── MUTATION LOG (2026-10-05) ──────────────────────────────────────────────
 // Criterion: killed only if the assertion written for it fails FIRST.
@@ -67,6 +82,21 @@
 //       changed — the same-count-different-time case ([T3]) now runs first.
 // 2026-10-05 (0104): SM26/SM27 (carried / lost dropped from the plan) killed
 // at [F10] / [F11] on the first run; 27/27.
+// 2026-10-06 (assignment overlap guard, section A): NM1–NM9 added; 36/36
+// killed at their own assertion on the SECOND run. The first run had three
+// at the wrong line, all harness faults, recorded so the fixtures stay as
+// they are:
+//   NM2 (away ignored) died at [A1] — A1's overlap fixture carried an AWAY
+//       team (Bravo), so the away side was observable one line early. A1 now
+//       uses a home team with an external opponent; A3 owns the away side.
+//   NM4 (filter after equity) died at [A3] — an "away team with 0 shifts vs
+//       free team with 1" case had crept into A3, which is an EQUITY-ORDER
+//       case. It is gone; [A5] is the only equity-order line.
+//   SM18 (equity not seeded) died at [A8] — A8 seeded a kept row to give
+//       Charlie a shift. It now assigns TWO slots in one call instead, so
+//       the seeding is exercised nowhere before [P5].
+// The sweep did not produce an unfilled shift (12 teams, ≤8 games); the
+// unfilled case is pinned by A3/A6's fixed fixtures and by NM5.
 // Also from the first run: four fixtures accidentally carried a ≥60-minute
 // break and the library split them correctly ([W3], [G6], [L7], [X1]); the
 // real league's Saturdays have no break over 30 minutes across three fields,
@@ -77,20 +107,29 @@ import { join } from "node:path";
 import {
   ABSORB_OFFER_UNDER_MIN,
   GAP_SPLIT_MIN,
+  GAME_BUFFER_AFTER_MIN,
+  GAME_BUFFER_BEFORE_MIN,
   assignNewShifts,
+  assignmentFlagLine,
+  assignmentGamesFromPlayoffRows,
+  assignmentGamesFromRows,
+  assignmentIndexFromGames,
   closedDayLine,
   countingSpansByDate,
   deriveShifts,
   divideWindow,
   flattenShifts,
-  preferenceMapsFromGames,
   reconcileWithStored,
+  storedAssignmentFlag,
   resolveGameDurations,
   stalenessDiff,
   stalenessSummary,
   windowsFromSpans,
+  type AssignmentGame,
+  type AssignedSlot,
   type DerivationGame,
   type ShiftRule,
+  type ShiftSlot,
   type StoredAbsorbChoice,
   type StoredShiftRow,
 } from "../../src/lib/snack-shack/derive-shifts";
@@ -140,6 +179,14 @@ const counters = {
   changedShifts: 0,
   carriedItems: 0,
   lostItems: 0,
+  // A
+  blockedOnlyByBuffer: 0,
+  blockedByAway: 0,
+  blockedByPlayoff: 0,
+  unfilledShifts: 0,
+  gameDayFallbacks: 0,
+  offDayBusyPicks: 0,
+  sweepPicksWithSomeoneBlocked: 0,
 };
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -355,6 +402,207 @@ section("L: leftover under an hour", () => {
   ok(r3.staleChoices.length === 1 && !r3.days[0].windows[0].absorbOffered, "L8", "a stored choice for a window that no longer has a short leftover is stale (09:30–19:00 = 570)", JSON.stringify({ stale: r3.staleChoices, offered: r3.days[0].windows[0].absorbOffered }));
 });
 
+// ─── A: assignment never overlaps a game ─────────────────────────────────────
+
+// Fixture games for the assignment index: wall-clock date + start, a duration,
+// home/away ids, a venue (default: a shack venue), a status and a kind.
+type AG = { home: string | null; away?: string | null; date: string; start: string; dur: number; venue?: string | null; status?: string; kind?: "game" | "playoff" };
+function ag(list: AG[]): AssignmentGame[] {
+  return list.map((g) => ({
+    home_team_id: g.home,
+    away_team_id: g.away ?? null,
+    venue_id: g.venue === undefined ? "andrews" : g.venue,
+    date: g.date,
+    start: g.start,
+    status: g.status ?? "scheduled",
+    durationMin: g.dur,
+    kind: g.kind ?? "game",
+  }));
+}
+const mins = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+
+// THE HARNESS'S OWN CHECK — written against the fixture games, not the
+// library's index, so a library that mis-indexes still fails here. A pick is
+// bad if the team has any non-cancelled game that day whose [start − before,
+// end + after) intersects the shift.
+// The buffer is a LITERAL here on purpose: importing the library's constant
+// would make this check move with a buffer mutant and agree with it.
+function simSideOverlaps(games: AssignmentGame[], teamId: string, slot: ShiftSlot, before = 30, after = 0): boolean {
+  const s = mins(slot.start), e = mins(slot.end);
+  return games.some((g) =>
+    g.status !== "cancelled" && g.date === slot.date && (g.home_team_id === teamId || g.away_team_id === teamId)
+    && mins(g.start) - before < e && mins(g.start) + g.durationMin + after > s);
+}
+function checkEveryPick(tag: string, label: string, games: AssignmentGame[], out: AssignedSlot[]) {
+  const bad = out.filter((a) => a.assignedTeamId && simSideOverlaps(games, a.assignedTeamId, a));
+  ok(bad.length === 0, tag, label, bad.map((a) => `${a.date} ${a.start}-${a.end} → ${a.assignedTeamId}`).join(", "));
+}
+
+section("A: assignment is checked against game intervals, not dates", () => {
+  const T = [{ id: "alpha", name: "Alpha" }, { id: "bravo", name: "Bravo" }, { id: "charlie", name: "Charlie" }, { id: "delta", name: "Delta" }];
+  const SLOT: ShiftSlot = { date: "2026-10-17", start: "09:30", end: "11:30" };
+
+  // A1 — plain overlap: Alpha (alphabetical first, fewest shifts, at the park)
+  // plays 10:00–11:45 at a shack venue, as the HOME team with an external
+  // opponent — home only, so the away-side mutant is not visible until A3.
+  // The old picker chose Alpha; it must not.
+  const g1 = ag([{ home: "alpha", away: null, date: "2026-10-17", start: "10:00", dur: 105 }]);
+  const a1 = assignNewShifts([SLOT], T, [], "prefer_game_days", assignmentIndexFromGames(g1, HOME));
+  checkEveryPick("A1", "a team playing during the shift is never assigned it (Alpha plays 10:00–11:45 inside 09:30–11:30)", g1, a1);
+  ok(a1[0].assignedTeamId === "bravo", "A1", "the pick is the first eligible team (Bravo), not the first team", a1[0].assignedTeamId ?? "null");
+
+  // A2 — the BUFFER alone: Alpha's game starts 11:45, fifteen minutes after the
+  // shift ends. Without the 30-minute buffer Alpha is free and would be picked
+  // (at the park, alphabetical first). With it, Alpha is blocked.
+  const g2 = ag([{ home: "alpha", away: "delta", date: "2026-10-17", start: "11:45", dur: 75 }]);
+  const a2 = assignNewShifts([SLOT], T, [], "prefer_game_days", assignmentIndexFromGames(g2, HOME));
+  ok(a2[0].assignedTeamId !== "alpha" && a2[0].assignedTeamId !== "delta", "A2", "a game starting 15 minutes after the shift ends still blocks (30-minute buffer before the start)", a2[0].assignedTeamId ?? "null");
+  ok(!simSideOverlaps(g2, "alpha", SLOT, 0, 0) && simSideOverlaps(g2, "alpha", SLOT), "A2", "(control) Alpha is excluded ONLY by the buffer — with no buffer the game clears the shift");
+  counters.blockedOnlyByBuffer += 2;
+  // …and the buffer is BEFORE the start only: a game ending exactly at the
+  // shift's start does not block.
+  const g2b = ag([{ home: "alpha", date: "2026-10-17", start: "08:30", dur: 60 }]);
+  const a2b = assignNewShifts([SLOT], T, [], "prefer_game_days", assignmentIndexFromGames(g2b, HOME));
+  ok(a2b[0].assignedTeamId === "alpha", "A2", "a game ending exactly when the shift starts does not block (no buffer after the end) — Alpha, at the park, is picked");
+
+  // A3 — AWAY games count. Charlie is the AWAY team of a 10:00–11:00 game at a
+  // shack venue (blocked); Bravo and Delta are blocked too; Alpha plays at
+  // 13:00 elsewhere, so Alpha is eligible but not "free" that day. If away
+  // games were ignored, Charlie would look free and be preferred over Alpha.
+  const g3 = ag([{ home: "alpha", date: "2026-10-17", start: "13:00", dur: 60, venue: "perry" }, { home: "bravo", date: "2026-10-17", start: "09:00", dur: 60, venue: "perry" }, { home: "delta", away: "charlie", date: "2026-10-17", start: "10:00", dur: 60 }]);
+  const a3 = assignNewShifts([SLOT], T, [], "prefer_off_days", assignmentIndexFromGames(g3, HOME));
+  checkEveryPick("A3", "a team playing AWAY during the shift is never assigned it", g3, a3);
+  ok(a3[0].assignedTeamId === "alpha", "A3", "Alpha (13:00 game, clear of the shift) is the only eligible team and is picked; Charlie, away during the shift, is not", a3[0].assignedTeamId ?? "null");
+  counters.blockedByAway += 1;
+  // Same shape at another park: an away game elsewhere blocks just the same.
+  const g3b = ag([{ home: "delta", away: "charlie", date: "2026-10-17", start: "10:00", dur: 60, venue: "perry" }]);
+  const a3b = assignNewShifts([SLOT], T, [], "prefer_off_days", assignmentIndexFromGames(g3b, HOME));
+  ok(a3b[0].assignedTeamId === "alpha", "A3", "Alpha (no game) is picked; Charlie, away at another park during the shift, is not", a3b[0].assignedTeamId ?? "null");
+  counters.blockedByAway += 1;
+
+  // A4 — PLAYOFF games count. Alpha's only game that day is a playoff game
+  // 10:00–11:00 at a shack venue; off-days mode would pick Alpha if playoffs
+  // were ignored.
+  const g4 = ag([{ home: "alpha", away: "bravo", date: "2026-10-17", start: "10:00", dur: 60, kind: "playoff" }]);
+  const a4 = assignNewShifts([SLOT], T, [], "prefer_off_days", assignmentIndexFromGames(g4, HOME));
+  checkEveryPick("A4", "a team playing a PLAYOFF game during the shift is never assigned it", g4, a4);
+  ok(a4[0].assignedTeamId === "charlie", "A4", "Charlie (no game) is picked over Alpha/Bravo (playoff game)", a4[0].assignedTeamId ?? "null");
+  counters.blockedByPlayoff += 2;
+  // The playoff row adapter: a row with no date is not on the calendar.
+  const prow = assignmentGamesFromPlayoffRows([
+    { home_team_id: "alpha", away_team_id: "bravo", venue_id: "andrews", scheduled_date: "2026-10-17", start_time: "10:00:00", status: "scheduled", durationMin: 60 },
+    { home_team_id: "charlie", away_team_id: null, venue_id: null, scheduled_date: null, start_time: null, status: "scheduled", durationMin: 60 },
+  ]);
+  ok(prow.length === 1 && prow[0].kind === "playoff" && prow[0].start === "10:00" && prow[0].date === "2026-10-17", "A4", "the playoff adapter keeps dated rows (HH:MM:SS → HH:MM) and drops undated ones");
+  const grow = assignmentGamesFromRows([{ home_team_id: "alpha", away_team_id: null, venue_id: null, scheduled_at: "2026-10-17T19:45:00+00:00", status: "scheduled", durationMin: 60 }]);
+  ok(grow[0].date === "2026-10-17" && grow[0].start === "19:45" && grow[0].kind === "game", "A4", "the games adapter reads date and time by substring of the wall-clock");
+
+  // A5 — the hard rule runs BEFORE equity. Alpha holds nothing; Bravo already
+  // holds one shift. Alpha plays during the shift. Equity-first would narrow
+  // to Alpha and then find nobody; the rule-first order gives it to Bravo.
+  const g5 = ag([{ home: "alpha", date: "2026-10-17", start: "10:00", dur: 60 }]);
+  const a5 = assignNewShifts([SLOT], [T[0], T[1]], [{ assigned_team_id: "bravo" }], "prefer_off_days", assignmentIndexFromGames(g5, HOME));
+  ok(a5[0].assignedTeamId === "bravo" && a5[0].flag === null, "A5", "an eligible team with one more shift beats a blocked team with fewer — Bravo gets it (not unfilled, not Alpha)", `${a5[0].assignedTeamId} ${a5[0].flag}`);
+
+  // A6 — nobody free: unassigned and flagged, never a playing team.
+  const g6 = ag([{ home: "alpha", away: "bravo", date: "2026-10-17", start: "10:00", dur: 60 }, { home: "charlie", away: "delta", date: "2026-10-17", start: "10:30", dur: 60, venue: "perry" }]);
+  const a6 = assignNewShifts([SLOT], T, [], "prefer_game_days", assignmentIndexFromGames(g6, HOME));
+  ok(a6[0].assignedTeamId === null && a6[0].flag === "unfilled", "A6", "every team plays during the shift → unassigned + 'unfilled', not a playing team", `${a6[0].assignedTeamId} ${a6[0].flag}`);
+  checkEveryPick("A6", "(and no pick overlaps)", g6, a6);
+  counters.unfilledShifts += 1;
+  ok(assignmentFlagLine("unfilled", "prefer_game_days") === "No team is free — every team plays during this shift (within 30 minutes of a game).", "A6", "the unfilled sentence, verbatim");
+
+  // A7 — game days prefer a team AT THE PARK, home OR away, whose game clears
+  // the shift; tier 1 wins over a zero-count off-day team.
+  const g7 = ag([{ home: "delta", away: "charlie", date: "2026-10-17", start: "12:30", dur: 60 }]);
+  const a7 = assignNewShifts([SLOT], T, [], "prefer_game_days", assignmentIndexFromGames(g7, HOME));
+  ok(a7[0].assignedTeamId === "charlie" && a7[0].flag === null, "A7", "game days: Charlie, the AWAY team of a 12:30 game at the park, is preferred over Alpha/Bravo (no game)", `${a7[0].assignedTeamId}`);
+  // A team at ANOTHER park that day is not tier 1.
+  const g7b = ag([{ home: "alpha", away: "bravo", date: "2026-10-17", start: "12:30", dur: 60, venue: "perry" }]);
+  const a7b = assignNewShifts([SLOT], T, [], "prefer_game_days", assignmentIndexFromGames(g7b, HOME));
+  ok(a7b[0].assignedTeamId === "charlie" && a7b[0].flag === "preference_not_met", "A7", "game days with nobody at the park: an off-day team (Charlie) and the fallback is flagged", `${a7b[0].assignedTeamId} ${a7b[0].flag}`);
+  counters.gameDayFallbacks += 1;
+  // Tier 3: everyone plays that day, only one clears the shift, elsewhere.
+  const g7c = ag([{ home: "alpha", away: "bravo", date: "2026-10-17", start: "10:00", dur: 60 }, { home: "charlie", away: "delta", date: "2026-10-17", start: "13:00", dur: 60, venue: "perry" }]);
+  const a7c = assignNewShifts([SLOT], T, [], "prefer_game_days", assignmentIndexFromGames(g7c, HOME));
+  ok(a7c[0].assignedTeamId === "charlie" && a7c[0].flag === "preference_not_met", "A7", "game days, tier 3: everyone plays that day, Charlie/Delta clear the shift (elsewhere) → Charlie, flagged", `${a7c[0].assignedTeamId} ${a7c[0].flag}`);
+  counters.gameDayFallbacks += 1;
+  ok(assignmentFlagLine("preference_not_met", "prefer_game_days") === "Not at the park that day — every team playing here is busy during this shift.", "A7", "the game-day fallback sentence, verbatim");
+
+  // A8 — off days: evenness first; a busy pick is flagged. Two slots in ONE
+  // call (no kept seeding, so SM18 stays P5's mutant): Alpha and Bravo play at
+  // 14:00 elsewhere (clear of both shifts, with the buffer); Charlie is free.
+  // Slot 1 → Charlie (the only free team). Slot 2: the fewest-shift teams are
+  // Alpha and Bravo (0 each) and both play that day → Alpha, flagged; Charlie
+  // (1 shift, free) is NOT promoted over them.
+  const g8 = ag([{ home: "alpha", away: "bravo", date: "2026-10-17", start: "14:00", dur: 60, venue: "perry" }]);
+  const a8 = assignNewShifts([SLOT, { date: "2026-10-17", start: "11:30", end: "13:30" }], [T[0], T[1], T[2]], [], "prefer_off_days", assignmentIndexFromGames(g8, HOME));
+  ok(a8[0].assignedTeamId === "charlie" && a8[0].flag === null && a8[1].assignedTeamId === "alpha" && a8[1].flag === "preference_not_met", "A8", "off days: slot 1 → Charlie (free); slot 2 → Alpha, flagged — the fewest-shift teams both play that day and Charlie (1 shift, free) is not promoted", a8.map((a) => `${a.assignedTeamId} ${a.flag}`).join(" | "));
+  counters.offDayBusyPicks += 1;
+  ok(assignmentFlagLine("preference_not_met", "prefer_off_days") === "Plays that day — every team with the fewest shifts has a game that day.", "A8", "the off-day busy sentence, verbatim");
+  // Cancelled games don't count.
+  const g8b = ag([{ home: "alpha", date: "2026-10-17", start: "10:00", dur: 60, status: "cancelled" }]);
+  const a8b = assignNewShifts([SLOT], T, [], "prefer_off_days", assignmentIndexFromGames(g8b, HOME));
+  ok(a8b[0].assignedTeamId === "alpha" && a8b[0].flag === null, "A8", "a cancelled game neither blocks nor counts as playing — Alpha is picked, unflagged");
+  // A pending proposal DOES block (the team might be busy).
+  const g8c = ag([{ home: "alpha", date: "2026-10-17", start: "10:00", dur: 60, status: "pending_interleague" }]);
+  ok(assignNewShifts([SLOT], T, [], "prefer_off_days", assignmentIndexFromGames(g8c, HOME))[0].assignedTeamId === "bravo", "A8", "a pending interleague proposal blocks the shift (Alpha skipped → Bravo)");
+
+  // A9 — stored rows judged by the same rules (for the page): conflict,
+  // preference, unfilled.
+  const idx9 = assignmentIndexFromGames(g1, HOME);
+  ok(storedAssignmentFlag(idx9, "prefer_game_days", "alpha", SLOT) === "conflict", "A9", "a stored team that plays during the shift → 'conflict'");
+  ok(storedAssignmentFlag(idx9, "prefer_game_days", "charlie", SLOT) === "preference_not_met", "A9", "game days: a stored team with no game at the park → 'preference_not_met'");
+  ok(storedAssignmentFlag(idx9, "prefer_off_days", "charlie", SLOT) === null, "A9", "off days: a stored team with no game → no flag");
+  ok(storedAssignmentFlag(idx9, "prefer_game_days", null, SLOT) === "unfilled", "A9", "a stored derived row with no team → 'unfilled'");
+  ok(storedAssignmentFlag(idx9, "prefer_game_days", "alpha", { date: "2026-10-17", start: "12:30", end: "14:30" }) === null, "A9", "game days: a stored park team whose game cleared the shift → no flag");
+  ok(assignmentFlagLine("conflict", "prefer_off_days") === "This team plays during this shift (within 30 minutes of a game).", "A9", "the conflict sentence, verbatim");
+
+  // A10 — SWEEP: 300 seeded random Saturdays, real-league shape (12 teams,
+  // 4–8 games across three shack fields and one other park, a 60–180 minute
+  // division, 1–4 shifts), both modes. Every pick passes the sim-side check;
+  // a shift is unassigned only when the sim-side check blocks EVERY team.
+  let seed = 20261006;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const pick = <X,>(xs: X[]) => xs[Math.floor(rnd() * xs.length)];
+  const TEAMS = Array.from({ length: 12 }, (_, i) => ({ id: `t${i}`, name: `Team ${String.fromCharCode(65 + i)}` }));
+  let sweepPicks = 0;
+  for (let n = 0; n < 300; n++) {
+    const date = "2026-10-17";
+    const games: AssignmentGame[] = [];
+    const nGames = 4 + Math.floor(rnd() * 5);
+    for (let i = 0; i < nGames; i++) {
+      const ids = [...TEAMS.map((t) => t.id)];
+      const home = ids.splice(Math.floor(rnd() * ids.length), 1)[0];
+      const away = rnd() < 0.15 ? null : ids.splice(Math.floor(rnd() * ids.length), 1)[0];
+      games.push(...ag([{ home, away, date, start: `${String(8 + Math.floor(rnd() * 10)).padStart(2, "0")}:${pick(["00", "15", "30", "45"])}`, dur: pick([60, 75, 90, 105, 120, 180]), venue: pick(["andrews", "memorial", "rca", "perry"]), status: pick(["scheduled", "scheduled", "scheduled", "cancelled", "pending_interleague"]), kind: rnd() < 0.2 ? "playoff" : "game" }]));
+    }
+    const nShifts = 1 + Math.floor(rnd() * 4);
+    const slots: ShiftSlot[] = [];
+    let t0 = 8 * 60 + 30 + Math.floor(rnd() * 4) * 60;
+    for (let i = 0; i < nShifts; i++) { const len = pick([90, 120, 150]); slots.push({ date, start: `${String(Math.floor(t0 / 60)).padStart(2, "0")}:${String(t0 % 60).padStart(2, "0")}`, end: `${String(Math.floor((t0 + len) / 60)).padStart(2, "0")}:${String((t0 + len) % 60).padStart(2, "0")}` }); t0 += len; }
+    const kept = TEAMS.filter(() => rnd() < 0.3).map((t) => ({ assigned_team_id: t.id }));
+    for (const mode of ["prefer_game_days", "prefer_off_days"] as const) {
+      const out = assignNewShifts(slots, TEAMS, kept, mode, assignmentIndexFromGames(games, HOME));
+      for (const a of out) {
+        const blockedTeams = TEAMS.filter((t) => simSideOverlaps(games, t.id, a));
+        if (blockedTeams.length > 0) counters.sweepPicksWithSomeoneBlocked++;
+        if (a.assignedTeamId) {
+          sweepPicks++;
+          if (simSideOverlaps(games, a.assignedTeamId, a)) { ok(false, "A10", `sweep ${n}/${mode}: ${a.date} ${a.start}-${a.end} given to ${a.assignedTeamId}, who plays during it`); return; }
+          if (a.flag === "unfilled" || a.flag === "conflict") { ok(false, "A10", `sweep ${n}/${mode}: an assigned shift carries '${a.flag}'`); return; }
+        } else {
+          counters.unfilledShifts++;
+          if (blockedTeams.length !== TEAMS.length) { ok(false, "A10", `sweep ${n}/${mode}: ${a.date} ${a.start}-${a.end} left unfilled while ${TEAMS.length - blockedTeams.length} team(s) were free`); return; }
+          if (a.flag !== "unfilled") { ok(false, "A10", `sweep ${n}/${mode}: an unassigned shift is not flagged 'unfilled'`); return; }
+        }
+      }
+    }
+  }
+  ok(sweepPicks > 1000, "A10", `sweep: ${sweepPicks} picks over 300 random Saturdays × 2 modes, every one clear of the team's games (with the buffer); unfilled only when nobody was free`);
+  ok(GAME_BUFFER_BEFORE_MIN === 30 && GAME_BUFFER_AFTER_MIN === 0, "A11", "the buffer the product ships is 30 minutes before a game and none after (the sim-side check pins the same literals)");
+});
+
 // ─── P: assignment preservation on regenerate ────────────────────────────────
 
 section("P: regenerate keeps unchanged assignments", () => {
@@ -383,18 +631,23 @@ section("P: regenerate keeps unchanged assignments", () => {
   // The equity counter is seeded with the kept rows: bears and cubs already hold one each,
   // so the two new slots go to the other teams (alphabetical among the zero-count teams).
   const teams = [{ id: "giants", name: "Giants" }, { id: "bears", name: "Bears" }, { id: "cubs", name: "Cubs" }, { id: "expos", name: "Expos" }];
-  const maps = preferenceMapsFromGames([], HOME);
+  const maps = assignmentIndexFromGames([], HOME);
   const assigned = assignNewShifts(rec.create, teams, rec.keep, "prefer_off_days", maps);
   ok(assigned.map((a) => a.assignedTeamId).join(",") === "expos,giants", "P5", "new slots go to the teams with the fewest KEPT assignments (expos, giants — not bears/cubs again)", assigned.map((a) => a.assignedTeamId).join(","));
   // Without seeding, bears would be picked first (alphabetical, all zero).
   const unseeded = assignNewShifts(rec.create, teams, [], "prefer_off_days", maps);
   ok(unseeded[0].assignedTeamId === "bears", "P5", "(control) without the kept rows the first pick would be Bears — the seed is what changes it");
-  // Preference still applies on new slots: prefer_game_days picks a team with a home game that day.
-  const mapsHome = preferenceMapsFromGames([{ home_team_id: "giants", away_team_id: "expos", venue_id: "andrews", scheduled_at: "2026-10-03T10:00:00+00:00", status: "scheduled" }], HOME);
+  // Preference still applies on new slots — but since 2026-10-06 the hard rule
+  // runs first: Giants and Expos play 10:00–12:00 INSIDE the 09:30–11:30 shift,
+  // so neither may take it in either mode (the old P6 expected Giants here).
+  const mapsHome = assignmentIndexFromGames(ag([{ home: "giants", away: "expos", date: "2026-10-03", start: "10:00", dur: 120 }]), HOME);
   const pref = assignNewShifts([{ date: "2026-10-03", start: "09:30", end: "11:30" }], teams, [], "prefer_game_days", mapsHome);
-  ok(pref[0].assignedTeamId === "giants", "P6", "prefer_game_days picks the team with a home game at an attached venue that day");
+  ok(pref[0].assignedTeamId === "bears" && pref[0].flag === "preference_not_met", "P6", "prefer_game_days: both park teams are busy during the shift → an off-day team (Bears), flagged");
   const off = assignNewShifts([{ date: "2026-10-03", start: "09:30", end: "11:30" }], teams, [], "prefer_off_days", mapsHome);
-  ok(off[0].assignedTeamId === "bears", "P6", "prefer_off_days skips both teams playing that day (giants, expos) → Bears");
+  ok(off[0].assignedTeamId === "bears" && off[0].flag === null, "P6", "prefer_off_days skips both teams playing that day (giants, expos) → Bears, no flag");
+  // A shift AFTER the game: the park teams are free of it and preferred again.
+  const later = assignNewShifts([{ date: "2026-10-03", start: "12:30", end: "14:30" }], teams, [], "prefer_game_days", mapsHome);
+  ok(later[0].assignedTeamId === "expos" && later[0].flag === null, "P6", "prefer_game_days on a later shift: the park teams qualify (game ended 12:00, shift 12:30) → Expos (alphabetical among the two)");
   // Duplicate stored rows for one slot: keep the first, remove the rest.
   const dup = reconcileWithStored([{ date: "2026-09-19", start: "09:30", end: "11:30" }], [
     { id: "x1", date: "2026-09-19", start_time: "09:30", end_time: "11:30", assigned_team_id: "bears", is_recurring: true },
@@ -455,7 +708,7 @@ section("F: past dates frozen, preview, upcoming staleness", () => {
     { id: "m1", date: "2026-10-03", start_time: "08:00:00", end_time: "09:30:00", assigned_team_id: "giants", is_recurring: false },
   ];
   const teams = [{ id: "giants", name: "Giants" }, { id: "bears", name: "Bears" }, { id: "cubs", name: "Cubs" }, { id: "expos", name: "Expos" }];
-  const plan = buildRegeneratePlan({ derivation, stored, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY });
+  const plan = buildRegeneratePlan({ derivation, stored, teams, preference: "prefer_off_days", index: assignmentIndexFromGames([], HOME), today: TODAY });
   const past = plan.desired.filter((d) => d.date === "2026-10-03");
   ok(JSON.stringify(past) === JSON.stringify([
     { date: "2026-10-03", start: "09:30", end: "11:30", assigned_team_id: "bears" },
@@ -477,28 +730,28 @@ section("F: past dates frozen, preview, upcoming staleness", () => {
   ok(up[1].assigned_team_id === "giants" && plan.assignmentChanges[0].kind === "changed" && plan.assignmentChanges[0].toTeamId === "giants", "F4", "the new shift goes to the only team holding nothing (frozen Bears/Cubs count, kept Expos counts) — Giants, and the change line says so");
   // A removed row with a team, and a plain addition on another day.
   const games2 = [game("2026-10-17", "10:00", 120), game("2026-10-24", "10:00", 120)];
-  const plan2 = buildRegeneratePlan({ derivation: deriveShifts(games2, RULE, []), stored, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY });
+  const plan2 = buildRegeneratePlan({ derivation: deriveShifts(games2, RULE, []), stored, teams, preference: "prefer_off_days", index: assignmentIndexFromGames([], HOME), today: TODAY });
   // 10-17: 09:30–12:30 = 180 → 120 + 60 → 09:30-11:30 (kept, expos), 11:30-12:30 (changed from 11:30-13:30). 10-24: same → two added.
   const kinds = plan2.assignmentChanges.map((c) => c.kind).join(",");
   ok(kinds === "changed,added,added", "F5", "kinds: the 10-17 same-start pair is 'changed'; the new day's shifts are 'added'", kinds + " " + JSON.stringify(plan2.assignmentChanges));
   const lines = assignmentChangeLines(plan2.assignmentChanges, (id) => teams.find((t) => t.id === id)?.name ?? id ?? "?");
   ok(lines[0] === "2026-10-17 11:30: ends 13:30 → 12:30, unassigned → Giants" && lines[1].startsWith("2026-10-24 09:30–11:30: new → "), "F6", "the preview lines read as team → team / new → team", JSON.stringify(lines));
-  const plan3 = buildRegeneratePlan({ derivation: deriveShifts([], RULE, []), stored, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY });
+  const plan3 = buildRegeneratePlan({ derivation: deriveShifts([], RULE, []), stored, teams, preference: "prefer_off_days", index: assignmentIndexFromGames([], HOME), today: TODAY });
   ok(plan3.assignmentChanges.some((c) => c.kind === "removed" && c.fromTeamId === "expos") && plan3.desired.length === 2 && plan3.frozenPast === 2, "F6", "no upcoming games: upcoming rows are removed (Expos → removed), the past two still ride the payload", JSON.stringify(plan3.assignmentChanges));
   // 0104 — carried / lost. The stored rows gain a note and a cash person.
   const storedNC: StoredShiftRow[] = stored.map((r) =>
     r.id === "u2" ? { ...r, notes: "float in the office", cash_person_id: "cash-a" } :
     r.id === "u1" ? { ...r, cash_person_id: "cash-b" } : r);
-  const planNC = buildRegeneratePlan({ derivation, stored: storedNC, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY });
+  const planNC = buildRegeneratePlan({ derivation, stored: storedNC, teams, preference: "prefer_off_days", index: assignmentIndexFromGames([], HOME), today: TODAY });
   ok(planNC.carried.length === 1 && planNC.carried[0].start === "11:30" && planNC.carried[0].fromEnd === "13:30" && planNC.carried[0].toEnd === "14:00"
      && planNC.carried[0].notes === "float in the office" && planNC.carried[0].cashPersonId === "cash-a", "F10", "a note + cash person on the CHANGED (same-start) row is reported as carried to the new end", JSON.stringify(planNC.carried));
   ok(planNC.lost.length === 0, "F10", "nothing is lost when every removed row has a same-start replacement");
   counters.carriedItems += planNC.carried.length;
-  const planNC2 = buildRegeneratePlan({ derivation: deriveShifts([], RULE, []), stored: storedNC, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY });
+  const planNC2 = buildRegeneratePlan({ derivation: deriveShifts([], RULE, []), stored: storedNC, teams, preference: "prefer_off_days", index: assignmentIndexFromGames([], HOME), today: TODAY });
   ok(planNC2.lost.length === 2 && planNC2.lost.map((l) => `${l.start}:${l.notes ?? "-"}:${l.cashPersonId ?? "-"}`).join(",") === "09:30:-:cash-b,11:30:float in the office:cash-a" && planNC2.carried.length === 0,
      "F11", "with no upcoming games, the two removed rows' note/cash are reported as LOST (the kept-only cash row too)", JSON.stringify(planNC2.lost));
   counters.lostItems += planNC2.lost.length;
-  ok(buildRegeneratePlan({ derivation, stored, teams, preference: "prefer_off_days", maps: preferenceMapsFromGames([], HOME), today: TODAY }).lost.length === 0, "F11", "a removed row with neither note nor cash is not listed as lost");
+  ok(buildRegeneratePlan({ derivation, stored, teams, preference: "prefer_off_days", index: assignmentIndexFromGames([], HOME), today: TODAY }).lost.length === 0, "F11", "a removed row with neither note nor cash is not listed as lost");
 
   // todayInTimezone.
   const t = new Date("2026-10-10T05:30:00Z");

@@ -416,79 +416,209 @@ export function reconcileWithStored(derived: ShiftSlot[], stored: StoredShiftRow
 }
 
 // ─── Assignment: who works a NEW shift ───────────────────────────────────────
-// Lifted from the fixed-block generator (equity counter + soft preference,
-// deterministic alphabetical tiebreak). Seeded with the KEPT rows so new picks
-// balance against assignments that survived.
+// THE RULES (2026-10-06, replacing the date-keyed picker that handed a team
+// the shift covering its own game — live: SRALL Oct 17, RVLL Royals):
+//   1. HARD, both modes, BEFORE equity: a team is never assigned a shift that
+//      overlaps any of its games — home, away, interleague, pending, or a
+//      playoff game with a date — from GAME_BUFFER_BEFORE_MIN before the start
+//      to the game's end (start + its division's duration) plus
+//      GAME_BUFFER_AFTER_MIN. Cancelled games don't count.
+//   2. Prefer game days: the preferred teams are those with a game that day at
+//      a snack-shack venue, home OR away, that the hard rule left eligible.
+//      None → teams not playing that day → any eligible team. Leaving tier 1
+//      is reported as `preference_not_met`.
+//   3. Prefer off days: soft, and evenness wins as before — the fewest-shift
+//      teams are found first and the preference only filters among them; when
+//      they all play that day one of them is picked and `preference_not_met`
+//      is set.
+//   4. Within the chosen pool: fewest shifts so far (seeded with the kept
+//      rows), then alphabetical by name, then id.
+//   5. No eligible team at all → the shift is left UNASSIGNED and flagged
+//      `unfilled`. Never a fallback to a team that is playing.
+// The index is built from REGULAR and PLAYOFF games alike; the derivation
+// (which games open the shack) is untouched and still reads `games` only.
+
+export const GAME_BUFFER_BEFORE_MIN = 30;
+export const GAME_BUFFER_AFTER_MIN = 0;
 
 export type PickTeam = { id: string; name: string };
 export type SchedulingPreference = "prefer_game_days" | "prefer_off_days";
-export type PreferenceMaps = {
-  /** date → teams with a game at an attached venue that day. */
-  homeGamesByDate: Map<string, Set<string>>;
-  /** date → teams playing anywhere that day (any status but cancelled: a
-   *  pending proposal still means the team might be busy). */
-  anyGameByDate: Map<string, Set<string>>;
-};
 
-export type PreferenceGame = {
-  home_team_id: string;
+/** One game, as the assignment sees it: wall-clock date + start, a resolved
+ *  duration, and whether it is at one of the shack's venues. */
+export type AssignmentGame = {
+  home_team_id: string | null;
   away_team_id: string | null;
   venue_id: string | null;
-  scheduled_at: string;
+  /** "YYYY-MM-DD" */
+  date: string;
+  /** "HH:MM" */
+  start: string;
   status: string;
+  durationMin: number;
+  kind: "game" | "playoff";
 };
 
-export function preferenceMapsFromGames(games: PreferenceGame[], homeVenueIds: string[]): PreferenceMaps {
-  const home = new Set(homeVenueIds);
-  const homeGamesByDate = new Map<string, Set<string>>();
-  const anyGameByDate = new Map<string, Set<string>>();
-  for (const g of games) {
-    if (g.status === "cancelled") continue;
-    const date = dateOf(g.scheduled_at);
-    if (g.venue_id && home.has(g.venue_id)) {
-      if (!homeGamesByDate.has(date)) homeGamesByDate.set(date, new Set());
-      homeGamesByDate.get(date)!.add(g.home_team_id);
-    }
-    if (!anyGameByDate.has(date)) anyGameByDate.set(date, new Set());
-    anyGameByDate.get(date)!.add(g.home_team_id);
-    if (g.away_team_id) anyGameByDate.get(date)!.add(g.away_team_id);
-  }
-  return { homeGamesByDate, anyGameByDate };
+export type TeamGameSpan = { startMin: number; endMin: number; atShackVenue: boolean; kind: "game" | "playoff" };
+
+export type AssignmentIndex = {
+  /** `${teamId}|${date}` → that team's non-cancelled games that day. */
+  byTeamDate: Map<string, TeamGameSpan[]>;
+};
+
+/** Regular `games` rows (scheduled_at wall-clock) → AssignmentGame, with the
+ *  duration already resolved (see resolveGameDurations). */
+export function assignmentGamesFromRows(
+  rows: { home_team_id: string | null; away_team_id: string | null; venue_id: string | null; scheduled_at: string; status: string; durationMin: number }[],
+): AssignmentGame[] {
+  return rows.map((r) => ({
+    home_team_id: r.home_team_id,
+    away_team_id: r.away_team_id,
+    venue_id: r.venue_id,
+    date: dateOf(r.scheduled_at),
+    start: hhmmOf(r.scheduled_at),
+    status: r.status,
+    durationMin: r.durationMin,
+    kind: "game",
+  }));
 }
 
-export type AssignedSlot = ShiftSlot & { assignedTeamId: string };
+/** `playoff_games` rows that carry a date and a start → AssignmentGame. A row
+ *  with no date or no start is not on the calendar yet and is skipped; a team
+ *  slot that is still null (TBD) contributes nothing. */
+export function assignmentGamesFromPlayoffRows(
+  rows: { home_team_id: string | null; away_team_id: string | null; venue_id: string | null; scheduled_date: string | null; start_time: string | null; status: string; durationMin: number }[],
+): AssignmentGame[] {
+  const out: AssignmentGame[] = [];
+  for (const r of rows) {
+    if (!r.scheduled_date || !r.start_time) continue;
+    out.push({
+      home_team_id: r.home_team_id,
+      away_team_id: r.away_team_id,
+      venue_id: r.venue_id,
+      date: r.scheduled_date.substring(0, 10),
+      start: normalizeTime(r.start_time),
+      status: r.status,
+      durationMin: r.durationMin,
+      kind: "playoff",
+    });
+  }
+  return out;
+}
+
+export function teamDateKey(teamId: string, date: string): string {
+  return `${teamId}|${date}`;
+}
+
+export function assignmentIndexFromGames(games: AssignmentGame[], homeVenueIds: string[]): AssignmentIndex {
+  const home = new Set(homeVenueIds);
+  const byTeamDate = new Map<string, TeamGameSpan[]>();
+  for (const g of games) {
+    if (g.status === "cancelled") continue;
+    const startMin = hhmmToMin(g.start);
+    const span: TeamGameSpan = { startMin, endMin: startMin + g.durationMin, atShackVenue: !!g.venue_id && home.has(g.venue_id), kind: g.kind };
+    for (const teamId of [g.home_team_id, g.away_team_id]) {
+      if (!teamId) continue;
+      const k = teamDateKey(teamId, g.date);
+      const l = byTeamDate.get(k);
+      if (l) l.push(span);
+      else byTeamDate.set(k, [span]);
+    }
+  }
+  return { byTeamDate };
+}
+
+export function teamGamesOn(index: AssignmentIndex, teamId: string, date: string): TeamGameSpan[] {
+  return index.byTeamDate.get(teamDateKey(teamId, date)) ?? [];
+}
+
+/** The hard rule for one game: the buffered game span intersects the shift. */
+export function gameBlocksShift(g: TeamGameSpan, shiftStartMin: number, shiftEndMin: number): boolean {
+  return g.startMin - GAME_BUFFER_BEFORE_MIN < shiftEndMin && g.endMin + GAME_BUFFER_AFTER_MIN > shiftStartMin;
+}
+
+export function teamBlockedForShift(index: AssignmentIndex, teamId: string, slot: ShiftSlot): boolean {
+  const s = hhmmToMin(normalizeTime(slot.start));
+  const e = hhmmToMin(normalizeTime(slot.end));
+  return teamGamesOn(index, teamId, slot.date).some((g) => gameBlocksShift(g, s, e));
+}
+
+export type AssignmentFlag = "preference_not_met" | "unfilled" | "conflict";
+export type AssignedSlot = ShiftSlot & { assignedTeamId: string | null; flag: AssignmentFlag | null };
 
 export function assignNewShifts(
   create: ShiftSlot[],
   teams: PickTeam[],
   kept: { assigned_team_id: string | null }[],
   preference: SchedulingPreference,
-  maps: PreferenceMaps,
+  index: AssignmentIndex,
 ): AssignedSlot[] {
   const sortedTeams = [...teams].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const count: Record<string, number> = {};
   for (const t of sortedTeams) count[t.id] = 0;
   for (const k of kept) if (k.assigned_team_id && k.assigned_team_id in count) count[k.assigned_team_id]++;
+  const fewest = (pool: PickTeam[]): PickTeam[] => {
+    const m = Math.min(...pool.map((t) => count[t.id]));
+    return pool.filter((t) => count[t.id] === m);
+  };
   const ordered = [...create].sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
   const out: AssignedSlot[] = [];
   for (const slot of ordered) {
-    if (sortedTeams.length === 0) break;
-    const minCount = Math.min(...sortedTeams.map((t) => count[t.id]));
-    let candidates = sortedTeams.filter((t) => count[t.id] === minCount);
+    // Rule 1 — the hard rule, before anything else.
+    const eligible = sortedTeams.filter((t) => !teamBlockedForShift(index, t.id, slot));
+    // Rule 5 — nobody free: unassigned and flagged, never a playing team.
+    const pool = eligible.length > 0 ? eligible : [];
+    if (pool.length === 0) {
+      out.push({ ...slot, assignedTeamId: null, flag: "unfilled" });
+      continue;
+    }
+    let candidates: PickTeam[];
+    let flag: AssignmentFlag | null = null;
     if (preference === "prefer_game_days") {
-      const homeTeams = maps.homeGamesByDate.get(slot.date) ?? new Set<string>();
-      const preferred = candidates.filter((t) => homeTeams.has(t.id));
-      if (preferred.length > 0) candidates = preferred;
+      // Rule 2 — tiers first, then fewest shifts within the tier.
+      const atShack = pool.filter((t) => teamGamesOn(index, t.id, slot.date).some((g) => g.atShackVenue));
+      const offDay = pool.filter((t) => teamGamesOn(index, t.id, slot.date).length === 0);
+      if (atShack.length > 0) candidates = fewest(atShack);
+      else if (offDay.length > 0) { candidates = fewest(offDay); flag = "preference_not_met"; }
+      else { candidates = fewest(pool); flag = "preference_not_met"; }
     } else {
-      const busy = maps.anyGameByDate.get(slot.date) ?? new Set<string>();
-      const preferred = candidates.filter((t) => !busy.has(t.id));
-      if (preferred.length > 0) candidates = preferred;
+      // Rule 3 — evenness first, the preference only among the fewest.
+      candidates = fewest(pool);
+      const free = candidates.filter((t) => teamGamesOn(index, t.id, slot.date).length === 0);
+      if (free.length > 0) candidates = free;
+      else flag = "preference_not_met";
     }
     const picked = candidates[0];
     count[picked.id]++;
-    out.push({ ...slot, assignedTeamId: picked.id });
+    out.push({ ...slot, assignedTeamId: picked.id, flag });
   }
   return out;
+}
+
+/** The flag a STORED assignment would carry today — for the page, which must
+ *  mark legacy rows and hand edits by the same rules. `conflict` is produced
+ *  only here: a stored team that the hard rule would refuse. An unassigned
+ *  derived row reads as `unfilled`. */
+export function storedAssignmentFlag(
+  index: AssignmentIndex,
+  preference: SchedulingPreference,
+  teamId: string | null,
+  slot: ShiftSlot,
+): AssignmentFlag | null {
+  if (!teamId) return "unfilled";
+  if (teamBlockedForShift(index, teamId, slot)) return "conflict";
+  const games = teamGamesOn(index, teamId, slot.date);
+  if (preference === "prefer_game_days") return games.some((g) => g.atShackVenue) ? null : "preference_not_met";
+  return games.length === 0 ? null : "preference_not_met";
+}
+
+/** The sentence for a flag, verbatim on every surface. */
+export function assignmentFlagLine(flag: AssignmentFlag, preference: SchedulingPreference): string {
+  if (flag === "unfilled") return `No team is free — every team plays during this shift (within ${GAME_BUFFER_BEFORE_MIN} minutes of a game).`;
+  if (flag === "conflict") return `This team plays during this shift (within ${GAME_BUFFER_BEFORE_MIN} minutes of a game).`;
+  return preference === "prefer_game_days"
+    ? "Not at the park that day — every team playing here is busy during this shift."
+    : "Plays that day — every team with the fewest shifts has a game that day.";
 }
 
 // ─── Staleness: do the stored shifts still match the schedule? ───────────────

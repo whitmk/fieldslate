@@ -6,6 +6,8 @@
 // RESULT (2026-10-05): 20/20 killed, each FIRST at its own assertion. The
 // first run had five at the wrong assertion — all harness ordering faults;
 // see the MUTATION LOG in snack-shifts-sim.ts for what moved and why.
+// 2026-10-06: NM1–NM9 added for the assignment overlap guard (section A);
+// see the sim's MUTATION LOG for the result.
 import { runMutants, type Mutant } from "./mutant-runner";
 
 const LIB = "src/lib/snack-shack/derive-shifts.ts";
@@ -152,8 +154,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "SM24", what: "equity not seeded with the frozen past rows", file: PLAN,
-    find: "  const assigned = assignNewShifts(rec.create, input.teams, [...pastRows, ...rec.keep], input.preference, input.maps);",
-    replace: "  const assigned = assignNewShifts(rec.create, input.teams, rec.keep, input.preference, input.maps);",
+    find: "  const assigned = assignNewShifts(rec.create, input.teams, [...pastRows, ...rec.keep], input.preference, input.index);",
+    replace: "  const assigned = assignNewShifts(rec.create, input.teams, rec.keep, input.preference, input.index);",
     expect: "F4",
   },
   {
@@ -173,6 +175,61 @@ const MUTANTS: Mutant[] = [
     find: "      if (hasInternal(r)) {\n        lost.push(",
     replace: "      if (false) {\n        lost.push(",
     expect: "F11",
+  },
+  // ── 2026-10-06: the assignment overlap guard (section A) ──
+  {
+    id: "NM1", what: "buffer removed — a game starting 15 minutes after the shift no longer blocks", file: LIB,
+    find: "export const GAME_BUFFER_BEFORE_MIN = 30;",
+    replace: "export const GAME_BUFFER_BEFORE_MIN = 0;",
+    expect: "A2",
+  },
+  {
+    id: "NM2", what: "away games ignored — only the home side is indexed", file: LIB,
+    find: "    for (const teamId of [g.home_team_id, g.away_team_id]) {",
+    replace: "    for (const teamId of [g.home_team_id]) {",
+    expect: "A3",
+  },
+  {
+    id: "NM3", what: "playoff games ignored by the index", file: LIB,
+    find: "    if (g.status === \"cancelled\") continue;\n    const startMin = hhmmToMin(g.start);",
+    replace: "    if (g.status === \"cancelled\" || g.kind === \"playoff\") continue;\n    const startMin = hhmmToMin(g.start);",
+    expect: "A4",
+  },
+  {
+    id: "NM4", what: "overlap filter moved AFTER equity — the fewest-shift teams are found first, then filtered", file: LIB,
+    find: "    const eligible = sortedTeams.filter((t) => !teamBlockedForShift(index, t.id, slot));",
+    replace: "    const eligible = fewest(sortedTeams).filter((t) => !teamBlockedForShift(index, t.id, slot));",
+    expect: "A5",
+  },
+  {
+    id: "NM5", what: "unfillable fallback picks from every team — an overlapping team is assigned", file: LIB,
+    find: "    const pool = eligible.length > 0 ? eligible : [];",
+    replace: "    const pool = eligible.length > 0 ? eligible : sortedTeams;",
+    expect: "A6",
+  },
+  {
+    id: "NM6", what: "game-day fallback to an off-day team is not flagged", file: LIB,
+    find: "      else if (offDay.length > 0) { candidates = fewest(offDay); flag = \"preference_not_met\"; }",
+    replace: "      else if (offDay.length > 0) { candidates = fewest(offDay); }",
+    expect: "A7",
+  },
+  {
+    id: "NM7", what: "off-day busy pick is not flagged", file: LIB,
+    find: "      if (free.length > 0) candidates = free;\n      else flag = \"preference_not_met\";",
+    replace: "      if (free.length > 0) candidates = free;",
+    expect: "A8",
+  },
+  {
+    id: "NM8", what: "a pending interleague proposal no longer counts as busy", file: LIB,
+    find: "    if (g.status === \"cancelled\") continue;\n    const startMin = hhmmToMin(g.start);",
+    replace: "    if (!countsAsScheduledGame(g.status)) continue;\n    const startMin = hhmmToMin(g.start);",
+    expect: "A8",
+  },
+  {
+    id: "NM9", what: "a stored team that plays during the shift is not reported as a conflict", file: LIB,
+    find: "  if (teamBlockedForShift(index, teamId, slot)) return \"conflict\";\n",
+    replace: "",
+    expect: "A9",
   },
 ];
 

@@ -22,6 +22,10 @@
 //   - 0104: a note or cash person on a CHANGED row is carried by the RPC onto
 //     the replacement (`carried`); one on a REMOVED row is gone after Confirm
 //     (`lost`). Both are listed so nothing disappears silently.
+//   - 2026-10-06: a NEW shift the picker left unassigned (every team plays
+//     during it) or filled outside the preference rides `flagged`, so the
+//     preview can say so before Confirm. A null assigned_team_id in `desired`
+//     is a real outcome now, not only a hand-cleared row.
 
 import {
   ABSORB_OFFER_UNDER_MIN,
@@ -33,7 +37,8 @@ import {
   type AssignedSlot,
   type DerivationResult,
   type PickTeam,
-  type PreferenceMaps,
+  type AssignmentIndex,
+  type AssignmentFlag,
   type SchedulingPreference,
   type ShiftSlot,
   type StalenessDiff,
@@ -79,9 +84,16 @@ export type CarriedItem = {
 };
 export type LostItem = { date: string; start: string; end: string; notes: string | null; cashPersonId: string | null };
 
+/** A NEW shift the picker could not fill, or filled outside the preference. */
+export type FlaggedShift = { date: string; start: string; end: string; teamId: string | null; flag: AssignmentFlag };
+
 export type RegeneratePlan = {
   /** The FULL payload for regenerate_snack_shack_shifts. */
   desired: RpcShift[];
+  /** New shifts the picker flagged (unfilled / preference not met), in
+   *  date order — the preview shows them; kept and frozen rows are not
+   *  re-judged here (the page does that with storedAssignmentFlag). */
+  flagged: FlaggedShift[];
   /** 0104: notes/cash the RPC will copy onto the same-start replacement. */
   carried: CarriedItem[];
   /** 0104: notes/cash on removed rows with no same-start replacement — gone
@@ -102,7 +114,7 @@ export type PlanInput = {
   stored: StoredShiftRow[];
   teams: PickTeam[];
   preference: SchedulingPreference;
-  maps: PreferenceMaps;
+  index: AssignmentIndex;
   /** "YYYY-MM-DD" in the org's timezone. */
   today: string;
 };
@@ -115,7 +127,7 @@ export function buildRegeneratePlan(input: PlanInput): RegeneratePlan {
   const derivedUpcoming = flattenShifts(input.derivation).filter((s) => s.date >= today);
 
   const rec = reconcileWithStored(derivedUpcoming, upcomingStored);
-  const assigned = assignNewShifts(rec.create, input.teams, [...pastRows, ...rec.keep], input.preference, input.maps);
+  const assigned = assignNewShifts(rec.create, input.teams, [...pastRows, ...rec.keep], input.preference, input.index);
 
   const asRpc = (r: StoredShiftRow): RpcShift => ({
     date: r.date,
@@ -189,8 +201,13 @@ export function buildRegeneratePlan(input: PlanInput): RegeneratePlan {
     }
   }
 
+  const flagged: FlaggedShift[] = assigned
+    .filter((a) => a.flag !== null)
+    .map((a) => ({ date: a.date, start: a.start, end: a.end, teamId: a.assignedTeamId, flag: a.flag as AssignmentFlag }));
+
   return {
     desired,
+    flagged,
     carried,
     lost,
     frozenPast: pastRows.length,

@@ -3610,8 +3610,52 @@ Still open:
     0103 table and columns were added by hand in the generator's shape.
   - Verified look-only through a throwaway scratch route (deleted): the page,
     the preview, the Hours step, the leftover control; the fail-loud banner
-    renders when a read refuses. Not exercised against live data; no org's
-    shifts were regenerated.
+    renders when a read refuses. **The real league (Santa Rosa American Little
+    League, "SRALL - Fall 2026") WAS regenerated through the product on
+    2026-10-05 23:43 UTC** (11 added, 9 removed, 24 past frozen; a no-op run a
+    minute later stamped `shifts_generated_at`), which is how the Oct 17 Royals
+    overlap below was found. The test org's two seasons are still legacy
+    (`shifts_generated_at` null). Two leftover choices ("first", Oct 10 and
+    Oct 17 09:30 windows) were saved AFTER that regenerate and are not yet
+    applied — the next regenerate moves those windows.
+- **ASSIGNMENT NEVER OVERLAPS A GAME (2026-10-06, branch
+  `feat/snack-shack-overlap-guard`).** The picker used to key off game DATES
+  only (`preferenceMapsByDate`), so a team could be handed the shift that ran
+  during its own game — live: the real league's Oct 17 1:30–3:30 shift went to
+  RVLL Royals, who play 2:30 at Memorial (reassigned by hand to SRALL Mariners
+  the same day, logged as `snack_shift_assignment_changed`). The rules now, in
+  `assignNewShifts` (derive-shifts.ts), in this order:
+  1. **Hard, both modes, BEFORE equity:** a team is never given a shift that
+     overlaps any of its games — home, away, interleague, pending, or a
+     playoff game with a date — from `GAME_BUFFER_BEFORE_MIN` (30) before the
+     start to the end (division duration) plus `GAME_BUFFER_AFTER_MIN` (0).
+     Cancelled games don't count. The index (`assignmentIndexFromGames`) is
+     built from `games` AND `playoff_games` (the loader reads both; the
+     derivation still opens the shack from `games` only).
+  2. **Prefer game days:** tier 1 = eligible teams with a game that day at a
+     shack venue, HOME OR AWAY; then teams not playing that day; then any
+     eligible team. Fewest shifts, then name, within the tier. Leaving tier 1
+     sets `preference_not_met`.
+  3. **Prefer off days:** soft, evenness first as before — fewest shifts
+     among the eligible, then the free ones; all busy → one of them, flagged.
+  4. **Nobody eligible → the shift is UNASSIGNED and flagged `unfilled`.**
+     Never a fallback to a playing team; `assigned_team_id` null in the RPC
+     payload is a real outcome now. The plan carries `flagged` for the preview;
+     `storedAssignmentFlag` judges STORED rows by the same rules for the page
+     (`conflict` for a stored team the hard rule would refuse — legacy rows
+     and hand edits). Sentences come from `assignmentFlagLine`, verbatim.
+  - Frozen past rows, manual rows, kept assignments on unchanged shifts, the
+    derivation and the leftover choices are untouched — a kept row that
+    overlaps stays as it is and the page is where it gets flagged. Flags UI
+    not built yet (mockup first).
+  - **Harness:** sim section A — the harness's OWN interval check (buffer as a
+    LITERAL 30, never the imported constant) over fixed fixtures and a seeded
+    sweep of 300 Saturdays × 2 modes; nine mutants NM1–NM9 (buffer removed,
+    away ignored, playoff ignored, filter after equity, fallback to a playing
+    team, both missing flags, pending not busy, stored conflict not reported).
+    Run 2026-10-06: 36/36 killed at their own assertion on the second pass
+    (three harness ordering faults on the first — read the sim's MUTATION
+    LOG). `npm run sim:snack-shifts` 148 checks × 3 zones, 23 counters.
 - **Shift notes + "in charge of cash" (0104, APPLIED 2026-10-06 02:54 UTC after
   a first-run-green rolled-back proof; branch `feat/snack-shack-notes-cash`).** Decided, same rules as game notes:
   a NOTE on any shift (500 chars, attribution by the BEFORE UPDATE trigger

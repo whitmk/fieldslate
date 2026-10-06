@@ -14,13 +14,16 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/calendar/timezones";
 import type { DayKey } from "@/lib/venues/availability";
+import { planSettingsFromDivision } from "@/lib/playoffs/bracket-plan";
 import {
+  assignmentGamesFromPlayoffRows,
+  assignmentGamesFromRows,
+  assignmentIndexFromGames,
   deriveShifts,
-  preferenceMapsFromGames,
   resolveGameDurations,
+  type AssignmentIndex,
   type DerivationResult,
   type PickTeam,
-  type PreferenceMaps,
   type SchedulingPreference,
   type ShiftRule,
   type StoredAbsorbChoice,
@@ -63,7 +66,9 @@ export type ShiftInputs = {
   derivation: DerivationResult;
   stored: StoredShiftRow[];
   teams: PickTeam[];
-  maps: PreferenceMaps;
+  /** Every game a team plays this season, regular AND playoff, by team and
+   *  date — what the assignment's hard rule and preferences read. */
+  index: AssignmentIndex;
   preference: SchedulingPreference;
   choices: StoredAbsorbChoice[];
   timezone: string;
@@ -84,6 +89,24 @@ type GameRow = {
 const GAME_COLS =
   "id, scheduled_at, status, venue_id, home_team_id, away_team_id, venue:venues(name), " +
   "home_team:teams!home_team_id(division:divisions(game_duration:settings->game_duration))";
+
+type PlayoffGameRow = {
+  id: string;
+  scheduled_date: string | null;
+  start_time: string | null;
+  status: string;
+  venue_id: string | null;
+  home_team_id: string | null;
+  away_team_id: string | null;
+  division: { game_duration: unknown } | null;
+};
+
+/** Playoff games are a parallel table (they never open the shack — the
+ *  derivation reads `games` only) but a team playing one is busy, so the
+ *  assignment index reads them. Only rows with a date are on the calendar. */
+const PLAYOFF_COLS =
+  "id, scheduled_date, start_time, status, venue_id, home_team_id, away_team_id, " +
+  "division:divisions(game_duration:settings->game_duration)";
 
 /** Loads everything and derives. Throws on any read error. */
 export async function loadShiftInputs(settings: SnackShackSettingsInput, orgId: string): Promise<ShiftInputs> {
@@ -109,6 +132,18 @@ export async function loadShiftInputs(settings: SnackShackSettingsInput, orgId: 
         .order("scheduled_at")
         .order("id")
         .range(from, to) as unknown as PromiseLike<{ data: GameRow[] | null; error: { message: string } | null; count?: number | null }>,
+  );
+  const playoffRows = await fetchAllRows<PlayoffGameRow>(
+    "this season's playoff games",
+    ({ from, to, exactCount }) =>
+      supabase
+        .from("playoff_games")
+        .select(PLAYOFF_COLS, exactCount ? { count: "exact" } : undefined)
+        .eq("league_id", settings.season_id)
+        .not("scheduled_date", "is", null)
+        .order("scheduled_date")
+        .order("id")
+        .range(from, to) as unknown as PromiseLike<{ data: PlayoffGameRow[] | null; error: { message: string } | null; count?: number | null }>,
   );
   const stored = await fetchAllRows<StoredShiftRow>(
     "snack shack shifts",
@@ -140,7 +175,33 @@ export async function loadShiftInputs(settings: SnackShackSettingsInput, orgId: 
     })),
   );
   const derivation = deriveShifts(derivationGames, rule, choices);
-  const maps = preferenceMapsFromGames(games, rule.homeVenueIds);
+  const durationById = new Map(derivationGames.map((g) => [g.id, g.durationMin]));
+  const index = assignmentIndexFromGames(
+    [
+      ...assignmentGamesFromRows(
+        games.map((g) => ({
+          home_team_id: g.home_team_id,
+          away_team_id: g.away_team_id,
+          venue_id: g.venue_id,
+          scheduled_at: g.scheduled_at,
+          status: g.status,
+          durationMin: durationById.get(g.id) ?? 90,
+        })),
+      ),
+      ...assignmentGamesFromPlayoffRows(
+        playoffRows.map((p) => ({
+          home_team_id: p.home_team_id,
+          away_team_id: p.away_team_id,
+          venue_id: p.venue_id,
+          scheduled_date: p.scheduled_date,
+          start_time: p.start_time,
+          status: p.status,
+          durationMin: planSettingsFromDivision({ game_duration: p.division?.game_duration }).durationMin,
+        })),
+      ),
+    ],
+    rule.homeVenueIds,
+  );
   const preference: SchedulingPreference = settings.scheduling_preference === "prefer_game_days" ? "prefer_game_days" : "prefer_off_days";
 
   return {
@@ -148,7 +209,7 @@ export async function loadShiftInputs(settings: SnackShackSettingsInput, orgId: 
     derivation,
     stored,
     teams: (teamsRes.data ?? []) as PickTeam[],
-    maps,
+    index,
     preference,
     choices,
     timezone,
@@ -162,7 +223,7 @@ export function planFromInputs(inputs: ShiftInputs): RegeneratePlan {
     stored: inputs.stored,
     teams: inputs.teams,
     preference: inputs.preference,
-    maps: inputs.maps,
+    index: inputs.index,
     today: inputs.today,
   });
 }
