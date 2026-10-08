@@ -4073,6 +4073,19 @@ Still open:
 
 ## Open items
 
+- **Playoff export CSV end time is still start + a hardcoded 90 minutes — REDO
+  the parked fix with a narrow division read.** Branch
+  `fix/playoff-export-duration` (`b131bb4`, 2026-10-05, never pushed, no sign
+  of review; left UNMERGED by the founder's decision 2026-10-08) fixes it, but
+  by embedding `division:divisions(settings)` on the export's read — the whole
+  settings blob, coach metadata in `teams[]` included, once per game row,
+  which the "Schedule page — the ONE shared games query" section forbids. It
+  also falls back to 90 silently when a division has no duration. Redo: read
+  only `game_duration:settings->game_duration` (the projected key), resolve
+  with `planSettingsFromDivision`, and SAY when the duration was defaulted
+  (or render a start-only end). Keep its harness idea (sim:playoff-bracket
+  part X + a mutant back to 90). Then delete the old branch.
+
 - **0106's UTC-today mutant (MU3) is owed a run** between 00:00 and 10:00 UTC
   (5pm–3am Pacific) against the APPLIED function, rolled back. If it survives,
   that is a follow-up migration.
