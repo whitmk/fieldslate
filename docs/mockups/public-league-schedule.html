@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Public League Schedule</title>
+<!-- MOCKUP ONLY (2026-10-08). Made-up league, teams and parks. Not wired to anything. -->
+<style>
+  :root{
+    --navy:#0C1F3F; --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb; --bg:#eef0f3;
+    --home:#15803d; --home-bg:#f0fdf4;
+    --away:#1d4ed8; --away-bg:#eff6ff;
+    --cx:#6b7280; --cx-bg:#f9fafb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink)}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 16px 64px}
+  h1.doc{font-size:20px;color:var(--navy);margin:0 0 4px}
+  .lede{color:var(--muted);margin:0 0 8px;max-width:820px}
+  .label{font:700 11px/1 -apple-system,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin:44px 0 10px}
+  .note{color:var(--muted);font-size:12.5px;margin:0 0 12px;max-width:860px}
+  .note b{color:var(--ink)}
+
+  .page{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .hdr{background:var(--navy);color:#fff;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .hdr h2{margin:0;font-size:20px}
+  .hdr .sub{opacity:.78;font-size:13px;margin-top:3px}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 22px;border-bottom:1px solid var(--line)}
+  .sel{appearance:none;border:1px solid #d1d5db;border-radius:8px;padding:7px 30px 7px 10px;font-size:13px;color:var(--ink);background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7280' fill='none' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 10px center}
+  .seg{display:inline-flex;border:1px solid #d1d5db;border-radius:8px;overflow:hidden}
+  .seg span{padding:7px 12px;font-size:13px;color:var(--muted)}
+  .seg span.on{background:var(--navy);color:#fff}
+  .spacer{flex:1}
+  .btn{border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:7px 12px;font-size:13px;color:var(--ink);display:inline-flex;gap:6px;align-items:center;white-space:nowrap}
+  .btn.primary{background:var(--navy);border-color:var(--navy);color:#fff}
+  .legend{display:flex;gap:16px;align-items:center;padding:10px 22px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line);flex-wrap:wrap}
+
+  .tag{display:inline-flex;align-items:center;gap:4px;font:700 10.5px/1 -apple-system,sans-serif;letter-spacing:.04em;text-transform:uppercase;padding:4px 8px;border-radius:999px;white-space:nowrap}
+  .t-home{background:var(--home);color:#fff;border:1.5px solid var(--home)}
+  .t-away{background:#fff;color:var(--away);border:1.5px solid var(--away)}
+  .t-cx{background:#f3f4f6;color:#4b5563;border:1.5px solid #d1d5db}
+  .t-info{background:#fff;color:var(--navy);border:1px solid #cbd5e1;font-weight:600;text-transform:none;letter-spacing:0;font-size:11.5px}
+  .t-po{background:var(--navy);color:#fff;border:1.5px solid var(--navy)}
+
+  .day{padding:4px 22px 6px}
+  .day h3{margin:16px 0 8px;font-size:13px;color:var(--navy);display:flex;gap:8px;align-items:baseline}
+  .day h3 small{color:var(--muted);font-weight:500}
+  .row{display:grid;grid-template-columns:120px 1fr 1.2fr 190px;gap:14px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-left-width:5px;border-radius:8px;margin-bottom:6px}
+  .row.home{border-left-color:var(--home);background:var(--home-bg)}
+  .row.away{border-left-color:var(--away);background:var(--away-bg);border-left-style:solid}
+  .row.cx{border-left-color:#d1d5db;background:var(--cx-bg);color:#9ca3af}
+  .row.cx .match,.row.cx .time{text-decoration:line-through}
+  .time{font-weight:700;color:var(--navy)}
+  .time small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+  .row.cx .time,.row.cx .time small{color:#9ca3af}
+  .match{font-weight:600}
+  .match .div{display:block;font-weight:500;color:var(--muted);font-size:12px;text-decoration:none}
+  .field{font-size:13px}
+  .field small{display:block;color:var(--muted);font-size:12px}
+  .field a{color:var(--navy)}
+  .badges{display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap}
+  .foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;padding:12px 22px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);background:#fafafa}
+  .foot b{color:var(--navy)}
+
+  .month{display:grid;grid-template-columns:repeat(7,1fr)}
+  .month .dh{padding:6px 8px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--line)}
+  .month .c{min-height:92px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px;font-size:11px}
+  .month .c:nth-child(7n){border-right:0}
+  .month .n{color:var(--muted);font-weight:700;margin-bottom:4px}
+  .pill{display:block;border-radius:4px;padding:2px 5px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pill.home{background:var(--home);color:#fff}
+  .pill.away{background:#fff;color:var(--away);border:1px solid var(--away)}
+  .pill.cx{background:#f3f4f6;color:#9ca3af;text-decoration:line-through}
+  .pill b{margin-right:3px}
+
+  .duo{display:grid;grid-template-columns:395px 1fr;gap:28px;align-items:start}
+  @media (max-width:980px){.duo{grid-template-columns:1fr}.row{grid-template-columns:1fr}.badges{justify-content:flex-start}}
+  .phone{width:375px;max-width:100%;border:10px solid #111827;border-radius:36px;overflow:hidden;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+  .phone .hdr{padding:14px 16px}
+  .phone .hdr h2{font-size:17px}
+  .pbar{padding:10px 16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;border-bottom:1px solid var(--line)}
+  .pbar .sel{width:100%;font-size:16px;padding:9px 28px 9px 10px}
+  .pday{padding:0 16px 4px}
+  .pday h3{margin:14px 0 6px;font-size:13px;color:var(--navy)}
+  .card{border:1px solid var(--line);border-left-width:5px;border-radius:10px;padding:10px 12px;margin-bottom:8px}
+  .card.home{border-left-color:var(--home);background:var(--home-bg)}
+  .card.away{border-left-color:var(--away);background:var(--away-bg)}
+  .card.cx{border-left-color:#d1d5db;background:var(--cx-bg);color:#9ca3af}
+  .card.cx .ct,.card.cx .cm{text-decoration:line-through}
+  .card .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .ct{font-weight:700;color:var(--navy)}
+  .card.cx .ct{color:#9ca3af}
+  .cm{font-weight:600;margin-top:4px}
+  .cf{font-size:12.5px;color:#4b5563;margin-top:2px}
+  .card.cx .cf{color:#9ca3af}
+  .cd{font-size:12px;color:var(--muted)}
+  .cta{margin:8px 16px 16px;display:flex;justify-content:center}
+
+  .site{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .site-nav{background:#14532d;color:#fff;padding:14px 20px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  .site-nav b{font-size:16px}
+  .site-nav span{font-size:12px;opacity:.85}
+  .site-body{display:grid;grid-template-columns:1fr 320px;gap:22px;padding:20px}
+  @media (max-width:760px){.site-body{grid-template-columns:1fr}}
+  .site-body h4{margin:0 0 8px;color:#14532d;font-size:18px}
+  .lorem{height:10px;background:#eef2f6;border-radius:4px;margin:8px 0}
+  .frame{border:2px dashed #94a3b8;border-radius:10px;position:relative;overflow:hidden}
+  .frame::before{content:"<iframe> 320px";position:absolute;top:0;right:0;background:#94a3b8;color:#fff;font:600 10px/1 ui-monospace,monospace;padding:4px 6px;border-bottom-left-radius:6px;z-index:1}
+  .em .ehdr{padding:10px 10px 0;font-weight:700;color:var(--navy);font-size:13px}
+  .em .ebar{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .em .ebar .sel{font-size:12px;padding:6px 22px 6px 8px;width:100%}
+  .em .elegend{display:flex;gap:10px;padding:6px 10px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--line)}
+  .em .pday{padding:0 10px}
+  .em .card{padding:8px 10px}
+  .em .efoot{padding:8px 10px;border-top:1px solid var(--line);font-size:11px;color:var(--muted);display:flex;justify-content:space-between}
+
+  .states{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:760px){.states{grid-template-columns:1fr}}
+  .state{background:#fff;border:1px solid var(--line);border-radius:12px;padding:22px;text-align:center}
+  .state h4{margin:8px 0 4px;color:var(--navy)}
+  .state p{margin:0;color:var(--muted);font-size:13px}
+  .state .ico{font-size:22px}
+
+  .admin{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px 22px;max-width:780px}
+  .admin h2{margin:0;font-size:16px;color:var(--navy)}
+  .admin > p{margin:6px 0 0;color:var(--muted);font-size:13px}
+  .arow{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}
+  .arow.block{display:block}
+  .arow:last-child{border-bottom:0}
+  .k{font-weight:600}
+  .d{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .toggle{width:42px;height:24px;border-radius:999px;background:var(--home);position:relative;flex:none}
+  .toggle::after{content:"";position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;top:2px;right:2px;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  .copy{display:flex;gap:8px;margin-top:8px;align-items:flex-start}
+  .copy code{flex:1;min-width:0;background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#334155;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .copy code.multi{white-space:pre-wrap;word-break:break-all}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .chip{border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:12px;background:#fff;display:inline-flex;gap:6px;align-items:center}
+  .chip.on{border-color:var(--home);background:var(--home-bg);color:var(--home);font-weight:600}
+  .chip .box{width:12px;height:12px;border:1.5px solid #9ca3af;border-radius:3px;display:inline-block}
+  .chip.on .box{background:var(--home);border-color:var(--home)}
+  .grey{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:#374151;margin-top:10px}
+  .linkbtn{color:#b91c1c;font-size:13px;font-weight:600;background:none;border:0;padding:0;white-space:nowrap}
+  .divs{display:grid;grid-template-columns:1fr auto;gap:4px 16px;margin-top:8px;font-size:13px}
+  .divs span:nth-child(even){color:var(--muted);text-align:right}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1 class="doc">Public league schedule — mockup</h1>
+<p class="lede">One link per league that families open and a league can embed on its own website. Games are colored by <b>where they're played</b>: Home = at one of the league's own parks, Away = anywhere else. Every game also carries a Home/Away text tag, and the two differ in shape (solid vs. outlined), so color is never the only signal.</p>
+<p class="note">Made-up league, teams and parks. Page address in this mockup: <b>thefieldslate.com/s/&lt;token&gt;</b>.</p>
+
+<!-- ====================================================================== -->
+<div class="label">1 · Desktop — list view (the default)</div>
+<p class="note">Shown: upcoming games, every <b>locked</b> division. The rained-out game stays in place, struck through. An interleague away game shows the other league's field as they typed it. A reschedule-pending game stays at its current time with a "Time may change" tag.</p>
+<div class="page">
+  <div class="hdr">
+    <div>
+      <h2>Riverside Little League — Games</h2>
+      <div class="sub">Fall 2026 · Times are Pacific · Updated 2 minutes ago</div>
+    </div>
+    <span class="btn">📅 Add to calendar</span>
+  </div>
+  <div class="bar">
+    <select class="sel"><option>All divisions</option></select>
+    <select class="sel"><option>All teams</option></select>
+    <span class="seg"><span class="on">List</span><span>Month</span></span>
+    <span class="seg"><span class="on">Upcoming</span><span>Whole season</span></span>
+    <span class="spacer"></span>
+    <span class="btn">🖨 Print</span>
+  </div>
+  <div class="legend">
+    <span><span class="tag t-home">Home</span>&nbsp; at a Riverside LL park</span>
+    <span><span class="tag t-away">Away</span>&nbsp; at another league's field</span>
+    <span><span class="tag t-cx">Rained out</span>&nbsp; not being played on this date</span>
+  </div>
+
+  <div class="day">
+    <h3>Saturday, October 10 <small>5 games</small></h3>
+    <div class="row home">
+      <span class="time">9:00 AM<small>until 10:45 AM</small></span>
+      <span class="match">Bears vs Lions<span class="div">Minors</span></span>
+      <span class="field">Monroe Park — Andrews Field<small><a href="#">1200 Monroe St</a></small></span>
+      <span class="badges"><span class="tag t-home">Home</span></span>
+    </div>
+    <div class="row cx">
+      <span class="time">9:00 AM<small>until 10:30 AM</small></span>
+      <span class="match">Cubs vs Pirates<span class="div">Rookies</span></span>
+      <span class="field">Monroe Park — Memorial Field<small>New date to be announced</small></span>
+      <span class="badges"><span class="tag t-cx">☂ Rained out</span></span>
+    </div>
+    <div class="row away">
+      <span class="time">10:00 AM<small>until 12:00 PM</small></span>
+      <span class="match">Expos vs Mariners<span class="div">Majors</span></span>
+      <span class="field">Wright Complex — Perry Field<small><a href="#">55 Wright Rd</a></small></span>
+      <span class="badges"><span class="tag t-away">Away</span></span>
+    </div>
+    <div class="row away">
+      <span class="time">11:30 AM<small>until 1:15 PM</small></span>
+      <span class="match">Giants at Northgate Rays<span class="div">Minors · vs Northgate LL</span></span>
+      <span class="field">Northgate Park Field 2<small>Field as given by Northgate LL</small></span>
+      <span class="badges"><span class="tag t-info">Interleague</span><span class="tag t-away">Away</span></span>
+    </div>
+    <div class="row home">
+      <span class="time">3:30 PM<small>until 5:30 PM</small></span>
+      <span class="match">Red Sox vs Twins<span class="div">Majors</span></span>
+      <span class="field">Monroe Park — RCA Field<small><a href="#">1200 Monroe St</a></small></span>
+      <span class="badges"><span class="tag t-info">Time may change</span><span class="tag t-home">Home</span></span>
+    </div>
+
+    <h3>Wednesday, October 14 <small>1 game</small></h3>
+    <div class="row away">
+      <span class="time">5:30 PM<small>until 7:15 PM</small></span>
+      <span class="match">Padres at Hillcrest Dodgers<span class="div">Minors · vs Hillcrest LL</span></span>
+      <span class="field">Field to be announced<small>Hillcrest LL hasn't named the field yet</small></span>
+      <span class="badges"><span class="tag t-info">Interleague</span><span class="tag t-away">Away</span></span>
+    </div>
+
+    <h3>Saturday, October 24 <small>2 games</small></h3>
+    <div class="row home">
+      <span class="time">10:00 AM<small>until 12:00 PM</small></span>
+      <span class="match">Expos vs Winner of Game 2<span class="div">Majors</span></span>
+      <span class="field">Monroe Park — Andrews Field<small><a href="#">1200 Monroe St</a></small></span>
+      <span class="badges"><span class="tag t-po">Playoffs · Semifinal</span><span class="tag t-home">Home</span></span>
+    </div>
+    <div class="row home">
+      <span class="time">1:00 PM<small>until 3:00 PM</small></span>
+      <span class="match">Winner of Game 3 vs Winner of Game 4<span class="div">Majors</span></span>
+      <span class="field">Monroe Park — Andrews Field<small><a href="#">1200 Monroe St</a></small></span>
+      <span class="badges"><span class="tag t-po">Playoffs · Final</span><span class="tag t-home">Home</span></span>
+    </div>
+  </div>
+  <div class="foot">
+    <span>Showing 8 upcoming games of 214 · <b>Rookies</b> isn't published yet</span>
+    <span>Schedule by <b>FieldSlate</b></span>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<div class="label">2 · Desktop — month view (same filters)</div>
+<p class="note">Each pill starts with H / A / ✕ so the month grid reads without color too. Tapping a pill opens the same row as the list view.</p>
+<div class="page">
+  <div class="bar">
+    <select class="sel"><option>Minors</option></select>
+    <select class="sel"><option>All teams</option></select>
+    <span class="seg"><span>List</span><span class="on">Month</span></span>
+    <span class="spacer"></span>
+    <span class="btn">‹</span><b style="color:var(--navy)">October 2026</b><span class="btn">›</span>
+  </div>
+  <div class="month">
+    <div class="dh">Mon</div><div class="dh">Tue</div><div class="dh">Wed</div><div class="dh">Thu</div><div class="dh">Fri</div><div class="dh">Sat</div><div class="dh">Sun</div>
+    <div class="c"><div class="n">28</div></div><div class="c"><div class="n">29</div></div><div class="c"><div class="n">30</div></div>
+    <div class="c"><div class="n">1</div></div><div class="c"><div class="n">2</div></div>
+    <div class="c"><div class="n">3</div><span class="pill home"><b>H</b>9:00 Bears–Lions</span><span class="pill away"><b>A</b>11:30 Giants @ Rays</span><span class="pill home"><b>H</b>1:00 Cubs–Twins</span></div>
+    <div class="c"><div class="n">4</div></div>
+    <div class="c"><div class="n">5</div></div><div class="c"><div class="n">6</div></div>
+    <div class="c"><div class="n">7</div><span class="pill home"><b>H</b>5:30 Padres–Bears</span></div>
+    <div class="c"><div class="n">8</div></div><div class="c"><div class="n">9</div></div>
+    <div class="c"><div class="n">10</div><span class="pill home"><b>H</b>9:00 Bears–Lions</span><span class="pill cx"><b>✕</b>9:00 Cubs–Pirates</span><span class="pill away"><b>A</b>11:30 Giants @ Rays</span></div>
+    <div class="c"><div class="n">11</div></div>
+    <div class="c"><div class="n">12</div></div><div class="c"><div class="n">13</div></div>
+    <div class="c"><div class="n">14</div><span class="pill away"><b>A</b>5:30 Padres @ Dodgers</span></div>
+    <div class="c"><div class="n">15</div></div><div class="c"><div class="n">16</div></div>
+    <div class="c"><div class="n">17</div><span class="pill home"><b>H</b>9:00 Lions–Giants</span><span class="pill home"><b>H</b>11:00 Cubs–Padres</span><span class="pill" style="color:var(--muted);padding-left:0">+2 more</span></div>
+    <div class="c"><div class="n">18</div></div>
+  </div>
+  <div class="legend" style="border-bottom:0"><span><b>H</b> Home</span><span><b>A</b> Away</span><span><b>✕</b> Rained out</span></div>
+</div>
+
+<!-- ====================================================================== -->
+<div class="label">3 · Phone (375px) and embedded in a league website's side column</div>
+<p class="note">Embedded mode (<b>?embed=1</b>): no navy header and no print button; filters stay; links open in a new tab; a one-line "Open full schedule" footer. Filters work in the browser over one cached response, so <b>?division=</b> never splits the cache.</p>
+<div class="duo">
+  <div class="phone">
+    <div class="hdr"><div><h2>Riverside LL — Games</h2><div class="sub">Fall 2026 · Pacific time</div></div></div>
+    <div class="pbar">
+      <select class="sel"><option>Minors</option></select>
+      <select class="sel"><option>Giants</option></select>
+    </div>
+    <div class="legend" style="padding:8px 16px"><span><span class="tag t-home">Home</span></span><span><span class="tag t-away">Away</span></span><span><span class="tag t-cx">Rained out</span></span></div>
+    <div class="pday">
+      <h3>Sat, Oct 10</h3>
+      <div class="card away">
+        <div class="top"><span class="ct">11:30 AM</span><span class="tag t-away">Away</span></div>
+        <div class="cm">Giants at Northgate Rays</div>
+        <div class="cf">Northgate Park Field 2</div>
+        <div class="cd">Minors · Interleague vs Northgate LL</div>
+      </div>
+      <h3>Wed, Oct 14</h3>
+      <div class="card cx">
+        <div class="top"><span class="ct">5:30 PM</span><span class="tag t-cx">☂ Rained out</span></div>
+        <div class="cm">Giants vs Twins</div>
+        <div class="cf">Monroe Park — Memorial Field · new date to be announced</div>
+      </div>
+      <h3>Sat, Oct 17</h3>
+      <div class="card home">
+        <div class="top"><span class="ct">9:00 AM</span><span class="tag t-home">Home</span></div>
+        <div class="cm">Lions vs Giants</div>
+        <div class="cf">Monroe Park — Andrews Field</div>
+        <div class="cd"><a href="#" style="color:var(--navy)">1200 Monroe St</a> · until 10:45 AM</div>
+      </div>
+      <div class="card away">
+        <div class="top"><span class="ct">1:00 PM</span><span class="tag t-away">Away</span></div>
+        <div class="cm">Giants vs Padres</div>
+        <div class="cf">Wright Complex — Minors Field</div>
+        <div class="cd">Minors · until 2:45 PM</div>
+      </div>
+    </div>
+    <div class="cta"><span class="btn primary">📅 Add Giants to my calendar</span></div>
+  </div>
+
+  <div class="site">
+    <div class="site-nav"><b>⚾ Riverside Little League</b><span>Home</span><span>Register</span><span>Volunteers</span><span>Schedule</span></div>
+    <div class="site-body">
+      <div>
+        <h4>Welcome to Fall Ball!</h4>
+        <div class="lorem" style="width:92%"></div><div class="lorem" style="width:86%"></div><div class="lorem" style="width:74%"></div>
+        <div class="lorem" style="width:90%;margin-top:20px"></div><div class="lorem" style="width:60%"></div>
+        <h4 style="margin-top:24px">Picture day is Oct 17</h4>
+        <div class="lorem" style="width:88%"></div><div class="lorem" style="width:70%"></div>
+      </div>
+      <div class="frame">
+        <div class="em">
+          <div class="ehdr">Fall 2026 games</div>
+          <div class="ebar">
+            <select class="sel"><option>All divisions</option></select>
+            <select class="sel"><option>All teams</option></select>
+          </div>
+          <div class="elegend"><span><b style="color:var(--home)">■</b> Home</span><span><b style="color:var(--away)">□</b> Away</span><span>✕ Rained out</span></div>
+          <div class="pday">
+            <h3>Sat, Oct 10</h3>
+            <div class="card home"><div class="top"><span class="ct">9:00 AM</span><span class="tag t-home">Home</span></div><div class="cm">Bears vs Lions</div><div class="cf">Monroe — Andrews · Minors</div></div>
+            <div class="card cx"><div class="top"><span class="ct">9:00 AM</span><span class="tag t-cx">Rained out</span></div><div class="cm">Cubs vs Pirates</div><div class="cf">Monroe — Memorial · Rookies</div></div>
+            <div class="card away"><div class="top"><span class="ct">11:30 AM</span><span class="tag t-away">Away</span></div><div class="cm">Giants at Northgate Rays</div><div class="cf">Northgate Park Field 2 · Minors</div></div>
+          </div>
+          <div class="efoot"><span>Open full schedule ↗</span><span>FieldSlate</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<div class="label">4 · When it can't show the schedule — never an empty list that looks real</div>
+<div class="states">
+  <div class="state"><div class="ico">⚠️</div><h4>We couldn't load the schedule right now</h4><p>This is a problem on our side, not a change to your games. Try again in a few minutes.</p><p style="margin-top:10px"><span class="btn">Try again</span></p></div>
+  <div class="state"><div class="ico">⏸</div><h4>This schedule isn't available</h4><p>Riverside Little League has turned off its public schedule. Check the league's website or ask your coach.</p></div>
+</div>
+<p class="note" style="margin-top:10px">The first is a 503 sent with <b>no-store</b> so no cache keeps it. The second is the admin's off switch. A league with nothing locked yet gets a third card: "The Fall 2026 schedule hasn't been published yet."</p>
+
+<!-- ====================================================================== -->
+<div class="label">5 · Admin — Settings → Public schedule</div>
+<div class="admin">
+  <h2>Public schedule</h2>
+  <p>A page with every game in your current season, for families and for your league's website.</p>
+
+  <div class="arow">
+    <div><div class="k">Public page is on</div><div class="d">Turning it off shows visitors "This schedule isn't available." Turning it back on brings back the same link, so your website keeps working.</div></div>
+    <span class="toggle"></span>
+  </div>
+
+  <div class="arow block">
+    <div class="k">Link</div>
+    <div class="d">Always shows your current season, so you don't need to change your website each season.</div>
+    <div class="copy"><code>https://www.thefieldslate.com/s/3f9c…e71a</code><span class="btn primary">Copy</span><span class="btn">Open ↗</span></div>
+  </div>
+
+  <div class="arow block">
+    <div class="k">Put it on your website</div>
+    <div class="d">Paste this into your site builder's "Embed" or "HTML" block.</div>
+    <div class="copy"><code class="multi">&lt;iframe src="https://www.thefieldslate.com/s/3f9c…e71a?embed=1" title="Riverside Little League games" width="100%" height="700" style="border:0" loading="lazy"&gt;&lt;/iframe&gt;</code><span class="btn primary">Copy</span></div>
+  </div>
+
+  <div class="arow block">
+    <div class="k">Your home parks</div>
+    <div class="d">Games at these parks show as <b>Home</b>. Games anywhere else show as <b>Away</b>. This applies to every season.</div>
+    <div class="chips">
+      <span class="chip on"><i class="box"></i>Monroe Park · 3 fields</span>
+      <span class="chip"><i class="box"></i>Wright Complex · 4 fields</span>
+      <span class="chip"><i class="box"></i>Ives Park · 1 field</span>
+      <span class="chip"><i class="box"></i>Laguna Youth Park · 1 field</span>
+    </div>
+    <div class="grey">2 fields aren't in a park, so they show as Away. Add them to a park on the Venues page.</div>
+  </div>
+
+  <div class="arow block">
+    <div class="k">Divisions on the page</div>
+    <div class="d">Only locked divisions show, so a schedule you're still editing never goes public.</div>
+    <div class="divs">
+      <span>Majors</span><span>Shown · locked</span>
+      <span>Minors</span><span>Shown · locked</span>
+      <span>Rookies</span><span>Hidden · not locked</span>
+    </div>
+  </div>
+
+  <div class="arow block">
+    <div class="k">Calendar subscription (all games)</div>
+    <div class="d">For anyone who wants every league game on their phone. Team calendars are on the Teams page.</div>
+    <div class="copy"><code>webcal://www.thefieldslate.com/s/3f9c…e71a.ics</code><span class="btn primary">Copy</span></div>
+  </div>
+
+  <div class="arow">
+    <div><div class="k">Reset link</div><div class="d">Makes a new link. The old one stops working within a minute, so update your website after.</div></div>
+    <button class="linkbtn">Reset link…</button>
+  </div>
+</div>
+</div>
+</body>
+</html>

@@ -49,7 +49,15 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   every 60s — deploys take 60–90s, faster polling only burns the API quota.
   Status source:
   `curl https://api.github.com/repos/whitmk/fieldslate/commits/<sha>/status`
-  (no `gh` installed).
+  (no `gh` installed). **A real build shows within ~20s** as a `Vercel`
+  `pending` status WITH a deployment `target_url`; a dropped push has zero
+  statuses. **Waiting:** a foreground `sleep` longer than ~20s is blocked by
+  the session's Bash tool — use a background loop that polls every 60s and
+  exits when the state leaves `pending`. **Confirming the SHA on the
+  dashboard:** the in-app browser is not signed into Vercel and the Vercel
+  connector needs an OAuth step the session cannot start; Claude in Chrome
+  (the founder's signed-in Chrome) works — open the status's `target_url`
+  and read Status / Environment / Source.
 - **Vercel silently drops a push often enough to plan for — THREE occurrences,
   two of them nine days apart.** A dropped push gets no deployment at all: the
   GitHub status sits at `pending` with ZERO statuses and zero check runs, which
@@ -95,7 +103,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
+  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) is WRITTEN AND PROVEN, NOT APPLIED** (branch `feat/public-league-schedule`; rolled-back proof green 2026-10-08; expected md5(prosrc): reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`). The Settings card and `/s/` pages need it applied BEFORE their code ships. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -2486,8 +2494,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   characters) are the backstop. Written by exactly three surfaces — the shared
   `VenueEditForm`, the Venues page add form, and the park heading's rename;
   the picker's quick-create stays name-only. **Shown to admins on the Venues
-  page and to families in the team calendar feed's LOCATION line, and NOWHERE
-  else**: no CSV, no print region, no partner page, no email. `sim:game-notes`
+  page, to families in the team calendar feed's LOCATION line, and — since
+  0105 — on the public league schedule page (`/s/<token>`, with a Maps link)
+  and its all-games feed; NOWHERE else**: no CSV, no print region, no partner
+  page, no email. `sim:game-notes`
   O1a/O1c scan the outbound files for `address` exactly as they do for
   `notes`; `sim:venue-address` (+ mutants) pins the writers and the card.
   `city` / `state` on both tables stay dead (backlog).
@@ -2866,8 +2876,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   opens the field in Maps. Never on an away game (the partner's field). The
   key lives on `TeamCalendarGame`'s venue type only; `ExportGame`, which the
   CSV builders share, never carries it. `anon` and `service_role` hold no
-  SELECT on `venues` or `locations`, so this SECURITY DEFINER reader is the
-  only anonymous path to the value. The help page's "who can see" answer and
+  SELECT on `venues` or `locations`, so the SECURITY DEFINER readers — this
+  one and, since 0105, `get_league_schedule_by_token` — are the only
+  anonymous paths to the value. The help page's "who can see" answer and
   the Teams dialog both say the address is in the feed. Harnesses:
   `scripts/sim/venue-address-calendar-sim.sql` (assembled by
   `venue-address-calendar-build.ts`; applies 0100 in an always-rolled-back
@@ -2920,6 +2931,66 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   timezones, 21 mutants), `npm run sim:team-calendar-route` (URLs, refusal
   map, coach message, help page, wiring; 7 mutants), and `sim:games-export`
   pins the `keepCancelled` opt-in.
+
+## Public league schedule (`/s/<token>`) — 0105, NOT YET APPLIED
+
+- **What it is.** One link per ORG that families open and a league embeds on
+  its own website (`<iframe … height="700">`, the page scrolls inside it).
+  `/s/<token>` is a client shell; it fetches `/s/<token>/data`; the all-games
+  calendar is `/s/<token>.ics` (rewritten in `next.config.mjs` to
+  `/s/[token]/feed` — a route folder cannot hold both a page and a
+  `<token>.ics` handler). Pro and Elite; a downgraded org's link answers
+  "turned off". Settings → Public schedule is the admin card.
+- **HOME vs AWAY IS DECIDED BY THE PARK — `locations.is_home_park`.** Nothing
+  about a FIELD says "ours": an org's venues include the other leagues' fields
+  it plays at (Santa Rosa American LL's 272 Fall 2026 games are at four parks,
+  one of them its own). Field in a home park → Home; another park, NO park, or
+  the partner's field on an interleague away game → Away; no field at all and
+  not a partner's → "Field TBD" (never Away — Away claims a fact we lack).
+  ONE function decides it: `siteOf` in `src/lib/public-schedule/classify.ts`.
+  The checkboxes live on the Settings card (not the Venues page), and the card
+  names every field that has no park, with a Venues link.
+- **The reader, `get_league_schedule_by_token(text)`, takes only the token and
+  names every key** (same rules as the team calendar reader). Statuses
+  unknown / off / plan / ok. **Only LOCKED divisions** contribute teams, games
+  and playoff games; an unlocked one contributes its NAME to `unpublished`
+  ("T-Ball isn't published yet"). `posted` is not a gate (it clears on every
+  rainout). **`pending_interleague` never leaves it** — and `buildRows` drops
+  it again in TypeScript, the second lock. Cancelled games ARE returned and
+  read "Rained out" (the rainout flow is the only writer of `cancelled`);
+  `reschedule_pending` shows at its current time with "Time may change";
+  playoff games of non-draft brackets are all returned, only DATED ones are
+  rows, and an empty single-elimination slot reads "Winner of Game N" from
+  the positional numbering (any other format: "TBD"). Seasons: unarchived,
+  ≥1 locked division, ended ≤7 days ago in the ORG's timezone; the reader
+  returns `today` so the page needs no clock. More than one season → a picker.
+- **Link lifetime: the token never names a season.** Off KEEPS the token
+  (website embeds survive off/on) — the OPPOSITE of the team calendar link,
+  where on always mints a new one. Reset writes a new token into the same row
+  and the old one answers "isn't recognized"; the card's confirm says embeds
+  stop working.
+- **Caching lives in ONE place, `src/lib/public-schedule/links.ts`.** Every
+  reader answer: `public, max-age=0, s-maxage=60` (edge only) — off, reset,
+  home-park changes and rainouts reach visitors within a minute. A FAILED
+  read: 503 + `no-store` + Retry-After, and the page says "We couldn't load
+  the schedule right now" — never an empty schedule that looks real. Filters
+  run in the browser, so one cached response serves every filter. The feed
+  keeps the team feed's rules: `no-store`, 503 + Retry-After for anything
+  temporary (including "no published games"), never an empty calendar.
+- **`/s/` is outside the middleware matcher** (no Supabase Auth call per view)
+  **and is the ONE framable route** (see "NO PAGE MAY BE FRAMED").
+- **Prints say what they show:** the print line names the season, the filter
+  (`filterSummary`: "Majors only", "Majors · Expos only") and the range.
+- **Harnesses:** `scripts/sim/public-schedule-sim.sql` (+ build script; SQL,
+  rolled back, SRALL test org; 5 mutants — unlocked division, pending
+  interleague, note emitted, any park home, new token on re-enable);
+  `npm run sim:public-schedule` (73 checks × 3 zones, 11 counters) +
+  `:mutants` (7, incl. Home misclassified and the error path edge-cached);
+  `sim:game-notes` O1-public / O1-public-reader (+ GM12/GM13).
+- **K2 in `game-notes-triggers-sim.sql` strips SQL comments before looking
+  for `notes`** (2026-10-08): the 0099 and 0105 readers both SAY in a comment
+  that they must not emit notes, which made the old scan fire on the rule it
+  checks. That harness has not been re-run since the edit.
 
 ## Interleague Case A — a signed-in league accepts onto its own schedule (2026-09-28)
 
