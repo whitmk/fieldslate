@@ -32,6 +32,12 @@ export function wallClockDate(iso: string): string {
   return iso.substring(0, 10);
 }
 
+/** Whether a game dated `iso` is strictly before `today` — a past day. A game
+ *  later today is NOT past (auto-assign still staffs it). */
+export function isBeforeToday(iso: string, today: string): boolean {
+  return wallClockDate(iso) < today;
+}
+
 /** Whether a game dated `iso` is on or before `today` ("YYYY-MM-DD"). */
 export function isOnOrBeforeToday(iso: string, today: string): boolean {
   return wallClockDate(iso) <= today;

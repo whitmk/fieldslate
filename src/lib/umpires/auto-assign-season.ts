@@ -47,6 +47,8 @@ export type SeasonAutoAssignResult = {
 export async function autoAssignSeason(
   seasonId: string,
   client?: AutoAssignClient,
+  /** Harness-only "now", passed through to each division run. */
+  now?: Date,
 ): Promise<SeasonAutoAssignResult> {
   const supabase = client ?? createClient();
 
@@ -100,7 +102,7 @@ export async function autoAssignSeason(
     }
 
     try {
-      const res = await autoAssignUmpires(d.id, seasonId, supabase);
+      const res = await autoAssignUmpires(d.id, seasonId, supabase, now);
       if (!res.success) {
         results.push({
           ...base,

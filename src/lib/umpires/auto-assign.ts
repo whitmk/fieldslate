@@ -12,6 +12,7 @@ import {
 } from "./eligibility";
 import { ensureSeasonRoleIds } from "./roles";
 import { padRoleLabels } from "@/lib/utils/official-title";
+import { isBeforeToday, todayInTimezone } from "@/lib/utils/org-today";
 
 /**
  * Why a slot couldn't be filled. Double-booked, blacked out, coaching a
@@ -50,6 +51,9 @@ export type AutoAssignResult = {
   outsideAvailabilityNames: string[];
   /** Same, blocked only by their weekly cap. */
   overWeeklyLimitNames: string[];
+  /** Games in the division dated BEFORE today (league timezone) — never
+   *  staffed by auto-assign. Their existing assignments still count. */
+  pastGamesSkipped: number;
   error?: string;
 };
 
@@ -124,8 +128,12 @@ export async function autoAssignUmpires(
   divisionId: string,
   seasonId: string,
   client?: AutoAssignClient,
+  /** "Now" — for the simulation harnesses ONLY, so fixtures can sit at a
+   *  fixed date. Production callers omit it. */
+  now: Date = new Date(),
 ): Promise<AutoAssignResult> {
   const supabase = client ?? createClient();
+  let pastGamesSkipped = 0;
   const none = (error?: string): AutoAssignResult => ({
     success: !error,
     filled: 0,
@@ -133,6 +141,7 @@ export async function autoAssignUmpires(
     skipReasons: [],
     outsideAvailabilityNames: [],
     overWeeklyLimitNames: [],
+    pastGamesSkipped,
     error,
   });
 
@@ -148,7 +157,7 @@ export async function autoAssignUmpires(
       .select("id, umpires_per_game, settings")
       .eq("id", divisionId)
       .single(),
-    supabase.from("leagues").select("sport").eq("id", seasonId).single(),
+    supabase.from("leagues").select("sport, owner_id").eq("id", seasonId).single(),
     supabase
       .from("official_roles")
       .select("id, name")
@@ -168,7 +177,28 @@ export async function autoAssignUmpires(
     return none();
   }
 
-  const sport = (leagueRaw as { sport: string | null } | null)?.sport ?? null;
+  const league = leagueRaw as { sport: string | null; owner_id: string } | null;
+  const sport = league?.sport ?? null;
+
+  // PAST GAMES ARE NEVER STAFFED (2026-10-08). A game dated before today in
+  // the LEAGUE's timezone has been played (or rained out and since recorded
+  // elsewhere — "Record where it was played" turns a past rainout back into a
+  // scheduled game, which would otherwise make it fair game here). "Today" is
+  // the shared rule in src/lib/utils/org-today.ts: the wall-clock date part
+  // of scheduled_at against today in profiles.timezone. FAILS CLOSED: if the
+  // timezone can't be read, nothing is assigned — guessing a day could staff
+  // a played game.
+  const { data: profileRaw, error: profileErr } = league?.owner_id
+    ? await supabase.from("profiles").select("timezone").eq("id", league.owner_id).single()
+    : { data: null, error: null };
+  const timezone = (profileRaw as { timezone: string } | null)?.timezone;
+  let today: string;
+  try {
+    if (profileErr || !timezone) throw new Error("no timezone");
+    today = todayInTimezone(timezone, now);
+  } catch {
+    return none("Couldn't read your league's timezone, so no officials were assigned.");
+  }
   const seasonRoleNames = ((seasonRolesRaw ?? []) as { id: string; name: string }[])
     .map((r) => r.name);
   const roles = padRoleLabels(
@@ -206,8 +236,19 @@ export async function autoAssignUmpires(
   // single-division run every game shares one priority — the sort matters
   // if this ever spans divisions; the stable sort keeps time order within
   // equal priority either way.
-  const divisionGames = ((gamesRaw as unknown as GameRow[] | null) ?? [])
-    .filter((g) => g.home_team?.division_id === divisionId)
+  const inDivision = ((gamesRaw as unknown as GameRow[] | null) ?? [])
+    .filter((g) => g.home_team?.division_id === divisionId);
+  // Only the SLOT WALK skips past games. Bookings and weekly load (step 5)
+  // are built from every existing assignment, so a past game earlier this
+  // week still counts toward an official's cap.
+  const divisionGames = inDivision
+    .filter((g) => {
+      if (isBeforeToday(g.scheduled_at, today)) {
+        pastGamesSkipped++;
+        return false;
+      }
+      return true;
+    })
     .sort(
       (a, b) =>
         (a.home_team?.division?.priority ?? 0) -
@@ -493,6 +534,7 @@ export async function autoAssignUmpires(
         skipReasons: Array.from(allSkipReasons),
         outsideAvailabilityNames: Array.from(outsideAvailabilityNames),
         overWeeklyLimitNames: Array.from(overWeeklyLimitNames),
+        pastGamesSkipped,
         error: insertErr.message,
       };
     }
@@ -505,5 +547,6 @@ export async function autoAssignUmpires(
     skipReasons: Array.from(allSkipReasons),
     outsideAvailabilityNames: Array.from(outsideAvailabilityNames),
     overWeeklyLimitNames: Array.from(overWeeklyLimitNames),
+    pastGamesSkipped,
   };
 }

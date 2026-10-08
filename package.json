@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "sim:officials": "TZ=UTC npx tsx scripts/sim/auto-assign-season-sim.ts",
+    "sim:auto-assign-past": "TZ=UTC npx tsx scripts/sim/auto-assign-past-sim.ts",
+    "sim:auto-assign-past:mutants": "npx tsx scripts/sim/auto-assign-past-mutants.ts",
     "sim:game-constraints": "TZ=UTC npx tsx scripts/sim/team-game-constraints-sim.ts",
     "sim:round-order": "TZ=UTC npx tsx scripts/sim/round-order-sim.ts",
     "sim:practice-days": "TZ=UTC npx tsx scripts/sim/practice-game-days-sim.ts",
