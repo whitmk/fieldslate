@@ -4,7 +4,7 @@
 //
 // RULES (2026-10-05 additions, see CLAUDE.md "Snack shack — derived shifts"):
 //   - PAST DATES ARE FROZEN. "Today" is today in the ORG's timezone
-//     (`todayInTimezone`, profiles.timezone), never the browser's or the
+//     (`todayInTimezone` in src/lib/utils/org-today.ts, profiles.timezone), never the browser's or the
 //     server's date. Every stored derived row dated BEFORE today is passed
 //     through to the RPC exactly as stored (same date/start/end), so the RPC
 //     keeps it — assignment and all — and a derived shift for a past date is
@@ -45,18 +45,6 @@ import {
   type StoredShiftRow,
 } from "./derive-shifts";
 
-/** Today's date, "YYYY-MM-DD", in an IANA zone. Throws on an unknown zone —
- *  a wrong "today" would freeze or unfreeze the wrong day silently. */
-export function todayInTimezone(timeZone: string, now: Date = new Date()): string {
-  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
-  const parts = fmt.formatToParts(now);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value;
-  const y = get("year");
-  const m = get("month");
-  const d = get("day");
-  if (!y || !m || !d) throw new Error(`todayInTimezone: could not format a date in ${timeZone}`);
-  return `${y}-${m}-${d}`;
-}
 
 /** One element of the RPC payload. */
 export type RpcShift = { date: string; start: string; end: string; assigned_team_id: string | null };

@@ -50,6 +50,8 @@
     "sim:interleague-makeup": "TZ=UTC npx tsx scripts/sim/interleague-makeup-sim.ts",
     "sim:schedule-page-reschedule": "TZ=UTC npx tsx scripts/sim/schedule-page-reschedule-sim.ts",
     "sim:manual-move": "TZ=UTC npx tsx scripts/sim/manual-move-sim.ts",
+    "sim:record-played": "TZ=UTC npx tsx scripts/sim/record-played-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/record-played-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/record-played-sim.ts",
+    "sim:record-played:mutants": "npx tsx scripts/sim/record-played-mutants.ts",
     "sim:row-icon-reveal": "npx tsx scripts/sim/row-icon-reveal-sim.ts",
     "sim:panel-reschedule": "TZ=UTC npx tsx scripts/sim/panel-reschedule-sim.ts",
     "sim:invite-page": "TZ=UTC npx tsx scripts/sim/invite-page-sim.ts",

@@ -29,9 +29,9 @@ import {
   type StoredAbsorbChoice,
   type StoredShiftRow,
 } from "./derive-shifts";
+import { todayInTimezone } from "@/lib/utils/org-today";
 import {
   buildRegeneratePlan,
-  todayInTimezone,
   type RegeneratePlan,
   type RpcShift,
 } from "./regenerate-plan";

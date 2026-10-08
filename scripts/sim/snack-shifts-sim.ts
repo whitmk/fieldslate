@@ -155,9 +155,9 @@ import {
   buildRegeneratePlan,
   legacyShiftsNotice,
   maxShiftHelpText,
-  todayInTimezone,
   upcomingStaleness,
 } from "../../src/lib/snack-shack/regenerate-plan";
+import { todayInTimezone } from "../../src/lib/utils/org-today";
 import {
   NEEDS_TEAM,
   NO_TEAM_FREE_CHIP,
