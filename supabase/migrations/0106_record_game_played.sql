@@ -30,7 +30,8 @@
 --      for want of exactly that).
 --
 -- CHECKS, IN THIS ORDER (each raises; nothing is written on a refusal):
---   lock the game row → caller is an org member → not interleague →
+--   lock the game row → caller is an org member → the org is on Pro or
+--   Elite → not interleague →
 --   status is cancelled or scheduled → played date ≤ org-today and ≥ the
 --   season's start date → the field belongs to the org.
 --
@@ -57,8 +58,11 @@
 --
 -- GATE: is_org_member. Every org member is an admin today; if a non-admin
 -- role is ever added this must be restricted to admins with every other
--- is_org_member-gated write (CLAUDE.md). Plan (Pro/Elite) is gated in the UI,
--- the same as the reschedule picker; nothing here checks plan.
+-- is_org_member-gated write (CLAUDE.md).
+--
+-- PLAN: Pro or Elite, checked HERE as well as in the UI (the 0105 pattern —
+-- set_public_schedule_enabled refuses a free org with plan_required). The UI
+-- shows Free the upsell; this is what stops a direct call.
 --
 -- LOCKS: a row lock on the one game and on its division row (so posted
 -- cannot be toggled between the read and the restore). No table locks. The
@@ -79,6 +83,7 @@ as $$
 declare
   v_game        public.games%rowtype;
   v_league      public.leagues%rowtype;
+  v_plan        text;
   v_tz          text;
   v_today       date;
   v_played_at   timestamptz;
@@ -114,6 +119,12 @@ begin
   end if;
   if not public.is_org_member(v_league.owner_id) then
     raise exception 'not_authorized' using errcode = '42501';
+  end if;
+
+  -- 2b. Plan: Pro or Elite.
+  select p.plan into v_plan from public.profiles p where p.id = v_league.owner_id;
+  if v_plan is null or v_plan not in ('pro', 'elite') then
+    raise exception 'plan_required' using errcode = 'P0001';
   end if;
 
   -- 3. Not interleague. See the header: refused outright, whatever its status.

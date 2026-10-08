@@ -44,6 +44,7 @@
 --   P1   privileges: authenticated only; not anon / service_role /
 --        dashboard_readonly / PUBLIC; SECURITY DEFINER
 --   AN1  anon cannot call it; a non-member is refused (42501); nothing written
+--   PL1  a Free org is refused (plan_required); nothing written
 --   IL1  an interleague game — scheduled or rained out — refused with
 --        interleague_not_supported; pending_interleague and reschedule_pending
 --        interleague games refused too; nothing written
@@ -78,6 +79,7 @@
 --   MU6  ordinary edits also exempted (the 0096 trigger's UPDATE branch made
 --        to clear nothing)                         → PS2
 --   MU7  EXECUTE left on PUBLIC                    → P1
+--   MU8  plan check removed                        → PL1
 --
 -- RUN LOG: see the bottom of this file after the run.
 
@@ -245,6 +247,7 @@ declare
   v_n      integer;
   v_msg    text;
   v_ok     integer := 0;
+  v_plan   text;
   z        text;
 begin
   select * into fx from h106_fx;
@@ -274,6 +277,19 @@ begin
     select * into v_g from public.games where id = fx.g_sch;
     if v_g.scheduled_at <> ((fx.today_la - 4)::timestamp + time '10:00') at time zone 'UTC' or v_g.venue_id <> fx.v1 then
       v_fails := array_append(v_fails, 'AN1: a refused call changed the game');
+    end if;
+
+    -- ── PL1 ─────────────────────────────────────────────────────────────────
+    select plan into v_plan from public.profiles where id = fx.org;
+    update public.profiles set plan = 'free' where id = fx.org;
+    v_txt := pg_temp.h106_call('authenticated', fx.org, fx.g_sch, pg_temp.h106_at(v_today - 1, '09:00'), fx.v2, null);
+    update public.profiles set plan = v_plan where id = fx.org;
+    if v_txt not like 'ERR P0001 plan_required%' then
+      v_fails := array_append(v_fails, 'PL1: a Free org was not refused: ' || v_txt);
+    end if;
+    select * into v_g from public.games where id = fx.g_sch;
+    if v_g.venue_id <> fx.v1 then
+      v_fails := array_append(v_fails, 'PL1: a Free org''s refused call changed the game');
     end if;
 
     -- ── IL1 ─────────────────────────────────────────────────────────────────
@@ -508,7 +524,9 @@ $mig106$;
         $a$join oldrows o on o.id = n.id$a$, $a$join oldrows o on o.id = n.id and false$a$,
         $a$join newrows n on n.id = o.id$a$, $a$join newrows n on n.id = o.id and false$a$),
       ('MU7', 'EXECUTE left on PUBLIC', 'P1', null,
-        null, $a$grant execute on function public.record_game_played(uuid, text, uuid, text) to public$a$, null, null)
+        null, $a$grant execute on function public.record_game_played(uuid, text, uuid, text) to public$a$, null, null),
+      ('MU8', 'plan check removed', 'PL1', v_fn,
+        $a$if v_plan is null or v_plan not in ('pro', 'elite') then$a$, $a$if false then$a$, null, null)
     ) as t(id, what, target, fn, find, repl, find2, repl2)
   loop
     begin
@@ -562,6 +580,7 @@ $h106$;
 --     + (select count(*) from locations where name like 'ZZ106%') + (select count(*) from interleague_orgs where name like 'ZZ106%')
 --     + (select count(*) from activity_log where event_type = 'game_played_recorded') as fixtures_must_be_0,
 --   (select timezone from profiles where id = 'aa21d01c-66dc-4c37-b15c-7b743c557eea') as srall_tz_unchanged,
+--   (select plan from profiles where id = 'aa21d01c-66dc-4c37-b15c-7b743c557eea') as srall_plan_unchanged,
 --   (select md5(prosrc) from pg_proc where proname = 'clear_division_posted') as cdp_md5_unchanged;
 
 -- ── RUN LOG ─────────────────────────────────────────────────────────────────
@@ -589,5 +608,20 @@ $h106$;
 --   before and after (MU6's rewrite rolled back).
 -- Leak check after: function 0, ZZ106 fixtures + game_played_recorded log rows
 -- 0, SRALL timezone America/Los_Angeles, clear_division_posted md5 unchanged.
+--
+-- 2026-10-08 19:55 UTC — Run 2, after adding the plan check (PL1, MU8).
+-- Same fixtures, same scope, no other active backend. The batch carried the
+-- migration from `create or replace function` on (the file-header comments
+-- are not stored by Postgres); md5(prosrc) proves the body is the repo's.
+--   BASELINE failures (0): []
+--   NOTE: TZ1 NOT EXERCISED (19:55 UTC)
+--   MU1 → KILLED [IL1]   MU2 → KILLED [ST1]   MU3 → SURVIVED (window, expected)
+--   MU4 → KILLED [SS1]   MU5 → KILLED [PS1]   MU6 → KILLED [PS2]
+--   MU7 → KILLED [P1]    MU8 plan check removed → KILLED [PL1]
+--   prosrc md5 record_game_played: bab8adef7841de9abe9709854e900b28 — equal
+--   to the body computed from the repo file. clear_division_posted md5
+--   e1a0932427550ddbca0725f6f7620855 before and after.
+-- Leak check after: function 0, fixtures 0, SRALL timezone
+-- America/Los_Angeles, SRALL plan elite, clear_division_posted unchanged.
 -- 0106 NOT APPLIED — waiting on the founder for timing. MU3 still owes a run
 -- inside the 00:00–10:00 UTC window.
