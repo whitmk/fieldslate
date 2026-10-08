@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { OrgNameCard } from "@/components/settings/org-name-card";
 import { TeamMembersCard } from "@/components/settings/team-members-card";
 import { OrgTimezoneCard } from "@/components/settings/org-timezone-card";
+import { PublicScheduleCard, type PublicScheduleCardData } from "@/components/settings/public-schedule-card";
+import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/calendar/timezones";
 import type { Profile } from "@/types/database";
 import { getCurrentOrgId } from "@/lib/orgs/context";
@@ -28,11 +30,14 @@ export default async function SettingsPage() {
     // The timezone is ORG-scoped: it lives on the org owner's row, which an
     // invited admin can read (org-mate SELECT policy) but not write — the
     // card saves through set_org_timezone.
-    supabase.from("profiles").select("timezone").eq("id", currentOrgId).maybeSingle(),
+    supabase.from("profiles").select("timezone, org_name").eq("id", currentOrgId).maybeSingle(),
   ]);
+  const plan = await getOrgPlan(currentOrgId);
+  const publicSchedule = await loadPublicScheduleCard(supabase, currentOrgId);
   const profile = rawProfile as Profile | null;
   const orgTimezone =
     (orgRow as { timezone: string } | null)?.timezone ?? DEFAULT_ORG_TIMEZONE;
+  const orgName = (orgRow as { org_name: string | null } | null)?.org_name ?? null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -50,6 +55,8 @@ export default async function SettingsPage() {
       <TeamMembersCard userId={user!.id} />
 
       <OrgTimezoneCard orgId={currentOrgId} initialTimezone={orgTimezone} />
+
+      <PublicScheduleCard orgId={currentOrgId} orgName={orgName} plan={plan} data={publicSchedule} />
 
       <Card>
         <CardHeader>
@@ -94,4 +101,59 @@ export default async function SettingsPage() {
       </Card>
     </div>
   );
+}
+
+// The Public schedule card's data (0105). Every read is checked: one failure
+// renders "couldn't load" on the card, never a half-filled card that would
+// show, say, every park as not-home.
+async function loadPublicScheduleCard(
+  supabase: ReturnType<typeof createClient>,
+  orgId: string,
+): Promise<PublicScheduleCardData> {
+  const [link, parks, loneFields, seasons] = await Promise.all([
+    supabase
+      .from("public_schedule_links" as never)
+      .select("token, enabled")
+      .eq("org_id", orgId)
+      .maybeSingle(),
+    supabase
+      .from("locations")
+      .select("id, name, is_home_park, venues(count)")
+      .eq("owner_id", orgId)
+      .order("name"),
+    supabase
+      .from("venues")
+      .select("id, name")
+      .eq("owner_id", orgId)
+      .is("location_id", null)
+      .order("name"),
+    supabase
+      .from("leagues")
+      .select("id, name, start_date, divisions(id, name, locked)")
+      .eq("owner_id", orgId)
+      .is("archived_at", null)
+      .order("start_date", { ascending: true, nullsFirst: false }),
+  ]);
+  if (link.error || parks.error || loneFields.error || seasons.error) {
+    console.error("[settings] public schedule card read failed:",
+      link.error?.message ?? parks.error?.message ?? loneFields.error?.message ?? seasons.error?.message);
+    return { ok: false };
+  }
+  const linkRow = link.data as { token: string; enabled: boolean } | null;
+  return {
+    ok: true,
+    link: linkRow ? { token: linkRow.token, enabled: linkRow.enabled } : null,
+    parks: (parks.data as unknown as { id: string; name: string; is_home_park: boolean; venues: { count: number }[] }[]).map((p) => ({
+      id: p.id,
+      name: p.name,
+      isHome: p.is_home_park,
+      fieldCount: p.venues?.[0]?.count ?? 0,
+    })),
+    loneFields: (loneFields.data ?? []) as { id: string; name: string }[],
+    seasons: (seasons.data as unknown as { id: string; name: string; divisions: { id: string; name: string; locked: boolean }[] }[]).map((s) => ({
+      id: s.id,
+      name: s.name,
+      divisions: [...(s.divisions ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+    })),
+  };
 }

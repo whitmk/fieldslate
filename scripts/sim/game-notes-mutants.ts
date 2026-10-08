@@ -32,6 +32,20 @@ const MUTANTS: Mutant[] = [
     replace: ", team:teams(name)`)",
     expect: "O3-snack",
   },
+  {
+    id: "GM12", what: "(0105) the public schedule card renders the game's note",
+    file: "src/components/public-schedule/public-schedule-client.tsx",
+    find: "      <div className={`mt-1 font-semibold ${row.struck ? \"line-through\" : \"text-gray-900\"}`}>{row.matchup}</div>",
+    replace: "      <div className={`mt-1 font-semibold ${row.struck ? \"line-through\" : \"text-gray-900\"}`}>{row.matchup} {(row as { notes?: string }).notes}</div>",
+    expect: "O1-public",
+  },
+  {
+    id: "GM13", what: "(0105) the public reader emits the game's note",
+    file: "supabase/migrations/0105_public_league_schedule.sql",
+    find: "                     'status',              g.status,",
+    replace: "                     'status',              g.status, 'notes', g.notes,",
+    expect: "O1-public-reader",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/game-notes-sim.ts", timezones: ["UTC"], mutants: MUTANTS });

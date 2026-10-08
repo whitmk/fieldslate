@@ -76,7 +76,7 @@ export function gameUid(gameId: string): string {
 }
 
 /** RFC 5545 TEXT escaping. */
-function escapeText(v: string): string {
+export function escapeText(v: string): string {
   return v
     .replace(/\\/g, "\\\\")
     .replace(/;/g, "\\;")
@@ -85,7 +85,7 @@ function escapeText(v: string): string {
 }
 
 /** Fold a content line at 75 OCTETS, never inside a multi-byte character. */
-function foldLine(line: string): string {
+export function foldLine(line: string): string {
   const enc = new TextEncoder();
   const out: string[] = [];
   let cur = "";
@@ -109,13 +109,13 @@ function foldLine(line: string): string {
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /** "2026-10-24T09:00…" → "20261024T090000", from the text. */
-function wallClockStamp(iso: string): string {
+export function wallClockStamp(iso: string): string {
   return `${iso.substring(0, 4)}${iso.substring(5, 7)}${iso.substring(8, 10)}T${iso.substring(11, 13)}${iso.substring(14, 16)}00`;
 }
 
 /** Wall-clock start + minutes, rolling the calendar date when it crosses
  *  midnight. Date.UTC is used as a plain calendar — no zone is involved. */
-function wallClockPlusMinutes(iso: string, minutes: number): string {
+export function wallClockPlusMinutes(iso: string, minutes: number): string {
   const t = Date.UTC(
     Number(iso.substring(0, 4)),
     Number(iso.substring(5, 7)) - 1,
@@ -128,14 +128,14 @@ function wallClockPlusMinutes(iso: string, minutes: number): string {
 }
 
 /** A real instant → UTC stamp ("20260929T214500Z"). Null when unparseable. */
-function utcStamp(instant: string): string | null {
+export function utcStamp(instant: string): string | null {
   const t = Date.parse(instant);
   if (!Number.isFinite(t)) return null;
   const d = new Date(t);
   return `${d.getUTCFullYear()}${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}${pad2(d.getUTCSeconds())}Z`;
 }
 
-function usableDuration(raw: unknown): number | null {
+export function usableDuration(raw: unknown): number | null {
   if (typeof raw !== "number" && typeof raw !== "string") return null;
   if (typeof raw === "string" && raw.trim() === "") return null;
   const n = Number(raw);
@@ -167,7 +167,7 @@ function teamTitle(
   return weHost ? `${team.name} vs ${row.awayName}` : `${team.name} @ ${row.homeName}`;
 }
 
-function timezoneBlock(z: OrgTimezone): string[] {
+export function timezoneBlock(z: OrgTimezone): string[] {
   const lines = ["BEGIN:VTIMEZONE", `TZID:${z.id}`];
   if (z.daylight) {
     lines.push(

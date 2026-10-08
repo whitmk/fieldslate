@@ -37,6 +37,8 @@
     "sim:regenerate-pending-guard": "TZ=UTC npx tsx scripts/sim/regenerate-pending-guard-sim.ts",
     "sim:picker-overrides": "TZ=UTC npx tsx scripts/sim/picker-overrides-sim.ts",
     "sim:game-notes": "TZ=UTC npx tsx scripts/sim/game-notes-sim.ts",
+    "sim:public-schedule": "TZ=UTC npx tsx scripts/sim/public-schedule-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/public-schedule-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/public-schedule-sim.ts",
+    "sim:public-schedule:mutants": "npx tsx scripts/sim/public-schedule-mutants.ts",
     "sim:game-notes:mutants": "npx tsx scripts/sim/game-notes-mutants.ts",
     "sim:venue-address": "npx tsx scripts/sim/venue-address-sim.ts",
     "sim:forms-spam": "npx tsx scripts/sim/forms-spam-sim.ts",

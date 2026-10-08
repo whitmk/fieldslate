@@ -332,6 +332,21 @@ export function DivisionSection({
     fetchDivisions();
   }, [fetchDivisions]);
 
+  // Deep link: /dashboard/leagues/<id>?division=<divisionId> opens that
+  // division's panel once (the Public schedule card links an unlocked
+  // division here). Read after mount, never during render.
+  const deepLinkDoneRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkDoneRef.current || divisions.length === 0) return;
+    deepLinkDoneRef.current = true;
+    const wanted = new URLSearchParams(window.location.search).get("division");
+    if (!wanted || !divisions.some((d) => d.id === wanted)) return;
+    setExpandedId(wanted);
+    window.requestAnimationFrame(() =>
+      document.getElementById(`division-row-${wanted}`)?.scrollIntoView({ block: "start", behavior: "smooth" }),
+    );
+  }, [divisions]);
+
   async function handleEditClick(div: Division, e: React.MouseEvent) {
     e.stopPropagation();
     const supabase = createClient();
@@ -598,7 +613,7 @@ export function DivisionSection({
                   : "bg-gray-200";
 
               return (
-                <div key={div.id}>
+                <div key={div.id} id={`division-row-${div.id}`}>
                   <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-6 py-4 sm:flex-nowrap">
                     {/* Left: icon + name + dates. Below sm this is its own line
                         (basis-full) so the date range is never squeezed. */}

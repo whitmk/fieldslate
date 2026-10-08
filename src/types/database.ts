@@ -1680,6 +1680,7 @@ export type Database = {
           city: string | null
           created_at: string
           id: string
+          is_home_park: boolean
           name: string
           owner_id: string
           state: string | null
@@ -1690,6 +1691,7 @@ export type Database = {
           city?: string | null
           created_at?: string
           id?: string
+          is_home_park?: boolean
           name: string
           owner_id: string
           state?: string | null
@@ -1700,6 +1702,7 @@ export type Database = {
           city?: string | null
           created_at?: string
           id?: string
+          is_home_park?: boolean
           name?: string
           owner_id?: string
           state?: string | null

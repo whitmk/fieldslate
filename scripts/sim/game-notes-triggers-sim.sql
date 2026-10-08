@@ -136,7 +136,13 @@ begin
         j := public.get_interleague_schedule_by_token('ZZ_N_SCHED');
         if j::text ~ 'ZZ_SECRET_NOTE' then f := f || 'K1'::text; end if;
         if (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-             where n.nspname='public' and p.proname like 'get_%_by_token' and p.prosrc ~* '\mnotes\M') > 0 then
+             where n.nspname='public' and p.proname like 'get_%_by_token'
+               -- Comments are not returned: strip them first (2026-10-08). The
+               -- 0099 calendar reader and the 0105 league reader both SAY in a
+               -- comment that the body must not emit notes, which made the
+               -- unstripped scan fire on the very rule it checks. NOT re-run
+               -- since this edit.
+               and regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* '\mnotes\M') > 0 then
           f := f || 'K2'::text;
         end if;
 

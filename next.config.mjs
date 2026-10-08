@@ -21,6 +21,15 @@ const noFraming = [
 const embeddable = [{ key: "Content-Security-Policy", value: "frame-ancestors *" }];
 
 const nextConfig = {
+  // /s/<token>.ics — the all-games calendar. A route folder cannot hold both
+  // the page (/s/[token]) and a "<token>.ics" handler, so the .ics address is
+  // rewritten to its own handler before routing. Headers still match on the
+  // address the visitor asked for.
+  async rewrites() {
+    return {
+      beforeFiles: [{ source: "/s/:token([0-9a-f]{64}).ics", destination: "/s/:token/feed" }],
+    };
+  },
   // Token-addressed pages and feeds are never for search engines: the URL is
   // the credential. The feed route also sets this header itself; the page
   // routes rely on this (and on never being linked from an indexed page).

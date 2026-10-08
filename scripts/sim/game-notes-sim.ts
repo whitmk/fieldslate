@@ -167,6 +167,37 @@ function partO() {
     ok(!mentionsNotes(read(...p)), `[O1] ${name} never references notes`);
     ok(!mentionsAddress(read(...p)), `[O1a] ${name} never references a field address`);
   }
+  // 0105 — the public league schedule. Every file on its path, scanned WHOLE
+  // (comments included — none of them needs the word). The page is anonymous
+  // and embeddable, so this is the widest-audience surface in the product.
+  const publicOutbound: [string, string[]][] = [
+    ["public schedule page", ["app", "s", "[token]", "page.tsx"]],
+    ["public schedule data route", ["app", "s", "[token]", "data", "route.ts"]],
+    ["public schedule feed route", ["app", "s", "[token]", "feed", "route.ts"]],
+    ["public schedule client", ["components", "public-schedule", "public-schedule-client.tsx"]],
+    ["public schedule read", ["lib", "public-schedule", "read.ts"]],
+    ["public schedule types", ["lib", "public-schedule", "types.ts"]],
+    ["public schedule view", ["lib", "public-schedule", "view.ts"]],
+    ["public schedule feed builder", ["lib", "public-schedule", "league-ics.ts"]],
+  ];
+  for (const [name, p] of publicOutbound) {
+    counters.omissionFilesChecked++;
+    const src = read(...p);
+    ok(!mentionsNotes(src), `[O1-public] ${name} never references notes`);
+    ok(!mentionsCash(src), `[O1-public-cash] ${name} never references a cash person`);
+  }
+  // The reader itself (0105): its BODY, SQL comments removed, never names the
+  // notes column and never emits a whole row. Comments are not returned, and
+  // the body's own comment says what it must not emit.
+  const mig = readFileSync(join(SRC, "..", "supabase", "migrations", "0105_public_league_schedule.sql"), "utf8");
+  const rStart = mig.indexOf("create or replace function public.get_league_schedule_by_token");
+  const bStart = mig.indexOf("$$", rStart) + 2;
+  const bEnd = mig.indexOf("$$", bStart);
+  ok(rStart > 0 && bEnd > bStart, "[O1-public-reader] the reader body was found in 0105");
+  const body = mig.slice(bStart, bEnd).replace(/--[^\n]*/g, "");
+  ok(!mentionsNotes(body) && !/to_jsonb\s*\(/.test(body) && !/\b[a-z]+\.\*/.test(body) && !/contact|admin_email|score|winner/.test(body),
+    "[O1-public-reader] get_league_schedule_by_token never selects notes, scores, contacts or a whole row");
+
   // 0104 — the snack shack's outbound paths: two email routes, the Teams page
   // button (its own select + print region), and the page client's TWO print
   // paths as SLICES (the file as a whole legitimately mentions notes for the
