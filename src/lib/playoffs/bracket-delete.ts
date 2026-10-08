@@ -123,7 +123,7 @@ export function deleteConfirm(divisionName: string, counts: BracketCounts | null
 
 export function publicDeleteWarning(publicGames: number): string | null {
   if (publicGames <= 0) return null;
-  return `${n(publicGames, "of these games is", "of these games are")} on your public schedule right now. Families will stop seeing ${publicGames === 1 ? "it" : "them"} there within a minute, and ${publicGames === 1 ? "it drops" : "they drop"} off calendars subscribed to that schedule.`;
+  return `${n(publicGames, "of these games is", "of these games are")} on your public schedule right now. Families will stop seeing ${publicGames === 1 ? "it" : "them"} there within a minute. ${publicGames === 1 ? "It drops" : "They drop"} off subscribed calendars when those calendars next refresh, which can take several hours.`;
 }
 
 /** What the page says after a confirmed delete — from the COMMIT's own reply,

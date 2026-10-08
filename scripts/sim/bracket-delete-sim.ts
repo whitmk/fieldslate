@@ -163,9 +163,9 @@ section("D", () => {
 // ── U ─────────────────────────────────────────────────────────────────────────
 section("U", () => {
   const w = deleteConfirm("T-Ball", { games: 7, datedGames: 7, gamesWithResults: 0, publicGames: 7 }).publicWarning;
-  ok(w === "7 of these games are on your public schedule right now. Families will stop seeing them there within a minute, and they drop off calendars subscribed to that schedule.", "[U1]", String(w));
+  ok(w === "7 of these games are on your public schedule right now. Families will stop seeing them there within a minute. They drop off subscribed calendars when those calendars next refresh, which can take several hours.", "[U1]", String(w));
   if (w) counters.publicWarningShown++;
-  ok(publicDeleteWarning(1) === "1 of these games is on your public schedule right now. Families will stop seeing it there within a minute, and it drops off calendars subscribed to that schedule.", "[U1]", "singular");
+  ok(publicDeleteWarning(1) === "1 of these games is on your public schedule right now. Families will stop seeing it there within a minute. It drops off subscribed calendars when those calendars next refresh, which can take several hours.", "[U1]", "singular");
   ok(publicDeleteWarning(0) === null, "[U2]", "a warning at 0");
   ok(publicRebuildWarning(0, 0) === null, "[U2]", "a rebuild warning at 0/0");
   ok(publicRebuildWarning(2, 4) === "2 of this bracket's games are on your public schedule now. Families will see the new dates and times there within a minute.", "[U3]", String(publicRebuildWarning(2, 4)));
