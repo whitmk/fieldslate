@@ -27,6 +27,8 @@ interface Props {
   leagueName: string;
   initialData: PlayoffWizardData;
   isEditMode: boolean;
+  /** The bracket being edited; null when setting up a new one. */
+  playoffId: string | null;
   currentOrgId: string;
   onClose: () => void;
   onComplete: () => void;
@@ -37,6 +39,7 @@ export function PlayoffWizard({
   leagueName,
   initialData,
   isEditMode,
+  playoffId,
   currentOrgId,
   onClose,
   onComplete,
@@ -60,7 +63,7 @@ export function PlayoffWizard({
   const canAdvance = step === 0 ? step0Valid : true;
 
   const stepContent = [
-    <StepDivision key="division" data={data} update={update} leagueId={leagueId} />,
+    <StepDivision key="division" data={data} update={update} leagueId={leagueId} isEditMode={isEditMode} />,
     <StepFormat key="format" data={data} update={update} />,
     <StepSeeding key="seeding" data={data} update={update} />,
     <StepDates
@@ -72,7 +75,7 @@ export function PlayoffWizard({
     />,
     <StepVenues key="venues" data={data} update={update} leagueId={leagueId} currentOrgId={currentOrgId} />,
     <StepCrossDivision key="cross" data={data} update={update} leagueId={leagueId} />,
-    <StepReview key="review" data={data} leagueId={leagueId} onEdit={setStep} onComplete={onComplete} />,
+    <StepReview key="review" data={data} leagueId={leagueId} playoffId={playoffId} onEdit={setStep} onComplete={onComplete} />,
   ];
 
   const REVIEW_STEP = STEPS.length - 1;

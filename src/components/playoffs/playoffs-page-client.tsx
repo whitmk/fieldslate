@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Medal, Plus, Pencil, ChevronDown, ChevronUp, Trophy, FileDown } from "lucide-react";
+import { Medal, Plus, Pencil, ChevronDown, ChevronUp, Trophy, FileDown, Trash2, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { PlayoffWizard } from "@/components/playoffs/playoff-wizard";
 import { BracketView } from "@/components/playoffs/bracket-view";
 import { PlayoffExportModal } from "@/components/playoffs/playoff-export-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { deleteBracket, previewBracketDelete } from "@/lib/playoffs/delete-bracket";
+import { deleteConfirm, deletedLine, type BracketCounts } from "@/lib/playoffs/bracket-delete";
 import {
   DEFAULT_PLAYOFF_DATA,
   type PlayoffWizardData,
@@ -91,6 +94,15 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardLeague, setWizardLeague] = useState<League | null>(null);
   const [editData, setEditData] = useState<PlayoffWizardData | undefined>(undefined);
+  const [editPlayoffId, setEditPlayoffId] = useState<string | null>(null);
+  // Delete: the card's button runs the PREVIEW first; the confirm opens with
+  // its counts (null = couldn't count, never zero) and stays open on a
+  // refusal, showing why.
+  const [counting, setCounting] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<{ playoff: PlayoffRow; counts: BracketCounts | null } | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [exportingPlayoff, setExportingPlayoff] = useState<PlayoffRow | null>(null);
 
@@ -130,12 +142,14 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
   function openNewWizard(league: League) {
     setWizardLeague(league);
     setEditData(undefined);
+    setEditPlayoffId(null);
     setWizardOpen(true);
   }
 
   function openEditWizard(league: League, row: PlayoffRow) {
     setWizardLeague(league);
     setEditData(rowToWizardData(row));
+    setEditPlayoffId(row.id);
     setWizardOpen(true);
   }
 
@@ -150,6 +164,31 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
     setWizardOpen(false);
     setWizardLeague(null);
     setEditData(undefined);
+  }
+
+  async function startDelete(playoff: PlayoffRow) {
+    setNotice(null);
+    setDeleteError(null);
+    setCounting(playoff.id);
+    const counts = await previewBracketDelete(playoff.id);
+    setCounting(null);
+    setDeleting({ playoff, counts });
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    const res = await deleteBracket(deleting.playoff.id);
+    setDeleteBusy(false);
+    if (!res.ok) {
+      setDeleteError(res.message);
+      return;
+    }
+    setNotice(deletedLine(deleting.playoff.division?.name ?? "division", res.counts));
+    setDeleting(null);
+    if (expandedId === deleting.playoff.id) setExpandedId(null);
+    load();
   }
 
   function toggleExpand(id: string) {
@@ -192,6 +231,12 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
           </div>
         )}
       </div>
+
+      {notice && (
+        <p role="status" className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          {notice}
+        </p>
+      )}
 
       {playoffs.length === 0 ? (
         /* ── True empty state ── */
@@ -258,7 +303,7 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
                         className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm"
                       >
                         {/* Card header */}
-                        <div className="flex items-center gap-3 px-4 py-4">
+                        <div className="flex flex-wrap items-center gap-3 px-4 py-4">
                           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gray-50">
                             <Trophy className="h-4 w-4 text-gray-400" />
                           </div>
@@ -282,8 +327,8 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
                             {STATUS_LABELS[playoff.status] ?? playoff.status}
                           </span>
 
-                          {/* Actions */}
-                          <div className="flex items-center gap-1.5">
+                          {/* Actions — wrap under the name on a phone */}
+                          <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
                             {hasGames && (
                               <button
                                 onClick={() => toggleExpand(playoff.id)}
@@ -320,6 +365,19 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
                               <Pencil className="h-3.5 w-3.5" />
                               Edit setup
                             </button>
+                            <button
+                              onClick={() => startDelete(playoff)}
+                              disabled={counting !== null}
+                              className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-red-200 hover:text-red-600 disabled:opacity-50"
+                              aria-label={`Delete the ${playoff.division?.name ?? ""} playoff bracket`}
+                            >
+                              {counting === playoff.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                              Delete
+                            </button>
                           </div>
                         </div>
 
@@ -352,11 +410,43 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
           leagueName={wizardLeague.name}
           initialData={editData ?? { ...DEFAULT_PLAYOFF_DATA }}
           isEditMode={!!editData}
+          playoffId={editData ? editPlayoffId : null}
           currentOrgId={currentOrgId}
           onClose={handleWizardClose}
           onComplete={handleWizardComplete}
         />
       )}
+
+      {deleting && (() => {
+        const c = deleteConfirm(deleting.playoff.division?.name ?? "division", deleting.counts);
+        return (
+          <ConfirmDialog
+            title={c.title}
+            tone="danger"
+            icon={<Trash2 className="h-5 w-5" />}
+            confirmLabel="Delete bracket"
+            busy={deleteBusy}
+            error={deleteError}
+            detail={
+              <span className="flex flex-col gap-2 text-left">
+                {c.lines.map((l, i) => (
+                  <span key={i}>{l}</span>
+                ))}
+                {c.publicWarning && (
+                  <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                    {c.publicWarning}
+                  </span>
+                )}
+              </span>
+            }
+            onConfirm={confirmDelete}
+            onCancel={() => {
+              setDeleting(null);
+              setDeleteError(null);
+            }}
+          />
+        );
+      })()}
 
       {exportingPlayoff && (
         <PlayoffExportModal

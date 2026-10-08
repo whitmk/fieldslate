@@ -7,13 +7,23 @@ import { ORDERED_DAYS } from "@/components/divisions/wizard-types";
 import {
   generateBracket,
   preflightBracket,
+  previewRebuild,
   type BracketPreflight,
 } from "@/lib/playoffs/generate-bracket";
+import {
+  addBracketBlock,
+  generatedPublicLine,
+  rebuildReview,
+  settingsPayload,
+  type RebuildCounts,
+} from "@/lib/playoffs/bracket-delete";
 import type { PlayoffWizardData, PlayoffFormat } from "../playoff-wizard-types";
 
 interface Props {
   data: PlayoffWizardData;
   leagueId: string;
+  /** The bracket being rebuilt; null when generating a new one. */
+  playoffId: string | null;
   onEdit: (step: number) => void;
   onComplete: () => void;
 }
@@ -65,7 +75,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
+export function StepReview({ data, leagueId, playoffId, onEdit, onComplete }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   // What the generate run reported: games it could not place (saved as TBD)
@@ -74,6 +84,7 @@ export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
   const [tbdCount, setTbdCount] = useState(0);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [savedCounts, setSavedCounts] = useState<RebuildCounts | null>(null);
 
   // PRE-FLIGHT: the same plan the Generate button will run, with nothing
   // written, so a closed day or a too-small date range is shown BEFORE the
@@ -97,6 +108,28 @@ export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
     // The wizard data object is replaced on every edit; re-run on any change.
   }, [canPreflight, leagueId, data]);
 
+  // REBUILD PREVIEW (existing bracket only): replace_playoff_games with
+  // p_commit=false — what Generate would replace, whether results block it,
+  // and what is on the public schedule. Writes nothing. `undefined` while
+  // loading; counts null = couldn't check (never zero).
+  const [rebuild, setRebuild] = useState<{ counts: RebuildCounts | null } | undefined>(undefined);
+  const plannedGames = preflight?.ok ? preflight.games : null;
+  useEffect(() => {
+    if (!playoffId || !plannedGames) {
+      setRebuild(undefined);
+      return;
+    }
+    let stale = false;
+    setRebuild(undefined);
+    void previewRebuild(playoffId, data, plannedGames).then((r) => {
+      if (!stale) setRebuild({ counts: r.counts });
+    });
+    return () => {
+      stale = true;
+    };
+  }, [playoffId, plannedGames, data]);
+  const review = playoffId && rebuild ? rebuildReview(rebuild.counts) : null;
+
   const activeDays = data.playing_days
     .map((day) => {
       const found = ORDERED_DAYS.find((d) => d.key === day);
@@ -111,51 +144,54 @@ export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
     setSaving(true);
     setError(null);
 
-    const supabase = createClient();
-
-    const payload = {
-      league_id: leagueId,
-      division_id: data.division_id,
-      format: data.format,
-      seeding: data.seeding,
-      start_date: data.start_date || null,
-      end_date: data.end_date || null,
-      playing_days: data.playing_days,
-      day_windows: data.day_windows,
-      venue_assignments: data.venue_assignments,
-      cross_division_enabled: data.cross_division_enabled,
-      cross_division_opponent_id:
-        data.cross_division_enabled && data.cross_division_opponent_id
-          ? data.cross_division_opponent_id
-          : null,
-      status: "draft" as const,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { data: upserted, error: dbError } = await supabase
-      .from("playoffs")
-      .upsert(payload, { onConflict: "league_id,division_id" })
-      .select("id")
-      .single();
-
-    if (dbError) {
-      setError(dbError.message);
-      setSaving(false);
-      return;
-    }
-
-    const playoffId = upserted?.id;
-    if (playoffId) {
-      const result = await generateBracket(playoffId, leagueId, data);
-      if (!result.success) {
-        setError(result.error);
+    let id = playoffId;
+    if (!id) {
+      // A NEW bracket: nothing is written until the plan is known to be good.
+      if (!preflight?.ok) {
+        setError(preflight && !preflight.ok ? preflight.error : "The bracket couldn't be planned yet. Check the steps above.");
         setSaving(false);
         return;
       }
-      setTbdCount(result.tbdCount);
-      setWarnings(result.warnings);
+      // Its setup row is inserted as a draft, then filled by the same
+      // replace_playoff_games every rebuild uses. A plain INSERT, never an
+      // upsert: a division that already has a bracket is refused (the unique
+      // (league, division) constraint), never overwritten.
+      const supabase = createClient();
+      const { data: inserted, error: dbError } = await supabase
+        .from("playoffs")
+        .insert({
+          league_id: leagueId,
+          division_id: data.division_id,
+          ...settingsPayload(data),
+          status: "draft" as const,
+        } as never)
+        .select("id")
+        .single();
+      if (dbError || !inserted) {
+        setError(
+          dbError?.code === "23505"
+            ? addBracketBlock(data.division_name || "This division", true)
+            : `Nothing was saved. ${dbError?.message ?? "The bracket couldn't be created."}`,
+        );
+        setSaving(false);
+        return;
+      }
+      id = (inserted as { id: string }).id;
     }
 
+    const result = await generateBracket(id, leagueId, data);
+    if (!result.success) {
+      setError(
+        playoffId
+          ? result.error
+          : `${result.error} The bracket's setup was kept as a draft — open it with Edit setup to try again, or delete it.`,
+      );
+      setSaving(false);
+      return;
+    }
+    setTbdCount(result.tbdCount);
+    setWarnings(result.warnings);
+    setSavedCounts(result.counts);
     setSaved(true);
     setSaving(false);
   }
@@ -168,12 +204,15 @@ export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
         </div>
         <div>
           <h3 className="text-lg font-semibold text-[#0C1F3F]">
-            Playoff bracket saved!
+            Playoff bracket generated
           </h3>
           <p className="mt-1 text-sm text-gray-500">
-            Your playoff setup for{" "}
-            <strong>{data.division_name}</strong> has been saved as a draft.
+            {savedCounts ? `${savedCounts.newGames} game${savedCounts.newGames !== 1 ? "s" : ""}` : "The games"} for{" "}
+            <strong>{data.division_name}</strong> {savedCounts && savedCounts.newGames === 1 ? "is" : "are"} on the bracket.
           </p>
+          {generatedPublicLine(savedCounts) && (
+            <p className="mt-1 text-sm text-gray-500">{generatedPublicLine(savedCounts)}</p>
+          )}
         </div>
         {warnings.length > 0 && (
           <div className="flex max-w-md items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-left">
@@ -329,15 +368,46 @@ export function StepReview({ data, leagueId, onEdit, onComplete }: Props) {
         </p>
       )}
 
+      {/* Rebuild (existing bracket): what Generate replaces, the result
+          block, and the public schedule — all from the database's preview. */}
+      {playoffId && plannedGames && (
+        rebuild === undefined ? (
+          <div className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Checking this bracket&apos;s current games…
+          </div>
+        ) : review?.blocked ? (
+          <div role="alert" className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {review.refusal}
+          </div>
+        ) : review ? (
+          <>
+            {review.lines.length > 0 && (
+              <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-700">
+                {review.lines.map((l, i) => (
+                  <p key={i}>{l}</p>
+                ))}
+              </div>
+            )}
+            {review.publicWarning && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+                <p className="text-xs text-amber-800">{review.publicWarning}</p>
+              </div>
+            )}
+          </>
+        ) : null
+      )}
+
       {error && (
-        <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
       <button
         onClick={handleSave}
-        disabled={saving || !data.division_id}
+        disabled={saving || !data.division_id || !!review?.blocked}
         className="w-full rounded-xl bg-[#22C55E] py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {saving ? "Saving…" : "Generate playoff bracket"}

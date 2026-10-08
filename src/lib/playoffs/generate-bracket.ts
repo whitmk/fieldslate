@@ -15,9 +15,17 @@ import {
   planBracket,
   planSettingsFromDivision,
   type BracketPlan,
+  type GameInsert,
   type PlanInput,
   type PlanVenue,
 } from "@/lib/playoffs/bracket-plan";
+import {
+  commitOutcome,
+  gamesPayload,
+  parseRebuildCounts,
+  settingsPayload,
+  type RebuildCounts,
+} from "@/lib/playoffs/bracket-delete";
 
 export {
   buildSingleElimination,
@@ -28,13 +36,14 @@ export {
 // ─── Result types ─────────────────────────────────────────────────────────────
 
 export type BracketResult =
-  | { success: true; gamesCreated: number; tbdCount: number; warnings: string[] }
+  | { success: true; gamesCreated: number; tbdCount: number; warnings: string[]; counts: RebuildCounts }
   | { success: false; error: string };
 
 /** What the review step shows BEFORE the admin clicks Generate: the same plan
- *  the generate run would produce, with nothing written. */
+ *  the generate run would produce, with nothing written. `games` is the plan
+ *  itself, so the review can ask replace_playoff_games for its preview. */
 export type BracketPreflight =
-  | { ok: true; gameCount: number; slotCount: number; tbdCount: number; warnings: string[] }
+  | { ok: true; gameCount: number; slotCount: number; tbdCount: number; warnings: string[]; games: GameInsert[] }
   | { ok: false; error: string };
 
 // ─── Shared input loading ─────────────────────────────────────────────────────
@@ -165,6 +174,7 @@ export async function preflightBracket(
     slotCount: plan.slots.length,
     tbdCount: plan.tbdCount,
     warnings: plan.warnings,
+    games: plan.games,
   };
 }
 
@@ -177,8 +187,8 @@ export async function generateBracket(
 ): Promise<BracketResult> {
   const supabase = createClient();
 
-  // Every read and validation runs BEFORE the delete below, so an invalid or
-  // unreadable re-generate never wipes an existing bracket.
+  // Every read and validation runs BEFORE anything is written, so an invalid
+  // or unreadable plan never touches the bracket.
   const loaded = await loadPlanInputs(supabase, playoffId, leagueId, data);
   if (!loaded.ok) return { success: false, error: loaded.error };
   const plan = runPlan(loaded);
@@ -187,24 +197,45 @@ export async function generateBracket(
     return { success: false, error: "No games could be generated." };
   }
 
-  const { error: delErr } = await supabase
-    .from("playoff_games")
-    .delete()
-    .eq("playoff_id", playoffId);
-  if (delErr) return { success: false, error: delErr.message };
-
-  const { error: insErr } = await supabase.from("playoff_games").insert(plan.games as never[]);
-  if (insErr) return { success: false, error: insErr.message };
-
-  await supabase
-    .from("playoffs")
-    .update({ status: "active", updated_at: new Date().toISOString() } as never)
-    .eq("id", playoffId);
+  // THE ONLY WRITE: replace_playoff_games (0107) saves the settings, swaps the
+  // games, marks the bracket active and logs it in ONE transaction, and
+  // refuses while any game has a result. The old browser-side delete →
+  // insert → status sequence is gone; never reintroduce a direct write to
+  // playoff_games here.
+  const { data: reply, error } = await supabase.rpc("replace_playoff_games" as never, {
+    p_playoff_id: playoffId,
+    p_settings: settingsPayload(data),
+    p_games: gamesPayload(plan.games),
+    p_commit: true,
+  } as never);
+  const outcome = commitOutcome(reply, error, parseRebuildCounts);
+  if (!outcome.ok) return { success: false, error: outcome.message };
 
   return {
     success: true,
     gamesCreated: plan.games.length,
     tbdCount: plan.tbdCount,
     warnings: plan.warnings,
+    counts: outcome.counts,
   };
+}
+
+/** replace_playoff_games's PREVIEW for the review step: what Generate would
+ *  replace, whether results block it, and what is on the public schedule.
+ *  Writes nothing. Null counts mean the preview could not be read — the
+ *  review says "couldn't check", never zero. */
+export async function previewRebuild(
+  playoffId: string,
+  data: PlayoffWizardData,
+  games: GameInsert[],
+): Promise<{ counts: RebuildCounts | null; error: string | null }> {
+  const supabase = createClient();
+  const { data: reply, error } = await supabase.rpc("replace_playoff_games" as never, {
+    p_playoff_id: playoffId,
+    p_settings: settingsPayload(data),
+    p_games: gamesPayload(games),
+    p_commit: false,
+  } as never);
+  if (error) return { counts: null, error: error.message };
+  return { counts: parseRebuildCounts(reply), error: null };
 }

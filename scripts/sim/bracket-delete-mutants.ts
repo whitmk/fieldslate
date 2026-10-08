@@ -72,6 +72,24 @@ const MUTANTS: Mutant[] = [
     replace: `  if (now > 0) {\n    return null; return`,
     expect: "U4",
   },
+  {
+    id: "BD11", what: "the review step upserts the bracket row again", file: "src/components/playoffs/steps/step-review.tsx",
+    find: `        .from("playoffs")\n        .insert({`,
+    replace: `        .from("playoffs")\n        .upsert({`,
+    expect: "S2",
+  },
+  {
+    id: "BD12", what: "Generate stays enabled on a blocked rebuild", file: "src/components/playoffs/steps/step-review.tsx",
+    find: `disabled={saving || !data.division_id || !!review?.blocked}`,
+    replace: `disabled={saving || !data.division_id}`,
+    expect: "S3",
+  },
+  {
+    id: "BD13", what: "the generator commits with a preview flag", file: "src/lib/playoffs/generate-bracket.ts",
+    find: `    p_games: gamesPayload(plan.games),\n    p_commit: true,`,
+    replace: `    p_games: gamesPayload(plan.games),\n    p_commit: false,`,
+    expect: "S1",
+  },
 ];
 
 runMutants({
@@ -86,3 +104,6 @@ runMutants({
 //   BD1 → [P2]  BD2 → [Z1]  BD3 → [D2]  BD4 → [U1]  BD5 → [R1]
 //   BD6 → [E1]  BD7 → [E5]  BD8 → [A1]  BD9 → [L1]  BD10 → [U4]
 // Source restored and re-verified green after the pass.
+// 2026-10-08 — second run, after the UI commit added part S (84 checks × 3
+// zones) and BD11–BD13: 13/13 KILLED at their own assertion —
+//   BD11 → [S2]  BD12 → [S3]  BD13 → [S1]; BD1–BD10 unchanged.

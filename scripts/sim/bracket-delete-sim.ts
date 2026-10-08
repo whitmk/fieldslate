@@ -238,6 +238,34 @@ section("L", () => {
   ok(gp.round === "R1" && gp.game_number === 2 && gp.home_team_id === "t1" && gp.venue_id === "v" && gp.scheduled_date === "2026-11-07" && gp.start_time === "09:00", "[L3]", JSON.stringify(gp));
 });
 
+// ── S ─────────────────────────────────────────────────────────────────────────
+// Source wiring — greps, weak by nature (they check the code is CALLED, not
+// that it behaves); the behaviour is pinned above and in the SQL harness.
+section("S", () => {
+  const src = (f: string) => readFileSync(join(ROOT, f), "utf8");
+  const gen = src("src/lib/playoffs/generate-bracket.ts");
+  const review = src("src/components/playoffs/steps/step-review.tsx");
+  const div = src("src/components/playoffs/steps/step-division.tsx");
+  const page = src("src/components/playoffs/playoffs-page-client.tsx");
+  const del = src("src/lib/playoffs/delete-bracket.ts");
+  // S1: the generator writes only through replace_playoff_games.
+  ok(!/from\("playoff_games"\)/.test(gen) && !/from\("playoffs"\)/.test(gen), "[S1]", "generate-bracket.ts writes a playoff table directly");
+  ok(/rpc\("replace_playoff_games"[\s\S]{0,200}p_commit: true/.test(gen), "[S1]", "generateBracket does not commit through replace_playoff_games");
+  // S2: a new bracket's setup is an INSERT, never an upsert (no overwrite).
+  ok(/from\("playoffs"\)\s*\.insert\(/.test(review) && !/\.upsert\(/.test(review), "[S2]", "the review step upserts the bracket row");
+  // S3: Generate is disabled while the preview says results block it.
+  ok(/disabled=\{[^}]*review\?\.blocked/.test(review), "[S3]", "Generate not disabled on a blocked rebuild");
+  ok(/previewRebuild\(/.test(review) && /rebuildReview\(/.test(review), "[S3]", "the review does not run the rebuild preview");
+  // S4: the division step blocks rather than overwrites.
+  ok(!/will overwrite/i.test(div) && /addBracketBlock\(/.test(div) && /disabled=\{disabled\}/.test(div), "[S4]", "the division step offers an overwrite");
+  // S5: the card's delete runs the preview first and keeps the dialog open
+  // with the refusal.
+  ok(/previewBracketDelete\(/.test(page) && /deleteConfirm\(/.test(page) && /error=\{deleteError\}/.test(page), "[S5]", "the delete confirm is not filled from the preview / does not show refusals");
+  ok(/rpc\("delete_playoff_bracket"[\s\S]{0,120}p_commit: false/.test(del) && /rpc\("delete_playoff_bracket"[\s\S]{0,120}p_commit: true/.test(del), "[S5]", "delete-bracket.ts does not call the preview and the commit");
+  // S6: the success screen no longer claims a draft.
+  ok(!/saved as a draft/.test(review), "[S6]", "success text still says 'saved as a draft'");
+});
+
 for (const [k, v] of Object.entries(counters)) ok(v > 0, `[V-${k}] counter ${k} must be non-zero`, String(v));
 console.log(`TZ=${process.env.TZ ?? "(host)"}  ${checks - fails}/${checks} checks passed`);
 console.log(`counters: ${JSON.stringify(counters)}`);

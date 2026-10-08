@@ -4,25 +4,33 @@ import { useState, useEffect } from "react";
 import { Layers } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { playoffDefaultsFromDivision } from "@/lib/playoffs/bracket-plan";
+import { addBracketBlock } from "@/lib/playoffs/bracket-delete";
 import { DEFAULT_PLAYOFF_DATA, type PlayoffWizardData } from "../playoff-wizard-types";
 
 interface Props {
   data: PlayoffWizardData;
   update: (patch: Partial<PlayoffWizardData>) => void;
   leagueId: string;
+  /** Editing an existing bracket: its division is fixed. A bracket's
+   *  division never changes (replace_playoff_games keeps it). */
+  isEditMode: boolean;
 }
 
 type DivisionRow = { id: string; name: string; team_count: number; settings: unknown };
 
-export function StepDivision({ data, update, leagueId }: Props) {
+export function StepDivision({ data, update, leagueId, isEditMode }: Props) {
   const [divisions, setDivisions] = useState<DivisionRow[]>([]);
   const [existingIds, setExistingIds] = useState<string[]>([]);
+  // A failed read of which divisions already have a bracket is SAID, not
+  // assumed empty. (The database's unique (league, division) is the
+  // backstop: a second bracket for a division cannot be inserted.)
+  const [existingError, setExistingError] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const [{ data: divData }, { data: playoffData }] = await Promise.all([
+      const [{ data: divData }, { data: playoffData, error: playoffError }] = await Promise.all([
         supabase
           .from("divisions")
           .select("id, name, team_count, settings")
@@ -40,6 +48,7 @@ export function StepDivision({ data, update, leagueId }: Props) {
           (p) => p.division_id
         )
       );
+      setExistingError(!!playoffError);
       setLoading(false);
     }
     load();
@@ -91,14 +100,28 @@ export function StepDivision({ data, update, leagueId }: Props) {
         </div>
       ) : (
         <div className="flex flex-col gap-2">
+          {isEditMode && (
+            <p className="text-xs text-gray-500">
+              A bracket&apos;s division can&apos;t be changed. To set up playoffs for another division, use Add bracket.
+            </p>
+          )}
+          {!isEditMode && existingError && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              We couldn&apos;t check which divisions already have a bracket. A division that has one will be refused when you generate.
+            </p>
+          )}
           {divisions.map((div) => {
             const isSelected = data.division_id === div.id;
-            const hasExisting = existingIds.includes(div.id) && !isSelected;
+            // Create mode: a division that already has a bracket is BLOCKED
+            // (no overwrite). Edit mode: only the bracket's own division.
+            const blocked = isEditMode ? null : addBracketBlock(div.name, existingIds.includes(div.id));
+            const disabled = isEditMode ? !isSelected : blocked !== null;
 
             return (
               <button
                 key={div.id}
                 type="button"
+                disabled={disabled}
                 onClick={() =>
                   update({
                     division_id: div.id,
@@ -114,6 +137,8 @@ export function StepDivision({ data, update, leagueId }: Props) {
                 className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
                   isSelected
                     ? "border-[#22C55E] bg-[#22C55E]/5 ring-1 ring-[#22C55E]/30"
+                    : disabled
+                    ? "cursor-not-allowed border-gray-100 bg-gray-50"
                     : "border-gray-200 hover:border-gray-300"
                 }`}
               >
@@ -127,12 +152,8 @@ export function StepDivision({ data, update, leagueId }: Props) {
                   <p className="text-xs text-gray-400">
                     {div.team_count} team{div.team_count !== 1 ? "s" : ""}
                   </p>
+                  {blocked && <p className="mt-1 text-xs text-amber-700">{blocked}</p>}
                 </div>
-                {hasExisting && (
-                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
-                    Playoff exists — will overwrite
-                  </span>
-                )}
                 {isSelected && (
                   <svg
                     className="h-4 w-4 flex-shrink-0 text-[#22C55E]"

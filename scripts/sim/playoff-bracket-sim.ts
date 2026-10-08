@@ -559,7 +559,14 @@ section("S: source wiring", () => {
   const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
   const gen = read("src/lib/playoffs/generate-bracket.ts");
   ok(gen.includes("planBracket(") && !/\b105\b/.test(gen) && !gen.includes("PLAYOFF_GAME_DURATION_MIN"), "S1", "generate-bracket.ts runs the planner and carries no hardcoded spacing");
-  ok(gen.indexOf("loadPlanInputs(supabase, playoffId") < gen.indexOf('.from("playoff_games")\n    .delete()'), "S1", "every read happens before the delete");
+  // Re-keyed 2026-10-08 (0107): the browser-side delete → insert is gone; the
+  // only write is replace_playoff_games. Same property: every read happens
+  // before the write, and the write exists (an index of -1 must not pass).
+  {
+    const read = gen.indexOf("loadPlanInputs(supabase, playoffId");
+    const write = gen.indexOf('rpc("replace_playoff_games"');
+    ok(read >= 0 && write >= 0 && read < write && !gen.includes('.from("playoff_games")'), "S1", "every read happens before the write (replace_playoff_games), and nothing writes playoff_games directly");
+  }
   const review = read("src/components/playoffs/steps/step-review.tsx");
   ok(review.includes("preflightBracket(leagueId, data)") && review.includes("preflight.warnings.map") && review.includes("warnings.map((w, i)"), "S2", "the review step pre-flights and renders both warning lists verbatim");
   ok(!review.includes("fall outside venue availability"), "S2", "the old untrue success copy is gone");
