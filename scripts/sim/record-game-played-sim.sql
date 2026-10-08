@@ -623,5 +623,10 @@ $h106$;
 --   e1a0932427550ddbca0725f6f7620855 before and after.
 -- Leak check after: function 0, fixtures 0, SRALL timezone
 -- America/Los_Angeles, SRALL plan elite, clear_division_posted unchanged.
--- 0106 NOT APPLIED — waiting on the founder for timing. MU3 still owes a run
--- inside the 00:00–10:00 UTC window.
+-- 0106 APPLIED 2026-10-08 21:31 UTC (catalog 20261008213156) on the founder's
+-- decision, before MU3's window run. Verified after apply: md5(prosrc)
+-- bab8adef7841de9abe9709854e900b28 = repo body; EXECUTE authenticated only
+-- (anon / service_role / dashboard_readonly / PUBLIC false); SECURITY
+-- DEFINER; leak check clean. MU3 still owes a run inside 00:00–10:00 UTC,
+-- against the applied function (the batch's create-or-replace is the same
+-- body, so it re-proves rather than changes it).

@@ -112,7 +112,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") is WRITTEN AND PROVEN BUT NOT APPLIED** (branch `feat/record-game-played`, 2026-10-08) — see that section; its UTC-today mutant still owes a run inside 00:00–10:00 UTC before the apply. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
+  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") APPLIED 2026-10-08 21:31 UTC, catalog `20261008213156`**, verbatim from the repo file after a rolled-back proof; md5(prosrc) `bab8adef7841de9abe9709854e900b28` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Its UTC-today mutant (MU3) still owes a run inside 00:00–10:00 UTC against the applied function — applied first by the founder's decision; a survivor means a follow-up migration. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -1902,7 +1902,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   the owner's row under RLS because every owner has their own
   `organization_members` row (10/10, verified 2026-10-08).
 
-## Record where it was played (0106, branch `feat/record-game-played`, 2026-10-08 — NOT APPLIED)
+## Record where it was played (0106, applied 2026-10-08)
 
 - **What it is.** A retroactive CORRECTION for a game that was already played
   somewhere other than its schedule says — usually a rained-out game the
@@ -1977,8 +1977,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   un-cancelling a past rainout would have made it fair game.
 - **Harnesses.** `scripts/sim/record-game-played-sim.sql` (+ build script;
   rolled back, test org): 8 mutants — MU3 (today in UTC) is only killable
-  00:00–10:00 UTC and is OWED a run before 0106 is applied; the other 7 killed
-  at their own tag. `npm run sim:record-played` (78 checks × 3 zones) +
+  00:00–10:00 UTC and is OWED a run; the other 7 killed at their own tag.
+  (0106 was applied before that run, by the founder's decision; the run is
+  against the applied function, rolled back as before.)
+  `npm run sim:record-played` (78 checks × 3 zones) +
   `:mutants` (15, all killed at their own assertion; RP10/RP11/RP14/RP15 are
   source greps — weak by nature, stated).
 
@@ -3976,10 +3978,9 @@ Still open:
   render no longer matches the pre-prop golden. Per "Division panel —
   Reschedule game", fix the COMPONENT, never re-record without a decision.
   FIRST in line after `feat/record-game-played` (founder, 2026-10-08).
-- **0106 apply is pending** — after the UTC-today mutant (MU3) dies in a run
-  between 00:00 and 10:00 UTC, and only at a time the founder confirms. The
-  record-played menu items call it, so 0106 must be live before the branch
-  merges.
+- **0106's UTC-today mutant (MU3) is owed a run** between 00:00 and 10:00 UTC
+  (5pm–3am Pacific) against the APPLIED function, rolled back. If it survives,
+  that is a follow-up migration.
 
 - **Snack shack last-resort tiebreak is alphabetical, so when shifts < teams
   the same end of the alphabet is skipped every season. Replace with a
