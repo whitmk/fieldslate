@@ -11,6 +11,7 @@ import {
   UserCheck,
   Repeat,
   Trash2,
+  ClipboardCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,8 @@ import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { logActivity } from "@/lib/activity-log";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
 import { useScheduleReschedule } from "./use-schedule-reschedule";
+import { useRecordPlayed } from "./use-record-played";
+import { ENTRY_LABEL } from "@/lib/schedule/record-played";
 import { useGameNoteEditor } from "./use-game-note-editor";
 import { GameNoteIcon, GameNoteLine } from "./game-note";
 import type { GameNoteFields } from "@/lib/schedule/game-notes";
@@ -186,6 +189,13 @@ export function ScheduleList({
     lockedDivisionIds: lockedSet,
     logSource: "Schedule page",
   });
+  // "Record where it was played" — past games only, beside Reschedule. The
+  // hook routes the click (interleague → a notice under the row, Free → the
+  // upsell) and renders the one modal. See use-record-played.
+  const recordPlayed = useRecordPlayed({
+    leagueId: games[0]?.league_id ?? null,
+    canRecord: canReschedule,
+  });
   const [detailGame, setDetailGame] = useState<ScheduleGame | null>(null);
   // Game notes — the one editor (use-game-note-editor). Opened from the row's
   // note icon or by clicking the note line itself.
@@ -282,6 +292,12 @@ export function ScheduleList({
                 !!g.home_team?.division_id && lockedSet.has(g.home_team.division_id),
                 g.home_team?.division?.name ?? "This division",
               )}
+              recordPlayedOffered={recordPlayed.offered(recordPlayedInput(g))}
+              onRecordPlayed={() => {
+                setOpenMenuId(null);
+                reschedule.clearNotice();
+                recordPlayed.open(recordPlayedInput(g));
+              }}
               onViewDetails={() => {
                 setOpenMenuId(null);
                 setDetailGame(g);
@@ -303,6 +319,19 @@ export function ScheduleList({
                     message={reschedule.notice.message}
                     link={reschedule.notice.link}
                     onDismiss={reschedule.clearNotice}
+                    inset="mx-0"
+                  />
+                </td>
+              </tr>
+            )}
+            {/* A refused "Record where it was played" (interleague) says why,
+                directly under THAT row. */}
+            {recordPlayed.notice?.gameId === g.id && (
+              <tr>
+                <td colSpan={7} className="pb-3">
+                  <MoveNoticeLine
+                    message={recordPlayed.notice.message}
+                    onDismiss={recordPlayed.clearNotice}
                     inset="mx-0"
                   />
                 </td>
@@ -340,6 +369,12 @@ export function ScheduleList({
               !!g.home_team?.division_id && lockedSet.has(g.home_team.division_id),
               g.home_team?.division?.name ?? "This division",
             )}
+            recordPlayedOffered={recordPlayed.offered(recordPlayedInput(g))}
+            onRecordPlayed={() => {
+              setOpenMenuId(null);
+              reschedule.clearNotice();
+              recordPlayed.open(recordPlayedInput(g));
+            }}
             onViewDetails={() => {
               setOpenMenuId(null);
               setDetailGame(g);
@@ -360,11 +395,21 @@ export function ScheduleList({
               />
             </li>
           )}
+          {recordPlayed.notice?.gameId === g.id && (
+            <li>
+              <MoveNoticeLine
+                message={recordPlayed.notice.message}
+                onDismiss={recordPlayed.clearNotice}
+                inset="mx-0"
+              />
+            </li>
+          )}
           </Fragment>
         ))}
       </ul>
 
       {reschedule.modals}
+      {recordPlayed.modals}
       {note.modal}
 
       {rainoutTarget && (() => {
@@ -422,6 +467,17 @@ export function ScheduleList({
   );
 }
 
+/** The fields "Record where it was played" decides on. ScheduleGame declares
+ *  interleague_org_id optional; absent means none. */
+function recordPlayedInput(g: ScheduleGame) {
+  return {
+    id: g.id,
+    status: g.status,
+    scheduled_at: g.scheduled_at,
+    interleague_org_id: g.interleague_org_id ?? null,
+  };
+}
+
 // Statuses where marking a rainout makes no sense — the game is already
 // rained out or already played. The button stays visible but disabled —
 // on the phone card's Rainout button AND the "Mark as rained out" item of
@@ -447,6 +503,8 @@ interface GameCardProps {
   onRequestReschedule: () => void;
   canReschedule: boolean;
   rescheduleLockTitle: string | null;
+  recordPlayedOffered: boolean;
+  onRecordPlayed: () => void;
   onViewDetails: () => void;
   onDelete: () => void;
 }
@@ -463,6 +521,8 @@ function GameCard({
   onRequestReschedule,
   canReschedule,
   rescheduleLockTitle,
+  recordPlayedOffered,
+  onRecordPlayed,
   onViewDetails,
   onDelete,
 }: GameCardProps) {
@@ -510,6 +570,8 @@ function GameCard({
           onRainout={onRainout}
           onRequestReschedule={onRequestReschedule}
           onReschedule={onReschedule}
+          recordPlayedOffered={recordPlayedOffered}
+          onRecordPlayed={onRecordPlayed}
           onViewDetails={onViewDetails}
           onDelete={onDelete}
           className="mt-3 w-full"
@@ -552,6 +614,9 @@ interface GameActionsMenuProps {
   onRainout: () => void;
   onRequestReschedule: () => void;
   onReschedule: () => void;
+  /** "Record where it was played" — shown on past games only. */
+  recordPlayedOffered: boolean;
+  onRecordPlayed: () => void;
   onViewDetails: () => void;
   onDelete: () => void;
   className?: string;
@@ -565,6 +630,8 @@ function GameActionsMenu({
   onRainout,
   onRequestReschedule,
   onReschedule,
+  recordPlayedOffered,
+  onRecordPlayed,
   onViewDetails,
   onDelete,
   className = "",
@@ -607,6 +674,12 @@ function GameActionsMenu({
           Reschedule
         </button>
       ) : null}
+      {recordPlayedOffered && (
+        <button onClick={onRecordPlayed} className={`${item} text-left`}>
+          <ClipboardCheck className="h-3.5 w-3.5 text-[#0C1F3F]" />
+          {ENTRY_LABEL}
+        </button>
+      )}
       <button onClick={onViewDetails} className={`${item} text-left`}>
         <Eye className="h-3.5 w-3.5 text-gray-400" />
         View details
@@ -635,6 +708,8 @@ interface GameRowProps {
   /** Set when the division is locked and this item would move the game:
    *  the item renders disabled with this as its tooltip. */
   rescheduleLockTitle: string | null;
+  recordPlayedOffered: boolean;
+  onRecordPlayed: () => void;
   onViewDetails: () => void;
   onEditNote: () => void;
   onDelete: () => void;
@@ -652,6 +727,8 @@ function GameRowCells({
   onRequestReschedule,
   canReschedule,
   rescheduleLockTitle,
+  recordPlayedOffered,
+  onRecordPlayed,
   onViewDetails,
   onDelete,
   onEditNote,
@@ -751,6 +828,8 @@ function GameRowCells({
             onRainout={onRainout}
             onRequestReschedule={onRequestReschedule}
             onReschedule={onReschedule}
+            recordPlayedOffered={recordPlayedOffered}
+            onRecordPlayed={onRecordPlayed}
             onViewDetails={onViewDetails}
             onDelete={onDelete}
             className="absolute right-0 top-9 z-30 w-48"

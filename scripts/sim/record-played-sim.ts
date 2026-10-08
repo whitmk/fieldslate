@@ -37,7 +37,9 @@
 //   "today" in the hook is computed after mount, not during render; the
 //   modal checks the TYPED date itself (never trusting the native picker's
 //   min/max), shows the message directly under the date field, and passes the
-//   refusal into Save.
+//   refusal into Save; the Schedule page's shared "…" menu (row AND phone
+//   card) shows the item only when offered, right after Reschedule, and both
+//   it and the calendar popover go through useRecordPlayed.
 //
 // ANTI-VACUITY: counters for an offered past rained-out game, an offered past
 // scheduled game, a withheld future game, an official conflict found, a
@@ -62,6 +64,7 @@
 //   RP11 a second render site for the modal                    → [S1]
 //   RP12 the modal trusts the picker: no typed-date check      → [S6]
 //   RP13 the date refusal no longer disables Save              → [S7]
+//   RP14 the menu shows the item on every game                 → [S8]
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -301,6 +304,20 @@ section("S", () => {
   // S7 — and Save is off while the date is refused.
   ok(/recordPlayedSaveEnabled\(\{ when, venueChosen: !!venue, dateRefusal, saving, conflicts \}\)/.test(modal), "[S7]",
     "the date refusal must reach Save");
+
+  // S8 — entry points (commit 4).
+  const list = readFileSync(join(ROOT, "src/components/schedule/schedule-list.tsx"), "utf8");
+  const cal = readFileSync(join(ROOT, "src/components/schedule/schedule-calendar.tsx"), "utf8");
+  const menuAt = list.indexOf("function GameActionsMenu(");
+  const menu = list.slice(menuAt, list.indexOf("\ninterface GameRowProps", menuAt));
+  const reschedAt = menu.indexOf("Reschedule\n        </button>");
+  const itemAt = menu.indexOf("{recordPlayedOffered && (");
+  const detailsAt = menu.indexOf("View details");
+  ok(reschedAt > 0 && itemAt > reschedAt && detailsAt > itemAt
+      && (list.match(/recordPlayedOffered=\{recordPlayed\.offered\(recordPlayedInput\(g\)\)\}/g) ?? []).length === 2
+      && list.includes("useRecordPlayed({") && cal.includes("useRecordPlayed({")
+      && cal.includes("if (!recordPlayed.offered(rp)) return null;") && cal.includes("recordPlayed.open(rp)"),
+    "[S8]", "the menu (row + card) shows the item only when offered, beside Reschedule; the calendar uses the hook too");
 
   const hook = readFileSync(join(ROOT, "src/components/schedule/use-record-played.tsx"), "utf8");
   ok(hook.indexOf("todayInTimezone(tz)") > hook.indexOf("useEffect(() => {"), "[S5]", "today is computed after mount");

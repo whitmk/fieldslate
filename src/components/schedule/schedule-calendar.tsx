@@ -11,6 +11,7 @@ import {
   MapPin,
   Clock,
   Loader2,
+  ClipboardCheck,
 } from "lucide-react";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -19,6 +20,8 @@ import { markGameRainedOut } from "@/lib/schedule/rainout-write";
 import { logActivity } from "@/lib/activity-log";
 import { MoveNoticeLine } from "@/components/divisions/move-game-row";
 import { useScheduleReschedule } from "./use-schedule-reschedule";
+import { useRecordPlayed } from "./use-record-played";
+import { ENTRY_LABEL } from "@/lib/schedule/record-played";
 import { useGameNoteEditor } from "./use-game-note-editor";
 import { GameNoteDot, GameNoteIcon, GameNoteLine } from "./game-note";
 import {
@@ -129,6 +132,12 @@ export function ScheduleCalendar({
     canReschedule,
     lockedDivisionIds: lockedSet,
     logSource: "Schedule calendar",
+  });
+  // "Record where it was played" — past games only, beside Reschedule; the
+  // same hook as the list (one router, one modal render site).
+  const recordPlayed = useRecordPlayed({
+    leagueId: games[0]?.league_id ?? null,
+    canRecord: canReschedule,
   });
   const [dayDetail, setDayDetail] = useState<string | null>(null);
   const note = useGameNoteEditor({ logSource: "Schedule calendar" });
@@ -466,6 +475,37 @@ export function ScheduleCalendar({
                   />
                 </div>
               )}
+              {(() => {
+                const rp = {
+                  id: pill.data.id,
+                  status: pill.data.status,
+                  scheduled_at: pill.data.scheduled_at,
+                  interleague_org_id: pill.data.interleague_org_id ?? null,
+                };
+                if (!recordPlayed.offered(rp)) return null;
+                return (
+                  <button
+                    onClick={() => {
+                      reschedule.clearNotice();
+                      const refused = recordPlayed.open(rp);
+                      if (!refused) setSelected(null);
+                    }}
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                  >
+                    <ClipboardCheck className="h-3.5 w-3.5 text-[#0C1F3F]" />
+                    {ENTRY_LABEL}
+                  </button>
+                );
+              })()}
+              {recordPlayed.notice?.gameId === pill.data.id && (
+                <div className="px-4 pb-2">
+                  <MoveNoticeLine
+                    message={recordPlayed.notice.message}
+                    onDismiss={recordPlayed.clearNotice}
+                    inset="mx-0"
+                  />
+                </div>
+              )}
               <button
                 onClick={() => {
                   setDetailGame(pill.data);
@@ -517,6 +557,7 @@ export function ScheduleCalendar({
         })()}
 
       {reschedule.modals}
+      {recordPlayed.modals}
       {note.modal}
 
       {rainoutTarget && (() => {

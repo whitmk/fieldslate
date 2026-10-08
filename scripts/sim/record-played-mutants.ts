@@ -11,6 +11,7 @@ import { runMutants, type Mutant } from "./mutant-runner";
 const LIB = "src/lib/schedule/record-played.ts";
 const TODAY = "src/lib/utils/org-today.ts";
 const MODAL = "src/components/schedule/record-played-modal.tsx";
+const LIST = "src/components/schedule/schedule-list.tsx";
 const OTHER_SURFACE = "src/components/schedule/use-schedule-reschedule.tsx";
 
 const MUTANTS: Mutant[] = [
@@ -91,6 +92,12 @@ const MUTANTS: Mutant[] = [
     find: "!recordPlayedSaveEnabled({ when, venueChosen: !!venue, dateRefusal, saving, conflicts })",
     replace: "!recordPlayedSaveEnabled({ when, venueChosen: !!venue, dateRefusal: null, saving, conflicts })",
     expect: "S7",
+  },
+  {
+    id: "RP14", what: "the menu shows the item on every game", file: LIST,
+    find: "      {recordPlayedOffered && (",
+    replace: "      {(true || recordPlayedOffered) && (",
+    expect: "S8",
   },
 ];
 
