@@ -686,7 +686,11 @@ function GameRowCells({
       </td>
       <td className="py-3 font-medium text-gray-900">
         {matchupLabel(game)}
-        <GameNoteLine game={game} onClick={onEditNote} className="mt-0.5 font-normal" />
+        {/* w-0 min-w-full: the one-line note fills the cell but adds no width
+            to the column. Without it the nowrap line sizes Matchup to the
+            whole note (a 180-char note pushed every column after it off the
+            card, 2026-10-08). */}
+        <GameNoteLine game={game} onClick={onEditNote} className="mt-0.5 w-0 min-w-full font-normal" />
       </td>
       <td className="py-3 text-gray-600">{game.home_team?.division?.name ?? "—"}</td>
       <td className="py-3 text-gray-600">{venueLabel(game)}</td>
