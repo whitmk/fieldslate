@@ -80,6 +80,18 @@ const MUTANTS: Mutant[] = [
     replace: "  const modals = (\n    <>\n      {false && <RecordPlayedModal gameId=\"\" onClose={() => {}} onSaved={() => {}} />}\n",
     expect: "S1",
   },
+  {
+    id: "RP12", what: "the modal trusts the picker: no typed-date check", file: MODAL,
+    find: "    ctx && validDate ? playedDateRefusal(validDate, ctx.today, ctx.seasonStart) : null;",
+    replace: "    null as string | null;",
+    expect: "S6",
+  },
+  {
+    id: "RP13", what: "the date refusal no longer disables Save", file: MODAL,
+    find: "!recordPlayedSaveEnabled({ when, venueChosen: !!venue, dateRefusal, saving, conflicts })",
+    replace: "!recordPlayedSaveEnabled({ when, venueChosen: !!venue, dateRefusal: null, saving, conflicts })",
+    expect: "S7",
+  },
 ];
 
 runMutants({

@@ -351,17 +351,30 @@ export function RecordPlayedModal({
 
         <div className="flex flex-col gap-1.5">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[13px] font-medium text-gray-700">Date played</span>
-              <input
-                type="date"
-                value={date}
-                max={ctx.today}
-                min={ctx.seasonStart ?? undefined}
-                onChange={(e) => setDate(e.target.value)}
-                className={inputCls}
-              />
-            </label>
+            {/* The played date is checked HERE, from the typed value, against
+                the same rule the database applies. min/max only shape the
+                native picker — iOS Safari has a history of ignoring them, so
+                they are never the check. */}
+            <div className="flex flex-col gap-1.5">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[13px] font-medium text-gray-700">Date played</span>
+                <input
+                  type="date"
+                  value={date}
+                  max={ctx.today}
+                  min={ctx.seasonStart ?? undefined}
+                  aria-invalid={dateRefusal ? true : undefined}
+                  aria-describedby={dateRefusal ? "record-played-date-error" : undefined}
+                  onChange={(e) => setDate(e.target.value)}
+                  className={`${inputCls} ${dateRefusal ? "border-red-400" : ""}`}
+                />
+              </label>
+              {dateRefusal && (
+                <p id="record-played-date-error" role="alert" className="text-xs text-red-600">
+                  {dateRefusal}
+                </p>
+              )}
+            </div>
             <label className="flex flex-col gap-1.5">
               <span className="text-[13px] font-medium text-gray-700">Start time</span>
               <input
@@ -372,11 +385,7 @@ export function RecordPlayedModal({
               />
             </label>
           </div>
-          {dateRefusal ? (
-            <p role="alert" className="text-xs text-red-600">{dateRefusal}</p>
-          ) : (
-            <p className="text-xs text-gray-600">{DATE_HELP}</p>
-          )}
+          {!dateRefusal && <p className="text-xs text-gray-600">{DATE_HELP}</p>}
         </div>
 
         <label className="flex flex-col gap-1.5">

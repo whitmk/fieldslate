@@ -34,7 +34,10 @@
 // - S: source wiring (weak by nature — greps, stated): exactly ONE render site
 //   for the modal, inside useRecordPlayed; the modal refuses before any other
 //   read; the save is the RPC and nothing else; no lock read anywhere in it;
-//   "today" in the hook is computed after mount, not during render.
+//   "today" in the hook is computed after mount, not during render; the
+//   modal checks the TYPED date itself (never trusting the native picker's
+//   min/max), shows the message directly under the date field, and passes the
+//   refusal into Save.
 //
 // ANTI-VACUITY: counters for an offered past rained-out game, an offered past
 // scheduled game, a withheld future game, an official conflict found, a
@@ -57,6 +60,8 @@
 //   RP9  the router drops the Free upsell                      → [W2]
 //   RP10 the modal's open-time guard removed                   → [S2]
 //   RP11 a second render site for the modal                    → [S1]
+//   RP12 the modal trusts the picker: no typed-date check      → [S6]
+//   RP13 the date refusal no longer disables Save              → [S7]
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -284,6 +289,18 @@ section("S", () => {
   ok(modal.includes("supabase.rpc(\n      RECORD_PLAYED_RPC") && modal.includes("recordPlayedSaveOutcome(data, error, gameId)")
     && !/\.update\(/.test(modal), "[S3]", "the save is the RPC, its outcome checked, and no direct update");
   ok(!/lock/i.test(modal.replace(/\/\/.*$/gm, "")), "[S4]", "no lock read in the modal's code (comments aside)");
+
+  // S6 — the typed date is checked by the shared rule, from the input's value,
+  // against today and the season start; the message renders under the field.
+  const dateCheck = /const dateRefusal =\s*ctx && validDate \? playedDateRefusal\(validDate, ctx\.today, ctx\.seasonStart\) : null;/.test(modal);
+  const msgAt = modal.indexOf('id="record-played-date-error"');
+  const dateInputAt = modal.indexOf('type="date"');
+  const timeInputAt = modal.indexOf('type="time"');
+  ok(dateCheck && dateInputAt > 0 && msgAt > dateInputAt && msgAt < timeInputAt, "[S6]",
+    "the modal must check the typed date itself and show the message right under the date field");
+  // S7 — and Save is off while the date is refused.
+  ok(/recordPlayedSaveEnabled\(\{ when, venueChosen: !!venue, dateRefusal, saving, conflicts \}\)/.test(modal), "[S7]",
+    "the date refusal must reach Save");
 
   const hook = readFileSync(join(ROOT, "src/components/schedule/use-record-played.tsx"), "utf8");
   ok(hook.indexOf("todayInTimezone(tz)") > hook.indexOf("useEffect(() => {"), "[S5]", "today is computed after mount");
