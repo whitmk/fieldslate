@@ -13,6 +13,11 @@
 // must render byte-identically to scripts/sim/fixtures/
 // reschedule-request-modal-golden.html, recorded before the prop existed
 // (TZ=UTC: the "Currently" line formats a date).
+// RE-RECORDED 2026-10-08, by the founder's decision, for 5f114a2 (Oct 2 phone
+// fixes: the modal caps its height and the form body scrolls so Submit stays
+// reachable with the keyboard up). Exactly three class attributes changed —
+// the box, the header row, the form — and nothing outside class attributes;
+// [M1]/[M3] had been red on main from that commit until this re-record.
 //
 // PART R — routeMoveTarget (src/lib/schedule/panel-reschedule-route.ts), the
 // one decision about where a picked game goes. The load-bearing properties:
@@ -77,6 +82,9 @@
 // RESULT: 6/6 killed, each FIRST at its own assertion. RM1 is the one the
 // ilAnomaly fixture exists for: without an interleague row carrying an
 // away_team_id, the mutant lands on `no_opponent` and [R2] passes vacuously.
+// 2026-10-08: all 15 made repeatable as `npm run sim:panel-reschedule:mutants`
+// (the shared runner; this file now prints "FAIL: [tag]" so kills attribute).
+// Re-run after the golden re-record: 15/15, each FIRST at its own assertion.
 
 import * as React from "react";
 import { readFileSync } from "node:fs";
@@ -91,7 +99,8 @@ function ok(cond: boolean, name: string, detail = "") {
   checks++;
   if (!cond) {
     fails++;
-    console.log(`  FAIL ${name}${detail ? ` — ${detail}` : ""}`);
+    // "FAIL: [tag]" — the shape scripts/sim/mutant-runner.ts attributes kills by.
+    console.log(`  FAIL: ${name}${detail ? ` — ${detail}` : ""}`);
   }
 }
 

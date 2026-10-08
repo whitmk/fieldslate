@@ -715,6 +715,19 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   before touching any of this; it is SQL, not `npm run`, for the reasons in
   "Harness standard — SQL-level exceptions" below.
 
+## Harnesses on main — two standing rules (2026-10-08)
+
+- **A harness found failing on `main` is reported to Whit THE SAME DAY, as its
+  own item.** Never written up as "pre-existing", "not from this change", or a
+  line in a commit message, and never carried forward from session to session.
+  `sim:panel-reschedule` sat red from Oct 2 to Oct 8 that way, recorded in
+  every commit since as "the same two golden failures on a clean main".
+- **A commit that changes ANY file a sim reads runs that sim before it is
+  committed — layout-only and className-only changes included.** Find them
+  with `grep -rl <path> scripts/sim`; goldens, source greps and rendered markup
+  all read files that "only change classes". `5f114a2` ("className changes
+  only") broke two golden assertions and ran nothing.
+
 ## Harness standard — SQL-level exceptions
 
 - **SQL-level enforcement in this repo CANNOT be proven by the `npm run
@@ -1757,7 +1770,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Byte-identical guarantees:** `RescheduleModalHeader`'s default render and
   `RescheduleRequestModal` without `intro` are both asserted against goldens
   recorded BEFORE the prop existed (`scripts/sim/fixtures/`). If either fails,
-  an existing caller changed — fix the component, never re-record.
+  an existing caller changed — fix the component, never re-record without the
+  founder's decision. **The request-modal golden WAS re-recorded once, by
+  decision (2026-10-08), for `5f114a2`** — the Oct 2 phone fix that caps the
+  modal's height and scrolls the form so Submit stays reachable with the
+  keyboard up. Exactly three class attributes changed; [M1]/[M3] had been red
+  on main from Oct 2 until then, because that commit never ran this sim.
 - **Harness: `npm run sim:panel-reschedule`** (TZ=UTC) — parts H (header), M
   (request modal intro), R (routing, 10 counters incl. an ordinary game routed
   plain and an interleague game routed to the request), V (move variant's
@@ -1765,7 +1783,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `MoveGameIcon`/`MoveNoticeLine` rendered: disabled-with-lock-sentence, and
   every refusal's sentence + link under the row; counters for a blocked and an
   allowed render), S (source-wiring greps — weak by nature, stated). 15 mutants
-  each killed first at its own assertion. **Keep the `ilAnomaly` fixture** (an interleague row WITH an away
+  each killed first at its own assertion — `npm run sim:panel-reschedule:mutants`
+  since 2026-10-08 (applied by hand before that). **Keep the `ilAnomaly` fixture** (an interleague row WITH an away
   team): without it the "interleague branch skipped" mutant lands on
   `no_opponent` and [R2] passes vacuously.
 
@@ -3987,11 +4006,6 @@ Still open:
 
 ## Open items
 
-- **`sim:panel-reschedule` is RED on `main`: [M1] and [M3] fail** (63/65,
-  verified on a clean worktree 2026-10-08) — RescheduleRequestModal's default
-  render no longer matches the pre-prop golden. Per "Division panel —
-  Reschedule game", fix the COMPONENT, never re-record without a decision.
-  FIRST in line after `feat/record-game-played` (founder, 2026-10-08).
 - **0106's UTC-today mutant (MU3) is owed a run** between 00:00 and 10:00 UTC
   (5pm–3am Pacific) against the APPLIED function, rolled back. If it survives,
   that is a follow-up migration.

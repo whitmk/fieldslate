@@ -58,6 +58,7 @@
     "sim:record-played:mutants": "npx tsx scripts/sim/record-played-mutants.ts",
     "sim:row-icon-reveal": "npx tsx scripts/sim/row-icon-reveal-sim.ts",
     "sim:panel-reschedule": "TZ=UTC npx tsx scripts/sim/panel-reschedule-sim.ts",
+    "sim:panel-reschedule:mutants": "npx tsx scripts/sim/panel-reschedule-mutants.ts",
     "sim:invite-page": "TZ=UTC npx tsx scripts/sim/invite-page-sim.ts",
     "sim:request-reschedule": "npx tsx scripts/sim/request-reschedule-sim.ts",
     "sim:location-filter": "npx tsx scripts/sim/location-filter-sim.ts",
