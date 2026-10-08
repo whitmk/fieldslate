@@ -77,6 +77,20 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   never `NEXT_PUBLIC_APP_URL`, never `VERCEL_URL`, never a hardcoded string.
   (`window.location.origin` in client-side auth redirects is fine — the user
   is already on www.)
+- **NO PAGE MAY BE FRAMED EXCEPT `/s/…` (2026-10-08).** `next.config.mjs`
+  sends `X-Frame-Options: DENY` + `Content-Security-Policy: frame-ancestors
+  'none'` on every path except `/s` and `/s/…`, which get
+  `frame-ancestors *` and NO X-Frame-Options (the public league schedule,
+  which leagues embed on their own websites). Before this, nothing set either
+  header and every page — login and the dashboard included — could be framed
+  by any site (clickjacking). The exception is a negative lookahead in the
+  GLOBAL rule's source, not an override by a later rule: X-Frame-Options has
+  no "allow" value, so a leftover DENY could refuse the embed in an engine
+  that honours it over the CSP. Nothing framed the app before the change
+  (the only iframe in `src` is the hero embedding YouTube, which
+  `frame-ancestors` does not govern). A second frameable route is a decision:
+  extend the lookahead AND add its own rule. Proven 2026-10-08 in Chromium
+  from a cross-origin parent; Safari not checked.
 
 ## Database & migrations
 
