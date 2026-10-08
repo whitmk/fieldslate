@@ -121,7 +121,11 @@ section("S", () => {
     "S1", "the route uses the shared headers, refusal map and token parser");
   assert(!/Cache-Control/.test(route.replace(/\.\.\.FEED_HEADERS/g, "")), "S2", "the route sets no Cache-Control of its own");
   assert(/text\/calendar; charset=utf-8/.test(route), "S3", "success is text/calendar");
-  assert(/persistSession: false/.test(route) && !/cookies\(\)/.test(route) && !/supabase\/server/.test(route),
+  // Re-keyed 2026-10-08: the session-less options moved into the shared
+  // no-store helper (src/lib/supabase/no-store.ts), so the evidence of a plain
+  // anon client is now the helper call with the anon key.
+  assert(/createNoStoreClient\(\s*process\.env\.NEXT_PUBLIC_SUPABASE_URL!,\s*process\.env\.NEXT_PUBLIC_SUPABASE_ANON_KEY!/.test(route) &&
+      !/cookies\(\)/.test(route) && !/supabase\/server/.test(route),
     "S4", "the route uses a plain anon client, not the cookie session client");
   assert(!/supabase\/admin|SERVICE_ROLE/.test(route), "S5", "the route never uses the admin client");
   for (const p of ["/schedule/:path*", "/invite/:path*", "/reschedule/:path*", "/calendar/:path*"]) {

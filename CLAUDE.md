@@ -94,6 +94,20 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   never `NEXT_PUBLIC_APP_URL`, never `VERCEL_URL`, never a hardcoded string.
   (`window.location.origin` in client-side auth redirects is fine — the user
   is already on www.)
+- **EVERY SESSION-LESS SUPABASE CLIENT COMES FROM `createNoStoreClient`
+  (`src/lib/supabase/no-store.ts`, 2026-10-08).** Next 14 keeps `fetch`
+  responses — POSTs included — in its Data Cache for a YEAR unless the request
+  is dynamic, and `dynamic = "force-dynamic"` on a route handler does NOT stop
+  it; Vercel keeps that cache across deploys. The public schedule's
+  `/s/<token>/data` served the RPC answer read in the 24 minutes before Majors
+  was locked ("Majors isn't published yet") for hours after the lock. The
+  cookie-based server client escapes only because reading cookies makes the
+  request dynamic. The helper's fetch passes `cache: "no-store"`; the token
+  routes (`s/[token]/data`, `s/[token]/feed`, `calendar/[token]`) also export
+  `fetchCache = "force-no-store"`. The admin client uses the helper too — its
+  callers were safe only by ordering luck (POST handlers, or cookies read
+  first). Never `createClient` from `@supabase/supabase-js` anywhere else:
+  `npm run sim:supabase-no-store` (+ `:mutants`, 5) fails on one.
 - **NO PAGE MAY BE FRAMED EXCEPT `/s/…` (2026-10-08).** `next.config.mjs`
   sends `X-Frame-Options: DENY` + `Content-Security-Policy: frame-ancestors
   'none'` on every path except `/s` and `/s/…`, which get

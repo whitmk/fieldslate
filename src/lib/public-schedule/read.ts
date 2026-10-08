@@ -7,7 +7,7 @@
 // recognise is { status: "error" } — never an empty schedule. The routes send
 // that as 503 + no-store (links.ts).
 
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createNoStoreClient } from "@/lib/supabase/no-store";
 import type { PublicScheduleResponse } from "./types";
 import { TOKEN_RE } from "./types";
 
@@ -17,10 +17,11 @@ export async function readPublicSchedule(token: string): Promise<PublicScheduleR
   // A malformed token never reaches the database.
   if (!TOKEN_RE.test(token)) return { status: "unknown" };
 
-  const supabase = createSupabaseClient(
+  // no-store, ALWAYS: without it Next kept the first answer for a token for a
+  // year (see no-store.ts — the Majors incident, 2026-10-08).
+  const supabase = createNoStoreClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } },
   );
   const { data, error } = await supabase.rpc("get_league_schedule_by_token", { p_token: token });
   if (error || !data || typeof data !== "object") {

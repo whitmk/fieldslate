@@ -11,7 +11,7 @@
 // must stop working on the next request) and no indexing.
 
 import { NextResponse } from "next/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createNoStoreClient } from "@/lib/supabase/no-store";
 import { buildTeamCalendarIcs, type TeamCalendarInput } from "@/lib/calendar/team-calendar-ics";
 import {
   FEED_HEADERS,
@@ -21,6 +21,9 @@ import {
 } from "@/lib/calendar/links";
 
 export const dynamic = "force-dynamic";
+// Second guard on the Data Cache (the first is the no-store client):
+// force-dynamic alone does not stop Next caching this route's fetches.
+export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
 
 function refuse(status: Exclude<ReaderStatus, "ok">): NextResponse {
@@ -45,11 +48,11 @@ export async function GET(
   if (!token) return refuse("unknown");
 
   // A plain anon client — no cookies, no session. The function is granted to
-  // anon and takes only the token.
-  const supabase = createSupabaseClient(
+  // anon and takes only the token. no-store, ALWAYS: without it Next kept the
+  // first answer for a token for a year (see no-store.ts).
+  const supabase = createNoStoreClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } },
   );
 
   const { data, error } = await supabase.rpc("get_team_calendar_by_token", { p_token: token });

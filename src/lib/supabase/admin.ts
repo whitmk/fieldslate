@@ -1,4 +1,4 @@
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createNoStoreClient } from "./no-store";
 import type { Database } from "@/types/database";
 
 // Service-role Supabase client — BYPASSES RLS. Server-only. Used exclusively
@@ -12,7 +12,7 @@ export function createAdminClient() {
   if (!url || !key) {
     throw new Error("Supabase service role is not configured.");
   }
-  return createSupabaseClient<Database>(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  // no-store: see no-store.ts. Safe today only because every caller is a POST
+  // handler or reads cookies first; that is ordering luck, not a guarantee.
+  return createNoStoreClient<Database>(url, key);
 }

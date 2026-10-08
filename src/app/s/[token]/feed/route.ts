@@ -13,6 +13,9 @@ import { feedRefusal, parseToken } from "@/lib/public-schedule/links";
 import { readPublicSchedule } from "@/lib/public-schedule/read";
 
 export const dynamic = "force-dynamic";
+// Second guard on the Data Cache (the first is the no-store client):
+// force-dynamic alone does not stop Next caching this route's fetches.
+export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
 
 function refuse(r: ReturnType<typeof feedRefusal>): NextResponse {
