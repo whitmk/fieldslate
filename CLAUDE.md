@@ -25,6 +25,15 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `aa21d01c…`) only. Recorded 2026-10-06 after a one-off, explicitly
   instructed manual reassign of the Oct 17 snack shack shift.
 
+## Placeholders in the founder's prompt — stop and ask
+
+- **A placeholder in a prompt means STOP AND ASK.** Text like "[your time]",
+  "[date]" or "<value>" is a value only the founder can supply. Never fill it
+  in, infer it, or pick a "reasonable" default — and never take an
+  irreversible action (apply a migration, push, write production data) that
+  depends on it. Recorded 2026-10-08: 0105 was applied to production without
+  the founder's time.
+
 ## Deployment & environment
 
 - **Production-only.** Every push to `main` auto-deploys to production via
@@ -1903,6 +1912,15 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   page/panel selects are asserted to CARRY the fields while the print files
   never reference them (O3). Mutant GM1 (the print region renders `{g.notes}`)
   is the one the design exists for.
+- **A note line inside an auto-layout table cell must carry `w-0 min-w-full`**
+  (2026-10-08). `GameNoteLine` is `block max-w-full truncate` — one nowrap
+  line — and in a `<table>` without it the line's FULL width becomes the
+  column's minimum: SRALL Fall 2026's 180-character note sized the Schedule
+  list's Matchup column to 1,028px and pushed Division → Status off the card
+  (reported in Safari; reproduced in Playwright WebKit AND Chromium).
+  `w-0 min-w-full` makes it fill the cell while adding no width. The snack
+  shack table caps its note at `max-w-[16rem]` instead; any new table cell
+  hosting a note line needs one or the other.
 - **The activity log records the EVENT, never the text**
   (`game_note_updated` / `game_note_removed` with the matchup and date).
 - **Harnesses:** `npm run sim:game-notes` (45 checks, 6 mutants each killed at
