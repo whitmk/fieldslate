@@ -126,7 +126,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") APPLIED 2026-10-08 21:31 UTC, catalog `20261008213156`**, verbatim from the repo file after a rolled-back proof; md5(prosrc) `bab8adef7841de9abe9709854e900b28` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Its UTC-today mutant (MU3) still owes a run inside 00:00–10:00 UTC against the applied function — applied first by the founder's decision; a survivor means a follow-up migration. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
+  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") APPLIED 2026-10-08 21:31 UTC, catalog `20261008213156`**, verbatim from the repo file after a rolled-back proof; md5(prosrc) `bab8adef7841de9abe9709854e900b28` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Its UTC-today mutant (MU3) still owes a run inside 00:00–10:00 UTC against the applied function — applied first by the founder's decision; a survivor means a follow-up migration. **0107 (playoff bracket delete + rebuild) APPLIED 2026-10-08 22:44 UTC, catalog `20261008224427`**, verbatim from the repo file after a rolled-back proof (green, 15/15 mutants); md5(prosrc) verified: `delete_playoff_bracket` `f628628e93de210df18a7869cdb85e0f`, `replace_playoff_games` `ae2a1f70a09a3396f398dc1bdca9fbba`; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -348,8 +348,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `src/lib/playoffs/advancement.ts` (pure, testable — see its header for
   the movement rules and edit semantics).
 - **The generator is split: `src/lib/playoffs/bracket-plan.ts` is PURE and
-  decides everything; `generate-bracket.ts` only loads inputs and writes
-  rows** (2026-10-05, branch `fix/playoff-generator`, after SRALL 50/70's
+  decides everything; `generate-bracket.ts` only loads inputs and hands the
+  plan to `replace_playoff_games` (0107)** (2026-10-05, branch `fix/playoff-generator`, after SRALL 50/70's
   bracket came out with three games at 9:00 AM on one field and the top two
   seeds never playing). A scheduling rule added to the I/O file is a rule the
   harness cannot see — add it to the plan. `preflightBracket` runs the same
@@ -393,13 +393,80 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (`playoffDefaultsFromDivision`, applied when a division is picked; orphan
   windows for non-playing days are dropped). Still editable.
 - **Playoff games are NOT in the team calendar feed, the Schedule page, the
-  prints or the CSVs** — only the Playoffs page and its export read
-  `playoff_games`. The feed also expires 7 days after `leagues.end_date`, so a
+  prints or the CSVs** — `playoff_games` is read by the Playoffs page and its
+  export, the public league schedule (0105: dated games of non-draft brackets
+  in LOCKED divisions) and the snack shack's assignment index (a team in a
+  playoff game is busy; playoff games never open the shack). The feed also expires 7 days after `leagues.end_date`, so a
   bracket scheduled after the season end is unreachable there regardless.
 - **Harness: `npm run sim:playoff-bracket`** (229 checks, 10 anti-vacuity
   counters; parts A–H + S) and `npm run sim:playoff-bracket:mutants` (13
   mutants applied to the real source, each required to die FIRST at its own
   assertion). Read the sim's header before touching any of this.
+
+## Playoff bracket delete and rebuild (0107, applied 2026-10-08)
+
+- **Two SECURITY DEFINER functions, each its own preview (`p_commit=false`
+  writes nothing — the 0084 pattern), EXECUTE for `authenticated` only:**
+  `delete_playoff_bracket(p_playoff_id, p_commit)` and
+  `replace_playoff_games(p_playoff_id, p_settings, p_games, p_commit)`. Both:
+  row-lock the bracket and its games → `is_org_member` → **Elite only** (the
+  0106 plan-check pattern; the page is also server-gated to Elite) → counts.
+- **Delete is allowed EVEN WITH RESULTS** (decided 2026-10-08). The preview
+  returns what the confirm states — games, dated games, games with results,
+  games on the public schedule — and the commit deletes the `playoffs` row
+  (games cascade; nothing else references either table) and logs
+  `playoff_bracket_deleted` in the same transaction.
+- **Rebuild is REFUSED while any game has a result** (status `completed`, a
+  score or a winner): the reply is `blocked` / `results_entered`, preview or
+  commit, nothing written. Clearing a result is NOT built, so a bracket with
+  results can only be deleted, not rebuilt — the refusal says results must
+  be cleared first. Otherwise ONE transaction: settings → delete games →
+  insert games → status `active` → log (`playoff_bracket_generated` for a
+  bracket that had no games, `playoff_bracket_rebuilt` otherwise). Ids come
+  from the bracket row, never the payload; inserted games carry no scores; a
+  bracket's DIVISION never changes (it is not in `p_settings`). A date or
+  time that won't cast fails at the insert, after the delete — the exception
+  aborts the whole call and the old games, settings and status stand
+  (harness AT1).
+- **`replace_playoff_games` is THE way games are written in bulk. The old
+  browser-side rebuild in `generate-bracket.ts` (upsert settings as draft →
+  delete every game → insert → mark active, four separate calls) is GONE** —
+  it deleted entered results with no warning and could leave a bracket empty
+  and hidden as `draft` on a mid-way failure. Never reintroduce a direct
+  `playoff_games` insert/delete or a `playoffs` upsert; `sim:playoff-bracket`
+  [S1] and `sim:bracket-delete` [S1]/[S2] grep for it. Per-game writes (the
+  result entry, `EditPlayoffGameModal`) are unchanged.
+- **THE DIVISION LOCK DELIBERATELY GATES NEITHER.** `playoff_games` was never
+  under the 0082 trigger (it is on `games` only), and the lock's job is
+  protecting the REGULAR schedule against your own re-derivation. What the
+  lock DOES decide for playoffs is visibility: 0105 publishes dated games of
+  non-draft brackets in LOCKED divisions. So instead of gating, both
+  functions COUNT the games on the public schedule — mirroring the 0105
+  reader's conditions exactly (enabled link, unarchived season within 7 days
+  of its end in the ORG's timezone, locked division, bracket not draft, dated
+  game) — and the confirm / review SAYS SO. The harness proves the count
+  equals what the reader returns (PUB1). **If the 0105 reader's conditions
+  change, change both copies in 0107 with it.**
+- **A new bracket** (Add bracket) is a plain `playoffs` INSERT as `draft`,
+  made only after the client plan is good, then filled by
+  `replace_playoff_games` — never an upsert. A division that already has a
+  bracket is disabled in the division step with `addBracketBlock`'s pointer
+  to Edit setup / delete (the old "will overwrite" chip is gone); the unique
+  `(league_id, division_id)` is the backstop and its 23505 maps to the same
+  sentence. If the function refuses after the insert, the draft stays and
+  the message says so (it can be edited or deleted from its card).
+- **Wording and decisions: `src/lib/playoffs/bracket-delete.ts` (pure); I/O:
+  `delete-bracket.ts` + `generate-bracket.ts`.** Render every sentence
+  VERBATIM. A count the preview could not read is "couldn't count", never 0
+  (any unreadable count makes the whole reply unreadable). The delete confirm
+  is the shared `ConfirmDialog`, opened only after the preview returns; a
+  refusal keeps it open with the reason. A commit is success only when it
+  comes back `committed` with readable counts.
+- **Harnesses:** `scripts/sim/playoff-bracket-delete-sim.sql` (+ build
+  script; rolled back, SRALL test org + its T-Ball bracket; 15 mutants incl.
+  a lock gate added to either function); `npm run sim:bracket-delete` (84
+  checks × 3 zones, 5 counters) + `:mutants` (13). Neither clicks through the
+  signed-in flow; the dialog was checked on a scratch route.
 
 ## Game deletion (single game)
 
