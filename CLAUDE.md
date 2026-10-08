@@ -112,7 +112,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
+  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") is WRITTEN AND PROVEN BUT NOT APPLIED** (branch `feat/record-game-played`, 2026-10-08) — see that section; its UTC-today mutant still owes a run inside 00:00–10:00 UTC before the apply. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -1871,6 +1871,116 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   conflicting and a clean save each reached "Save enabled", all 8 conflict
   kinds produced, interleague games routed. 5 mutants, each killed first at its
   own assertion.
+- **The day reads (games on the chosen field / the two teams on the chosen
+  date) live in `src/components/divisions/use-day-occupancy.ts`**, shared with
+  "Record where it was played" (lifted verbatim 2026-10-08; sim:manual-move,
+  sim:picker-guard and sim:interleague-makeup unchanged).
+
+## One "today" — `src/lib/utils/org-today.ts` (2026-10-08)
+
+- **THE RULE: a game's date is the wall-clock DATE PART of `scheduled_at`
+  (never the parsed instant), compared with today in the ORG's timezone
+  (`profiles.timezone`, on the org owner's row).** `todayInTimezone(tz, now?)`,
+  `wallClockDate`, `isOnOrBeforeToday` (the record-played entry points) and
+  `isBeforeToday` (auto-assign's "past") live there. The database states the
+  same rule as `(now() at time zone <org timezone>)::date` (0106 does exactly
+  that), so a form and its fence cannot disagree about which day it is.
+- **Used by:** the snack shack's frozen past (`todayInTimezone` MOVED here from
+  `regenerate-plan.ts`; behaviour unchanged), "Record where it was played", and
+  officials auto-assign. **New "has this happened yet?" code uses this, never
+  one of the four older checks** — the Schedule page's server-clock
+  `todayLocalDateString`, the `new Date().toISOString()` comparisons (off by
+  the org's UTC offset), the slot list's browser date, or the unused
+  `MoveContext.nowMs`. Those four are unchanged and still wrong in the ways
+  listed under "Team calendar feed".
+- **In a client component, compute it AFTER MOUNT** (an effect), never during
+  render — a render-path clock read is a hydration mismatch tsc and next build
+  both pass (see "Week-by-field view mode").
+- `profiles.timezone` is NOT NULL, defaults to Los Angeles and is CHECKed to
+  seven US zones (none ahead of UTC) — which is why every SQL harness that
+  proves "org timezone, not UTC" can only do it 00:00–10:00 UTC. A member reads
+  the owner's row under RLS because every owner has their own
+  `organization_members` row (10/10, verified 2026-10-08).
+
+## Record where it was played (0106, branch `feat/record-game-played`, 2026-10-08 — NOT APPLIED)
+
+- **What it is.** A retroactive CORRECTION for a game that was already played
+  somewhere other than its schedule says — usually a rained-out game the
+  coaches made up without telling the admin. Date played (today or earlier),
+  start time, any field in the org, optional reason; the game becomes an
+  ordinary `scheduled` game there and the rainout is cleared. No new status.
+- **One function does the write: `record_game_played(game_id, scheduled_at
+  text, venue_id, reason)` (0106, SECURITY DEFINER, authenticated only).**
+  Checks IN THIS ORDER, each raising with nothing written: row lock →
+  `is_org_member` → plan Pro/Elite (`plan_required`, the 0105 pattern) → NOT
+  interleague → status `cancelled`/`scheduled` → played date ≤ today in the
+  ORG's timezone and ≥ `leagues.start_date` (no start date refuses) → field
+  owned by the org. Every refusal key has a sentence in
+  `recordPlayedErrorMessage` and `sim:record-played` [E1] reads the keys out of
+  the migration file — a new key cannot ship without one.
+- **A DELIBERATE EXCEPTION TO THE MOVE LOCK GATE — allowed on a LOCKED
+  division.** A correction records what already happened; the 0082 trigger
+  already permits `status`/`scheduled_at`/`venue_id`, and the PLAYED-DATE RULE
+  (enforced in the function, not just the form) is the fence that keeps this
+  from being a way around the lock for future games. It is NOT an exception to
+  the picker guard: interleague is refused outright and `picker-guard.ts` /
+  `saveScope` were not touched.
+- **"SENT TO PARENTS" IS KEPT — the posted-RESTORE pattern.** The function
+  locks the division row, reads `posted`/`posted_at`, runs the UPDATE (the
+  0096 statement trigger fires and clears them), and writes both back exactly.
+  **`clear_division_posted` is NOT modified** — every other edit still clears
+  `posted` (harness PS2 + mutant MU6 prove it). If a future change wants the
+  same exemption, use this pattern inside its own function; do not add an
+  exemption to the trigger.
+- **INTERLEAGUE IS REFUSED, and why.** Our row is what the partner's token page
+  reads live (`get_interleague_schedule_by_token`), and an open makeup request
+  would OVERWRITE a correction when the partner accepts it
+  (`accept_reschedule_request_by_token` matches on the game id only). The
+  action still SHOWS on interleague past games and the click explains:
+  "Interleague games can't be corrected here yet." (decided 2026-10-08).
+- **The activity-log entry is written BY THE FUNCTION, in the same
+  transaction** — event `game_played_recorded`, message "{home} vs {away}
+  recorded as played {date} at {time} — {Park — Field} (correction; was
+  rained out|scheduled {old date} at {old time} — {old field}). Reason: …".
+  No surface suffix (no "— via …"); the event name marks it (decided).
+- **Pure rules: `src/lib/schedule/record-played.ts`** — which games offer it
+  (rained out or scheduled, original date today or earlier), the open-time
+  refusal, the played-date rule (checked from the TYPED date — native min/max
+  only shape the picker; iOS Safari has ignored them), conflicts =
+  `manualMoveConflicts` VERBATIM plus "an assigned official is already
+  officiating … that day" (the shared `findConflictInBookings`; the candidate
+  time carries an explicit `+00:00` or it is read in the browser's zone), Save
+  never gated by a conflict, the router `routeRecordPlayed`, and
+  `recordPlayedSaveOutcome` (a reply that doesn't confirm the game id is
+  "Nothing was saved", never success).
+- **ONE render site: `useRecordPlayed`** (`src/components/schedule/`) renders
+  `RecordPlayedModal`; it also reads the league's timezone after mount and
+  exposes `offered(game)` (false until "today" is known — a failed timezone read
+  hides the action for that page visit, silently; accepted for v1). The modal
+  re-reads the game and refuses before any other read. `sim:record-played`
+  [S1] counts render sites. **Entry points:** the Schedule page's shared "…"
+  menu (desktop row AND phone card — one `GameActionsMenu`) and the calendar
+  popover, beside Reschedule on past games; "Already played? Record where." on
+  the league page's rained-out card and the division panel's rained-out row.
+  A new surface calls the hook; it never renders the modal.
+- **Copy differs from the approved mockup in one place, by decision:** the
+  conflict box lists the manual edit's sentences, then "You can still save."
+  once (the mockup's "FieldSlate also has … on this field" wording was dropped
+  for reuse). Dates read "Sat, Oct 4" (the app's formatter).
+- **The field/team day reads are shared with the manual move:**
+  `src/components/divisions/use-day-occupancy.ts` (lifted verbatim out of
+  `manual-move-form.tsx`).
+- **Officials:** assignments ride the game id, so they follow the new date;
+  the pay report never reads dates. Officials' rained-out games still count as
+  busy in the new notice (the long-standing open question, left as is).
+  Auto-assign now skips past games (see "Officials / umpires") — without that,
+  un-cancelling a past rainout would have made it fair game.
+- **Harnesses.** `scripts/sim/record-game-played-sim.sql` (+ build script;
+  rolled back, test org): 8 mutants — MU3 (today in UTC) is only killable
+  00:00–10:00 UTC and is OWED a run before 0106 is applied; the other 7 killed
+  at their own tag. `npm run sim:record-played` (78 checks × 3 zones) +
+  `:mutants` (15, all killed at their own assertion; RP10/RP11/RP14/RP15 are
+  source greps — weak by nature, stated).
 
 ## Game notes (2026-09-28)
 
@@ -3391,13 +3501,28 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   queries per division — fine at current scale; needs progress UI or a
   server move (which first needs the timezone param) if leagues get much
   larger.
-- **The engine takes an optional injected client:**
-  `autoAssignUmpires(divisionId, seasonId, client?)`, default
-  `createClient()`. The seam exists ONLY so the simulation harness can
-  drive the real engine against in-memory fixtures — production callers
-  omit it. Don't remove it and don't add other client-construction paths.
+- **The engine takes an optional injected client and "now":**
+  `autoAssignUmpires(divisionId, seasonId, client?, now?)` (and
+  `autoAssignSeason(seasonId, client?, now?)`), defaults `createClient()` and
+  the real clock. Both seams exist ONLY so the simulation harnesses can drive
+  the real engine against in-memory fixtures at a fixed date — production
+  callers omit them. Don't remove them and don't add other client-construction
+  paths.
+- **AUTO-ASSIGN NEVER STAFFS A PAST GAME (2026-10-08).** Games dated BEFORE
+  today in the league's timezone (`isBeforeToday`, the shared org-today rule;
+  a game later TODAY is still staffed) are skipped by the slot walk and counted
+  in `pastGamesSkipped`. Only the slot walk skips them: bookings and weekly
+  load are still built from EVERY existing assignment, so a past game earlier
+  this week still counts toward an official's cap (mutant AP3). FAILS CLOSED:
+  an unreadable league timezone assigns nothing and says so. Harness:
+  `npm run sim:auto-assign-past` (+ `:mutants`, 4/4) — its fixture's "now" is
+  Oct 10 05:30Z, still Oct 9 in Los Angeles, so a UTC "today" is caught at any
+  hour (unlike the SQL harnesses).
 - **Simulation harness:** `scripts/sim/auto-assign-season-sim.ts`, run via
-  `npm run sim:officials`. TZ=UTC is mandatory (the harness exits
+  `npm run sim:officials` — its fake client lives in
+  `scripts/sim/officials-fake.ts` (shared with `auto-assign-past-sim.ts`) and
+  its fixtures run with "now" BEFORE the June 2026 season so every game is
+  upcoming. TZ=UTC is mandatory (the harness exits
   otherwise) — it pins the engine's client-local date math for Node; never
   "fix" a harness date issue by adding timezone handling to the engine.
   It fakes only the Supabase client (the exact query/embed subset the
@@ -3691,7 +3816,8 @@ Still open:
 - **Stage 3 (UI + wrapper, 2026-10-05, on `feat/snack-shack-derived`):**
   - **PAST DATES ARE FROZEN BY THE CALLER, NOT THE RPC.** `buildRegeneratePlan`
     (`src/lib/snack-shack/regenerate-plan.ts`) computes "today" in the ORG's
-    timezone (`todayInTimezone(profiles.timezone)`, never the browser's or the
+    timezone (`todayInTimezone(profiles.timezone)` — now in
+    `src/lib/utils/org-today.ts`, see "One today"; never the browser's or the
     server's date) and passes every stored derived row dated before today
     through to the RPC unchanged, so the RPC keeps it; a derived shift for a
     past date is never added. The RPC has no notion of today. Harness part F
@@ -3844,6 +3970,16 @@ Still open:
   ordering faults, and the section order now exists because of them.
 
 ## Open items
+
+- **`sim:panel-reschedule` is RED on `main`: [M1] and [M3] fail** (63/65,
+  verified on a clean worktree 2026-10-08) — RescheduleRequestModal's default
+  render no longer matches the pre-prop golden. Per "Division panel —
+  Reschedule game", fix the COMPONENT, never re-record without a decision.
+  FIRST in line after `feat/record-game-played` (founder, 2026-10-08).
+- **0106 apply is pending** — after the UTC-today mutant (MU3) dies in a run
+  between 00:00 and 10:00 UTC, and only at a time the founder confirms. The
+  record-played menu items call it, so 0106 must be live before the branch
+  merges.
 
 - **Snack shack last-resort tiebreak is alphabetical, so when shifts < teams
   the same end of the alphabet is skipped every season. Replace with a
