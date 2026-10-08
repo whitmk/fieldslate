@@ -27,6 +27,14 @@
 //   file) has a sentence, and each sentence says nothing was saved; an unknown
 //   error is never shown as success.
 // - A: the RPC arguments carry the bare wall-clock string and the reason.
+// - W: the router — interleague and ineligible games are a stated refusal (even
+//   on Free), Free gets the upsell, eligible games open; there is no lock input.
+// - Z: a save that doesn't come back confirming THIS game is "Nothing was
+//   saved", never success (the zero-rows rule).
+// - S: source wiring (weak by nature — greps, stated): exactly ONE render site
+//   for the modal, inside useRecordPlayed; the modal refuses before any other
+//   read; the save is the RPC and nothing else; no lock read anywhere in it;
+//   "today" in the hook is computed after mount, not during render.
 //
 // ANTI-VACUITY: counters for an offered past rained-out game, an offered past
 // scheduled game, a withheld future game, an official conflict found, a
@@ -45,8 +53,12 @@
 //        (only distinguishable under America/Los_Angeles and Kiritimati —
 //        under UTC the bare string and +00:00 are the same instant, which is
 //        why the sim runs in three zones)
+//   RP8  a reply without the game id treated as success        → [Z1]
+//   RP9  the router drops the Free upsell                      → [W2]
+//   RP10 the modal's open-time guard removed                   → [S2]
+//   RP11 a second render site for the modal                    → [S1]
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   INTERLEAGUE_REFUSAL,
@@ -60,6 +72,8 @@ import {
   recordPlayedOffered,
   recordPlayedRefusal,
   recordPlayedSaveEnabled,
+  recordPlayedSaveOutcome,
+  routeRecordPlayed,
   type AssignedOfficial,
 } from "../../src/lib/schedule/record-played";
 import { parseManualDateTime } from "../../src/lib/schedule/manual-move";
@@ -225,6 +239,54 @@ section("A", () => {
   const a = recordPlayedArgs({ gameId: "g1", when, venueId: "v1", reason: "Moved after the rain" });
   ok(a.p_scheduled_at === "2026-10-06T17:30:00" && a.p_game_id === "g1" && a.p_venue_id === "v1" && a.p_reason === "Moved after the rain",
     "[A1]", JSON.stringify(a));
+});
+
+// ── W ─────────────────────────────────────────────────────────────────────────
+section("W", () => {
+  const past = "2026-10-04T10:00:00+00:00";
+  const il = { status: "cancelled", interleague_org_id: "io", scheduled_at: past };
+  const r1 = routeRecordPlayed(il, { canRecord: false });
+  ok(r1.kind === "blocked" && r1.message === INTERLEAGUE_REFUSAL, "[W1]", `interleague is a stated refusal even on Free, got ${JSON.stringify(r1)}`);
+  const plain = { status: "cancelled", interleague_org_id: null, scheduled_at: past };
+  ok(routeRecordPlayed(plain, { canRecord: false }).kind === "upgrade", "[W2]", "Free gets the upsell");
+  ok(routeRecordPlayed(plain, { canRecord: true }).kind === "open", "[W3]", "Pro opens the form");
+  ok(routeRecordPlayed({ ...plain, status: "completed" }, { canRecord: true }).kind === "blocked", "[W4]", "completed is refused");
+});
+
+// ── Z ─────────────────────────────────────────────────────────────────────────
+section("Z", () => {
+  ok(!recordPlayedSaveOutcome(null, null, "g1").ok, "[Z1]", "no data must not be success");
+  ok(!recordPlayedSaveOutcome({ game_id: "other" }, null, "g1").ok, "[Z2]", "a reply for another game must not be success");
+  const e = recordPlayedSaveOutcome(null, { message: "played_date_in_future" }, "g1");
+  ok(!e.ok && e.message.includes("hasn't happened yet"), "[Z3]", "an error is mapped to its sentence");
+  ok(recordPlayedSaveOutcome({ game_id: "g1", posted_kept: true }, null, "g1").ok, "[Z4]", "a confirmed save is success");
+});
+
+// ── S ─────────────────────────────────────────────────────────────────────────
+function tsxFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((f) => {
+    const p = join(dir, f);
+    return statSync(p).isDirectory() ? tsxFiles(p) : p.endsWith(".tsx") ? [p] : [];
+  });
+}
+section("S", () => {
+  const sites = tsxFiles(join(ROOT, "src")).flatMap((f) => {
+    const n = (readFileSync(f, "utf8").match(/<RecordPlayedModal\b/g) ?? []).length;
+    return n ? [`${f.slice(ROOT.length + 1)}×${n}`] : [];
+  });
+  ok(sites.length === 1 && sites[0] === "src/components/schedule/use-record-played.tsx×1", "[S1]",
+    `the modal must have exactly one render site, in useRecordPlayed: ${sites.join(", ")}`);
+
+  const modal = readFileSync(join(ROOT, "src/components/schedule/record-played-modal.tsx"), "utf8");
+  const guardAt = modal.indexOf("const refused = recordPlayedRefusal(game);");
+  const leagueAt = modal.indexOf('.from("leagues")');
+  ok(guardAt > 0 && leagueAt > guardAt, "[S2]", "the modal must refuse before any other read");
+  ok(modal.includes("supabase.rpc(\n      RECORD_PLAYED_RPC") && modal.includes("recordPlayedSaveOutcome(data, error, gameId)")
+    && !/\.update\(/.test(modal), "[S3]", "the save is the RPC, its outcome checked, and no direct update");
+  ok(!/lock/i.test(modal.replace(/\/\/.*$/gm, "")), "[S4]", "no lock read in the modal's code (comments aside)");
+
+  const hook = readFileSync(join(ROOT, "src/components/schedule/use-record-played.tsx"), "utf8");
+  ok(hook.indexOf("todayInTimezone(tz)") > hook.indexOf("useEffect(() => {"), "[S5]", "today is computed after mount");
 });
 
 for (const [k, v] of Object.entries(counters)) ok(v > 0, `[V-${k}] counter ${k} must be non-zero`, String(v));

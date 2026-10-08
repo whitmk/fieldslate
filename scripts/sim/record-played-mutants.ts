@@ -10,6 +10,8 @@ import { runMutants, type Mutant } from "./mutant-runner";
 
 const LIB = "src/lib/schedule/record-played.ts";
 const TODAY = "src/lib/utils/org-today.ts";
+const MODAL = "src/components/schedule/record-played-modal.tsx";
+const OTHER_SURFACE = "src/components/schedule/use-schedule-reschedule.tsx";
 
 const MUTANTS: Mutant[] = [
   {
@@ -53,6 +55,30 @@ const MUTANTS: Mutant[] = [
     find: "    scheduled_at: `${p.when.isoString}+00:00`,",
     replace: "    scheduled_at: p.when.isoString,",
     expect: "C1",
+  },
+  {
+    id: "RP8", what: "a reply without the game id treated as success", file: LIB,
+    find: "  if (saved !== gameId) {",
+    replace: "  if (saved !== gameId && data !== null) {",
+    expect: "Z1",
+  },
+  {
+    id: "RP9", what: "the router drops the Free upsell", file: LIB,
+    find: `  if (!ctx.canRecord) return { kind: "upgrade" };\n`,
+    replace: ``,
+    expect: "W2",
+  },
+  {
+    id: "RP10", what: "the modal's open-time guard removed", file: MODAL,
+    find: "    const refused = recordPlayedRefusal(game);",
+    replace: "    const refused = null as string | null;",
+    expect: "S2",
+  },
+  {
+    id: "RP11", what: "a second render site for the modal", file: OTHER_SURFACE,
+    find: "  const modals = (\n    <>\n",
+    replace: "  const modals = (\n    <>\n      {false && <RecordPlayedModal gameId=\"\" onClose={() => {}} onSaved={() => {}} />}\n",
+    expect: "S1",
   },
 ];
 

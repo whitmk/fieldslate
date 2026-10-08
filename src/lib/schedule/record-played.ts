@@ -94,6 +94,31 @@ export function recordPlayedRefusal(game: RecordPlayedGame | null): string | nul
   return null;
 }
 
+export const RECORD_PLAYED_UPGRADE_FEATURE = "Recording where a game was played";
+
+export type RecordPlayedRoute =
+  | { kind: "open" }
+  | { kind: "upgrade" }
+  | { kind: "blocked"; message: string };
+
+/**
+ * Where a click on the action goes. ONE router for every entry point — the
+ * modal is rendered only by useRecordPlayed, which calls this. Interleague and
+ * ineligible statuses come back as a stated refusal shown at the row; Free
+ * gets the upsell. NO lock check: a correction is allowed on a locked
+ * division (the played-date rule is the fence). The modal re-checks the game
+ * when it opens, and the database checks everything again at save.
+ */
+export function routeRecordPlayed(
+  game: RecordPlayedGame,
+  ctx: { canRecord: boolean },
+): RecordPlayedRoute {
+  const refusal = recordPlayedRefusal(game);
+  if (refusal) return { kind: "blocked", message: refusal };
+  if (!ctx.canRecord) return { kind: "upgrade" };
+  return { kind: "open" };
+}
+
 function fmtDay(date: string): string {
   return fmtGameDate(`${date}T12:00:00`);
 }
@@ -247,6 +272,25 @@ export function recordPlayedErrorMessage(raw: string): string {
     if (raw.includes(key)) return text;
   }
   return `${NOTHING} ${raw}`.trim();
+}
+
+/**
+ * The outcome of the call. A success must come back carrying the game's id —
+ * anything else (an error, no data, a reply without the id) is reported as
+ * "Nothing was saved", never as success. The function raises rather than
+ * updating zero rows, so a missing id would mean the call did not do its job.
+ */
+export function recordPlayedSaveOutcome(
+  data: unknown,
+  error: { message: string } | null,
+  gameId: string,
+): { ok: true } | { ok: false; message: string } {
+  if (error) return { ok: false, message: recordPlayedErrorMessage(error.message) };
+  const saved = (data as { game_id?: unknown } | null)?.game_id;
+  if (saved !== gameId) {
+    return { ok: false, message: `${NOTHING} The save didn't confirm this game. Close and try again.` };
+  }
+  return { ok: true };
 }
 
 /** Every refusal key the function raises — the sim pins this list against the

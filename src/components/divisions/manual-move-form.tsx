@@ -19,11 +19,8 @@ import { withLogSource } from "@/lib/schedule/log-source";
 import { saveOutcome, saveScope } from "@/lib/schedule/picker-guard";
 import { parseAvailability, type VenueAvailability } from "@/lib/venues/availability";
 import { qualifiedVenueLabel, byQualifiedVenueLabel } from "@/lib/venues/venue-label";
-import {
-  durationFromSettings,
-  occupancyWindow,
-  toMins,
-} from "@/lib/schedule/reschedule-slots";
+import { durationFromSettings } from "@/lib/schedule/reschedule-slots";
+import { useDayOccupancy } from "./use-day-occupancy";
 import {
   fetchDivisionLocks,
   formatLockError,
@@ -35,8 +32,6 @@ import {
   manualSaveLockRefusal,
   parseManualDateTime,
   type LockRead,
-  type ManualBookedGame,
-  type ManualTeamGame,
 } from "@/lib/schedule/manual-move";
 
 type VenueRow = {
@@ -62,42 +57,6 @@ type Ctx = {
   bufferMin: number;
   blackoutDates: Set<string>;
 };
-
-type DayGameRow = {
-  id: string;
-  scheduled_at: string;
-  venue_id: string | null;
-  home_team_id: string;
-  away_team_id: string | null;
-  external_team_name: string | null;
-  home_team: { name: string; division: { name: string; settings: unknown } | null } | null;
-  away_team: { name: string } | null;
-  interleague_org: { name: string } | null;
-  venue: { name: string } | null;
-};
-
-const DAY_GAME_SELECT =
-  "id, scheduled_at, venue_id, home_team_id, away_team_id, external_team_name, " +
-  "home_team:teams!home_team_id(name, division:divisions(name, settings)), " +
-  "away_team:teams!away_team_id(name), " +
-  "interleague_org:interleague_orgs!interleague_org_id(name), " +
-  "venue:venues(name)";
-
-function opponentOf(g: DayGameRow): string {
-  return (
-    g.away_team?.name ??
-    g.external_team_name ??
-    g.interleague_org?.name ??
-    "TBD"
-  );
-}
-
-function spanOf(g: DayGameRow) {
-  return {
-    startMin: toMins(g.scheduled_at.substring(11, 16)),
-    durationMin: durationFromSettings(g.home_team?.division?.settings),
-  };
-}
 
 const inputCls =
   "h-10 rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20";
@@ -138,11 +97,6 @@ export function ManualMoveForm({
   const [date, setDate] = useState(initialScheduledAt?.substring(0, 10) ?? "");
   const [time, setTime] = useState(initialScheduledAt?.substring(11, 16) ?? "");
   const [venueId, setVenueId] = useState(initialVenueId ?? "");
-
-  // Games on the chosen date — null = that read FAILED (reported, not hidden);
-  // undefined = not loaded yet for this (date, venue).
-  const [venueGames, setVenueGames] = useState<ManualBookedGame[] | null | undefined>(undefined);
-  const [teamGames, setTeamGames] = useState<ManualTeamGame[] | null | undefined>(undefined);
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -214,70 +168,18 @@ export function ManualMoveForm({
 
   // Day reads depend on (date, venue) only — a time change recomputes locally.
   const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
-  useEffect(() => {
-    if (!validDate || !venueId) {
-      setVenueGames(undefined);
-      setTeamGames(undefined);
-      return;
-    }
-    let stale = false;
-    setVenueGames(undefined);
-    setTeamGames(undefined);
-    const supabase = createClient();
-    // DATE-bounded, never league-bounded: another season's game at the same
-    // field on the same date genuinely occupies it (see occupancyWindow).
-    // One field on one day, and two teams on one day — bounded far below
-    // PostgREST's 1000-row cap, so a plain read (with its error checked).
-    const win = occupancyWindow(validDate, validDate);
-    void Promise.all([
-      supabase
-        .from("games")
-        .select(DAY_GAME_SELECT)
-        .eq("venue_id", venueId)
-        .neq("id", gameId)
-        .neq("status", "cancelled")
-        .gte("scheduled_at", win.fromIso)
-        .lt("scheduled_at", win.toIsoExclusive),
-      supabase
-        .from("games")
-        .select(DAY_GAME_SELECT)
-        .or(
-          `home_team_id.eq.${homeTeamId},away_team_id.eq.${homeTeamId},` +
-            `home_team_id.eq.${awayTeamId},away_team_id.eq.${awayTeamId}`,
-        )
-        .neq("id", gameId)
-        .neq("status", "cancelled")
-        .gte("scheduled_at", win.fromIso)
-        .lt("scheduled_at", win.toIsoExclusive),
-    ]).then(([vq, tq]) => {
-      if (stale) return;
-      setVenueGames(
-        vq.error
-          ? null
-          : ((vq.data ?? []) as unknown as DayGameRow[]).map((g) => ({
-              ...spanOf(g),
-              label: `${g.home_team?.division?.name ?? "Game"}: ${g.home_team?.name ?? "TBD"} vs ${opponentOf(g)}`,
-            })),
-      );
-      setTeamGames(
-        tq.error
-          ? null
-          : ((tq.data ?? []) as unknown as DayGameRow[]).flatMap((g) => {
-              const ours = [homeTeamId, awayTeamId].filter(
-                (id) => id === g.home_team_id || id === g.away_team_id,
-              );
-              return ours.map((id) => ({
-                ...spanOf(g),
-                teamName: id === homeTeamId ? homeTeamName : awayTeamName,
-                label: `${g.home_team?.name ?? "TBD"} vs ${opponentOf(g)}${g.venue?.name ? ` at ${g.venue.name}` : ""}`,
-              }));
-            }),
-      );
-    });
-    return () => {
-      stale = true;
-    };
-  }, [validDate, venueId, gameId, homeTeamId, awayTeamId, homeTeamName, awayTeamName]);
+  // Games on the chosen date — null = that read FAILED (reported, not hidden);
+  // undefined = not loaded yet for this (date, venue). Shared with "Record
+  // where it was played" — see use-day-occupancy.ts.
+  const { venueGames, teamGames } = useDayOccupancy({
+    gameId,
+    date: validDate,
+    venueId,
+    teams: [
+      { id: homeTeamId, name: homeTeamName },
+      { id: awayTeamId, name: awayTeamName },
+    ],
+  });
 
   const conflicts = useMemo(() => {
     if (!ctx || !when || !venue || venueGames === undefined || teamGames === undefined) {
