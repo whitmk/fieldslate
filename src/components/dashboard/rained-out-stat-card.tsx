@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   CloudRain, X, CalendarClock, RotateCcw, Loader2,
-  CalendarDays, MapPin, Layers,
+  CalendarDays, MapPin, Layers, ClipboardCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
@@ -14,6 +14,8 @@ import { useGameNoteEditor } from "@/components/schedule/use-game-note-editor";
 import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
 import type { GameNoteFields } from "@/lib/schedule/game-notes";
 import { rescheduleItemVisible } from "@/lib/schedule/schedule-page-reschedule-route";
+import { useRecordPlayed } from "@/components/schedule/use-record-played";
+import { RAINED_OUT_ENTRY_LABEL } from "@/lib/schedule/record-played";
 
 export type RainedOutGame = {
   id: string;
@@ -58,7 +60,11 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
     lockedDivisionIds: NO_LOCKS,
     logSource: "rained-out card",
   });
-  void leagueId; // routing carries each game's own league_id now
+  // "Already played? Record where." — beside Reschedule, only once the game's
+  // original date is today or earlier in the league's timezone. One hook, one
+  // router, one modal (use-record-played). leagueId names the season whose
+  // org timezone defines "today".
+  const recordPlayed = useRecordPlayed({ leagueId, canRecord: canReschedule });
   const note = useGameNoteEditor({
     logSource: "rained-out card",
     onSaved: (gameId, fresh) => setGames((prev) => prev.map((g) => (g.id === gameId ? { ...g, ...fresh } : g))),
@@ -196,8 +202,18 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
                           </div>
                         )}
 
+                        {recordPlayed.notice?.gameId === game.id && (
+                          <div className="mt-2">
+                            <MoveNoticeLine
+                              message={recordPlayed.notice.message}
+                              onDismiss={recordPlayed.clearNotice}
+                              inset="mx-0"
+                            />
+                          </div>
+                        )}
+
                         {/* Actions */}
-                        <div className="mt-3 flex items-center gap-2">
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
                           {rescheduleItemVisible("cancelled", canReschedule, !!game.interleague_org_id) && (
                             <button
                               onClick={() => reschedule.open(game)}
@@ -206,6 +222,19 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
                             >
                               <CalendarClock className="h-3 w-3" />
                               {game.interleague_org_id ? "Propose makeup time" : "Reschedule"}
+                            </button>
+                          )}
+                          {recordPlayed.offered(game) && (
+                            <button
+                              onClick={() => {
+                                reschedule.clearNotice();
+                                recordPlayed.open(game);
+                              }}
+                              disabled={isRestoring}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-[#0C1F3F] transition-colors hover:border-gray-300 disabled:opacity-50"
+                            >
+                              <ClipboardCheck className="h-3 w-3" />
+                              {RAINED_OUT_ENTRY_LABEL}
                             </button>
                           )}
                           <button
@@ -232,6 +261,7 @@ export function RainedOutStatCard({ count, initialGames, leagueId, divisionNames
       )}
 
       {reschedule.modals}
+      {recordPlayed.modals}
       {note.modal}
     </>
   );

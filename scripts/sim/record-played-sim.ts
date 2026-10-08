@@ -39,7 +39,9 @@
 //   min/max), shows the message directly under the date field, and passes the
 //   refusal into Save; the Schedule page's shared "…" menu (row AND phone
 //   card) shows the item only when offered, right after Reschedule, and both
-//   it and the calendar popover go through useRecordPlayed.
+//   it and the calendar popover go through useRecordPlayed; the league page's
+//   rained-out card and the division panel's rained-out row show "Already
+//   played? Record where." only when offered, right after their Reschedule.
 //
 // ANTI-VACUITY: counters for an offered past rained-out game, an offered past
 // scheduled game, a withheld future game, an official conflict found, a
@@ -65,6 +67,7 @@
 //   RP12 the modal trusts the picker: no typed-date check      → [S6]
 //   RP13 the date refusal no longer disables Save              → [S7]
 //   RP14 the menu shows the item on every game                 → [S8]
+//   RP15 the rained-out card shows it on every rained-out game → [S9]
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -318,6 +321,21 @@ section("S", () => {
       && list.includes("useRecordPlayed({") && cal.includes("useRecordPlayed({")
       && cal.includes("if (!recordPlayed.offered(rp)) return null;") && cal.includes("recordPlayed.open(rp)"),
     "[S8]", "the menu (row + card) shows the item only when offered, beside Reschedule; the calendar uses the hook too");
+
+  // S9 — rained-out entry points (commit 5).
+  const card = readFileSync(join(ROOT, "src/components/dashboard/rained-out-stat-card.tsx"), "utf8");
+  const panel = readFileSync(join(ROOT, "src/components/divisions/division-schedule-panel.tsx"), "utf8");
+  function gatedAfterReschedule(src: string, reschedText: string): boolean {
+    const r = src.indexOf(reschedText);
+    const gate = src.indexOf("{recordPlayed.offered(game) && (", r);
+    const label = src.indexOf("{RAINED_OUT_ENTRY_LABEL}", gate);
+    return r > 0 && gate > r && label > gate && (src.match(/RAINED_OUT_ENTRY_LABEL\}/g) ?? []).length === 1;
+  }
+  ok(gatedAfterReschedule(card, `"Propose makeup time" : "Reschedule"}`)
+      && gatedAfterReschedule(panel, "                                Reschedule\n                              </button>")
+      && card.includes("useRecordPlayed({ leagueId, canRecord: canReschedule })")
+      && /useRecordPlayed\(\{\s*leagueId,\s*canRecord: canReschedule,/.test(panel),
+    "[S9]", "the rained-out card and panel row show the action only when offered, after Reschedule");
 
   const hook = readFileSync(join(ROOT, "src/components/schedule/use-record-played.tsx"), "utf8");
   ok(hook.indexOf("todayInTimezone(tz)") > hook.indexOf("useEffect(() => {"), "[S5]", "today is computed after mount");

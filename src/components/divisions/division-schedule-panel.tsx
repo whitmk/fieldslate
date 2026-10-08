@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Zap, Loader2, CheckCircle2, AlertTriangle, CalendarDays,
   RefreshCw, Plus, PlusCircle, Printer, CloudRain, CalendarClock,
-  Pencil, Trash2, Check, Users, ListChecks, Lock, LockOpen, Send,
+  Pencil, Trash2, Check, Users, ListChecks, Lock, LockOpen, Send, ClipboardCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { renameTeamInline, reconcileJsonbAfterTeamDelete } from "@/lib/divisions/reconcile-teams";
@@ -46,6 +46,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { rainoutConfirmCopy } from "@/lib/schedule/rainout-confirm";
 import { markGameRainedOut, markGamesRainedOut, bulkRainoutMessage } from "@/lib/schedule/rainout-write";
 import { MoveGameIcon, MoveNoticeLine } from "./move-game-row";
+import { useRecordPlayed } from "@/components/schedule/use-record-played";
+import { RAINED_OUT_ENTRY_LABEL } from "@/lib/schedule/record-played";
 import { useGameNoteEditor } from "@/components/schedule/use-game-note-editor";
 import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
 import type { GameNoteFields } from "@/lib/schedule/game-notes";
@@ -250,6 +252,18 @@ export function DivisionSchedulePanel({
   const [requestBusy, setRequestBusy] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [moveUpgradeOpen, setMoveUpgradeOpen] = useState(false);
+  // "Already played? Record where." on a rained-out row whose original date is
+  // today or earlier in the league's timezone. The panel holds its games in
+  // client state, so a saved correction refetches them. One hook, one router,
+  // one modal (use-record-played) — NOT lock-gated, by decision.
+  const recordPlayed = useRecordPlayed({
+    leagueId,
+    canRecord: canReschedule,
+    onDone: () => {
+      fetchGames();
+      onScheduleChange?.();
+    },
+  });
   // Game notes — the one editor. The panel holds its games in client state,
   // so the fresh row is patched in place rather than waiting on a refetch.
   const note = useGameNoteEditor({
@@ -1491,6 +1505,19 @@ export function DivisionSchedulePanel({
                                 Reschedule
                               </button>
                             )}
+                            {recordPlayed.offered(game) && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRowNotice(null);
+                                  recordPlayed.open(game);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600 transition-colors hover:border-[#0C1F3F] hover:text-[#0C1F3F]"
+                              >
+                                <ClipboardCheck className="h-3 w-3" />
+                                {RAINED_OUT_ENTRY_LABEL}
+                              </button>
+                            )}
                           </div>
                         ) : !selectMode ? (
                           /* Rainout cloud + "Reschedule game" sit as a tight
@@ -1530,6 +1557,12 @@ export function DivisionSchedulePanel({
                         message={rowNotice.message}
                         link={rowNotice.link}
                         onDismiss={() => setRowNotice(null)}
+                      />
+                    )}
+                    {recordPlayed.notice?.gameId === game.id && !selectMode && (
+                      <MoveNoticeLine
+                        message={recordPlayed.notice.message}
+                        onDismiss={recordPlayed.clearNotice}
                       />
                     )}
                     {showSlots && (
@@ -1799,6 +1832,8 @@ export function DivisionSchedulePanel({
           onClose={() => setMoveUpgradeOpen(false)}
         />
       )}
+
+      {recordPlayed.modals}
 
       {/* ── Reschedule modal ── */}
       {rescheduleGame && (

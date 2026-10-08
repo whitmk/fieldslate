@@ -12,6 +12,7 @@ const LIB = "src/lib/schedule/record-played.ts";
 const TODAY = "src/lib/utils/org-today.ts";
 const MODAL = "src/components/schedule/record-played-modal.tsx";
 const LIST = "src/components/schedule/schedule-list.tsx";
+const CARD = "src/components/dashboard/rained-out-stat-card.tsx";
 const OTHER_SURFACE = "src/components/schedule/use-schedule-reschedule.tsx";
 
 const MUTANTS: Mutant[] = [
@@ -98,6 +99,12 @@ const MUTANTS: Mutant[] = [
     find: "      {recordPlayedOffered && (",
     replace: "      {(true || recordPlayedOffered) && (",
     expect: "S8",
+  },
+  {
+    id: "RP15", what: "the rained-out card shows it on every rained-out game", file: CARD,
+    find: "                          {recordPlayed.offered(game) && (",
+    replace: "                          {(true || recordPlayed.offered(game)) && (",
+    expect: "S9",
   },
 ];
 
