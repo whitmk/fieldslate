@@ -31,6 +31,30 @@ const MUTANTS: Mutant[] = [
     replace: "  const orgId = bodyOrgId ?? (await getCurrentOrgId(supabase, user.id, memberships));",
     expect: "A3",
   },
+  {
+    id: "SB1", what: "upgradeOnly accepted from any plan", file: ROUTE,
+    find: "  if (upgradeOnly && currentPlan !== \"pro\") {",
+    replace: "  if (false && upgradeOnly && currentPlan !== \"pro\") {",
+    expect: "B1",
+  },
+  {
+    id: "SB2", what: "upgradeOnly refused only from Free (Elite let through)", file: ROUTE,
+    find: "  if (upgradeOnly && currentPlan !== \"pro\") {",
+    replace: "  if (upgradeOnly && currentPlan === \"free\") {",
+    expect: "B2",
+  },
+  {
+    id: "SB3", what: "a Pro season accepted on an Elite org (downgrade)", file: ROUTE,
+    find: "  if (!upgradeOnly && plan === \"pro\" && currentPlan === \"elite\") {",
+    replace: "  if (false && !upgradeOnly && plan === \"pro\" && currentPlan === \"elite\") {",
+    expect: "B4",
+  },
+  {
+    id: "SB4", what: "the current plan is not read", file: ROUTE,
+    find: "    .select(\"comped, pending_promo, plan\")",
+    replace: "    .select(\"comped, pending_promo\")",
+    expect: "B3",
+  },
 ];
 
 runMutants({

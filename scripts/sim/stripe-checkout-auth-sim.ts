@@ -16,6 +16,8 @@
 //
 // SECTIONS
 //   A  sign-in and org derivation (commit 1)
+//   B  the purchase fits the org's current plan (commit 2): upgradeOnly only
+//      from Pro; no Pro season on an Elite org
 //
 // Anti-vacuity: an allowed session and a refused attempt must each happen at
 // least once, or the run fails.
@@ -69,14 +71,22 @@ function rowsFor(table: string): Record<string, unknown>[] {
 
 function builder(table: string) {
   const filters: Filter[] = [];
+  // Only the selected columns come back, like PostgREST — so a read that
+  // stops selecting a column (mutant SB4) really loses it.
+  let cols: string[] | null = null;
   const run = () =>
-    rowsFor(table).filter((r) =>
-      filters.every((f) =>
-        f.op === "eq" ? r[f.col] === f.val : (f.val as unknown[]).includes(r[f.col]),
-      ),
-    );
+    rowsFor(table)
+      .filter((r) =>
+        filters.every((f) =>
+          f.op === "eq" ? r[f.col] === f.val : (f.val as unknown[]).includes(r[f.col]),
+        ),
+      )
+      .map((r) => (cols ? Object.fromEntries(cols.map((c) => [c, r[c]])) : r));
   const b = {
-    select: () => b,
+    select: (s?: string) => {
+      cols = s ? s.split(",").map((c) => c.trim()) : null;
+      return b;
+    },
     eq: (col: string, val: unknown) => (filters.push({ col, op: "eq", val }), b),
     in: (col: string, val: unknown[]) => (filters.push({ col, op: "in", val }), b),
     order: () => b,
@@ -262,6 +272,39 @@ async function main() {
     { user: { id: USER }, memberships: [member(ORG_COMPED, "admin")], cookieOrg: ORG_COMPED },
     { ...BASE_BODY, plan: "elite", orgId: ORG_COMPED },
   );
+
+  // ── B: the purchase must fit the org's current plan ───────────────────────
+  // Every case is a signed-in member of A buying for A; only A's plan moves.
+  const asA: Setup = { user: { id: USER }, memberships: [member(ORG_A)] };
+  const forA = { ...BASE_BODY, orgId: ORG_A };
+  const onPlan = (p: Profile["plan"]) => {
+    profiles[ORG_A].plan = p;
+  };
+
+  // B1 the $100 Pro→Elite difference from Free — Elite for $100.
+  onPlan("free");
+  await expectRefused("B1", 400, asA, { ...forA, plan: "elite", upgradeOnly: true });
+
+  // B2 the upgrade price from Elite — pays for nothing.
+  onPlan("elite");
+  await expectRefused("B2", 400, asA, { ...forA, plan: "elite", upgradeOnly: true });
+
+  // B3 the upgrade price from Pro — the one case it exists for.
+  onPlan("pro");
+  await expectSession("B3", asA, { ...forA, plan: "elite", upgradeOnly: true }, {
+    orgId: ORG_A, plan: "elite", upgradeOnly: true,
+  });
+
+  // B4 a Pro season on an Elite org — would set plan = 'pro'.
+  onPlan("elite");
+  await expectRefused("B4", 400, asA, { ...forA, plan: "pro" });
+
+  // B5–B7 the purchases the UI does offer still go through.
+  await expectSession("B5", asA, { ...forA, plan: "elite" }, { plan: "elite", upgradeOnly: false });
+  onPlan("pro");
+  await expectSession("B6", asA, { ...forA, plan: "pro" }, { plan: "pro", upgradeOnly: false });
+  onPlan("free");
+  await expectSession("B7", asA, { ...forA, plan: "elite" }, { plan: "elite", upgradeOnly: false });
 
   // ── Anti-vacuity ──────────────────────────────────────────────────────────
   for (const [name, n] of Object.entries(counters)) {

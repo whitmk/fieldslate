@@ -117,12 +117,13 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
   const { data: orgProfile, error: compErr } = await admin
     .from("profiles")
-    .select("comped, pending_promo")
+    .select("comped, pending_promo, plan")
     .eq("id", orgId)
     .maybeSingle();
   const profileRow = orgProfile as unknown as {
     comped: boolean;
     pending_promo: string | null;
+    plan: string;
   } | null;
   const comped = profileRow?.comped;
   if (comped === true) {
@@ -141,6 +142,26 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "Could not verify account billing status — please try again." },
       { status: 503 },
+    );
+  }
+
+  // The purchase must fit the org's CURRENT plan, because the webhook applies
+  // it without looking (process_checkout_event sets plan = the purchased
+  // tier). The UI never offers either case below; a hand-built request could:
+  //   - upgradeOnly is the $100 Pro→Elite difference. From Free it would buy
+  //     Elite for $100; from Elite it buys nothing.
+  //   - a Pro purchase on an Elite org would set plan = 'pro' — a downgrade.
+  const currentPlan = profileRow?.plan;
+  if (upgradeOnly && currentPlan !== "pro") {
+    return NextResponse.json(
+      { error: "The Elite upgrade price is only for leagues on Pro." },
+      { status: 400 },
+    );
+  }
+  if (!upgradeOnly && plan === "pro" && currentPlan === "elite") {
+    return NextResponse.json(
+      { error: "This league is on Elite — an added season must be Elite too." },
+      { status: 400 },
     );
   }
 
