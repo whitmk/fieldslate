@@ -2,9 +2,18 @@ import { NextResponse } from "next/server";
 import { createCheckoutSession, type CheckoutParams } from "@/lib/stripe";
 import { resolvePromoCoupon } from "@/lib/promo";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { getCurrentOrgId, listMemberships } from "@/lib/orgs/context";
 
 // Server-only: creates a Stripe Checkout session for a per-season purchase.
 // Uses STRIPE_SECRET_KEY via getStripe(). Price IDs come from env only.
+//
+// WHO IS BUYING, AND FOR WHICH ORG, IS DECIDED HERE — never by the request
+// body. The caller must be signed in, and the org is the one they are acting
+// under (getCurrentOrgId) AND a member of. The webhook trusts the session's
+// metadata.orgId, so whatever this route names is the org that gets upgraded.
+// Before 2026-10-09 the org came straight from the body with no sign-in check.
+// Harness: npm run sim:stripe-checkout-auth (+ :mutants).
 export const runtime = "nodejs";
 
 type Body = {
@@ -17,6 +26,18 @@ type Body = {
 };
 
 export async function POST(request: Request) {
+  // Signed in, or nothing — checked before the body is even read.
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json(
+      { error: "Sign in to start a checkout." },
+      { status: 401 },
+    );
+  }
+
   let body: Body;
   try {
     body = await request.json();
@@ -29,7 +50,7 @@ export async function POST(request: Request) {
   // Pro→Elite tier upgrade: charge the one-time difference via a dedicated
   // Price, and signal the webhook to flip the tier without adding a season.
   const upgradeOnly = body.upgradeOnly === true;
-  const orgId = typeof body.orgId === "string" ? body.orgId : "";
+  const bodyOrgId = typeof body.orgId === "string" ? body.orgId : null;
   const successUrl = typeof body.successUrl === "string" ? body.successUrl : "";
   const cancelUrl = typeof body.cancelUrl === "string" ? body.cancelUrl : "";
 
@@ -53,13 +74,32 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (!orgId) {
-    return NextResponse.json({ error: "orgId is required." }, { status: 400 });
-  }
   if (!successUrl || !cancelUrl) {
     return NextResponse.json(
       { error: "successUrl and cancelUrl are required." },
       { status: 400 },
+    );
+  }
+
+  // The org being bought for: the one the caller is acting under, and only if
+  // they are really a member. The explicit membership test matters because
+  // getCurrentOrgId falls back to the user's own id when memberships can't be
+  // read — a fallback that must never reach Stripe.
+  const memberships = await listMemberships(supabase, user.id);
+  const orgId = await getCurrentOrgId(supabase, user.id, memberships);
+  if (!memberships.some((m) => m.org_id === orgId)) {
+    return NextResponse.json(
+      { error: "We couldn't confirm your league membership — please sign in again." },
+      { status: 403 },
+    );
+  }
+  // The page that opened checkout names the org it showed. If that is not the
+  // org the caller is acting under now (switched leagues in another tab), a
+  // payment would land somewhere they didn't see — refuse instead.
+  if (bodyOrgId !== null && bodyOrgId !== orgId) {
+    return NextResponse.json(
+      { error: "You switched leagues since this page loaded — refresh and try again." },
+      { status: 409 },
     );
   }
 
