@@ -29,7 +29,6 @@ export function CompleteSetupCta({
     setLoading(true);
     setError("");
     try {
-      const origin = window.location.origin;
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -37,8 +36,8 @@ export function CompleteSetupCta({
           plan,
           quantity: 1,
           orgId,
-          successUrl: `${origin}/dashboard?welcome=true`,
-          cancelUrl: `${origin}/dashboard`,
+          // The route builds the return URLs from SITE_URL.
+          returnTo: "welcome",
         }),
       });
       const data = (await res.json()) as { url?: string; error?: string };

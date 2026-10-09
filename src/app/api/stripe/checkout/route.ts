@@ -4,6 +4,7 @@ import { resolvePromoCoupon } from "@/lib/promo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrgId, listMemberships } from "@/lib/orgs/context";
+import { SITE_URL } from "@/lib/site";
 
 // Server-only: creates a Stripe Checkout session for a per-season purchase.
 // Uses STRIPE_SECRET_KEY via getStripe(). Price IDs come from env only.
@@ -21,9 +22,20 @@ type Body = {
   quantity?: unknown;
   upgradeOnly?: unknown;
   orgId?: unknown;
-  successUrl?: unknown;
-  cancelUrl?: unknown;
+  returnTo?: unknown;
 };
+
+// Where Stripe sends the buyer afterwards. Built HERE from SITE_URL — never
+// taken from the request, which let anyone mint a genuine FieldSlate checkout
+// page that returned the payer to a site of their choosing. The page picks one
+// of these by name; anything else (including an older page that still sends
+// successUrl/cancelUrl and no returnTo) gets "upgraded".
+const RETURN_PATHS = {
+  upgraded: "/dashboard?upgraded=true",
+  welcome: "/dashboard?welcome=true",
+} as const;
+type ReturnTo = keyof typeof RETURN_PATHS;
+const CANCEL_PATH = "/dashboard";
 
 export async function POST(request: Request) {
   // Signed in, or nothing — checked before the body is even read.
@@ -51,8 +63,9 @@ export async function POST(request: Request) {
   // Price, and signal the webhook to flip the tier without adding a season.
   const upgradeOnly = body.upgradeOnly === true;
   const bodyOrgId = typeof body.orgId === "string" ? body.orgId : null;
-  const successUrl = typeof body.successUrl === "string" ? body.successUrl : "";
-  const cancelUrl = typeof body.cancelUrl === "string" ? body.cancelUrl : "";
+  const returnTo: ReturnTo = body.returnTo === "welcome" ? "welcome" : "upgraded";
+  const successUrl = `${SITE_URL}${RETURN_PATHS[returnTo]}`;
+  const cancelUrl = `${SITE_URL}${CANCEL_PATH}`;
 
   if (plan !== "pro" && plan !== "elite") {
     return NextResponse.json(
@@ -71,12 +84,6 @@ export async function POST(request: Request) {
   if (upgradeOnly && plan !== "elite") {
     return NextResponse.json(
       { error: "upgradeOnly applies only to an Elite upgrade." },
-      { status: 400 },
-    );
-  }
-  if (!successUrl || !cancelUrl) {
-    return NextResponse.json(
-      { error: "successUrl and cancelUrl are required." },
       { status: 400 },
     );
   }

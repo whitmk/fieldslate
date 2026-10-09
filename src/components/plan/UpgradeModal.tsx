@@ -73,9 +73,9 @@ export function SeasonUpgradeModal({
           quantity,
           upgradeOnly,
           orgId,
-          // Absolute URLs — Stripe requires them. The route forwards as-is.
-          successUrl: `${window.location.origin}/dashboard?upgraded=true`,
-          cancelUrl: `${window.location.origin}/dashboard`,
+          // The route builds the return URLs from SITE_URL; this only names
+          // which one.
+          returnTo: "upgraded",
         }),
       });
       const data = await res.json();

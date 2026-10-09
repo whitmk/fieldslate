@@ -233,6 +233,22 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `quantity !== 1`. A Free→paid upgrade converts the org's existing season in
   place; add-season buys one more; `upgradeOnly` (Pro→Elite, $100 delta) flips
   the tier without adding a season.
+- **`/api/stripe/checkout` decides WHO buys, FOR WHICH ORG, ON WHAT TERMS —
+  never the request body (2026-10-09).** Before that date it took `orgId`
+  from the body with no sign-in check, and `successUrl`/`cancelUrl` from the
+  body too. The webhook trusts the session's `metadata.orgId`, so whatever the
+  route names is the org that gets upgraded. Now:
+  1. No signed-in user → 401, before the body is read.
+  2. The org is `getCurrentOrgId` AND must be one of the caller's
+     memberships (403 — its fall-back to the user's own id never reaches
+     Stripe). A body `orgId` that differs → 409 "switched leagues".
+  3. The purchase must fit the CURRENT plan, because `process_checkout_event`
+     applies the tier blind: `upgradeOnly` only from Pro (from Free it was
+     Elite for $100), and no Pro season on an Elite org (it set plan='pro').
+  4. Return URLs are built from `SITE_URL`; the page names one with
+     `returnTo` (`upgraded` | `welcome`, anything else → `upgraded`).
+  Harness: `npm run sim:stripe-checkout-auth` (+ `:mutants`, 12) drives the
+  real route with Supabase/Stripe faked at the module loader.
 - **Webhook idempotency is claim-first, inside the RPC.** Stripe delivers
   `checkout.session.completed` at-least-once and retries for ~3 days.
   `process_checkout_event` (migration 0067) claims `event.id` in

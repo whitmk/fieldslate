@@ -18,6 +18,7 @@
 //   A  sign-in and org derivation (commit 1)
 //   B  the purchase fits the org's current plan (commit 2): upgradeOnly only
 //      from Pro; no Pro season on an Elite org
+//   C  return URLs built from SITE_URL by name (commit 3); body URLs ignored
 //
 // Anti-vacuity: an allowed session and a refused attempt must each happen at
 // least once, or the run fails.
@@ -25,6 +26,8 @@
 // Mutants: npm run sim:stripe-checkout-auth:mutants — each must fail FIRST at
 // its own assertion.
 import Module from "node:module";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 type Membership = { org_id: string; role: "owner" | "admin"; added_at: string };
 type Profile = {
@@ -156,12 +159,7 @@ function member(org: string, role: "owner" | "admin" = "owner"): Membership {
   return { org_id: org, role, added_at: "2026-01-01T00:00:00Z" };
 }
 
-const BASE_BODY = {
-  plan: "pro",
-  quantity: 1,
-  successUrl: "https://www.thefieldslate.com/dashboard?upgraded=true",
-  cancelUrl: "https://www.thefieldslate.com/dashboard",
-};
+const BASE_BODY = { plan: "pro", quantity: 1, returnTo: "upgraded" };
 
 async function post(
   setup: Setup,
@@ -305,6 +303,62 @@ async function main() {
   await expectSession("B6", asA, { ...forA, plan: "pro" }, { plan: "pro", upgradeOnly: false });
   onPlan("free");
   await expectSession("B7", asA, { ...forA, plan: "elite" }, { plan: "elite", upgradeOnly: false });
+
+  // ── C: return URLs are built on the server ────────────────────────────────
+  // Expected values are LITERALS, not SITE_URL, so a change to the base URL
+  // shows up here too.
+  onPlan("free");
+  const hostile = {
+    successUrl: "https://evil.example/thanks",
+    cancelUrl: "https://evil.example/cancel",
+  };
+
+  // C1 a hostile body: both URLs are ignored.
+  {
+    const tagSuccess = "C1a";
+    const tagCancel = "C1b";
+    try {
+      const r = await post(asA, { plan: "pro", quantity: 1, orgId: ORG_A, returnTo: "upgraded", ...hostile });
+      const s = r.sessions[0] ?? {};
+      check(tagSuccess, r.status === 200 && r.sessions.length === 1, `expected one session, got ${r.status}/${r.sessions.length}`);
+      check(tagSuccess, s.successUrl === "https://www.thefieldslate.com/dashboard?upgraded=true",
+        `successUrl: got ${JSON.stringify(s.successUrl)}`);
+      check(tagCancel, s.cancelUrl === "https://www.thefieldslate.com/dashboard",
+        `cancelUrl: got ${JSON.stringify(s.cancelUrl)}`);
+      if (r.sessions.length === 1) counters.allowedSession++;
+    } catch (err) {
+      check(tagSuccess, false, `CRASH: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // C2 returnTo "welcome" (the post-setup CTA).
+  await expectSession("C2", asA, { plan: "pro", quantity: 1, orgId: ORG_A, returnTo: "welcome", ...hostile }, {
+    successUrl: "https://www.thefieldslate.com/dashboard?welcome=true",
+    cancelUrl: "https://www.thefieldslate.com/dashboard",
+  });
+
+  // C3 no returnTo — a tab still running the old page sends only URLs. It
+  // still gets a checkout, returning to "upgraded".
+  await expectSession("C3", asA, { plan: "pro", quantity: 1, orgId: ORG_A, ...hostile }, {
+    successUrl: "https://www.thefieldslate.com/dashboard?upgraded=true",
+  });
+
+  // C4 source wiring (a grep — weak by nature): both callers name a returnTo
+  // and send no URLs; the route never reads a URL from the body.
+  {
+    const read = (p: string) => readFileSync(join(__dirname, "../..", p), "utf8");
+    const callers = {
+      "src/components/plan/UpgradeModal.tsx": '"upgraded"',
+      "src/components/dashboard/complete-setup-cta.tsx": '"welcome"',
+    };
+    for (const [file, value] of Object.entries(callers)) {
+      const src = read(file);
+      check("C4", src.includes(`returnTo: ${value}`), `${file} does not send returnTo: ${value}`);
+      check("C4", !/successUrl|cancelUrl/.test(src), `${file} still sends a return URL`);
+    }
+    const route = read("src/app/api/stripe/checkout/route.ts");
+    check("C4", !/body\.(successUrl|cancelUrl)/.test(route), "the route reads a URL from the body");
+  }
 
   // ── Anti-vacuity ──────────────────────────────────────────────────────────
   for (const [name, n] of Object.entries(counters)) {

@@ -55,6 +55,32 @@ const MUTANTS: Mutant[] = [
     replace: "    .select(\"comped, pending_promo\")",
     expect: "B3",
   },
+  {
+    id: "SC1", what: "the success URL taken from the body again", file: ROUTE,
+    find: "  const successUrl = `${SITE_URL}${RETURN_PATHS[returnTo]}`;",
+    replace:
+      "  const successUrl = typeof (body as { successUrl?: unknown }).successUrl === \"string\" ? String((body as { successUrl?: unknown }).successUrl) : `${SITE_URL}${RETURN_PATHS[returnTo]}`;",
+    expect: "C1a",
+  },
+  {
+    id: "SC2", what: "the cancel URL taken from the body again", file: ROUTE,
+    find: "  const cancelUrl = `${SITE_URL}${CANCEL_PATH}`;",
+    replace:
+      "  const cancelUrl = typeof (body as { cancelUrl?: unknown }).cancelUrl === \"string\" ? String((body as { cancelUrl?: unknown }).cancelUrl) : `${SITE_URL}${CANCEL_PATH}`;",
+    expect: "C1b",
+  },
+  {
+    id: "SC3", what: "returnTo \"welcome\" ignored", file: ROUTE,
+    find: "  const returnTo: ReturnTo = body.returnTo === \"welcome\" ? \"welcome\" : \"upgraded\";",
+    replace: "  const returnTo: ReturnTo = \"upgraded\";",
+    expect: "C2",
+  },
+  {
+    id: "SC4", what: "a caller sends its own success URL again", file: "src/components/plan/UpgradeModal.tsx",
+    find: "          returnTo: \"upgraded\",",
+    replace: "          successUrl: `${window.location.origin}/dashboard?upgraded=true`,",
+    expect: "C4",
+  },
 ];
 
 runMutants({
