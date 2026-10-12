@@ -24,6 +24,7 @@ export function Footer() {
             <Link href="/#compare" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Compare</Link>
             <Link href="/#pricing" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Pricing</Link>
             <Link href="/blog" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Blog</Link>
+            <Link href="/tools/practice-field-calculator" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Practice field calculator</Link>
             <Link href="/demo" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Request a demo</Link>
             <Link href="/contact" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Contact</Link>
             <Link href="/privacy" className="py-2 text-sm text-white/40 transition-colors hover:text-white">Privacy</Link>

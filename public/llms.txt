@@ -11,6 +11,11 @@ it is not a registration platform.
 - Homepage: https://www.thefieldslate.com/
 - Pricing: https://www.thefieldslate.com/#pricing
 - Blog: https://www.thefieldslate.com/blog
+- Practice field calculator (free, no sign-in) — how many practice fields a
+  league should request from its city, night by night, by field type
+  (baseball and softball diamonds, soccer fields), with a sunset check. Runs
+  in the browser; nothing entered is saved or sent:
+  https://www.thefieldslate.com/tools/practice-field-calculator
 - Sports Connect Alternatives in 2026 — what the PlayMetrics transition does and
   doesn't solve for Little League admins:
   https://www.thefieldslate.com/blog/sports-connect-alternatives-little-league

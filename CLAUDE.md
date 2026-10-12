@@ -352,6 +352,46 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   NO star rating and NO Review JSON-LD — self-published reviews are not
   eligible for rich results, so markup would only invite a manual action.
 
+## Practice field calculator (public, `/tools/practice-field-calculator`, 2026-10-12)
+
+- **A free marketing tool, not league data.** No sign-in, no database, no API
+  route, no storage: a league board enters divisions and gets the practice
+  fields to request from its city, night by night. Linked from the marketing
+  footer only (the headers are homepage anchors), in the sitemap and llms.txt.
+  WebApplication JSON-LD, free, deliberately NO ratings (same call as the
+  testimonial).
+- **ALL math is `src/lib/practice-planner/` — pure TypeScript, no React, no
+  DOM, no clock.** The page only renders its numbers and sentences VERBATIM.
+  A later in-app version (saved plans per season) must call this SAME module,
+  never a copy. Class strings never go in it (Tailwind doesn't scan `src/lib`).
+- **The approved mockup's script is the source of truth**
+  (`docs/mockups/practice-field-calculator.html`). The module is a rule-for-rule
+  port; a rule that looks wrong is flagged to the founder, not changed. The one
+  deliberate addition: the daylight check also handles fall seasons ("works
+  until"), and seasons spanning summer or winter — the mockup only warned when
+  the FIRST day was dark.
+- **Rules worth knowing before touching it:** a team practices at most once a
+  day; spread mode places divisions with the fewest allowed days first, each
+  practice on the allowed day with the lowest field-minutes for that field type
+  (length ÷ teams per field), ties → fewer of this division's practices → Monday
+  first; same-nights takes the first N days in Tue, Thu, Mon, Wed, Fri, Sat, Sun
+  order; packing sorts by window length, then start, then practice length
+  (longest first), and takes the field where a block can start earliest on a
+  5-minute grid; fields to request = the BUSIEST night, never the sum.
+- **Sunset is the NOAA approximation with US DST, in UTC arithmetic only** —
+  142 curated cities, with the standard offset and DST flag PER CITY (states
+  span zones; Arizona and Hawaii have no DST). Default city Sacramento; Santa
+  Rosa stays in the list and in the harness. No geolocation, no external API.
+- **The first render is deterministic** (fixed example league, fixed ids, no
+  clock, no `toLocale*`, no `localeCompare`) so server and browser markup match.
+- **Print uses `.fieldslate-print-region`** (no print CSS changed), so the
+  Safari print rule under "Print path" applies to any change here.
+- **Harness: `npm run sim:practice-planner`** (44 checks × 3 zones, 9
+  anti-vacuity counters: the example league's 6/14, 2/4, 2/3; Santa Rosa
+  sunsets ±3 min; every daylight case) + `:mutants` (12, each killed first at
+  its own assertion). Every F fixture states its real AND mutated answer by
+  hand — confirm a new fixture separates them before trusting its mutant.
+
 ## Playoffs
 
 - **Playoff advancement is client-side by design.** Saving a result
@@ -4088,6 +4128,13 @@ Still open:
   ordering faults, and the section order now exists because of them.
 
 ## Open items
+
+- **Bump the practice field calculator's example season dates before spring
+  2028.** `EXAMPLE_LEAGUE` in `src/lib/practice-planner/example-league.ts` is
+  fixed at Feb 22 – May 29, 2027 on purpose (a clock-derived default would be
+  a hydration mismatch); move it to the next spring and re-run
+  `npm run sim:practice-planner` (section K pins the field counts, which don't
+  depend on the dates; W1/T1 pin Santa Rosa sentences and totals that do).
 
 - **Playoff export CSV end time is still start + a hardcoded 90 minutes — REDO
   the parked fix with a narrow division read.** Branch
