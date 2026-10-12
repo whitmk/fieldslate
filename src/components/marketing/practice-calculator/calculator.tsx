@@ -361,13 +361,22 @@ export function PracticeFieldCalculator() {
         />
       </section>
 
-      <p className="border-t border-gray-200 pt-6 text-sm text-gray-600 print:hidden">
-        Once the city gives you fields,{" "}
-        <Link href="/" className="font-bold text-[#0C1F3F] underline-offset-2 hover:underline">
-          FieldSlate schedules the practices
-        </Link>{" "}
-        and the games around them. Nothing you enter here is saved or sent anywhere.
-      </p>
+      <div className="border-t border-gray-200 pt-6 text-sm text-gray-600 print:hidden">
+        <p>
+          Once the city gives you fields,{" "}
+          <Link href="/" className="font-bold text-[#0C1F3F] underline-offset-2 hover:underline">
+            FieldSlate schedules the practices
+          </Link>{" "}
+          and the games around them. Nothing you enter here is saved or sent anywhere.
+        </p>
+        <p className="mt-2">
+          New to field requests? Read{" "}
+          <Link href="/blog/how-many-practice-fields" className="font-bold text-[#0C1F3F] underline-offset-2 hover:underline">
+            how many practice fields your league needs
+          </Link>
+          .
+        </p>
+      </div>
 
       <PrintRegion
         input={input}
