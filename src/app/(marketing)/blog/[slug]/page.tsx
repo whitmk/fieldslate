@@ -14,8 +14,8 @@ export function generateStaticParams() {
 export function generateMetadata({ params }: { params: { slug: string } }): Metadata {
   const post = getPostBySlug(params.slug);
   if (!post) return {};
-  // Absolute www URLs built from SITE_URL — deliberately independent of
-  // metadataBase (which the root layout does not set).
+  // Absolute www URLs built from SITE_URL — deliberately independent of the
+  // root layout's metadataBase, so these never depend on how it resolves.
   const url = `${SITE_URL}/blog/${post.slug}`;
   const ogImage = `${SITE_URL}/opengraph-image.png`;
   return {

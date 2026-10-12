@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
 import { DemoRequestForm } from "@/components/marketing/demo-request-form";
 
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
   title: "Request a demo · FieldSlate",
   description:
     "Tell us a little about your league and Whit will reach out with a few times that work for a FieldSlate demo.",
+  alternates: { canonical: `${SITE_URL}/demo` },
 };
 
 export default function DemoPage() {

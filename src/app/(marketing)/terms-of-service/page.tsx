@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Terms of Service · FieldSlate",
   description:
     "The legal terms that govern your access to and use of FieldSlate.",
+  alternates: { canonical: `${SITE_URL}/terms-of-service` },
 };
 
 const LAST_UPDATED = "May 26, 2026";

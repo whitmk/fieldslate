@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
 import { CALENDAR_HELP_FAQ, calendarHelpFaqJsonLd } from "@/lib/calendar/help-faq";
 
@@ -17,6 +18,7 @@ export const metadata: Metadata = {
   title: "Add your team's schedule to your calendar · FieldSlate",
   description:
     "How to add a FieldSlate team calendar link to iPhone, Google Calendar, Android, Outlook and Skylight, and what to expect when games change.",
+  alternates: { canonical: `${SITE_URL}/help/calendar` },
 };
 
 function Step({ children }: { children: React.ReactNode }) {

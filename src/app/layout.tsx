@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Manrope } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -26,7 +27,14 @@ const manrope = Manrope({
   display: "swap",
 });
 
+// metadataBase: resolves any RELATIVE metadata URL (including the
+// opengraph-image.png file convention's og:image) against the canonical www
+// origin, instead of whatever host Vercel supplies. Deliberately NO
+// `alternates` here: a layout's canonical is inherited by every page beneath
+// it — login, signup and the dashboard included — so each public page sets
+// its own absolute canonical from SITE_URL instead.
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "FieldSlate — Sports Season Scheduling",
   description: "Manage your sports season schedules, teams, venues, and results all in one place.",
 };

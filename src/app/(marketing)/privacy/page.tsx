@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Privacy Policy · FieldSlate",
   description:
     "How FieldSlate collects, uses, stores, and shares your information.",
+  alternates: { canonical: `${SITE_URL}/privacy` },
 };
 
 const LAST_UPDATED = "May 26, 2026";

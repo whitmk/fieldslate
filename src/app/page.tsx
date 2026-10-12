@@ -6,7 +6,16 @@ import { Compare } from "@/components/marketing/compare";
 import { Pricing } from "@/components/marketing/pricing";
 import { MarketingNavbar } from "@/components/marketing/navbar";
 import { Footer } from "@/components/marketing/footer";
+import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/site";
+
+// Title and description come from the root layout. The canonical is set here,
+// absolute and on www: without one, Google Search Console reported the
+// homepage as "Duplicate without user-selected canonical" and left it out of
+// the index.
+export const metadata: Metadata = {
+  alternates: { canonical: `${SITE_URL}/` },
+};
 
 // Matches the hero's click-to-play YouTube embed (video ID yKggoZaAHYo).
 const videoJsonLd = {

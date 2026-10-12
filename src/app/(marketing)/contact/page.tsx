@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
 import { ContactForm } from "@/components/marketing/contact-form";
 
@@ -6,6 +7,7 @@ export const metadata: Metadata = {
   title: "Contact · FieldSlate",
   description:
     "Get in touch with FieldSlate. Submit a general inquiry or a privacy / data subject request.",
+  alternates: { canonical: `${SITE_URL}/contact` },
 };
 
 export default function ContactPage() {
