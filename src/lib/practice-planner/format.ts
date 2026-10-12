@@ -3,6 +3,8 @@
 // not guaranteed identical between them (a hydration mismatch tsc and
 // next build both pass).
 
+import { ALL_DAYS, DAY_SHORT } from "./constants";
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** "HH:MM" → minutes after midnight. Empty or malformed → 0 (the mockup's toMin). */
@@ -37,6 +39,26 @@ export function isIsoDate(s: string): boolean {
 export function fmtDate(t: number): string {
   const d = new Date(t);
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+/**
+ * Days as the page and print list them, Monday first: three or more in a row
+ * collapse to a range, anything else is listed. [0..4] → "Mon–Fri",
+ * [0, 2, 4] → "Mon, Wed, Fri", [0, 1, 3] → "Mon, Tue, Thu",
+ * [0, 1, 2, 4, 5, 6] → "Mon–Wed, Fri–Sun". No wrap from Sunday to Monday.
+ */
+export function formatDayList(days: number[]): string {
+  const sorted = ALL_DAYS.filter((k) => days.includes(k));
+  const parts: string[] = [];
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    if (j - i >= 2) parts.push(`${DAY_SHORT[sorted[i]]}–${DAY_SHORT[sorted[j]]}`);
+    else for (let k = i; k <= j; k++) parts.push(DAY_SHORT[sorted[k]]);
+    i = j + 1;
+  }
+  return parts.join(", ");
 }
 
 /** 1234 → "1,234". */

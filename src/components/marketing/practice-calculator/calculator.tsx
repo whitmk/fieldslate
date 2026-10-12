@@ -13,9 +13,9 @@ import Link from "next/link";
 import { DAY_LONG, fieldTypeLabel } from "@/lib/practice-planner/constants";
 import { fmtDate, fmtInt, fmtTime, parseIsoDate } from "@/lib/practice-planner/format";
 import { EXAMPLE_LEAGUE, NEW_DIVISION } from "@/lib/practice-planner/example-league";
-import { computePlan, requestText } from "@/lib/practice-planner/report";
+import { busiestLabel, computePlan, requestText } from "@/lib/practice-planner/report";
 import { STATES_SORTED, STATE_NAMES, cityById, citiesInState } from "@/lib/practice-planner/us-cities";
-import type { DayIndex, DivisionInput, ModeResult, PlannerInput, SpreadMode } from "@/lib/practice-planner/types";
+import type { DivisionInput, ModeResult, PlannerInput, SpreadMode } from "@/lib/practice-planner/types";
 import { DivisionRow, NumberField, type DivisionDraft } from "./division-row";
 import { NightBoard } from "./night-board";
 import { PrintRegion } from "./print-region";
@@ -99,7 +99,8 @@ export function PracticeFieldCalculator() {
   };
 
   const activeDays = DAY_LONG.map((_, k) => k).filter((k) => plan.inUse.some((z) => result.byType[z][k].count > 0));
-  const peakDays = new Set(plan.inUse.map((z) => result.need[z].peakDay));
+  // Every night that ties for a field type's busiest gets the marker.
+  const peakDays = new Set<number>(plan.inUse.flatMap((z) => result.need[z].peakDays));
   const sunsetLabel =
     plan.sunsetAtStart !== null ? `Sunset ${fmtTime(plan.sunsetAtStart)} on ${fmtDate(parseIsoDate(seasonStart))}` : "";
 
@@ -217,7 +218,7 @@ export function PracticeFieldCalculator() {
                       {n.fields === 1 ? "" : "s"}
                     </div>
                     <div className="mt-1 text-sm text-white/60">
-                      Busiest: {n.peakDay !== null ? DAY_LONG[n.peakDay] : "—"}.{" "}
+                      Busiest: <span className="whitespace-nowrap">{busiestLabel(n)}</span>.{" "}
                       {mode === "spread"
                         ? `${o.fields} if everyone wants the same nights.`
                         : `${o.fields} if spread across the week.`}
@@ -264,7 +265,7 @@ export function PracticeFieldCalculator() {
               <tbody>
                 {activeDays.map((k) => (
                   <tr key={k} className="border-b border-gray-100 last:border-0">
-                    <td className={`whitespace-nowrap px-4 py-2.5 font-bold text-[#0C1F3F] ${peakDays.has(k as DayIndex) ? "shadow-[inset_3px_0_0_#22C55E]" : ""}`}>
+                    <td className={`whitespace-nowrap px-4 py-2.5 font-bold text-[#0C1F3F] ${peakDays.has(k) ? "shadow-[inset_3px_0_0_#22C55E]" : ""}`}>
                       {DAY_LONG[k]}
                     </td>
                     {plan.inUse.map((z) => {

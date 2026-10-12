@@ -15,10 +15,10 @@
 // - The request text names both years when the season crosses New Year.
 
 import { DAY_LONG, fieldTypeLabel } from "./constants";
-import { fmtDate, fmtTime, isIsoDate, parseIsoDate, toMinutes } from "./format";
+import { fmtDate, fmtTime, formatDayList, isIsoDate, parseIsoDate, toMinutes } from "./format";
 import { computeMode, countedPerWeek, divisionIsActive, fieldTypesInUse, normalizeDays } from "./plan";
 import { daylightFor, sunsetMinutes } from "./sunset";
-import type { DivisionInput, FieldTypeId, ModeResult, PlannerInput, SpreadMode } from "./types";
+import type { DivisionInput, FieldNeed, FieldTypeId, ModeResult, PlannerInput, SpreadMode } from "./types";
 import { cityById } from "./us-cities";
 
 const DAY_MS = 864e5;
@@ -91,6 +91,21 @@ export function latestPracticeEnd(result: ModeResult, i: number, d: DivisionInpu
   return latest;
 }
 
+/**
+ * The busiest night(s) for the answer cards and the print: one night by its
+ * full name ("Monday"), a tie as a day list ("Mon–Fri", "Tue, Thu").
+ */
+export function busiestLabel(need: FieldNeed): string {
+  if (!need.peakDays.length) return "—";
+  return need.peakDays.length === 1 ? DAY_LONG[need.peakDays[0]] : formatDayList(need.peakDays);
+}
+
+/** "a 7pm finish", "an 8pm finish", "an 11am finish". */
+function finish(min: number): string {
+  const t = fmtTime(min);
+  return `${/^(8|11)[:ap]/.test(t) ? "an" : "a"} ${t} finish`;
+}
+
 export function daylightWarnings(input: PlannerInput, result: ModeResult): string[] {
   if (seasonError(input)) return [];
   const city = cityById(input.cityId);
@@ -115,23 +130,24 @@ export function daylightWarnings(input: PlannerInput, result: ModeResult): strin
     const r = daylightFor(em, sd, ed, city);
     if (r.kind === "ok") continue;
     const lead = `Daylight: ${names.join(", ")} run${names.length > 1 ? "" : "s"} until ${fmtTime(em)}, but sunset on `;
+    const fin = finish(em);
     const on = (t: number) => `${fmtDate(t)} is ${fmtTime(sunsetMinutes(t, city))}. `;
     switch (r.kind) {
       case "from":
-        w.push(`${lead}${on(sd)}Without lights, that window works from ${fmtDate(r.from)}.`);
+        w.push(`${lead}${on(sd)}Without lights, ${fin} works from ${fmtDate(r.from)}.`);
         break;
       case "never":
-        w.push(`${lead}${on(sd)}Without lights, it doesn't work before practices end.`);
+        w.push(`${lead}${on(sd)}Without lights, ${fin} doesn't work at any point this season.`);
         break;
       case "until":
-        w.push(`${lead}${on(r.until + DAY_MS)}Without lights, that window works until ${fmtDate(r.until)}.`);
+        w.push(`${lead}${on(r.until + DAY_MS)}Without lights, ${fin} works until ${fmtDate(r.until)}.`);
         break;
       case "between":
-        w.push(`${lead}${on(sd)}Without lights, that window works from ${fmtDate(r.from)} to ${fmtDate(r.until)}.`);
+        w.push(`${lead}${on(sd)}Without lights, ${fin} works from ${fmtDate(r.from)} to ${fmtDate(r.until)}.`);
         break;
       case "gap":
         w.push(
-          `${lead}${on(r.until + DAY_MS)}Without lights, that window works until ${fmtDate(r.until)} and again from ${fmtDate(r.from)}.`,
+          `${lead}${on(r.until + DAY_MS)}Without lights, ${fin} works until ${fmtDate(r.until)} and again from ${fmtDate(r.from)}.`,
         );
         break;
     }

@@ -38,16 +38,17 @@
 //   W   warnings; W5 the never wording                      ← PP16 (W5)
 //   T   totals; too-long practices left out                   ← PP14 (T2)
 //   R   city-request text, incl. a season across New Year
+//   N   day lists ("Mon–Fri", "Mon, Wed, Fri") and busiest-night ties ← PP18 (N1), PP17 (N8)
 // then ANTI-VACUITY COUNTERS — a zero counter fails the run.
 //
 // MUTATION LOG: see the bottom of this file.
 
 import { computeMode, distribute } from "@/lib/practice-planner/plan";
-import { computePlan, requestText } from "@/lib/practice-planner/report";
+import { busiestLabel, computePlan, requestText } from "@/lib/practice-planner/report";
 import { daylightFor, sunsetMinutes, type DaylightResult } from "@/lib/practice-planner/sunset";
 import { cityById, US_CITIES } from "@/lib/practice-planner/us-cities";
 import { EXAMPLE_LEAGUE } from "@/lib/practice-planner/example-league";
-import { fmtDate, parseIsoDate } from "@/lib/practice-planner/format";
+import { fmtDate, formatDayList, parseIsoDate } from "@/lib/practice-planner/format";
 import type { DivisionInput, ModeResult, PlannerInput } from "@/lib/practice-planner/types";
 
 let failures = 0;
@@ -249,7 +250,7 @@ section("L", () => {
   // Window 5–8pm, but one 60-minute practice a week packs at 5pm and ends at
   // 6pm. Sunset in Sacramento is 7:58pm on May 1 and later after that, so
   // there is nothing to warn about. (PP13, window end: 8pm is after the May 1
-  // sunset → "works from May 4".)
+  // sunset → "an 8pm finish works from May 4".)
   const l1 = computePlan(
     league([div({ name: "Early", teams: 1, lengthMin: 60 })], { seasonStart: "2027-05-01", seasonEnd: "2027-06-30" }),
   );
@@ -264,20 +265,20 @@ section("W", () => {
     // window per field) 7pm; Rookie's second block 7:15pm; Juniors (two
     // fields at 5:30) 7:30pm; Minors and Majors fill to 8pm.
     eq(computePlan(SANTA_ROSA).warnings.spread, [
-      "Daylight: T-Ball runs until 6pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Feb 26.",
-      "Daylight: 50/70 runs until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 14.",
-      "Daylight: Rookie runs until 7:15pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 14.",
-      "Daylight: Juniors runs until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 28.",
-      "Daylight: Minors AA, Minors AAA, Majors run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Apr 29.",
+      "Daylight: T-Ball runs until 6pm, but sunset on Feb 22 is 5:57pm. Without lights, a 6pm finish works from Feb 26.",
+      "Daylight: 50/70 runs until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7pm finish works from Mar 14.",
+      "Daylight: Rookie runs until 7:15pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7:15pm finish works from Mar 14.",
+      "Daylight: Juniors runs until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7:30pm finish works from Mar 28.",
+      "Daylight: Minors AA, Minors AAA, Majors run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, an 8pm finish works from Apr 29.",
     ]),
     "[W1] example league daylight warnings (spread)",
     JSON.stringify(computePlan(SANTA_ROSA).warnings.spread),
   );
   ok(
     eq(computePlan(SANTA_ROSA).warnings.sameNights, [
-      "Daylight: T-Ball, 50/70 run until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 14.",
-      "Daylight: Rookie, Juniors run until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 28.",
-      "Daylight: Minors AA, Minors AAA, Majors run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Apr 29.",
+      "Daylight: T-Ball, 50/70 run until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7pm finish works from Mar 14.",
+      "Daylight: Rookie, Juniors run until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7:30pm finish works from Mar 28.",
+      "Daylight: Minors AA, Minors AAA, Majors run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, an 8pm finish works from Apr 29.",
     ]),
     "[W1b] example league daylight warnings (same nights)",
     JSON.stringify(computePlan(SANTA_ROSA).warnings.sameNights),
@@ -288,7 +289,7 @@ section("W", () => {
   );
   ok(
     eq(fall.warnings.spread, [
-      "Daylight: Fall Ball runs until 7:30pm, but sunset on Sep 6 is 7:29pm. Without lights, that window works until Sep 5.",
+      "Daylight: Fall Ball runs until 7:30pm, but sunset on Sep 6 is 7:29pm. Without lights, a 7:30pm finish works until Sep 5.",
     ]),
     "[W2] fall wording",
     JSON.stringify(fall.warnings.spread),
@@ -317,7 +318,7 @@ section("W", () => {
   );
   ok(
     eq(owls.warnings.spread, [
-      "Daylight: Night Owls runs until 8:30pm, but sunset on Sep 1 is 7:36pm. Without lights, it doesn't work before practices end.",
+      "Daylight: Night Owls runs until 8:30pm, but sunset on Sep 1 is 7:36pm. Without lights, an 8:30pm finish doesn't work at any point this season.",
     ]),
     "[W5] never-this-season wording",
     JSON.stringify(owls.warnings.spread),
@@ -358,6 +359,40 @@ section("R", () => {
   ok(first === "Practice field request: Nov 1, 2026 to Feb 28, 2027", "[R2] season across New Year names both years", first);
 });
 
+// ── N: day lists and the busiest night ──────────────────────────────────
+section("N", () => {
+  const dl = (days: number[], want: string, tag: string) => {
+    const got = formatDayList(days);
+    ok(got === want, tag, `${JSON.stringify(days)} → ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+  };
+  // (PP18, no ranges: "Mon, Tue, Wed, Thu, Fri".)
+  dl([0, 1, 2, 3, 4], "Mon–Fri", "[N1] five in a row → range");
+  dl([0, 1, 2], "Mon–Wed", "[N2] three in a row → range");
+  dl([0, 2, 4], "Mon, Wed, Fri", "[N3] no run → listed");
+  dl([0, 1, 3], "Mon, Tue, Thu", "[N4] two in a row stay listed");
+  dl([0, 1, 2, 4, 5, 6], "Mon–Wed, Fri–Sun", "[N5] two ranges");
+  dl([4, 0, 2, 2], "Mon, Wed, Fri", "[N6] any order, duplicates once");
+  dl([], "", "[N7] none");
+  // Ties. Example league, spread: every weeknight needs 6 60-ft diamonds.
+  // (PP17, ties dropped: "Monday".)
+  const ex = computePlan(SANTA_ROSA);
+  ok(busiestLabel(ex.spread.need.diamond60) === "Mon–Fri", "[N8] busiest tie → day range",
+    busiestLabel(ex.spread.need.diamond60));
+  // Same nights in the example: T-Ball's one practice is Tuesday only, so
+  // Tuesday (14) beats Thursday (13) — a single busiest night, full name.
+  ok(busiestLabel(ex.sameNights.need.diamond60) === "Tuesday", "[N9a] example same nights: one busiest night",
+    busiestLabel(ex.sameNights.need.diamond60));
+  // F5's league: 2 teams, 2x, same nights → Tue and Thu, 1 field each: a tie
+  // that isn't a run.
+  const f5 = computeMode(league([div({ teams: 2, perWeek: 2, days: [0, 1, 2, 3, 4] })]), "sameNights").need.diamond60;
+  ok(busiestLabel(f5) === "Tue, Thu", "[N9] busiest tie, not a run → listed", busiestLabel(f5));
+  // A single busiest night keeps its full name: F7's league (Mon 2, Tue 2)
+  // ties, so use one division that only practices Wednesday.
+  const one = computeMode(league([div({ days: [2] })]), "spread").need.diamond60;
+  ok(busiestLabel(one) === "Wednesday" && eq(one.peakDays, [2]), "[N10] single busiest night → full name", JSON.stringify(one));
+  ok(busiestLabel(computeMode(league([]), "spread").need.diamond60) === "—", "[N11] no practices → dash");
+});
+
 // ── anti-vacuity ────────────────────────────────────────────────────────
 ok(counters.sharedFieldBlocks > 0, "[C1] a shared-field block was placed");
 ok(counters.fieldReused > 0, "[C2] a field held more than one block");
@@ -394,6 +429,12 @@ process.exit(failures ? 1 : 0);
 // wording W2). "Never" kept D3/PP11 but its WORDING lost its only fixture when
 // Juniors moved to 7:30pm → W5 + PP16. "From" had fixtures (D1, W1) but no
 // mutant → PP15 (dies at D1).
+// 2026-10-12, polish (founder): daylight tail reworded to "a <time> finish
+// works from / until <date>" and "doesn't work at any point this season" —
+// W1/W1b/W2/W5 re-keyed to the new words (times and dates unchanged), PP16's
+// target moved with the sentence; every earlier mutant still dies where it
+// did. New: N (day lists + busiest ties), PP17 (ties dropped → N8), PP18 (no
+// range compression → N1).
 // - Only literal fixed in the harness itself: W3's spring date. I guessed
 //   May 3; sunset in Sacramento gains about a minute a day from 7:58pm on
 //   May 1, so 8pm first holds on May 4. The code was right.

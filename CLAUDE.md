@@ -387,12 +387,20 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Rosa stays in the list and in the harness. No geolocation, no external API.
 - **The first render is deterministic** (fixed example league, fixed ids, no
   clock, no `toLocale*`, no `localeCompare`) so server and browser markup match.
-- **Print uses `.fieldslate-print-region`** (no print CSS changed), so the
-  Safari print rule under "Print path" applies to any change here.
-- **Harness: `npm run sim:practice-planner`** (49 checks × 3 zones, 9
+- **Print uses `.fieldslate-print-region`** (no shared print CSS changed), so
+  the Safari print rule under "Print path" applies to any change here. Its
+  keep-heading-with-table rules (break-after / break-inside: avoid) are INLINE
+  styles in `print-region.tsx`, never on the shared `.fieldslate-print-*`
+  classes the schedule print uses; the Divisions block avoids breaks only up to
+  20 rows (WebKit clips a break-avoid on a block taller than a page).
+- **Day lists go through `formatDayList`** (three or more in a row → "Mon–Fri",
+  otherwise listed) and the busiest night through `busiestLabel` (one night →
+  "Monday", a tie → the day list). Never hand-format a day list.
+- **Harness: `npm run sim:practice-planner`** (61 checks × 3 zones, 9
   anti-vacuity counters: the example league's 6/14, 2/4, 2/3; Santa Rosa
   sunsets ±3 min; every daylight outcome pinned AND mutant-killed: from D1,
-  until D2, never D3 + its wording W5) + `:mutants` (16, each killed first at
+  until D2, never D3 + its wording W5; day lists and busiest-night ties N) +
+  `:mutants` (18, each killed first at
   its own assertion). Every F fixture states its real AND mutated answer by
   hand — confirm a new fixture separates them before trusting its mutant.
 

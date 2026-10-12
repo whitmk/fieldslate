@@ -189,13 +189,14 @@ export function fieldNeed(nights: NightResult[]): FieldNeed {
       peakDay = k as DayIndex;
     }
   });
-  return { fields, peakDay };
+  const peakDays = fields > 0 ? nights.flatMap((r, k) => (r.count === fields ? [k as DayIndex] : [])) : [];
+  return { fields, peakDay, peakDays };
 }
 
 export function computeMode(input: PlannerInput, mode: SpreadMode): ModeResult {
   const demand = distribute(input, mode);
   const byType = emptyByType((): NightResult[] => []);
-  const need = emptyByType((): FieldNeed => ({ fields: 0, peakDay: null }));
+  const need = emptyByType((): FieldNeed => ({ fields: 0, peakDay: null, peakDays: [] }));
   for (const z of FIELD_TYPE_IDS) {
     byType[z] = ALL_DAYS.map((k) => pack(input, demand[z][k]));
     need[z] = fieldNeed(byType[z]);

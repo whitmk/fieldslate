@@ -75,6 +75,8 @@ export type FieldNeed = {
   fields: number;
   /** First night that reaches it; null when no practices. */
   peakDay: DayIndex | null;
+  /** Every night that reaches it, Monday first (ties included); empty when no practices. */
+  peakDays: DayIndex[];
 };
 
 export type ModeResult = {

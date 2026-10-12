@@ -8,6 +8,7 @@ const PLAN = "src/lib/practice-planner/plan.ts";
 const CONSTANTS = "src/lib/practice-planner/constants.ts";
 const SUNSET = "src/lib/practice-planner/sunset.ts";
 const REPORT = "src/lib/practice-planner/report.ts";
+const FORMAT = "src/lib/practice-planner/format.ts";
 
 const MUTANTS: Mutant[] = [
   {
@@ -42,8 +43,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "PP6", what: "fields to request = sum over nights, not the busiest night", file: PLAN,
-    find: "  return { fields, peakDay };",
-    replace: "  return { fields: nights.reduce((a, r) => a + r.count, 0), peakDay };",
+    find: "  return { fields, peakDay, peakDays };",
+    replace: "  return { fields: nights.reduce((a, r) => a + r.count, 0), peakDay, peakDays };",
     expect: "F6",
   },
   {
@@ -102,9 +103,21 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "PP16", what: "the never-this-season warning is dropped", file: REPORT,
-    find: "        w.push(`${lead}${on(sd)}Without lights, it doesn't work before practices end.`);",
+    find: "        w.push(`${lead}${on(sd)}Without lights, ${fin} doesn't work at any point this season.`);",
     replace: "",
     expect: "W5",
+  },
+  {
+    id: "PP17", what: "a tie for the busiest night shows only the first night", file: PLAN,
+    find: "  const peakDays = fields > 0 ? nights.flatMap((r, k) => (r.count === fields ? [k as DayIndex] : [])) : [];",
+    replace: "  const peakDays = peakDay !== null ? [peakDay] : [];",
+    expect: "N8",
+  },
+  {
+    id: "PP18", what: "consecutive days not compressed into a range", file: FORMAT,
+    find: "    if (j - i >= 2) parts.push(`${DAY_SHORT[sorted[i]]}–${DAY_SHORT[sorted[j]]}`);",
+    replace: "    if (false) parts.push(\"\");",
+    expect: "N1",
   },
 ];
 
