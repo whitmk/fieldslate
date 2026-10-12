@@ -34,7 +34,10 @@
 //   K   the example league (the mockup's known answers)
 //   S   sunset, Santa Rosa                                   ← PP5 (S2)
 //   D   daylight: from / until / never / ok / between / gap  ← PP10 (D2), PP11 (D3)
-//   W   warnings, T totals, R city-request text
+//   L   daylight is judged at the practices' ACTUAL end       ← PP13 (L1)
+//   W   warnings
+//   T   totals; too-long practices left out                   ← PP14 (T2)
+//   R   city-request text, incl. a season across New Year
 // then ANTI-VACUITY COUNTERS — a zero counter fails the run.
 //
 // MUTATION LOG: see the bottom of this file.
@@ -241,25 +244,54 @@ section("D", () => {
   ok(d6 === '{"kind":"gap","until":"Nov 6","from":"Feb 3"}', "[D6] a season spanning winter", d6);
 });
 
+// ── L: daylight at the practices' actual end, not the window's ───────────
+section("L", () => {
+  // Window 5–8pm, but one 60-minute practice a week packs at 5pm and ends at
+  // 6pm. Sunset in Sacramento is 7:58pm on May 1 and later after that, so
+  // there is nothing to warn about. (PP13, window end: 8pm is after the May 1
+  // sunset → "works from May 4".)
+  const l1 = computePlan(
+    league([div({ name: "Early", teams: 1, lengthMin: 60 })], { seasonStart: "2027-05-01", seasonEnd: "2027-06-30" }),
+  );
+  ok(l1.warnings.spread.length === 0 && l1.warnings.sameNights.length === 0, "[L1] practices end before sunset: no warning",
+    JSON.stringify(l1.warnings));
+});
+
 // ── W: warnings, verbatim ───────────────────────────────────────────────
 section("W", () => {
   ok(
-    eq(computePlan(SANTA_ROSA).warnings, [
-      "Daylight: T-Ball runs until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 14.",
-      "Daylight: Rookie runs until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 28.",
-      "Daylight: Minors AA, Minors AAA, Majors, 50/70 run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Apr 29.",
-      "Daylight: Juniors runs until 8:30pm, but sunset on Feb 22 is 5:57pm. Without lights, it doesn't work before practices end.",
+    // Spread: T-Ball's one block a night ends 6pm; 50/70 (one 90 in a 5:30–8
+    // window per field) 7pm; Rookie's second block 7:15pm; Juniors (two
+    // fields at 5:30) 7:30pm; Minors and Majors fill to 8pm.
+    eq(computePlan(SANTA_ROSA).warnings.spread, [
+      "Daylight: T-Ball runs until 6pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Feb 26.",
+      "Daylight: 50/70 runs until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 14.",
+      "Daylight: Rookie runs until 7:15pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 14.",
+      "Daylight: Juniors runs until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 28.",
+      "Daylight: Minors AA, Minors AAA, Majors run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Apr 29.",
     ]),
-    "[W1] example league daylight warnings",
-    JSON.stringify(computePlan(SANTA_ROSA).warnings),
+    "[W1] example league daylight warnings (spread)",
+    JSON.stringify(computePlan(SANTA_ROSA).warnings.spread),
   );
-  const fall = computePlan(league([div({ name: "Fall Ball", end: "19:30" })], { seasonStart: "2027-08-15", seasonEnd: "2027-11-15" }));
   ok(
-    eq(fall.warnings, [
+    eq(computePlan(SANTA_ROSA).warnings.sameNights, [
+      "Daylight: T-Ball, 50/70 run until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 14.",
+      "Daylight: Rookie, Juniors run until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 28.",
+      "Daylight: Minors AA, Minors AAA, Majors run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Apr 29.",
+    ]),
+    "[W1b] example league daylight warnings (same nights)",
+    JSON.stringify(computePlan(SANTA_ROSA).warnings.sameNights),
+  );
+  // 6–7:30pm window, 90 minutes: every practice runs 6–7:30pm.
+  const fall = computePlan(
+    league([div({ name: "Fall Ball", start: "18:00", end: "19:30" })], { seasonStart: "2027-08-15", seasonEnd: "2027-11-15" }),
+  );
+  ok(
+    eq(fall.warnings.spread, [
       "Daylight: Fall Ball runs until 7:30pm, but sunset on Sep 6 is 7:29pm. Without lights, that window works until Sep 5.",
     ]),
     "[W2] fall wording",
-    JSON.stringify(fall.warnings),
+    JSON.stringify(fall.warnings.spread),
   );
   const extra = computePlan(
     league(
@@ -268,13 +300,13 @@ section("W", () => {
     ),
   );
   ok(
-    eq(extra.warnings, [
+    // Big's practices end 6:30pm (no daylight line); Long places nothing.
+    eq(extra.warnings.spread, [
       "Big practices 3 times a week but only has 2 days picked. Counted as 2.",
       "Long's 120-minute practice doesn't fit between 5pm and 6pm. Those practices aren't counted.",
-      "Daylight: Big runs until 8pm, but sunset on May 1 is 7:58pm. Without lights, that window works from May 4.",
     ]),
     "[W3] per-week and length warnings",
-    JSON.stringify(extra.warnings),
+    JSON.stringify(extra.warnings.spread),
   );
   ok(computePlan(league([div({})], { seasonEnd: "2027-02-01" })).seasonError === "Practices end before they start.", "[W4] dates reversed");
 });
@@ -284,6 +316,12 @@ section("T", () => {
   // 76 practices; 6030 field-minutes = 100.5 h/week; Feb 22–May 29 = 97 days = 14 weeks; 1407 h.
   const t = computePlan(SANTA_ROSA).totals;
   ok(eq(t, { teamPracticesPerWeek: 76, fieldHoursPerWeek: 101, weeks: 14, fieldHoursSeason: 1407 }), "[T1] example totals", JSON.stringify(t));
+  // 4 × 90 min fit (6 h/week); "Long" (120 min in a 1h window) is left out,
+  // as its warning says. Mar 1–31 = 31 days = 5 weeks → 30 h.
+  // (PP14, counted: 5 practices, 8 h/week, 40 h.)
+  const t2 = computePlan(league([div({}), div({ name: "Long", teams: 1, lengthMin: 120, end: "18:00" })])).totals;
+  ok(eq(t2, { teamPracticesPerWeek: 4, fieldHoursPerWeek: 6, weeks: 5, fieldHoursSeason: 30 }), "[T2] too-long practices not in totals",
+    JSON.stringify(t2));
 });
 
 // ── R: copy for city request ────────────────────────────────────────────
@@ -301,6 +339,10 @@ section("R", () => {
   ].join("\n");
   const got = requestText(input, p.spread, p.inUse);
   ok(got === want, "[R1] city request text", JSON.stringify(got));
+  // Across New Year: both years.
+  const nye = league([div({ name: "Winter" })], { seasonStart: "2026-11-01", seasonEnd: "2027-02-28" });
+  const first = requestText(nye, computePlan(nye).spread, ["diamond60"]).split("\n")[0];
+  ok(first === "Practice field request: Nov 1, 2026 to Feb 28, 2027", "[R2] season across New Year names both years", first);
 });
 
 // ── anti-vacuity ────────────────────────────────────────────────────────
@@ -326,6 +368,14 @@ process.exit(failures ? 1 : 0);
 //   not before it.
 // - Each F fixture's comment carries the real AND the mutated answer, worked
 //   by hand, so the separation is stated before the runner proves it.
+// 2026-10-12, second change (founder flags 1–3): PP13 (daylight judged at the
+// window end again) → L1, PP14 (too-long practices back in the totals) → T2.
+// W1/W2/W3 were re-keyed BECAUSE THE RULE CHANGED, not loosened: daylight is
+// now judged where practices actually end, so the example league's lines
+// moved (T-Ball 6pm, 50/70 7pm, Rookie 7:15pm, Juniors 7:30pm — each checked
+// by hand against the packed nights), W2's window moved to 6–7:30pm so it
+// still tests "works until" at 7:30pm, and W3's "Big" (done by 6:30pm) lost
+// its daylight line, which is the fix working.
 // - Only literal fixed in the harness itself: W3's spring date. I guessed
 //   May 3; sunset in Sacramento gains about a minute a day from 7:58pm on
 //   May 1, so 8pm first holds on May 4. The code was right.

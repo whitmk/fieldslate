@@ -5,9 +5,9 @@
 // is still owed before shipping (CLAUDE.md, "Print path").
 
 import { DAY_LONG, fieldTypeLabel } from "@/lib/practice-planner/constants";
-import { fmtDate, fmtInt, fmtTime, parseIsoDate, toMinutes } from "@/lib/practice-planner/format";
+import { fmtInt, fmtTime, toMinutes } from "@/lib/practice-planner/format";
 import { countedPerWeek, divisionIsActive, normalizeDays } from "@/lib/practice-planner/plan";
-import { seasonError, type SeasonTotals } from "@/lib/practice-planner/report";
+import { seasonRangeLabel, type SeasonTotals } from "@/lib/practice-planner/report";
 import type { FieldTypeId, ModeResult, PlannerInput, SpreadMode } from "@/lib/practice-planner/types";
 
 export function PrintRegion({
@@ -29,9 +29,7 @@ export function PrintRegion({
   totals: SeasonTotals | null;
   cityLabel: string;
 }) {
-  const dates = seasonError(input)
-    ? null
-    : `${fmtDate(parseIsoDate(input.seasonStart))} to ${fmtDate(parseIsoDate(input.seasonEnd))}, ${input.seasonStart.slice(0, 4)}`;
+  const dates = seasonRangeLabel(input);
   const days = DAY_LONG.map((_, k) => k).filter((k) => inUse.some((z) => result.byType[z][k].count > 0));
 
   return (

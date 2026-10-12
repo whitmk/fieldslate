@@ -7,6 +7,7 @@ import { runMutants, type Mutant } from "./mutant-runner";
 const PLAN = "src/lib/practice-planner/plan.ts";
 const CONSTANTS = "src/lib/practice-planner/constants.ts";
 const SUNSET = "src/lib/practice-planner/sunset.ts";
+const REPORT = "src/lib/practice-planner/report.ts";
 
 const MUTANTS: Mutant[] = [
   {
@@ -80,6 +81,18 @@ const MUTANTS: Mutant[] = [
     find: "  blocks.sort((a, b) => a.end - a.start - (b.end - b.start) || a.start - b.start || b.lengthMin - a.lengthMin);",
     replace: "",
     expect: "F10",
+  },
+  {
+    id: "PP13", what: "daylight judged at the window end, not the practices' actual end", file: REPORT,
+    find: "    const end = latestPracticeEnd(result, i, d);",
+    replace: "    const end: number | null = toMinutes(d.end);",
+    expect: "L1",
+  },
+  {
+    id: "PP14", what: "practices too long for their window counted in the totals", file: REPORT,
+    find: "    if (!fitsWindow(d)) continue;",
+    replace: "",
+    expect: "T2",
   },
 ];
 

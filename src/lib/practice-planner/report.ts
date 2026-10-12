@@ -2,16 +2,23 @@
 // text, ported from the approved mockup (render / requestText). Every
 // sentence the page shows is built here and rendered VERBATIM.
 //
-// One deliberate addition to the mockup: the daylight check also handles a
-// FALL season ("works until <date>") and a season spanning summer or winter.
-// The mockup only warned when the window ended after sunset on the FIRST day,
-// so a fall season that loses its daylight in October said nothing.
+// Deliberate changes from the mockup (founder-approved, 2026-10-12):
+// - The daylight check also handles a FALL season ("works until <date>") and a
+//   season spanning summer or winter. The mockup only warned when the window
+//   ended after sunset on the FIRST day.
+// - The daylight check compares sunset with when each division's practices
+//   ACTUALLY end in the chosen mode (the packed blocks), not with its window
+//   end. A 5:30–8pm window whose practices all finish at 7pm is a 7pm
+//   question, and the warning names 7pm.
+// - Season totals leave out practices too long for their window, as the
+//   warning about them says.
+// - The request text names both years when the season crosses New Year.
 
 import { DAY_LONG, fieldTypeLabel } from "./constants";
 import { fmtDate, fmtTime, isIsoDate, parseIsoDate, toMinutes } from "./format";
 import { computeMode, countedPerWeek, divisionIsActive, fieldTypesInUse, normalizeDays } from "./plan";
 import { daylightFor, sunsetMinutes } from "./sunset";
-import type { FieldTypeId, ModeResult, PlannerInput } from "./types";
+import type { DivisionInput, FieldTypeId, ModeResult, PlannerInput, SpreadMode } from "./types";
 import { cityById } from "./us-cities";
 
 const DAY_MS = 864e5;
@@ -28,7 +35,8 @@ export type Plan = {
   sameNights: ModeResult;
   /** Field types some active division uses, in display order. */
   inUse: FieldTypeId[];
-  warnings: string[];
+  /** Division warnings, then daylight warnings for that mode's packing. */
+  warnings: Record<SpreadMode, string[]>;
   /** Null when the season dates are unusable (see seasonError). */
   totals: SeasonTotals | null;
   /** Sunset on the first day of practice, local minutes; null without valid dates. */
@@ -65,25 +73,45 @@ export function divisionWarnings(input: PlannerInput): string[] {
   return w;
 }
 
-export function daylightWarnings(input: PlannerInput): string[] {
+/** A practice longer than its window is never placed or counted. */
+export function fitsWindow(d: DivisionInput): boolean {
+  return d.lengthMin <= toMinutes(d.end) - toMinutes(d.start);
+}
+
+/** When division `i`'s last placed practice ends on any night, or null if none was placed. */
+export function latestPracticeEnd(result: ModeResult, i: number, d: DivisionInput): number | null {
+  let latest: number | null = null;
+  for (const night of result.byType[d.fieldType]) {
+    for (const f of night.fields) {
+      for (const b of f) {
+        if (b.division === i) latest = Math.max(latest ?? 0, b.start + b.lengthMin);
+      }
+    }
+  }
+  return latest;
+}
+
+export function daylightWarnings(input: PlannerInput, result: ModeResult): string[] {
   if (seasonError(input)) return [];
   const city = cityById(input.cityId);
   const sd = parseIsoDate(input.seasonStart);
   const ed = parseIsoDate(input.seasonEnd);
 
-  // Active divisions grouped by window end, earliest end first ("HH:MM"
-  // strings sort in time order, as the mockup's Object.entries(...).sort()).
-  const byEnd = new Map<string, string[]>();
-  for (const d of input.divisions) {
-    if (!divisionIsActive(d)) continue;
-    byEnd.set(d.end, [...(byEnd.get(d.end) ?? []), d.name]);
-  }
-  const ends = Array.from(byEnd.keys()).sort();
+  // Active divisions grouped by when their practices actually end, earliest
+  // first. A division with nothing placed (every practice too long) has no
+  // daylight question; it already has its length warning.
+  const byEnd = new Map<number, string[]>();
+  input.divisions.forEach((d, i) => {
+    if (!divisionIsActive(d)) return;
+    const end = latestPracticeEnd(result, i, d);
+    if (end === null) return;
+    byEnd.set(end, [...(byEnd.get(end) ?? []), d.name]);
+  });
+  const ends = Array.from(byEnd.keys()).sort((a, b) => a - b);
 
   const w: string[] = [];
-  for (const end of ends) {
-    const names = byEnd.get(end)!;
-    const em = toMinutes(end);
+  for (const em of ends) {
+    const names = byEnd.get(em)!;
     const r = daylightFor(em, sd, ed, city);
     if (r.kind === "ok") continue;
     const lead = `Daylight: ${names.join(", ")} run${names.length > 1 ? "" : "s"} until ${fmtTime(em)}, but sunset on `;
@@ -120,6 +148,7 @@ export function seasonTotals(input: PlannerInput): SeasonTotals | null {
   let practices = 0;
   for (const d of input.divisions) {
     if (!normalizeDays(d.days).length) continue;
+    if (!fitsWindow(d)) continue;
     const n = d.teams * countedPerWeek(d);
     practices += n;
     weekMin += (n * d.lengthMin) / d.teamsPerField;
@@ -134,27 +163,40 @@ export function seasonTotals(input: PlannerInput): SeasonTotals | null {
 
 export function computePlan(input: PlannerInput): Plan {
   const err = seasonError(input);
+  const spread = computeMode(input, "spread");
+  const sameNights = computeMode(input, "sameNights");
+  const divisionW = divisionWarnings(input);
   return {
-    spread: computeMode(input, "spread"),
-    sameNights: computeMode(input, "sameNights"),
+    spread,
+    sameNights,
     inUse: fieldTypesInUse(input),
-    warnings: [...divisionWarnings(input), ...daylightWarnings(input)],
+    warnings: {
+      spread: [...divisionW, ...daylightWarnings(input, spread)],
+      sameNights: [...divisionW, ...daylightWarnings(input, sameNights)],
+    },
     totals: seasonTotals(input),
     sunsetAtStart: err ? null : sunsetMinutes(parseIsoDate(input.seasonStart), cityById(input.cityId)),
     seasonError: err,
   };
 }
 
+/** "Feb 22 to May 29, 2027"; "Nov 1, 2026 to Feb 28, 2027" across New Year. Null without valid dates. */
+export function seasonRangeLabel(input: PlannerInput): string | null {
+  if (seasonError(input)) return null;
+  const sd = parseIsoDate(input.seasonStart);
+  const ed = parseIsoDate(input.seasonEnd);
+  const ys = new Date(sd).getUTCFullYear();
+  const ye = new Date(ed).getUTCFullYear();
+  return ys === ye
+    ? `${fmtDate(sd)} to ${fmtDate(ed)}, ${ys}`
+    : `${fmtDate(sd)}, ${ys} to ${fmtDate(ed)}, ${ye}`;
+}
+
 /** Plain text for the city request: night by night per field type, then the inputs. */
 export function requestText(input: PlannerInput, result: ModeResult, inUse: FieldTypeId[]): string {
   const lines: string[] = [];
-  if (!seasonError(input)) {
-    const sd = parseIsoDate(input.seasonStart);
-    const ed = parseIsoDate(input.seasonEnd);
-    lines.push(`Practice field request: ${fmtDate(sd)} to ${fmtDate(ed)}, ${new Date(sd).getUTCFullYear()}`);
-  } else {
-    lines.push("Practice field request");
-  }
+  const range = seasonRangeLabel(input);
+  lines.push(range ? `Practice field request: ${range}` : "Practice field request");
   for (const z of inUse) {
     lines.push("", `${fieldTypeLabel(z)}s: ${result.need[z].fields} at the busiest time`);
     result.byType[z].forEach((r, k) => {

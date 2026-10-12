@@ -366,10 +366,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   never a copy. Class strings never go in it (Tailwind doesn't scan `src/lib`).
 - **The approved mockup's script is the source of truth**
   (`docs/mockups/practice-field-calculator.html`). The module is a rule-for-rule
-  port; a rule that looks wrong is flagged to the founder, not changed. The one
-  deliberate addition: the daylight check also handles fall seasons ("works
-  until"), and seasons spanning summer or winter — the mockup only warned when
-  the FIRST day was dark.
+  port; a rule that looks wrong is flagged to the founder, not changed.
+  Deliberate, founder-approved departures: the daylight check also handles fall
+  seasons ("works until") and seasons spanning summer or winter (the mockup
+  only warned when the FIRST day was dark); it compares sunset with when each
+  division's practices ACTUALLY end in the chosen mode, never the window end,
+  so the warnings are per mode; season totals leave out practices too long for
+  their window; the request text names both years across New Year.
 - **Rules worth knowing before touching it:** a team practices at most once a
   day; spread mode places divisions with the fewest allowed days first, each
   practice on the allowed day with the lowest field-minutes for that field type
@@ -386,9 +389,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   clock, no `toLocale*`, no `localeCompare`) so server and browser markup match.
 - **Print uses `.fieldslate-print-region`** (no print CSS changed), so the
   Safari print rule under "Print path" applies to any change here.
-- **Harness: `npm run sim:practice-planner`** (44 checks × 3 zones, 9
+- **Harness: `npm run sim:practice-planner`** (48 checks × 3 zones, 9
   anti-vacuity counters: the example league's 6/14, 2/4, 2/3; Santa Rosa
-  sunsets ±3 min; every daylight case) + `:mutants` (12, each killed first at
+  sunsets ±3 min; every daylight case) + `:mutants` (14, each killed first at
   its own assertion). Every F fixture states its real AND mutated answer by
   hand — confirm a new fixture separates them before trusting its mutant.
 

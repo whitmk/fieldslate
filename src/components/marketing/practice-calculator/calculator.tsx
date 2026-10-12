@@ -56,6 +56,7 @@ export function PracticeFieldCalculator() {
   const plan = useMemo(() => computePlan(input), [input]);
   const result: ModeResult = mode === "spread" ? plan.spread : plan.sameNights;
   const other: ModeResult = mode === "spread" ? plan.sameNights : plan.spread;
+  const warnings = plan.warnings[mode];
   // Names indexed like input.divisions (what the results reference).
   const names = input.divisions.map((d) => d.name || "Division");
   const colorIndex = input.divisions.map((d) => divisions.findIndex((x) => x.id === (d as DivisionDraft).id));
@@ -290,12 +291,12 @@ export function PracticeFieldCalculator() {
           </div>
         )}
 
-        {(plan.seasonError || plan.warnings.length > 0) && (
+        {(plan.seasonError || warnings.length > 0) && (
           <ul className="mt-4 space-y-2">
             {plan.seasonError && (
               <li className="rounded-lg bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900">{plan.seasonError}</li>
             )}
-            {plan.warnings.map((w) => (
+            {warnings.map((w) => (
               <li key={w} className="rounded-lg bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900">
                 {w}
               </li>
@@ -373,7 +374,7 @@ export function PracticeFieldCalculator() {
         other={other}
         mode={mode}
         inUse={plan.inUse}
-        warnings={plan.seasonError ? [plan.seasonError, ...plan.warnings] : plan.warnings}
+        warnings={plan.seasonError ? [plan.seasonError, ...warnings] : warnings}
         totals={plan.totals}
         cityLabel={`${city.name}, ${city.state}`}
       />
