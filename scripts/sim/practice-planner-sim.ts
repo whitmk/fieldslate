@@ -1,0 +1,331 @@
+// Harness for the practice field calculator's math: src/lib/practice-planner/
+// — the pure module the public page (/tools/practice-field-calculator) calls,
+// and that a later in-app version must reuse.
+//
+//   npm run sim:practice-planner            (three host zones)
+//   npm run sim:practice-planner:mutants    (mutation pass, real source)
+//
+// SOURCE OF TRUTH: the approved mockup's script,
+// docs/mockups/practice-field-calculator.html. Section K pins the example
+// league's answers from it (60-ft 6/14, 50/70 2/4, 90-ft 2/3) and section S
+// the Santa Rosa sunsets (±3 min). If K goes red after a change, the change
+// diverged from the mockup — fix the change, never the literals.
+//
+// RUN UNDER THREE ZONES (UTC, America/Los_Angeles, Pacific/Kiritimati): every
+// expected value is a literal, so a host zone leaking into the sunset or
+// date math fails instead of agreeing with itself.
+//
+// SECTIONS RUN IN THIS ORDER ON PURPOSE — a mutant must die FIRST at its own
+// assertion (CLAUDE.md, "killed by the RIGHT assertion"). Every F fixture is
+// small enough to check by hand; the hand answer is in its comment, and the
+// mutated answer beside it, so each fixture is known to SEPARATE real from
+// mutated code before the runner proves it:
+//   F1  4 teams, 1x 90 min, Mon, 5–8pm, 1/field → 2 fields (control)
+//   F2  same, 2 teams per field → 1 field                    ← PP2
+//   F3a 2 teams, 1x 90 min, 5–8pm, 0 min between → 1 field   (control)
+//   F3  same, 5 min between → 2 fields                       ← PP3
+//   F4  once a day per team                                  ← PP4
+//   F5  same-nights preference: Tue, Thu                     ← PP1
+//   F6  busiest night, never the week's sum                  ← PP6
+//   F7  fewest allowed days first                            ← PP7
+//   F8  a practice longer than its window is skipped         ← PP8
+//   F9  load tie → fewer of this division's practices        ← PP9
+//   F10 packing sort: narrowest window first                 ← PP12
+//   K   the example league (the mockup's known answers)
+//   S   sunset, Santa Rosa                                   ← PP5 (S2)
+//   D   daylight: from / until / never / ok / between / gap  ← PP10 (D2), PP11 (D3)
+//   W   warnings, T totals, R city-request text
+// then ANTI-VACUITY COUNTERS — a zero counter fails the run.
+//
+// MUTATION LOG: see the bottom of this file.
+
+import { computeMode, distribute } from "@/lib/practice-planner/plan";
+import { computePlan, requestText } from "@/lib/practice-planner/report";
+import { daylightFor, sunsetMinutes, type DaylightResult } from "@/lib/practice-planner/sunset";
+import { cityById, US_CITIES } from "@/lib/practice-planner/us-cities";
+import { EXAMPLE_LEAGUE } from "@/lib/practice-planner/example-league";
+import { fmtDate, parseIsoDate } from "@/lib/practice-planner/format";
+import type { DivisionInput, ModeResult, PlannerInput } from "@/lib/practice-planner/types";
+
+let failures = 0;
+let checks = 0;
+function ok(cond: boolean, tag: string, detail?: string) {
+  checks++;
+  if (!cond) {
+    failures++;
+    console.log(`  FAIL: ${tag}${detail ? ` — ${detail}` : ""}`);
+  }
+}
+function section(name: string, fn: () => void) {
+  try {
+    fn();
+  } catch (e) {
+    failures++;
+    console.log(`  FAIL: [CRASH-${name}] ${(e as Error).stack ?? e}`);
+  }
+}
+
+// ── counters (anti-vacuity) ─────────────────────────────────────────────
+const counters = {
+  sharedFieldBlocks: 0, // a block carrying 2+ teams was placed
+  fieldReused: 0, // a field held 2+ blocks
+  skippedBlocks: 0, // a practice longer than its window was skipped
+  daylight: new Set<DaylightResult["kind"]>(),
+};
+function count(r: ModeResult) {
+  for (const nights of Object.values(r.byType)) {
+    for (const n of nights) {
+      counters.skippedBlocks += n.skipped;
+      for (const f of n.fields) {
+        if (f.length > 1) counters.fieldReused++;
+        for (const b of f) if (b.teams > 1) counters.sharedFieldBlocks++;
+      }
+    }
+  }
+}
+
+// ── fixtures ────────────────────────────────────────────────────────────
+function div(over: Partial<DivisionInput>): DivisionInput {
+  return {
+    name: "D",
+    teams: 4,
+    perWeek: 1,
+    lengthMin: 90,
+    days: [0],
+    start: "17:00",
+    end: "20:00",
+    fieldType: "diamond60",
+    teamsPerField: 1,
+    ...over,
+  };
+}
+function league(divisions: DivisionInput[], over: Partial<PlannerInput> = {}): PlannerInput {
+  return { seasonStart: "2027-03-01", seasonEnd: "2027-03-31", cityId: "ca-sacramento", minutesBetween: 0, divisions, ...over };
+}
+function need(input: PlannerInput, mode: "spread" | "sameNights" = "spread"): number {
+  const r = computeMode(input, mode);
+  count(r);
+  return r.need.diamond60.fields;
+}
+/** practices per day [Mon..Sun] for division i on 60-ft diamonds */
+function perDay(input: PlannerInput, mode: "spread" | "sameNights", i: number): number[] {
+  const dem = distribute(input, mode).diamond60;
+  return dem.map((day) => day.find((x) => x.division === i)?.practices ?? 0);
+}
+const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+// ── F: hand-checkable fixtures ──────────────────────────────────────────
+section("F", () => {
+  // F1: 4 blocks of 90 in 5–8pm → two per field → 2 fields, either mode.
+  const f1 = league([div({})]);
+  ok(need(f1) === 2 && need(f1, "sameNights") === 2, "[F1]", `got ${need(f1)} / ${need(f1, "sameNights")}`);
+
+  // F2: 2 teams per field → 2 blocks → 1 field. (PP2, per ignored: 4 blocks → 2.)
+  const f2 = league([div({ teamsPerField: 2 })]);
+  ok(need(f2) === 1, "[F2] teams per field", `got ${need(f2)}`);
+
+  // F3a: 90 + 90 = 180 = the 3h window → one field with nothing between.
+  const f3a = league([div({ teams: 2 })]);
+  ok(need(f3a) === 1, "[F3a] no changeover", `got ${need(f3a)}`);
+  // F3: 90 + 5 + 90 = 185 > 180 → 2 fields. (PP3, changeover ignored: 1.)
+  const f3 = league([div({ teams: 2 })], { minutesBetween: 5 });
+  ok(need(f3) === 2, "[F3] changeover", `got ${need(f3)}`);
+
+  // F4: A (Wed only, 2 teams) loads Wed with 180. B (1 team, 2x, Mon/Wed):
+  // practice 1 → Mon (0); practice 2 → Mon is the team's day already, so
+  // Wed. (PP4, cap removed: Mon 90 < Wed 180 → Mon twice.)
+  const f4 = league([div({ name: "A", teams: 2, days: [2] }), div({ name: "B", teams: 1, perWeek: 2, days: [0, 2] })]);
+  ok(eq(perDay(f4, "spread", 1), [1, 0, 1, 0, 0, 0, 0]), "[F4] once a day per team", JSON.stringify(perDay(f4, "spread", 1)));
+
+  // F5: 2 teams, 2x, Mon–Fri, same nights → Tue and Thu, 2 each.
+  // (PP1, calendar order: Mon and Tue.)
+  const f5 = league([div({ teams: 2, perWeek: 2, days: [0, 1, 2, 3, 4] })]);
+  ok(eq(perDay(f5, "sameNights", 0), [0, 2, 0, 2, 0, 0, 0]), "[F5] same-nights preference", JSON.stringify(perDay(f5, "sameNights", 0)));
+
+  // F6: 4 teams, 1x, Mon/Tue → 2 a night, 1 field each night → request 1.
+  // (PP6, sum over nights: 2.)
+  const f6 = league([div({ days: [0, 1] })]);
+  ok(need(f6) === 1, "[F6] busiest night, not the sum", `got ${need(f6)}`);
+
+  // F7: windows fit ONE 90-min practice per field. B (Mon/Tue, 2 teams) is
+  // listed first, A (Mon only, 2 teams) second. Fewest days first: A → Mon 2;
+  // B → Tue 2 → 2 fields. (PP7, list order: B → Mon 1, Tue 1; A → Mon 2
+  // more → Mon 3 → 3 fields.)
+  const one = { start: "17:00", end: "18:30" };
+  const f7 = league([div({ name: "B", teams: 2, days: [0, 1], ...one }), div({ name: "A", teams: 2, days: [0], ...one })]);
+  ok(need(f7) === 2, "[F7] fewest allowed days first", `got ${need(f7)}`);
+
+  // F8: 120 minutes in a 60-minute window → nothing placed, 1 skipped.
+  // (PP8, counted anyway: 1 field.)
+  const f8 = league([div({ teams: 1, lengthMin: 120, start: "17:00", end: "18:00" })]);
+  const r8 = computeMode(f8, "spread");
+  count(r8);
+  ok(r8.need.diamond60.fields === 0 && r8.byType.diamond60[0].skipped === 1, "[F8] too-long practice skipped",
+    `fields ${r8.need.diamond60.fields}, skipped ${r8.byType.diamond60[0].skipped}`);
+
+  // F9: A (Tue only, 1 team) loads Tue with 90. B (2 teams, 1x, Mon/Tue):
+  // practice 1 → Mon (0 < 90); practice 2 → Mon 90 = Tue 90, B has 1 on Mon
+  // and 0 on Tue → Tue. (PP9, no per-division tie-break: Mon, calendar order.)
+  const f9 = league([div({ name: "A", teams: 1, days: [1] }), div({ name: "B", teams: 2, days: [0, 1] })]);
+  ok(eq(perDay(f9, "spread", 1), [1, 1, 0, 0, 0, 0, 0]), "[F9] tie → fewer of this division", JSON.stringify(perDay(f9, "spread", 1)));
+
+  // F10: X (5–8pm) is listed before Y (5–6:30pm, room for exactly one 90).
+  // Narrowest first: Y at 5:00 on field 1, X fits after it at 6:30 → 1 field.
+  // (PP12, sort removed: X takes 5:00, Y has nowhere on field 1 → 2.)
+  const f10 = league([div({ name: "X", teams: 1 }), div({ name: "Y", teams: 1, start: "17:00", end: "18:30" })]);
+  ok(need(f10) === 1, "[F10] narrowest window packs first", `got ${need(f10)}`);
+});
+
+// ── K: the example league (the mockup's known answers) ──────────────────
+const SANTA_ROSA = { ...EXAMPLE_LEAGUE, cityId: "ca-santa-rosa" };
+section("K", () => {
+  const p = computePlan(SANTA_ROSA);
+  count(p.spread);
+  count(p.sameNights);
+  const got = (z: "diamond60" | "diamond5070" | "diamond90") => [p.spread.need[z].fields, p.sameNights.need[z].fields];
+  ok(eq(got("diamond60"), [6, 14]), "[K1] 60-ft 6 spread / 14 same nights", JSON.stringify(got("diamond60")));
+  ok(eq(got("diamond5070"), [2, 4]), "[K2] 50/70 2 / 4", JSON.stringify(got("diamond5070")));
+  ok(eq(got("diamond90"), [2, 3]), "[K3] 90-ft 2 / 3", JSON.stringify(got("diamond90")));
+  ok(eq(p.inUse, ["diamond60", "diamond5070", "diamond90"]), "[K4] field types in use", JSON.stringify(p.inUse));
+  // The page default is Sacramento; the field counts don't depend on the city.
+  const s = computePlan(EXAMPLE_LEAGUE);
+  ok(EXAMPLE_LEAGUE.cityId === "ca-sacramento" && s.spread.need.diamond60.fields === 6, "[K5] default city Sacramento");
+});
+
+// ── S: sunset, Santa Rosa (NOAA approximation, ±3 min) ──────────────────
+section("S", () => {
+  const sr = cityById("ca-santa-rosa");
+  const near = (d: string, hhmm: number, tag: string) => {
+    const got = sunsetMinutes(parseIsoDate(d), sr);
+    ok(Math.abs(got - hhmm) <= 3, tag, `${d}: got ${got.toFixed(1)} min, want ${hhmm} ±3`);
+  };
+  near("2027-02-22", 17 * 60 + 57, "[S1] Feb 22 ≈ 5:57pm");
+  near("2027-03-15", 19 * 60 + 18, "[S2] Mar 15 ≈ 7:18pm (after DST)");
+  near("2027-05-29", 20 * 60 + 27, "[S3] May 29 ≈ 8:27pm");
+  // No DST in Arizona: the day DST starts moves Phoenix's sunset by about a minute, not an hour.
+  const phx = cityById("az-phoenix");
+  const jump = sunsetMinutes(parseIsoDate("2027-03-14"), phx) - sunsetMinutes(parseIsoDate("2027-03-13"), phx);
+  ok(Math.abs(jump) < 3, "[S4] Arizona has no DST", `jump ${jump.toFixed(1)}`);
+  // The city list: unique ids, every state plus DC, the two named cities present.
+  const ids = new Set(US_CITIES.map((c) => c.id));
+  ok(ids.size === US_CITIES.length, "[S5] city ids unique");
+  ok(new Set(US_CITIES.map((c) => c.state)).size === 51, "[S6] 50 states + DC");
+  ok(ids.has("ca-santa-rosa") && ids.has("ca-sacramento"), "[S7] Santa Rosa and Sacramento listed");
+});
+
+// ── D: daylight, Sacramento ─────────────────────────────────────────────
+section("D", () => {
+  const sac = cityById("ca-sacramento");
+  const day = (end: string, a: string, b: string) => {
+    const [h, m] = end.split(":").map(Number);
+    const r = daylightFor(h * 60 + m, parseIsoDate(a), parseIsoDate(b), sac);
+    counters.daylight.add(r.kind);
+    return JSON.stringify(r, (k, v) => (k === "from" || k === "until" ? fmtDate(v) : v));
+  };
+  // Spring: dark at the start, light from Apr 17 (Phoenix; a no-DST city).
+  const phx = daylightFor(19 * 60, parseIsoDate("2027-03-01"), parseIsoDate("2027-04-30"), cityById("az-phoenix"));
+  counters.daylight.add(phx.kind);
+  ok(phx.kind === "from" && fmtDate(phx.from) === "Apr 17", "[D1] spring: works from", JSON.stringify(phx));
+  // Fall: 7:30pm works through Sep 5 (sunset 7:29pm on Sep 6). (PP10: no warning.)
+  const d2 = day("19:30", "2027-08-15", "2027-11-15");
+  ok(d2 === '{"kind":"until","until":"Sep 5"}', "[D2] fall: works until", d2);
+  // Never: 8pm in Oct–Nov. (PP11: reported as fine.)
+  const d3 = day("20:00", "2027-10-01", "2027-11-30");
+  ok(d3 === '{"kind":"never"}', "[D3] never this season", d3);
+  const d4 = day("19:00", "2027-05-01", "2027-06-30");
+  ok(d4 === '{"kind":"ok"}', "[D4] daylight all season", d4);
+  const d5 = day("20:15", "2027-04-01", "2027-09-30");
+  ok(d5 === '{"kind":"between","from":"May 20","until":"Aug 2"}', "[D5] a season spanning summer", d5);
+  // 5:30pm, Oct–Mar: fine until DST ends (Nov 7), back from Feb 3.
+  const d6 = day("17:30", "2027-10-01", "2028-03-31");
+  ok(d6 === '{"kind":"gap","until":"Nov 6","from":"Feb 3"}', "[D6] a season spanning winter", d6);
+});
+
+// ── W: warnings, verbatim ───────────────────────────────────────────────
+section("W", () => {
+  ok(
+    eq(computePlan(SANTA_ROSA).warnings, [
+      "Daylight: T-Ball runs until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 14.",
+      "Daylight: Rookie runs until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Mar 28.",
+      "Daylight: Minors AA, Minors AAA, Majors, 50/70 run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, that window works from Apr 29.",
+      "Daylight: Juniors runs until 8:30pm, but sunset on Feb 22 is 5:57pm. Without lights, it doesn't work before practices end.",
+    ]),
+    "[W1] example league daylight warnings",
+    JSON.stringify(computePlan(SANTA_ROSA).warnings),
+  );
+  const fall = computePlan(league([div({ name: "Fall Ball", end: "19:30" })], { seasonStart: "2027-08-15", seasonEnd: "2027-11-15" }));
+  ok(
+    eq(fall.warnings, [
+      "Daylight: Fall Ball runs until 7:30pm, but sunset on Sep 6 is 7:29pm. Without lights, that window works until Sep 5.",
+    ]),
+    "[W2] fall wording",
+    JSON.stringify(fall.warnings),
+  );
+  const extra = computePlan(
+    league(
+      [div({ name: "Big", teams: 1, perWeek: 3, days: [0, 2] }), div({ name: "Long", teams: 1, lengthMin: 120, end: "18:00" })],
+      { seasonStart: "2027-05-01", seasonEnd: "2027-06-30" },
+    ),
+  );
+  ok(
+    eq(extra.warnings, [
+      "Big practices 3 times a week but only has 2 days picked. Counted as 2.",
+      "Long's 120-minute practice doesn't fit between 5pm and 6pm. Those practices aren't counted.",
+      "Daylight: Big runs until 8pm, but sunset on May 1 is 7:58pm. Without lights, that window works from May 4.",
+    ]),
+    "[W3] per-week and length warnings",
+    JSON.stringify(extra.warnings),
+  );
+  ok(computePlan(league([div({})], { seasonEnd: "2027-02-01" })).seasonError === "Practices end before they start.", "[W4] dates reversed");
+});
+
+// ── T: season totals ────────────────────────────────────────────────────
+section("T", () => {
+  // 76 practices; 6030 field-minutes = 100.5 h/week; Feb 22–May 29 = 97 days = 14 weeks; 1407 h.
+  const t = computePlan(SANTA_ROSA).totals;
+  ok(eq(t, { teamPracticesPerWeek: 76, fieldHoursPerWeek: 101, weeks: 14, fieldHoursSeason: 1407 }), "[T1] example totals", JSON.stringify(t));
+});
+
+// ── R: copy for city request ────────────────────────────────────────────
+section("R", () => {
+  const input = league([div({ name: "Minors", days: [1, 3] })], { seasonStart: "2027-02-22", seasonEnd: "2027-05-29" });
+  const p = computePlan(input);
+  const want = [
+    "Practice field request: Feb 22 to May 29, 2027",
+    "",
+    "60-ft diamonds: 1 at the busiest time",
+    "  Tuesday: 1 field, 5pm to 8pm",
+    "  Thursday: 1 field, 5pm to 8pm",
+    "",
+    "Based on: Minors (4 teams, 1x/week, 90 min).",
+  ].join("\n");
+  const got = requestText(input, p.spread, p.inUse);
+  ok(got === want, "[R1] city request text", JSON.stringify(got));
+});
+
+// ── anti-vacuity ────────────────────────────────────────────────────────
+ok(counters.sharedFieldBlocks > 0, "[C1] a shared-field block was placed");
+ok(counters.fieldReused > 0, "[C2] a field held more than one block");
+ok(counters.skippedBlocks > 0, "[C3] a too-long practice was skipped");
+for (const k of ["ok", "from", "until", "between", "gap", "never"] as const) {
+  ok(counters.daylight.has(k), `[C4-${k}] daylight case "${k}" exercised`);
+}
+
+console.log(`practice-planner (${process.env.TZ ?? "host"}): ${checks} checks, ${failures} failed`);
+process.exit(failures ? 1 : 0);
+
+// MUTATION LOG
+// 2026-10-12, first run: 12/12 killed FIRST at their own assertion under all
+// three zones (PP1→F5, PP2→F2, PP3→F3, PP4→F4, PP5→S2, PP6→F6, PP7→F7,
+// PP8→F8, PP9→F9, PP10→D2, PP11→D3, PP12→F10).
+// - PP3's fixture was corrected BEFORE the run (founder review): two 90-min
+//   blocks in a 3h05 window fit one field with or without 5 minutes between
+//   (90+5+90 = 185), so that fixture could not tell real from mutated. F3 now
+//   uses a 3h00 window (2 fields with the changeover, 1 without) and F3a pins
+//   the 1-field control, which stays GREEN under PP3 — the mutant dies at F3,
+//   not before it.
+// - Each F fixture's comment carries the real AND the mutated answer, worked
+//   by hand, so the separation is stated before the runner proves it.
+// - Only literal fixed in the harness itself: W3's spring date. I guessed
+//   May 3; sunset in Sacramento gains about a minute a day from 7:58pm on
+//   May 1, so 8pm first holds on May 4. The code was right.

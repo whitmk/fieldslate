@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Practice field calculator — FieldSlate (mockup)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#0C1F3F; --paper:#f4f5f0; --card:#ffffff; --ink:#0C1F3F; --muted:#5b6577;
+  --line:#dfe2da; --soft:#eceee7; --green:#22c55e; --green-dk:#16a34a; --warn-bg:#fff6e0; --warn-ink:#7a4b00;
+  --lane:#f7f8f4;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0a1830; --card:#10223f; --ink:#e8ecf3; --muted:#9aa6bb; --line:#22385c; --soft:#162b4d;
+    --warn-bg:#3a2a07; --warn-ink:#ffd27a; --lane:#0d1d37;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0a1830; --card:#10223f; --ink:#e8ecf3; --muted:#9aa6bb; --line:#22385c; --soft:#162b4d;
+  --warn-bg:#3a2a07; --warn-ink:#ffd27a; --lane:#0d1d37;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:Manrope,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+button,input,select{font:inherit;color:inherit}
+input,select{font-size:16px}
+:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+
+.mock{background:var(--navy);color:#cfd8e8;font-size:13px;text-align:center;padding:7px 12px}
+.mock b{color:#fff}
+
+header.top{padding:28px 0 8px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:15px}
+.mark{width:28px;height:28px;border-radius:7px;background:var(--green);color:#0C1F3F;display:grid;place-items:center;font-weight:800;box-shadow:0 2px 0 var(--green-dk)}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.08;font-weight:800;letter-spacing:-1px;margin:22px 0 10px;max-width:16ch}
+.lede{color:var(--muted);max-width:60ch;margin:0 0 26px;font-size:16px}
+
+h2{font-size:19px;font-weight:800;letter-spacing:-.3px;margin:0 0 4px}
+.hint{color:var(--muted);font-size:13.5px;margin:0 0 14px}
+section{margin:0 0 34px}
+
+/* season strip */
+.season{display:flex;flex-wrap:wrap;gap:14px 20px;padding:16px 18px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld label,.lbl{font-size:12.5px;color:var(--muted);font-weight:600}
+.fld input,.fld select{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:7px 9px;min-width:0}
+.fld input[type=number]{width:76px}
+
+/* divisions */
+.divs{border-top:2px solid var(--ink)}
+.div{display:grid;grid-template-columns:150px 70px 78px 92px 1fr 190px 150px 78px 32px;gap:10px;align-items:end;padding:14px 0;border-bottom:1px solid var(--line)}
+.div .name{display:flex;align-items:center;gap:8px}
+.sw{flex:none;width:10px;height:28px;border-radius:3px}
+.div .name input{width:100%}
+.days{display:flex;gap:4px;flex-wrap:wrap}
+.day{border:1px solid var(--line);background:var(--card);border-radius:6px;padding:5px 0;width:38px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--muted)}
+.day[aria-pressed="true"]{background:var(--navy);color:#fff;border-color:var(--navy)}
+:root[data-theme="dark"] .day[aria-pressed="true"]{background:#e8ecf3;color:#0C1F3F}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .day[aria-pressed="true"]{background:#e8ecf3;color:#0C1F3F;border-color:#e8ecf3}}
+.times{display:flex;align-items:center;gap:4px}
+.times input{width:100%;padding:7px 4px}
+.rm{border:none;background:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px;line-height:1;border-radius:6px}
+.rm:hover{color:#dc2626}
+.add{margin-top:12px;border:1px dashed var(--line);background:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;color:var(--ink)}
+.add:hover{border-color:var(--ink)}
+.colhead{display:none}
+@media (max-width:980px){
+  .div{grid-template-columns:1fr 1fr 1fr;align-items:start}
+  .div .name{grid-column:1/-1}
+  .div .daysfld{grid-column:1/-1}
+  .div .rm{position:absolute;right:0;top:12px}
+  .div{position:relative}
+}
+
+/* answer */
+.answer{background:var(--navy);color:#fff;border-radius:14px;padding:22px 22px 18px}
+.answer h2{color:#fff}
+.answer .hint{color:#aab6cc}
+.need{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:2px;margin-top:6px;border-radius:10px;overflow:hidden}
+.need > div{background:rgba(255,255,255,.06);padding:14px 16px}
+.need .n{font-size:40px;font-weight:800;line-height:1;color:var(--green)}
+.need .sz{font-weight:700;margin-top:6px}
+.need .alt{font-size:13px;color:#aab6cc;margin-top:4px}
+
+.mode{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--card);margin:18px 0 12px}
+.mode button{border:none;background:none;border-radius:999px;padding:6px 14px;font-weight:700;font-size:13.5px;cursor:pointer;color:var(--muted)}
+.mode button[aria-pressed="true"]{background:var(--green);color:#0C1F3F}
+
+table{border-collapse:collapse;width:100%;font-size:14px}
+.scroll{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:12.5px;color:var(--muted);font-weight:700}
+tr:last-child td{border-bottom:none}
+td .big{font-weight:800;font-size:16px}
+td .sub{color:var(--muted);font-size:12.5px}
+tr.peak td:first-child{box-shadow:inset 3px 0 0 var(--green)}
+
+/* board */
+.boardbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tabs button{border:1px solid var(--line);background:var(--card);border-radius:7px;padding:5px 11px;font-weight:700;font-size:13px;cursor:pointer;color:var(--muted)}
+.tabs button[aria-pressed="true"]{border-color:var(--ink);color:var(--ink)}
+.tabs button .c{font-weight:800;color:var(--green-dk);margin-left:4px}
+.board{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px 14px;overflow-x:auto}
+.grid{min-width:620px}
+.axis{position:relative;height:20px;margin-left:72px;font-size:11.5px;color:var(--muted)}
+.axis span{position:absolute;transform:translateX(-50%)}
+.lane{display:flex;align-items:center;height:42px;border-top:1px solid var(--line)}
+.lane .ln{width:72px;flex:none;font-size:12.5px;font-weight:700;color:var(--muted)}
+.lane .tr{position:relative;flex:1;height:32px;background:var(--lane);border-radius:6px;
+  background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(var(--hr) - 1px),var(--line) calc(var(--hr) - 1px),var(--line) var(--hr))}
+.blk{position:absolute;top:3px;bottom:3px;border-radius:5px;color:#fff;font-size:11.5px;font-weight:700;padding:2px 7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.25}
+.blk small{display:block;font-weight:600;opacity:.85}
+.sunset{position:absolute;top:-4px;bottom:-4px;border-left:2px dashed #f59e0b;pointer-events:none}
+.legend{display:flex;gap:6px 16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+.warns{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.warn{background:var(--warn-bg);color:var(--warn-ink);border-radius:9px;padding:10px 13px;font-size:13.5px}
+
+.totals{display:flex;flex-wrap:wrap;gap:24px;margin-top:16px;font-size:14px}
+.totals b{font-size:20px;font-weight:800;display:block}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:10px 16px;font-weight:700;cursor:pointer}
+.btn.primary{background:var(--green);border-color:var(--green-dk);color:#0C1F3F}
+.btn.primary:hover{background:var(--green-dk);color:#fff}
+
+.cta{border-top:1px solid var(--line);padding:26px 0 50px;color:var(--muted);font-size:14.5px}
+.cta a{color:var(--ink);font-weight:700}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:9px;font-weight:700;font-size:13.5px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+@media print{
+  .no-print,.mock{display:none!important}
+  body{background:#fff;color:#000}
+  .answer{background:#fff;color:#000;border:1px solid #999}
+  .answer h2,.need .sz{color:#000}.need .n{color:#000}
+}
+</style>
+</head>
+<body>
+<div class="mock no-print"><b>Mockup.</b> Example divisions are placeholders, not Santa Rosa American's real numbers. Edit anything.</div>
+
+<header class="top wrap">
+  <div class="brand"><span class="mark">F</span>FieldSlate</div>
+  <h1>How many practice fields do you need?</h1>
+  <p class="lede">Enter each division's teams, practice days and times. You'll get the number of fields to request from your city, night by night, ready to paste into the request.</p>
+</header>
+
+<main class="wrap">
+  <section class="no-print">
+    <h2>Season</h2>
+    <p class="hint">Dates set the season totals. Location sets sunset times for the daylight check.</p>
+    <div class="season">
+      <div class="fld"><label for="sStart">Practices start</label><input type="date" id="sStart"></div>
+      <div class="fld"><label for="sEnd">Practices end</label><input type="date" id="sEnd"></div>
+      <div class="fld"><label for="sCity">Near</label><select id="sCity"></select></div>
+      <div class="fld"><label for="sCo">Minutes between practices</label><input type="number" id="sCo" min="0" max="30" step="5"></div>
+    </div>
+  </section>
+
+  <section class="no-print">
+    <h2>Divisions</h2>
+    <p class="hint">"Teams per field" lets younger divisions share a field, two teams on each half.</p>
+    <div class="divs" id="divs"></div>
+    <button class="add" id="addDiv">Add a division</button>
+  </section>
+
+  <section>
+    <div class="answer">
+      <h2>Fields to request</h2>
+      <p class="hint">The most fields in use at the same time on your busiest night, by field type.</p>
+      <div class="need" id="need"></div>
+    </div>
+
+    <div class="mode no-print" role="group" aria-label="Practice spread">
+      <button data-mode="even" aria-pressed="true">Spread across the week</button>
+      <button data-mode="pile" aria-pressed="false">Everyone wants the same nights</button>
+    </div>
+    <p class="hint" id="modeHint"></p>
+
+    <div class="scroll"><table id="byDay"></table></div>
+
+    <div class="warns" id="warns"></div>
+
+    <div class="totals" id="totals"></div>
+
+    <div class="actions no-print">
+      <button class="btn primary" id="copyBtn">Copy for city request</button>
+      <button class="btn" id="printBtn">Print</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>See the night</h2>
+    <p class="hint">One way the practices fit. The dashed line is sunset on the first day of practice.</p>
+    <div class="boardbar no-print">
+      <div class="tabs" id="sizeTabs"></div>
+      <div class="tabs" id="dayTabs"></div>
+    </div>
+    <div class="board"><div class="grid" id="grid"></div></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <div class="cta no-print">
+    Once the city gives you fields, <a href="#">FieldSlate schedules the practices</a> and the games around them. Nothing you enter here is saved or sent anywhere.
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const DAYLONG=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+const PREF=[1,3,0,2,4,5,6]; // nights people ask for first
+const SIZES=['60-ft diamond','50/70 diamond','90-ft diamond','Small soccer field','Full soccer field'];
+const COLORS=['#2563eb','#0d9488','#d97706','#7c3aed','#db2777','#059669','#dc2626','#0891b2','#65a30d','#ea580c'];
+const CITIES=[
+  {n:'Santa Rosa, CA',lat:38.44,lon:-122.71,tz:-8,dst:true},
+  {n:'Sacramento, CA',lat:38.58,lon:-121.49,tz:-8,dst:true},
+  {n:'Los Angeles, CA',lat:34.05,lon:-118.24,tz:-8,dst:true},
+  {n:'Denver, CO',lat:39.74,lon:-104.99,tz:-7,dst:true},
+  {n:'Chicago, IL',lat:41.88,lon:-87.63,tz:-6,dst:true},
+  {n:'Atlanta, GA',lat:33.75,lon:-84.39,tz:-5,dst:true},
+  {n:'Boston, MA',lat:42.36,lon:-71.06,tz:-5,dst:true}
+];
+const WK=[0,1,2,3,4];
+const S={
+  start:'2027-02-22', end:'2027-05-29', city:0, co:0, mode:'even', bSize:0, bDay:null,
+  divs:[
+    {name:'T-Ball',teams:6,ppw:1,len:60,days:[...WK],start:'17:00',end:'19:00',size:0,per:2},
+    {name:'Rookie',teams:6,ppw:2,len:75,days:[...WK],start:'17:00',end:'19:30',size:0,per:2},
+    {name:'Minors AA',teams:8,ppw:2,len:90,days:[...WK],start:'17:00',end:'20:00',size:0,per:1},
+    {name:'Minors AAA',teams:8,ppw:2,len:90,days:[...WK],start:'17:00',end:'20:00',size:0,per:1},
+    {name:'Majors',teams:6,ppw:2,len:90,days:[...WK],start:'17:00',end:'20:00',size:0,per:1},
+    {name:'50/70',teams:4,ppw:2,len:90,days:[...WK],start:'17:30',end:'20:00',size:1,per:1},
+    {name:'Juniors',teams:3,ppw:2,len:120,days:[0,2,4],start:'17:30',end:'20:30',size:2,per:1}
+  ]
+};
+
+const $=id=>document.getElementById(id);
+const toMin=t=>{const [h,m]=(t||'0:0').split(':').map(Number);return h*60+m;};
+const fmt=m=>{m=Math.round(m);let h=Math.floor(m/60),mm=m%60;const ap=h>=12?'pm':'am';h=h%12||12;return h+(mm?':'+String(mm).padStart(2,'0'):'')+ap;};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const color=i=>COLORS[i%COLORS.length];
+const parseD=s=>{const [y,m,d]=s.split('-').map(Number);return new Date(Date.UTC(y,m-1,d));};
+const fmtD=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'});
+
+/* ---------- sunset (NOAA approximation) ---------- */
+function isDST(d){ // US rule, d is UTC-midnight date
+  const y=d.getUTCFullYear();
+  const nthSun=(m,n)=>{const f=new Date(Date.UTC(y,m,1));const off=(7-f.getUTCDay())%7;return Date.UTC(y,m,1+off+7*(n-1));};
+  const t=d.getTime();return t>=nthSun(2,2)&&t<nthSun(10,1);
+}
+function sunsetMin(d,c){
+  const rad=Math.PI/180;
+  const N=Math.floor((d-Date.UTC(d.getUTCFullYear(),0,0))/864e5);
+  const lngH=c.lon/15, t=N+((18-lngH)/24);
+  const M=0.9856*t-3.289;
+  let L=(M+1.916*Math.sin(M*rad)+0.020*Math.sin(2*M*rad)+282.634+360)%360;
+  let RA=(Math.atan(0.91764*Math.tan(L*rad))/rad+360)%360;
+  RA+=Math.floor(L/90)*90-Math.floor(RA/90)*90; RA/=15;
+  const sinD=0.39782*Math.sin(L*rad), cosD=Math.cos(Math.asin(sinD));
+  const cosH=(Math.cos(90.833*rad)-sinD*Math.sin(c.lat*rad))/(cosD*Math.cos(c.lat*rad));
+  const H=Math.acos(Math.max(-1,Math.min(1,cosH)))/rad/15;
+  const T=H+RA-0.06571*t-6.622;
+  let UT=((T-lngH)%24+24)%24;
+  let local=UT+c.tz+(c.dst&&isDST(d)?1:0);
+  local=(local%24+24)%24;
+  return local*60;
+}
+
+/* ---------- math ---------- */
+function distribute(mode){
+  // returns dem[size][day] = [{i, n}]
+  const dem=SIZES.map(()=>DAYS.map(()=>[]));
+  const load=SIZES.map(()=>DAYS.map(()=>0));
+  const order=S.divs.map((d,i)=>i).sort((a,b)=>S.divs[a].days.length-S.divs[b].days.length);
+  for(const i of order){
+    const d=S.divs[i]; if(!d.days.length||d.teams<1||d.ppw<1)continue;
+    const per=DAYS.map(()=>0);
+    if(mode==='pile'){
+      const pick=[...d.days].sort((a,b)=>PREF.indexOf(a)-PREF.indexOf(b)).slice(0,Math.min(d.ppw,d.days.length));
+      pick.forEach(k=>per[k]=d.teams);
+    }else{
+      const units=d.teams*Math.min(d.ppw,d.days.length);
+      for(let u=0;u<units;u++){
+        let best=null;
+        for(const k of d.days){
+          if(per[k]>=d.teams)continue;
+          if(best===null||load[d.size][k]<load[d.size][best]-1e-9||(Math.abs(load[d.size][k]-load[d.size][best])<1e-9&&per[k]<per[best]))best=k;
+        }
+        if(best===null)break;
+        per[best]++; load[d.size][best]+=d.len/d.per;
+      }
+    }
+    per.forEach((n,k)=>{if(n>0)dem[d.size][k].push({i,n});});
+  }
+  return dem;
+}
+function pack(items){
+  const co=Number(S.co)||0; const fields=[];
+  const blocks=[];
+  for(const it of items){
+    const d=S.divs[it.i]; const groups=Math.ceil(it.n/d.per);
+    for(let g=0;g<groups;g++){
+      const teams=Math.min(d.per,it.n-g*d.per);
+      blocks.push({i:it.i,s:toMin(d.start),e:toMin(d.end),len:d.len,teams});
+    }
+  }
+  blocks.sort((a,b)=>(a.e-a.s)-(b.e-b.s)||a.s-b.s||b.len-a.len);
+  let skipped=0;
+  for(const b of blocks){
+    if(b.len>b.e-b.s){skipped++;continue;}
+    let bestF=-1,bestT=Infinity;
+    fields.forEach((f,fi)=>{
+      for(let t=b.s;t+b.len<=b.e;t+=5){
+        if(f.every(x=>t>=x.t+x.len+co||t+b.len+co<=x.t)){if(t<bestT){bestT=t;bestF=fi;}break;}
+      }
+    });
+    if(bestF<0){fields.push([]);bestF=fields.length-1;bestT=b.s;}
+    fields[bestF].push({i:b.i,t:bestT,len:b.len,teams:b.teams});
+  }
+  return {fields,skipped};
+}
+function compute(mode){
+  const dem=distribute(mode);
+  const res=SIZES.map((_,z)=>DAYS.map((_,k)=>{
+    const p=pack(dem[z][k]);
+    let lo=Infinity,hi=-Infinity;
+    p.fields.forEach(f=>f.forEach(x=>{lo=Math.min(lo,x.t);hi=Math.max(hi,x.t+x.len);}));
+    return {count:p.fields.length,fields:p.fields,lo,hi,skipped:p.skipped};
+  }));
+  const need=res.map(days=>{let m=0,peak=null;days.forEach((r,k)=>{if(r.count>m){m=r.count;peak=k;}});return {m,peak};});
+  return {res,need};
+}
+
+/* ---------- render: setup ---------- */
+function renderSeason(){
+  $('sStart').value=S.start;$('sEnd').value=S.end;$('sCo').value=S.co;
+  $('sCity').innerHTML=CITIES.map((c,i)=>`<option value="${i}"${i==S.city?' selected':''}>${c.n}</option>`).join('');
+}
+function opt(list,val){return list.map(([v,l])=>`<option value="${v}"${v==val?' selected':''}>${l}</option>`).join('');}
+function renderDivs(){
+  $('divs').innerHTML=S.divs.map((d,i)=>`
+  <div class="div" data-i="${i}">
+    <div class="fld name"><span class="sw" style="background:${color(i)}"></span><div class="fld" style="flex:1"><label for="n${i}">Division</label><input id="n${i}" data-k="name" value="${esc(d.name)}"></div></div>
+    <div class="fld"><label for="t${i}">Teams</label><input id="t${i}" type="number" min="0" max="60" data-k="teams" value="${d.teams}"></div>
+    <div class="fld"><label for="p${i}">Per week</label><input id="p${i}" type="number" min="0" max="7" data-k="ppw" value="${d.ppw}"></div>
+    <div class="fld"><label for="l${i}">Length</label><select id="l${i}" data-k="len">${opt([45,60,75,90,105,120,150].map(v=>[v,v+' min']),d.len)}</select></div>
+    <div class="fld daysfld"><span class="lbl">Days</span><div class="days">${DAYS.map((nm,k)=>`<button type="button" class="day" data-day="${k}" aria-pressed="${d.days.includes(k)}" aria-label="${DAYLONG[k]}">${nm}</button>`).join('')}</div></div>
+    <div class="fld"><span class="lbl">Between</span><div class="times"><input type="time" step="900" data-k="start" value="${d.start}" aria-label="${esc(d.name)} earliest start"><span>–</span><input type="time" step="900" data-k="end" value="${d.end}" aria-label="${esc(d.name)} latest end"></div></div>
+    <div class="fld"><label for="z${i}">Field</label><select id="z${i}" data-k="size">${opt(SIZES.map((s,z)=>[z,s]),d.size)}</select></div>
+    <div class="fld"><label for="q${i}">Teams per field</label><select id="q${i}" data-k="per">${opt([[1,'1'],[2,'2'],[3,'3'],[4,'4']],d.per)}</select></div>
+    <button class="rm" type="button" aria-label="Remove ${esc(d.name)}" data-rm="${i}">×</button>
+  </div>`).join('');
+}
+
+/* ---------- render: results ---------- */
+function render(){
+  const cur=compute(S.mode), even=S.mode==='even'?cur:compute('even'), pile=S.mode==='pile'?cur:compute('pile');
+  const used=SIZES.map((_,z)=>z).filter(z=>S.divs.some(d=>d.size==z&&d.teams>0&&d.days.length));
+
+  // answer
+  $('need').innerHTML=used.length?used.map(z=>{
+    const n=cur.need[z], other=(S.mode==='even'?pile:even).need[z];
+    const plural=n.m===1?'':'s';
+    const otherTxt=S.mode==='even'?`${other.m} if everyone wants the same nights`:`${other.m} if spread across the week`;
+    return `<div><div class="n">${n.m}</div><div class="sz">${SIZES[z]}${plural}</div><div class="alt">Busiest: ${n.peak!==null?DAYLONG[n.peak]:'—'}. ${otherTxt}.</div></div>`;
+  }).join(''):`<div><div class="sz">Add a division with teams and practice days to see a number.</div></div>`;
+
+  $('modeHint').textContent=S.mode==='even'
+    ?'Assumes the league assigns practice nights so no night is overloaded.'
+    :'Assumes teams pick Tuesday and Thursday first, then Monday, Wednesday, Friday. This is closer to what happens when coaches choose.';
+
+  // by-day table
+  const activeDays=DAYS.map((_,k)=>k).filter(k=>used.some(z=>cur.res[z][k].count>0));
+  const peakDays=new Set(used.map(z=>cur.need[z].peak));
+  $('byDay').innerHTML=`<thead><tr><th>Night</th>${used.map(z=>`<th>${SIZES[z]}</th>`).join('')}</tr></thead><tbody>`+
+    activeDays.map(k=>`<tr class="${peakDays.has(k)?'peak':''}"><td><b>${DAYLONG[k]}</b></td>${used.map(z=>{
+      const r=cur.res[z][k]; if(!r.count)return '<td class="sub">—</td>';
+      return `<td><span class="big">${r.count}</span> <span class="sub">field${r.count>1?'s':''}, ${fmt(r.lo)}–${fmt(r.hi)}</span></td>`;}).join('')}</tr>`).join('')+'</tbody>';
+
+  // warnings
+  const w=[]; const city=CITIES[S.city]; const sd=parseD(S.start), ed=parseD(S.end);
+  S.divs.forEach(d=>{
+    if(d.days.length&&d.ppw>d.days.length)w.push(`${esc(d.name)} practices ${d.ppw} times a week but only has ${d.days.length} day${d.days.length>1?'s':''} picked. Counted as ${d.days.length}.`);
+    if(d.len>toMin(d.end)-toMin(d.start))w.push(`${esc(d.name)}'s ${d.len}-minute practice doesn't fit between ${fmt(toMin(d.start))} and ${fmt(toMin(d.end))}. Those practices aren't counted.`);
+  });
+  const lateByEnd={};
+  S.divs.forEach(d=>{if(d.teams>0&&d.days.length){(lateByEnd[d.end]=lateByEnd[d.end]||[]).push(d.name);}});
+  Object.entries(lateByEnd).sort().forEach(([end,names])=>{
+    const em=toMin(end); if(sunsetMin(sd,city)>=em)return;
+    let ok=null; for(let t=sd.getTime();t<=ed.getTime();t+=864e5){const dd=new Date(t);if(sunsetMin(dd,city)>=em){ok=dd;break;}}
+    w.push(`Daylight: ${names.map(esc).join(', ')} run${names.length>1?'':'s'} until ${fmt(em)}, but sunset on ${fmtD(sd)} is ${fmt(sunsetMin(sd,city))}. `+
+      (ok?`Without lights, that window works from ${fmtD(ok)}.`:`Without lights, it doesn't work before practices end.`));
+  });
+  $('warns').innerHTML=w.map(x=>`<div class="warn">${x}</div>`).join('');
+
+  // totals
+  const weeks=Math.max(1,Math.ceil(((ed-sd)/864e5+1)/7));
+  let wkMin=0; S.divs.forEach(d=>{if(d.days.length)wkMin+=d.teams*Math.min(d.ppw,d.days.length)*d.len/d.per;});
+  const tp=S.divs.reduce((a,d)=>a+(d.days.length?d.teams*Math.min(d.ppw,d.days.length):0),0);
+  $('totals').innerHTML=`<div><b>${tp}</b>team practices a week</div><div><b>${Math.round(wkMin/60)}</b>field hours a week</div><div><b>${weeks}</b>weeks</div><div><b>${Math.round(wkMin/60*weeks).toLocaleString()}</b>field hours this season</div>`;
+
+  renderBoard(cur,used);
+  window._cur=cur; window._used=used;
+}
+
+function renderBoard(cur,used){
+  if(!used.includes(S.bSize))S.bSize=used[0]??0;
+  const z=S.bSize;
+  const days=DAYS.map((_,k)=>k).filter(k=>cur.res[z][k].count>0);
+  if(S.bDay===null||!days.includes(S.bDay))S.bDay=cur.need[z]?.peak??days[0]??0;
+  $('sizeTabs').innerHTML=used.map(s=>`<button data-bsize="${s}" aria-pressed="${s===z}">${SIZES[s]}</button>`).join('');
+  $('dayTabs').innerHTML=days.map(k=>`<button data-bday="${k}" aria-pressed="${k===S.bDay}">${DAYS[k]}<span class="c">${cur.res[z][k].count}</span></button>`).join('');
+  const r=cur.res[z][S.bDay];
+  if(!r||!r.count){$('grid').innerHTML='<p class="hint" style="margin:6px 0">No practices on this field type yet.</p>';$('legend').innerHTML='';return;}
+  const t0=Math.floor(r.lo/60)*60, t1=Math.ceil(r.hi/60)*60, span=t1-t0;
+  const pct=m=>((m-t0)/span*100);
+  const hrPct=(60/span*100)+'%';
+  let ticks='';for(let m=t0;m<=t1;m+=60)ticks+=`<span style="left:${pct(m)}%">${fmt(m)}</span>`;
+  const ss=sunsetMin(parseD(S.start),CITIES[S.city]);
+  const sunLine=(ss>t0&&ss<t1)?`<div class="sunset" style="left:${pct(ss)}%" title="Sunset ${fmt(ss)}"></div>`:'';
+  $('grid').innerHTML=`<div class="axis">${ticks}</div>`+r.fields.map((f,fi)=>`
+    <div class="lane"><div class="ln">Field ${fi+1}</div><div class="tr" style="--hr:calc(${hrPct})">${sunLine}${
+      f.map(x=>{const d=S.divs[x.i];return `<div class="blk" style="left:${pct(x.t)}%;width:calc(${x.len/span*100}% - 2px);background:${color(x.i)}" title="${esc(d.name)} ${fmt(x.t)}–${fmt(x.t+x.len)}">${esc(d.name)}<small>${fmt(x.t)}${x.teams>1?', '+x.teams+' teams':''}</small></div>`;}).join('')
+    }</div></div>`).join('');
+  const inView=[...new Set(r.fields.flat().map(x=>x.i))];
+  $('legend').innerHTML=inView.map(i=>`<span><i style="background:${color(i)}"></i>${esc(S.divs[i].name)}</span>`).join('')+
+    (sunLine?`<span><i style="background:#f59e0b"></i>Sunset ${fmt(ss)} on ${fmtD(parseD(S.start))}</span>`:'');
+}
+
+/* ---------- copy text ---------- */
+function requestText(){
+  const cur=window._cur, used=window._used, sd=parseD(S.start), ed=parseD(S.end);
+  let out=`Practice field request: ${fmtD(sd)} to ${fmtD(ed)}, ${sd.getUTCFullYear()}\n`;
+  used.forEach(z=>{
+    out+=`\n${SIZES[z]}s: ${cur.need[z].m} at the busiest time\n`;
+    DAYS.forEach((_,k)=>{const r=cur.res[z][k];if(r.count)out+=`  ${DAYLONG[k]}: ${r.count} field${r.count>1?'s':''}, ${fmt(r.lo)} to ${fmt(r.hi)}\n`;});
+  });
+  out+=`\nBased on: `+S.divs.filter(d=>d.teams>0&&d.days.length).map(d=>`${d.name} (${d.teams} teams, ${Math.min(d.ppw,d.days.length)}x/week, ${d.len} min)`).join('; ')+'.';
+  return out;
+}
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1600);}
+
+/* ---------- events ---------- */
+$('divs').addEventListener('input',e=>{
+  const row=e.target.closest('.div'); const k=e.target.dataset.k; if(!row||!k)return;
+  const d=S.divs[row.dataset.i]; let v=e.target.value;
+  if(['teams','ppw','len','size','per'].includes(k))v=Math.max(0,Number(v)||0);
+  if(k==='per'&&v<1)v=1;
+  d[k]=v;
+  if(k==='name'){row.querySelector('.rm').setAttribute('aria-label','Remove '+v);}
+  render();
+});
+$('divs').addEventListener('click',e=>{
+  const dayBtn=e.target.closest('.day'), rm=e.target.closest('[data-rm]');
+  if(dayBtn){const d=S.divs[dayBtn.closest('.div').dataset.i];const k=Number(dayBtn.dataset.day);
+    d.days=d.days.includes(k)?d.days.filter(x=>x!==k):[...d.days,k].sort();
+    dayBtn.setAttribute('aria-pressed',d.days.includes(k));render();}
+  if(rm){S.divs.splice(Number(rm.dataset.rm),1);renderDivs();render();}
+});
+$('addDiv').addEventListener('click',()=>{
+  S.divs.push({name:'New division',teams:4,ppw:2,len:90,days:[...WK],start:'17:30',end:'20:00',size:0,per:1});
+  renderDivs();render();
+  const inp=document.querySelector(`#n${S.divs.length-1}`);if(inp){inp.focus();inp.select();}
+});
+['sStart','sEnd','sCity','sCo'].forEach(id=>$(id).addEventListener('input',e=>{
+  const m={sStart:'start',sEnd:'end',sCity:'city',sCo:'co'}[id];
+  S[m]=id==='sCity'||id==='sCo'?Number(e.target.value):e.target.value;
+  if(S.start&&S.end)render();
+}));
+document.querySelector('.mode').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;S.mode=b.dataset.mode;S.bDay=null;
+  document.querySelectorAll('.mode button').forEach(x=>x.setAttribute('aria-pressed',x===b));render();
+});
+$('sizeTabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.bSize=Number(b.dataset.bsize);S.bDay=null;render();});
+$('dayTabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.bDay=Number(b.dataset.bday);render();});
+$('copyBtn').addEventListener('click',async()=>{
+  const txt=requestText();
+  try{await navigator.clipboard.writeText(txt);toast('Copied');}
+  catch(err){const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');toast('Copied');}catch(e2){toast('Copy failed. Select the table and copy it instead.');}ta.remove();}
+});
+$('printBtn').addEventListener('click',()=>window.print());
+
+renderSeason();renderDivs();render();
+</script>
+</body>
+</html>
