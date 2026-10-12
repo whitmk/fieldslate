@@ -33,9 +33,9 @@
 //   F10 packing sort: narrowest window first                 ← PP12
 //   K   the example league (the mockup's known answers)
 //   S   sunset, Santa Rosa                                   ← PP5 (S2)
-//   D   daylight: from / until / never / ok / between / gap  ← PP10 (D2), PP11 (D3)
+//   D   daylight: from / until / never / ok / between / gap  ← PP15 (D1), PP10 (D2), PP11 (D3)
 //   L   daylight is judged at the practices' ACTUAL end       ← PP13 (L1)
-//   W   warnings
+//   W   warnings; W5 the never wording                      ← PP16 (W5)
 //   T   totals; too-long practices left out                   ← PP14 (T2)
 //   R   city-request text, incl. a season across New Year
 // then ANTI-VACUITY COUNTERS — a zero counter fails the run.
@@ -309,6 +309,19 @@ section("W", () => {
     JSON.stringify(extra.warnings.spread),
   );
   ok(computePlan(league([div({})], { seasonEnd: "2027-02-01" })).seasonError === "Practices end before they start.", "[W4] dates reversed");
+  // "Never" wording: one 90-minute practice at 7–8:30pm, Sep–Nov. Sunset on
+  // Sep 1 is 7:36pm and only gets earlier, so the practice ends after sunset
+  // every day of the season. (PP16, the never sentence dropped: no warning.)
+  const owls = computePlan(
+    league([div({ name: "Night Owls", teams: 1, start: "19:00", end: "20:30" })], { seasonStart: "2027-09-01", seasonEnd: "2027-11-30" }),
+  );
+  ok(
+    eq(owls.warnings.spread, [
+      "Daylight: Night Owls runs until 8:30pm, but sunset on Sep 1 is 7:36pm. Without lights, it doesn't work before practices end.",
+    ]),
+    "[W5] never-this-season wording",
+    JSON.stringify(owls.warnings.spread),
+  );
 });
 
 // ── T: season totals ────────────────────────────────────────────────────
@@ -376,6 +389,11 @@ process.exit(failures ? 1 : 0);
 // by hand against the packed nights), W2's window moved to 6–7:30pm so it
 // still tests "works until" at 7:30pm, and W3's "Big" (done by 6:30pm) lost
 // its daylight line, which is the fix working.
+// 2026-10-12, coverage audit (founder): every daylight outcome needs a
+// passing fixture AND a mutant that dies at it. "Until" had both (D2/PP10,
+// wording W2). "Never" kept D3/PP11 but its WORDING lost its only fixture when
+// Juniors moved to 7:30pm → W5 + PP16. "From" had fixtures (D1, W1) but no
+// mutant → PP15 (dies at D1).
 // - Only literal fixed in the harness itself: W3's spring date. I guessed
 //   May 3; sunset in Sacramento gains about a minute a day from 7:58pm on
 //   May 1, so 8pm first holds on May 4. The code was right.

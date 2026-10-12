@@ -94,6 +94,18 @@ const MUTANTS: Mutant[] = [
     replace: "",
     expect: "T2",
   },
+  {
+    id: "PP15", what: "a spring season that gains daylight is reported as fine", file: SUNSET,
+    find: "  if (okAtEnd) return { kind: \"from\", from: last.from };",
+    replace: "  if (okAtEnd) return { kind: \"ok\" };",
+    expect: "D1",
+  },
+  {
+    id: "PP16", what: "the never-this-season warning is dropped", file: REPORT,
+    find: "        w.push(`${lead}${on(sd)}Without lights, it doesn't work before practices end.`);",
+    replace: "",
+    expect: "W5",
+  },
 ];
 
 runMutants({
