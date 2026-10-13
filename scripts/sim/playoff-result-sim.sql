@@ -797,11 +797,13 @@ begin
       ('MU10', 'clear leaves the status completed', 'CL1', v_clear,
         $a$           status     = 'scheduled',$a$, $a$           status     = status,$a$, null, null),
       ('MU11', 'clear allowed while the next game has a result', 'LB1', v_clear,
-        $a$      if v_target.status = 'completed' or v_target.home_score is not null$a$,
-        $a$      if false and v_target.home_score is not null$a$, null, null),
+        $a$      if v_target.status = 'completed' or v_target.home_score is not null
+         or v_target.away_score is not null or v_target.winner_id is not null then$a$,
+        $a$      if false then$a$, null, null),
       ('MU12', 'enter: edit allowed while the next game has a result', 'LB1', v_enter,
-        $a$      if v_target.status = 'completed' or v_target.home_score is not null$a$,
-        $a$      if false and v_target.home_score is not null$a$, null, null),
+        $a$      if v_target.status = 'completed' or v_target.home_score is not null
+         or v_target.away_score is not null or v_target.winner_id is not null then$a$,
+        $a$      if false then$a$, null, null),
       ('MU13', 'clear: zero-row write reported as success', 'ZR1', v_clear,
         $a$    get diagnostics v_rows = row_count;
     if v_rows <> 1 then
@@ -888,5 +890,35 @@ $h108$;
 --   (select count(*) from playoffs) as playoffs_3;
 
 -- ── RUN LOG ─────────────────────────────────────────────────────────────────
--- Not run yet. 0108 NOT APPLIED — waiting on the founder's timing for both
--- the proof run and the apply.
+-- 2026-10-13 ~19:28 UTC — run 1, against production, "test" proof org
+-- fixtures, rolled back; no other active client backend before the run.
+--   BASELINE failures (0); 14 committed calls counted.
+--   16/18 KILLED at their own tag. MU11 and MU12 SURVIVED — a HARNESS fault:
+--   each replaced only the FIRST line of the two-line "next game has a result"
+--   condition with `if false and …`, and SQL reads `false and A or B or C` as
+--   `(false and A) or B or C`, so the next game's winner still blocked and the
+--   mutant was equivalent to the real code. Both now replace the whole
+--   condition with `if false then`.
+--   prosrc md5 inside the batch: enter_playoff_result
+--   a615f53400778f02d598421693265b64, clear_playoff_result
+--   919f1320b088b7077870e6c39ca86f74, playoff_single_elim_target
+--   0c2020ebf93bf2e870198f86702078b0, playoff_round_order
+--   abae907097f0761fd87873b2290b0c59 — all equal to the repo file's bodies.
+--   Leak check after: functions 0, trigger 0, fixtures + log rows 0, test
+--   link 0, test plan elite, playoffs 3. 0108 NOT APPLIED after run 1.
+-- Run 2 (minutes later; still no other active client backend), the same batch
+-- with MU11/MU12 corrected:
+--   BASELINE failures (0); 14 committed calls counted.
+--   18/18 KILLED at their own tag:
+--   MU1a → [AN1]  MU1b → [AN1]  MU2a → [PL1]  MU2b → [PL1]  MU3  → [XC1]
+--   MU4  → [DE1]  MU5  → [PV1]  MU6  → [LK1]  MU7  → [BY1]  MU8  → [RT1]
+--   MU9  → [CL2]  MU10 → [CL1]  MU11 → [LB1]  MU12 → [LB1]  MU13 → [ZR1]
+--   MU14 → [ZR2]  MU15 → [LG1]  MU16 → [P1]
+--   MU11/MU12 now die on `nothing_saved`: with the "next game has a result"
+--   check gone, the next game's conditional UPDATE still refused to touch a
+--   played game — the second layer holds on its own.
+--   prosrc md5 identical to run 1 (and to the repo file).
+--   Leak check after: all zero, test plan elite, playoffs 3.
+-- 0108 APPLIED 2026-10-13 19:35 UTC (catalog 20261013193530), verbatim from
+-- the repo file; md5(prosrc) of all four functions re-verified against the
+-- repo bodies; privileges verified per role; leak check clean.

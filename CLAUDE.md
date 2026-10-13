@@ -126,7 +126,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") APPLIED 2026-10-08 21:31 UTC, catalog `20261008213156`**, verbatim from the repo file after a rolled-back proof; md5(prosrc) `bab8adef7841de9abe9709854e900b28` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Its UTC-today mutant (MU3) still owes a run inside 00:00–10:00 UTC against the applied function — applied first by the founder's decision; a survivor means a follow-up migration. **0107 (playoff bracket delete + rebuild) APPLIED 2026-10-08 22:44 UTC, catalog `20261008224427`**, verbatim from the repo file after a rolled-back proof (green, 15/15 mutants); md5(prosrc) verified: `delete_playoff_bracket` `f628628e93de210df18a7869cdb85e0f`, `replace_playoff_games` `ae2a1f70a09a3396f398dc1bdca9fbba`; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. **0108 (playoff result enter + clear) is WRITTEN, NOT APPLIED** (branch `feat/playoff-clear-result`, held for the founder's timing) — see "Playoff results — enter and clear (0108)"; its code must NOT reach `main` before it is applied. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
+  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") APPLIED 2026-10-08 21:31 UTC, catalog `20261008213156`**, verbatim from the repo file after a rolled-back proof; md5(prosrc) `bab8adef7841de9abe9709854e900b28` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Its UTC-today mutant (MU3) still owes a run inside 00:00–10:00 UTC against the applied function — applied first by the founder's decision; a survivor means a follow-up migration. **0107 (playoff bracket delete + rebuild) APPLIED 2026-10-08 22:44 UTC, catalog `20261008224427`**, verbatim from the repo file after a rolled-back proof (green, 15/15 mutants); md5(prosrc) verified: `delete_playoff_bracket` `f628628e93de210df18a7869cdb85e0f`, `replace_playoff_games` `ae2a1f70a09a3396f398dc1bdca9fbba`; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. **0108 (playoff result enter + clear) APPLIED 2026-10-13 19:35 UTC, catalog `20261013193530`**, verbatim from the repo file after a rolled-back proof (run 2 green, 18/18 mutants at their own tag); md5(prosrc) verified: `enter_playoff_result` `a615f53400778f02d598421693265b64`, `clear_playoff_result` `919f1320b088b7077870e6c39ca86f74`, `playoff_single_elim_target` `0c2020ebf93bf2e870198f86702078b0`, `playoff_round_order` `abae907097f0761fd87873b2290b0c59`; both entry points SECURITY DEFINER with `search_path=public, pg_temp`, EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); both helpers callable by no role; leak check clean. See "Playoff results — enter and clear (0108)". Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -538,7 +538,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   checks × 3 zones, 5 counters) + `:mutants` (13). Neither clicks through the
   signed-in flow; the dialog was checked on a scratch route.
 
-## Playoff results — enter and clear (0108, WRITTEN 2026-10-13, NOT APPLIED)
+## Playoff results — enter and clear (0108, applied 2026-10-13)
 
 - **Why.** Rebuild (0107) and editing a result both refused with "clear that
   result first" and there was no way to clear one. And result entry was two
@@ -606,10 +606,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   result button shows when both teams are set OR a result exists
   (`resultButtonShown`), so a result can be cleared even after a team was
   deleted; Save still needs both teams.
-- **DEPLOY ORDER: apply 0108 BEFORE the code reaches `main`.** The new
-  `enterGameResult` calls `enter_playoff_result` for every single-elim and
-  round-robin save; pushed first, result entry fails with "function does not
-  exist" until the migration lands.
+- **Deploy order (met 2026-10-13): 0108 was applied BEFORE the code reached
+  `main`.** `enterGameResult` calls `enter_playoff_result` for every
+  single-elim and round-robin save; without the function, result entry fails
+  with "Could not find the function … in the schema cache".
 - **Harnesses.** `scripts/sim/playoff-result-sim.sql` (+
   `playoff-result-build.ts`; applies 0108 rolled back, in the "test" proof
   org (owner `bbf9afe1…`, whitmellonking@ — NOT SRALL; SRALL's owner is the
@@ -618,7 +618,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   test trigger; 21 assertions incl. bye, round trip enter → clear → enter vs
   direct (RT1), zero-row writes (ZR1/ZR2, via a test trigger that skips the
   UPDATE); 18 mutants — MU1a/b, MU2a/b, MU3–MU16; 17 rewrite a function
-  body, MU16 is a GRANT) — **NOT YET RUN**. `npm run sim:playoff-result` (132
+  body, MU16 is a GRANT). Run 2026-10-13 against production, rolled back:
+  run 1 baseline green but MU11/MU12 SURVIVED (a harness fault — read the
+  run log); run 2 green, 18/18 KILLED at their own tag, leak check clean. `npm run sim:playoff-result` (132
   checks × 3 zones, 4 counters) + `:mutants` (9, incl. the cross-check skewed
   from the TypeScript side).
 
