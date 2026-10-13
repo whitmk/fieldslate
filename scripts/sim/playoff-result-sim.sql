@@ -37,21 +37,23 @@
 --   (the zero-row hook, rolled back) takes SHARE ROW EXCLUSIVE on
 --   playoff_games for the whole run: it blocks result entry, game edits and
 --   bracket writes in every org for the run, not reads. Row locks on the
---   fixture rows. The test org owner's `profiles` ROW (plan switched for PL1,
---   rolled back) — blocks writes to that one row. A `public_schedule_links`
---   row is INSERTED for the test org (it has none; rolled back). Locking the
---   fixture division fires team_calendar_links_on_division_lock, which inserts
---   calendar-link rows for its teams (rolled back).
+--   fixture rows. The "test" org owner's `profiles` ROW (plan switched for
+--   PL1, rolled back) — blocks writes to that one row. A
+--   `public_schedule_links` row is INSERTED for the "test" org (it has none;
+--   rolled back). Locking the fixture division fires
+--   team_calendar_links_on_division_lock, which inserts calendar-link rows for
+--   its teams (rolled back).
 --   lock_timeout = 3s; statement_timeout = 60s.
 --
--- ROWS TOUCHED (all rolled back): the test org "SRALL" only (owner
--- aa21d01c-66dc-4c37-b15c-7b743c557eea) — one fixture season, five divisions,
--- 22 teams, five fixture brackets and their games, a public link row,
--- activity-log rows, and the owner's profiles.plan. The "test" org owner
--- (bbf9afe1-9e62-41e0-becc-895085bfc9d6, not a member of SRALL) is the
--- non-member caller and nothing of theirs is written. The test org's three
--- existing brackets (AAA, AA, T-Ball) are fingerprinted and never a function
--- argument (OT1). NOTHING belonging to Santa Rosa American Little League
+-- ROWS TOUCHED (all rolled back): the "test" proof org only (owner
+-- bbf9afe1-9e62-41e0-becc-895085bfc9d6, whitmellonking@, org name "test",
+-- its only member) — one fixture season, five divisions, 22 teams, five
+-- fixture brackets and their games, a public link row, activity-log rows, and
+-- the owner's profiles.plan. The "SRALL" test org owner
+-- (aa21d01c-66dc-4c37-b15c-7b743c557eea, not a member of "test") is the
+-- non-member caller and nothing of theirs is written. EVERY bracket outside
+-- the fixture season (SRALL's AAA, AA and T-Ball included) is fingerprinted
+-- and never a function argument (OT1). NOTHING belonging to Santa Rosa American Little League
 -- (owner 8fde72f9-cd5a-43ad-91e3-db14fb6fbcc4) is written or passed to any
 -- function; its playoffs, playoff games and playoff log rows are
 -- fingerprinted before the run and after every pass (RL1, checked last).
@@ -94,7 +96,7 @@
 --        writes nothing (never a committed reply)
 --   ZR2  the same for enter
 --   RR1  round robin: enter and clear touch only that game
---   OT1  the test org's existing brackets are byte-identical
+--   OT1  every bracket outside the fixture season is byte-identical
 --   LG1  exactly one log row per committed enter/clear
 --        (playoff_result_entered / playoff_result_cleared), none otherwise
 --   RL1  the real league's playoff rows and playoff log rows are unchanged
@@ -131,11 +133,9 @@ select set_config('lock_timeout', '3s', true),
 
 create temp table h108_fx on commit drop as
 select
-  'aa21d01c-66dc-4c37-b15c-7b743c557eea'::uuid as org,
-  'bbf9afe1-9e62-41e0-becc-895085bfc9d6'::uuid as nonmember,
+  'bbf9afe1-9e62-41e0-becc-895085bfc9d6'::uuid as org,
+  'aa21d01c-66dc-4c37-b15c-7b743c557eea'::uuid as nonmember,
   '8fde72f9-cd5a-43ad-91e3-db14fb6fbcc4'::uuid as real_org,
-  array['79cb7d31-0c05-4ee6-a81f-27c3567a7aed', '78c500e5-2466-42e7-8164-7655e640ce9b',
-        'adceb235-a279-454f-a9a9-1f301ff93c5e']::uuid[] as existing,
   (now() at time zone 'America/Los_Angeles')::date as today_la,
   gen_random_uuid() as s1,
   gen_random_uuid() as d4, gen_random_uuid() as d6, gen_random_uuid() as d8,
@@ -184,9 +184,10 @@ update h108_fx set
     coalesce((select string_agg(a.id::text, '|' order by a.id) from public.activity_log a
                join public.leagues l on l.id = a.league_id
               where l.owner_id = h108_fx.real_org and a.event_type like 'playoff_%'), '')),
+  -- Every bracket that exists before the fixtures do.
   existing_fp = md5(
-    coalesce((select string_agg(p::text, '|' order by p.id) from public.playoffs p where p.id = any(h108_fx.existing)), '') || '#' ||
-    coalesce((select string_agg(g::text, '|' order by g.id) from public.playoff_games g where g.playoff_id = any(h108_fx.existing)), ''));
+    coalesce((select string_agg(p::text, '|' order by p.id) from public.playoffs p), '') || '#' ||
+    coalesce((select string_agg(g::text, '|' order by g.id) from public.playoff_games g), ''));
 
 -- Fixtures. The 6-team division is locked AFTER its teams exist.
 insert into public.leagues (id, name, sport, season, owner_id, start_date, end_date)
@@ -690,10 +691,10 @@ begin
 
     -- ── OT1 ─────────────────────────────────────────────────────────────────
     if md5(
-         coalesce((select string_agg(p::text, '|' order by p.id) from public.playoffs p where p.id = any(fx.existing)), '') || '#' ||
-         coalesce((select string_agg(g::text, '|' order by g.id) from public.playoff_games g where g.playoff_id = any(fx.existing)), ''))
+         coalesce((select string_agg(p::text, '|' order by p.id) from public.playoffs p where p.league_id <> fx.s1), '') || '#' ||
+         coalesce((select string_agg(g::text, '|' order by g.id) from public.playoff_games g where g.league_id <> fx.s1), ''))
        <> fx.existing_fp then
-      v_fails := array_append(v_fails, 'OT1: the test org''s existing brackets changed');
+      v_fails := array_append(v_fails, 'OT1: a bracket outside the fixture season changed');
     end if;
 
     -- ── LG1 ─────────────────────────────────────────────────────────────────
@@ -882,8 +883,8 @@ $h108$;
 --   (select count(*) from pg_trigger where tgname = 'zz108_skip_update') as trigger_must_be_0,
 --   (select count(*) from leagues where name like 'ZZ108%')
 --     + (select count(*) from activity_log where event_type like 'playoff_result_%') as fixtures_must_be_0,
---   (select count(*) from public_schedule_links where org_id = 'aa21d01c-66dc-4c37-b15c-7b743c557eea') as test_link_must_be_0,
---   (select plan from profiles where id = 'aa21d01c-66dc-4c37-b15c-7b743c557eea') as test_plan_elite,
+--   (select count(*) from public_schedule_links where org_id = 'bbf9afe1-9e62-41e0-becc-895085bfc9d6') as test_link_must_be_0,
+--   (select plan from profiles where id = 'bbf9afe1-9e62-41e0-becc-895085bfc9d6') as test_plan_elite,
 --   (select count(*) from playoffs) as playoffs_3;
 
 -- ── RUN LOG ─────────────────────────────────────────────────────────────────

@@ -611,11 +611,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   round-robin save; pushed first, result entry fails with "function does not
   exist" until the migration lands.
 - **Harnesses.** `scripts/sim/playoff-result-sim.sql` (+
-  `playoff-result-build.ts`; applies 0108 rolled back, SRALL test org; holds
+  `playoff-result-build.ts`; applies 0108 rolled back, in the "test" proof
+  org (owner `bbf9afe1…`, whitmellonking@ — NOT SRALL; SRALL's owner is the
+  non-member caller); holds
   SHARE ROW EXCLUSIVE on `playoff_games` for the run because of its zero-row
   test trigger; 21 assertions incl. bye, round trip enter → clear → enter vs
   direct (RT1), zero-row writes (ZR1/ZR2, via a test trigger that skips the
-  UPDATE); 16 mutants) — **NOT YET RUN**. `npm run sim:playoff-result` (132
+  UPDATE); 18 mutants — MU1a/b, MU2a/b, MU3–MU16; 17 rewrite a function
+  body, MU16 is a GRANT) — **NOT YET RUN**. `npm run sim:playoff-result` (132
   checks × 3 zones, 4 counters) + `:mutants` (9, incl. the cross-check skewed
   from the TypeScript side).
 
