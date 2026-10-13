@@ -5,6 +5,7 @@ import { CalendarDays, List, Trophy, Clock, ClipboardEdit, CalendarClock } from 
 import { createClient } from "@/lib/supabase/client";
 import { EnterResultModal } from "@/components/playoffs/enter-result-modal";
 import { EditPlayoffGameModal } from "@/components/playoffs/edit-playoff-game-modal";
+import { playoffRoundLabel, resultButtonShown } from "@/lib/playoffs/playoff-result";
 import type { PlayoffGame } from "@/types/database";
 
 export interface GameWithTeams extends PlayoffGame {
@@ -61,19 +62,8 @@ function getRoundOrder(round: string): number {
   return parseInt(m[2] || "0");
 }
 
-function roundLabel(round: string): string {
-  const map: Record<string, string> = {
-    F: "Final", SF: "Semifinals",
-    "WB-F": "Winners Final", "LB-F": "Losers Final",
-    GF: "Grand Final", "GF-R": "Grand Final (Reset)",
-  };
-  if (round in map) return map[round];
-  if (round.startsWith("RR")) return `Round ${round.slice(2)}`;
-  if (round.startsWith("WB-R")) return `Winners Rd ${round.slice(4)}`;
-  if (round.startsWith("LB-R")) return `Losers Rd ${round.slice(4)}`;
-  if (round.startsWith("R")) return `Round ${round.slice(1)}`;
-  return round;
-}
+// Round names come from the shared, pure label (the result confirm uses it too).
+const roundLabel = playoffRoundLabel;
 
 const CHAMPIONSHIP_ROUNDS = new Set(["F", "GF"]);
 
@@ -143,7 +133,7 @@ function GameCard({
       </div>
 
       <div className="flex border-t border-gray-50 px-2 py-1.5">
-        {bothTeams && (
+        {resultButtonShown(bothTeams, isDone) && (
           <button
             onClick={onEnterResult}
             className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-[#0C1F3F] hover:bg-gray-50"
@@ -302,7 +292,7 @@ function ListGameRow({
         </button>
       )}
 
-      {bothTeams && (
+      {resultButtonShown(bothTeams, isDone) && (
         <button
           onClick={onEnterResult}
           className="flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"

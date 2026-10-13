@@ -126,7 +126,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") APPLIED 2026-10-08 21:31 UTC, catalog `20261008213156`**, verbatim from the repo file after a rolled-back proof; md5(prosrc) `bab8adef7841de9abe9709854e900b28` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Its UTC-today mutant (MU3) still owes a run inside 00:00–10:00 UTC against the applied function — applied first by the founder's decision; a survivor means a follow-up migration. **0107 (playoff bracket delete + rebuild) APPLIED 2026-10-08 22:44 UTC, catalog `20261008224427`**, verbatim from the repo file after a rolled-back proof (green, 15/15 mutants); md5(prosrc) verified: `delete_playoff_bracket` `f628628e93de210df18a7869cdb85e0f`, `replace_playoff_games` `ae2a1f70a09a3396f398dc1bdca9fbba`; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
+  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") APPLIED 2026-10-08 21:31 UTC, catalog `20261008213156`**, verbatim from the repo file after a rolled-back proof; md5(prosrc) `bab8adef7841de9abe9709854e900b28` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Its UTC-today mutant (MU3) still owes a run inside 00:00–10:00 UTC against the applied function — applied first by the founder's decision; a survivor means a follow-up migration. **0107 (playoff bracket delete + rebuild) APPLIED 2026-10-08 22:44 UTC, catalog `20261008224427`**, verbatim from the repo file after a rolled-back proof (green, 15/15 mutants); md5(prosrc) verified: `delete_playoff_bracket` `f628628e93de210df18a7869cdb85e0f`, `replace_playoff_games` `ae2a1f70a09a3396f398dc1bdca9fbba`; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. **0108 (playoff result enter + clear) is WRITTEN, NOT APPLIED** (branch `feat/playoff-clear-result`, held for the founder's timing) — see "Playoff results — enter and clear (0108)"; its code must NOT reach `main` before it is applied. Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -409,15 +409,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 
 ## Playoffs
 
-- **Playoff advancement is client-side by design.** Saving a result
-  (`src/lib/playoffs/enter-result.ts`) writes the completed row and then
-  populates downstream team slots from the browser — no DB trigger, no API
-  route. This assumes a single admin enters results; two admins saving
-  concurrently could race (stale `allGames` → wrong/blocked advancement).
-  Revisit (move into a DB function) if concurrent leagues / multi-admin
-  result entry becomes real. The single- and double-elim mappings live in
-  `src/lib/playoffs/advancement.ts` (pure, testable — see its header for
-  the movement rules and edit semantics).
+- **Result entry is a DATABASE function for single elimination and round
+  robin (0108, `enter_playoff_result`) — and still the old BROWSER path for
+  double elimination.** See "Playoff results — enter and clear (0108)". The
+  single- and double-elim mappings live in `src/lib/playoffs/advancement.ts`
+  (pure, testable — see its header for the movement rules and edit
+  semantics); the single-elim one is ported to SQL and the two are pinned to
+  one table.
 - **The generator is split: `src/lib/playoffs/bracket-plan.ts` is PURE and
   decides everything; `generate-bracket.ts` only loads inputs and hands the
   plan to `replace_playoff_games` (0107)** (2026-10-05, branch `fix/playoff-generator`, after SRALL 50/70's
@@ -489,9 +487,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `playoff_bracket_deleted` in the same transaction.
 - **Rebuild is REFUSED while any game has a result** (status `completed`, a
   score or a winner): the reply is `blocked` / `results_entered`, preview or
-  commit, nothing written. Clearing a result is NOT built, so a bracket with
-  results can only be deleted, not rebuilt — the refusal says results must
-  be cleared first. Otherwise ONE transaction: settings → delete games →
+  commit, nothing written. The refusal says results must be cleared first;
+  `clear_playoff_result` (0108) is how (single elimination and round robin;
+  a double-elimination bracket with results can only be deleted). Otherwise ONE transaction: settings → delete games →
   insert games → status `active` → log (`playoff_bracket_generated` for a
   bracket that had no games, `playoff_bracket_rebuilt` otherwise). Ids come
   from the bracket row, never the payload; inserted games carry no scores; a
@@ -505,8 +503,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   it deleted entered results with no warning and could leave a bracket empty
   and hidden as `draft` on a mid-way failure. Never reintroduce a direct
   `playoff_games` insert/delete or a `playoffs` upsert; `sim:playoff-bracket`
-  [S1] and `sim:bracket-delete` [S1]/[S2] grep for it. Per-game writes (the
-  result entry, `EditPlayoffGameModal`) are unchanged.
+  [S1] and `sim:bracket-delete` [S1]/[S2] grep for it. Per-game writes are
+  `EditPlayoffGameModal` (date/time/field) and the result functions (0108).
 - **THE DIVISION LOCK DELIBERATELY GATES NEITHER.** `playoff_games` was never
   under the 0082 trigger (it is on `games` only), and the lock's job is
   protecting the REGULAR schedule against your own re-derivation. What the
@@ -517,7 +515,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   of its end in the ORG's timezone, locked division, bracket not draft, dated
   game) — and the confirm / review SAYS SO. The harness proves the count
   equals what the reader returns (PUB1). **If the 0105 reader's conditions
-  change, change both copies in 0107 with it.**
+  change, change both copies in 0107 with it — and the third copy in 0108's
+  `clear_playoff_result`.**
 - **A new bracket** (Add bracket) is a plain `playoffs` INSERT as `draft`,
   made only after the client plan is good, then filled by
   `replace_playoff_games` — never an upsert. A division that already has a
@@ -538,6 +537,87 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   a lock gate added to either function); `npm run sim:bracket-delete` (84
   checks × 3 zones, 5 counters) + `:mutants` (13). Neither clicks through the
   signed-in flow; the dialog was checked on a scratch route.
+
+## Playoff results — enter and clear (0108, WRITTEN 2026-10-13, NOT APPLIED)
+
+- **Why.** Rebuild (0107) and editing a result both refused with "clear that
+  result first" and there was no way to clear one. And result entry was two
+  separate browser writes under RLS — not atomic (the result could save and
+  the winner's advancement not), neither write read its row count (a refused
+  write read as saved), no server-side Elite check, no activity-log entry.
+- **Two SECURITY DEFINER functions, `search_path = public, pg_temp`, EXECUTE
+  for `authenticated` only (revoked from `public` first):**
+  `enter_playoff_result(game, home_score, away_score)` and
+  `clear_playoff_result(game, p_commit)` (its own preview — `false` writes
+  nothing). Both: row-lock the bracket then all its games (0107's order) →
+  `is_org_member` → **Elite** → format → the game's own checks → the next
+  game → ONE transaction of conditional writes → log
+  (`playoff_result_entered` / `playoff_result_cleared`). Two helpers,
+  `playoff_round_order` and `playoff_single_elim_target`, are callable by NO
+  role; the functions reach them as their owner.
+- **ONE ADVANCEMENT RULE, TWO LANGUAGES, PINNED BY ONE TABLE.**
+  `playoff_single_elim_target` is a statement-for-statement port of
+  `computeSingleElimAdvancement` + `singleElimPosition` (including the
+  legacy index fallback). The table between the `XC-TABLE-BEGIN` /
+  `XC-TABLE-END` marker lines in `scripts/sim/playoff-result-sim.sql` (4-,
+  6- with byes, and 8-team brackets) is the only copy: the SQL harness runs it
+  through the helper (XC1); `npm run sim:playoff-result` parses the same
+  block out of that file, requires the layout to equal
+  `buildSingleElimination` and every target to equal `advancement.ts` (XC1).
+  Change one rule alone and its side goes red. Never add a second copy.
+- **BYES ARE SAFE BY CONSTRUCTION, and both functions enforce it anyway.** A
+  bye team sits in the OTHER slot of the game a round-1 game feeds, and
+  nothing marks it as a bye. Enter writes the slot only when it is empty,
+  already the new winner, or THIS game's previous winner (an edit) — anything
+  else is `slot_occupied`. Clear removes a team only when the slot holds THIS
+  game's winner — anything else is `advancement_mismatch`. Neither ever
+  guesses.
+- **A game whose NEXT game has a result can be neither edited nor cleared**
+  (reply `blocked` / `next_game_has_result`, naming that game and its score,
+  "Clear that game's result first, then …"). No cascade: latest round first.
+- **Clearing returns the game to `scheduled`**, no scores, no winner (every
+  playoff game is created `scheduled` and nothing writes another status
+  before a result). Date, time and field are untouched.
+- **Allowed in a LOCKED division** (0107's reasoning). `posted` cannot be
+  affected — its trigger is on `games` only. The preview reports
+  `on_public_schedule` (the 0105 mirror) for the game and the game a team is
+  removed from; a cleared advancement shows as "Winner of Game N" on the
+  public page within a minute (no-store reader + 60s edge cache).
+- **Every write is conditional and counted:** each UPDATE's WHERE repeats
+  the values read under the lock and must change exactly one row, or the call
+  raises `nothing_saved` and rolls back whole. The app reports success only
+  on a `committed` reply whose `game_id` is the game it asked about
+  (`enterOutcome` / `clearCommitOutcome`); a preview that comes back
+  committed is refused.
+- **DOUBLE ELIMINATION IS A KNOWN SECOND IMPLEMENTATION (decided
+  2026-10-13).** Both functions refuse it (`format_not_supported`); its
+  result entry stays on the original browser path in `enter-result.ts`
+  (`enterDoubleElimResultInBrowser` — two unchecked writes, no log, no
+  server-side plan check, unchanged apart from the blocked sentence), and
+  "Clear result" is not offered. The way out of a double-elim bracket with
+  results is deleting it (0107 allows that). Untested format, not regressed;
+  moving it into the database is its own change.
+- **Wording and decisions: `src/lib/playoffs/playoff-result.ts` (pure);
+  I/O: `enter-result.ts`, `clear-result.ts`.** Render every sentence
+  VERBATIM. "Clear result" lives INSIDE the Edit-result modal (one render
+  site); the confirm is the shared `ConfirmDialog`, rendered OUTSIDE the
+  modal's backdrop (whose onClick closes the modal), opened only after the
+  preview returns; a refusal keeps it open with the reason. The bracket's
+  result button shows when both teams are set OR a result exists
+  (`resultButtonShown`), so a result can be cleared even after a team was
+  deleted; Save still needs both teams.
+- **DEPLOY ORDER: apply 0108 BEFORE the code reaches `main`.** The new
+  `enterGameResult` calls `enter_playoff_result` for every single-elim and
+  round-robin save; pushed first, result entry fails with "function does not
+  exist" until the migration lands.
+- **Harnesses.** `scripts/sim/playoff-result-sim.sql` (+
+  `playoff-result-build.ts`; applies 0108 rolled back, SRALL test org; holds
+  SHARE ROW EXCLUSIVE on `playoff_games` for the run because of its zero-row
+  test trigger; 21 assertions incl. bye, round trip enter → clear → enter vs
+  direct (RT1), zero-row writes (ZR1/ZR2, via a test trigger that skips the
+  UPDATE); 16 mutants) — **NOT YET RUN**. `npm run sim:playoff-result` (132
+  checks × 3 zones, 4 counters) + `:mutants` (9, incl. the cross-check skewed
+  from the TypeScript side).
 
 ## Game deletion (single game)
 
