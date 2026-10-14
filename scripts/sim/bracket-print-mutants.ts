@@ -57,9 +57,9 @@ const MUTANTS: Mutant[] = [
     expect: "P3",
   },
   {
-    id: "BP9", what: "never scales (overflows past 16 teams)", file: PRINT,
-    find: "  const scale = Math.min(1, PAGE.width / width, CANVAS_H / height);",
-    replace: "  const scale = 1;",
+    id: "BP9", what: "never scales down (overflows past 16 teams)", file: PRINT,
+    find: "  const scale = height < SCALE_UP_BELOW * CANVAS_H ? Math.min(fit, MAX_SCALE) : Math.min(1, fit);",
+    replace: "  const scale = height < SCALE_UP_BELOW * CANVAS_H ? Math.min(fit, MAX_SCALE) : 1;",
     expect: "P4",
   },
   {
@@ -86,6 +86,36 @@ const MUTANTS: Mutant[] = [
     replace: "game.home_team_name ?? \"Home\"",
     expect: "S4",
   },
+  {
+    id: "BP14", what: "small brackets never scale up", file: PRINT,
+    find: "? Math.min(fit, MAX_SCALE) : Math.min(1, fit);",
+    replace: "? Math.min(1, fit) : Math.min(1, fit);",
+    expect: "P4",
+  },
+  {
+    id: "BP15", what: "scale-up uncapped (team names past 14pt)", file: PRINT,
+    find: "? Math.min(fit, MAX_SCALE) : Math.min(1, fit);",
+    replace: "? fit : Math.min(1, fit);",
+    expect: "P4",
+  },
+  {
+    id: "BP16", what: "the winner's row gets a colour again", file: PRINT,
+    find: "    const bg = side === \"away\" ?",
+    replace: "    const bg = won ? \"background:#ecfdf5;\" : side === \"away\" ?",
+    expect: "G2",
+  },
+  {
+    id: "BP17", what: "the away row's green is not kept in print", file: PRINT,
+    find: "`background:${PRINT_COLORS.awayRowBg};${KEEP_BG}`",
+    replace: "`background:${PRINT_COLORS.awayRowBg};`",
+    expect: "G1",
+  },
+  {
+    id: "BP18", what: "on-screen winner row tinted again", file: "src/components/playoffs/bracket-view.tsx",
+    find: "${away ? AWAY_ROW_BG : \"bg-white\"}",
+    replace: "${won ? \"bg-[#22C55E]/5\" : away ? AWAY_ROW_BG : \"bg-white\"}",
+    expect: "S5",
+  },
 ];
 
 runMutants({
@@ -104,3 +134,9 @@ runMutants({
 // BP3 is expected at [F3], not [L1]: the F section cross-checks every label
 // against the public page's copy before L runs, so a label drift dies there.
 // Source restored and re-verified green after the pass.
+// 2026-10-13 — second run, after the two-tone card and small-bracket scale-up:
+// baseline green (569 checks × 3 zones; new counters scaledUp 3, awayWinner 1).
+// BP9 re-targeted at the new scale line; BP14–BP18 added. 18/18 KILLED at
+// their own assertion:
+//   BP14 → [P4]  BP15 → [P4]  BP16 → [G2]  BP17 → [G1]  BP18 → [S5];
+//   BP1–BP13 unchanged.

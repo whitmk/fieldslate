@@ -16,6 +16,9 @@
 // - T: the trophy rule — an empty slot next to an undecided game is NOT a
 //   winner; the printed card of an unplayed game with an empty slot carries no
 //   winner highlight; the decided winner does.
+// - G: the two-tone card — home row white, away row the light green, kept in
+//   print (print-color-adjust); a winner in either row keeps its row's colour
+//   and is shown by bold text + a trophy only.
 // - D: the date line — "Game 9 · Thu 10/29 · 5:15 PM", the field on its own
 //   line, "Game 11 · Date TBD", date without time, weekday in every zone.
 // - P: the tree layout — round-1 cards sit beside the slot they feed (above
@@ -43,7 +46,9 @@ import { emptySlotLabel, gameWhen, gameWhenLine, slotWon } from "../../src/lib/p
 import {
   CARD,
   CARD_H,
+  MAX_SCALE,
   PAGE,
+  SCALE_UP_BELOW,
   PRINT_COLORS,
   buildBracketPrintHtml,
   gameCardHtml,
@@ -75,7 +80,7 @@ function section(name: string, fn: () => void) {
     console.log(`  FAIL: [CRASH-${name}] ${(e as Error).message}`);
   }
 }
-const counters = { feederLabels: 0, byeSeats: 0, nullTrophyCase: 0, connectors: 0, scaledLayout: 0 };
+const counters = { feederLabels: 0, byeSeats: 0, nullTrophyCase: 0, connectors: 0, scaledLayout: 0, scaledUp: 0, awayWinner: 0 };
 
 const SIZES = [4, 6, 8, 11, 12, 16, 32];
 const byNum = (gs: PrintGame[], n: number) => gs.find((g) => g.game_number === n)!;
@@ -145,10 +150,41 @@ section("T", () => {
   const g = playedFour();
   const final = byNum(g, 3);
   const finalCard = gameCardHtml(final, g, "single_elimination");
-  ok(!finalCard.includes(PRINT_COLORS.winBg), "[T2]", "an unplayed game with an empty slot prints no winner highlight");
+  ok(!finalCard.includes("data-trophy"), "[T2]", "an unplayed game with an empty slot prints no trophy");
   const g1Card = gameCardHtml(byNum(g, 1), g, "single_elimination");
-  ok((g1Card.match(new RegExp(PRINT_COLORS.winBg, "g")) ?? []).length === 1, "[T2]", "the decided game highlights exactly its winner");
+  ok((g1Card.match(/data-trophy/g) ?? []).length === 1 && /data-row="home"[^]*data-trophy[^]*data-row="away"/.test(g1Card), "[T2]", "the decided game shows exactly one trophy, on its winner (home)");
   ok(finalCard.includes("Winner of Game 2") && !finalCard.includes(">TBD<"), "[T3]", "the final's empty slot names its feeder");
+});
+
+// ─── G: the two-tone card; the winner is never a row colour ─────────────────
+
+const rowBg = (card: string, side: "home" | "away") => {
+  const m = card.match(new RegExp(`data-row="${side}" style="[^"]*?background:([^;"]+);([^"]*)"`));
+  return m ? { bg: m[1], rest: m[2] } : null;
+};
+
+section("G", () => {
+  const m = singleElim(11, 5);
+  for (const g of m) {
+    const c = gameCardHtml(g, m, "single_elimination");
+    const home = rowBg(c, "home"), away = rowBg(c, "away");
+    ok(home?.bg === "white" && away?.bg === PRINT_COLORS.awayRowBg, "[G1]", `game ${g.game_number}: home ${home?.bg}, away ${away?.bg}`);
+    ok(!!away && away.rest.includes("-webkit-print-color-adjust:exact") && away.rest.includes("print-color-adjust:exact"), "[G1]",
+      `game ${g.game_number}: the away row's green is not kept in print`);
+  }
+  const doc = printDocument("", "t", "landscape");
+  ok(doc.includes("-webkit-print-color-adjust: exact") && doc.includes("print-color-adjust: exact"), "[G1]", "the document keeps backgrounds in print");
+  // A winner in either row keeps that row's normal colour: bold + trophy only.
+  const g = playedFour();
+  const g1 = gameCardHtml(byNum(g, 1), g, "single_elimination");
+  const g2game = byNum(g, 2);
+  g2game.status = "completed"; g2game.home_score = 1; g2game.away_score = 4; g2game.winner_id = g2game.away_team_id;
+  const g2 = gameCardHtml(g2game, g, "single_elimination");
+  ok(rowBg(g1, "home")?.bg === "white" && rowBg(g2, "away")?.bg === PRINT_COLORS.awayRowBg
+     && (g1 + g2).match(/background:[^;"]+/g)!.every((b) => b === "background:white" || b === `background:${PRINT_COLORS.awayRowBg}` || b === `background:${PRINT_COLORS.border}`),
+    "[G2]", "a winner's row is coloured like any other row of its side");
+  ok(/data-row="away"[^]*font-weight:700[^]*data-trophy/.test(g2), "[G2]", "an away winner is bold with a trophy");
+  counters.awayWinner++;
 });
 
 // ─── D: the date line ────────────────────────────────────────────────────────
@@ -196,8 +232,14 @@ section("P", () => {
       ok(Math.abs(ex - to.x) < 0.5 && Math.abs(ey - rowY) < 0.5, "[P3]", `${n} teams: line ${con.from}→${con.to} ends off its row`);
       counters.connectors++;
     }
-    if (n <= 16) {
-      ok(L.scale === 1 && L.width <= PAGE.width && L.height <= PAGE.height, "[P4]", `${n} teams: scale ${L.scale}, ${L.width}×${L.height} on ${PAGE.width}×${PAGE.height}`);
+    const fits = L.width * L.scale <= PAGE.width + 0.5 && L.height * L.scale <= PAGE.height;
+    if (n <= 8) {
+      ok(L.scale > 1 && L.scale <= MAX_SCALE && fits && L.height < SCALE_UP_BELOW * PAGE.height, "[P4]",
+        `${n} teams: a small bracket should scale up (≤ ${MAX_SCALE}) and still fit — scale ${L.scale}`);
+      ok(10 * L.scale <= 14.0001, "[P4]", `${n} teams: team names ${10 * L.scale}pt exceed 14pt`);
+      if (L.scale > 1) counters.scaledUp++;
+    } else if (n <= 16) {
+      ok(L.scale === 1 && fits, "[P4]", `${n} teams: scale ${L.scale}, ${L.width}×${L.height} on ${PAGE.width}×${PAGE.height}`);
     } else {
       ok(L.scale < 1 && L.width * L.scale <= PAGE.width + 0.5 && L.height * L.scale <= PAGE.height, "[P4]", `${n} teams: scaled ${L.scale} still does not fit`);
       if (L.scale < 1) counters.scaledLayout++;
@@ -214,10 +256,18 @@ function lum(hex: string): number {
   return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 }
 const contrast = (hex: string) => 1.05 / (lum(hex) + 0.05);
+const contrastOn = (fg: string, bg: string) => {
+  const [a, b] = [lum(fg), lum(bg)].sort((x, y) => y - x);
+  return (a + 0.05) / (b + 0.05);
+};
 
 section("C", () => {
   for (const k of ["text", "heading", "meta", "placeholder"] as const) {
     ok(contrast(PRINT_COLORS[k]) >= 7, "[C1]", `${k} ${PRINT_COLORS[k]} contrast ${contrast(PRINT_COLORS[k]).toFixed(2)}`);
+  }
+  for (const k of ["text", "winText", "meta", "placeholder"] as const) {
+    const r = contrastOn(PRINT_COLORS[k], PRINT_COLORS.awayRowBg);
+    ok(r >= 7, "[C1]", `${k} on the away-row green: ${r.toFixed(2)}`);
   }
   for (const k of ["line", "border"] as const) {
     ok(contrast(PRINT_COLORS[k]) >= 4.5, "[C1]", `${k} ${PRINT_COLORS[k]} contrast ${contrast(PRINT_COLORS[k]).toFixed(2)}`);
@@ -226,6 +276,7 @@ section("C", () => {
   ok(html.includes(`color:${PRINT_COLORS.heading}">Round 1<`), "[C2]", "round headings use the heading colour");
   ok(html.includes(`color:${PRINT_COLORS.meta}">Printed`), "[C2]", "the Printed line uses the meta colour");
   ok(html.includes(`color:${PRINT_COLORS.placeholder};font-style:italic">Winner of Game 2<`), "[C2]", "placeholders use the placeholder colour");
+  ok(contrastOn(PRINT_COLORS.awayRowBg, "#ffffff") >= 1.08, "[C3]", "the away-row green is visibly different from white");
   ok(html.includes(`stroke="${PRINT_COLORS.line}"`), "[C2]", "lines use the line colour");
 });
 
@@ -240,6 +291,8 @@ section("S", () => {
      && !/game\.winner_id === game\.(home|away)_team_id/.test(view), "[S2]", "both bracket renderings decide winners with slotWon");
   ok(view.includes("slotName(side === \"home\" ? g.home_team_name : g.away_team_name, g, side, games, format)")
      && view.includes('name={labelOf(game, "home")}') && !view.includes('"TBD vs TBD"'), "[S3]", "the bracket view names empty slots with slotName");
+  ok(view.includes("${away ? AWAY_ROW_BG : \"bg-white\"}") && view.includes('const AWAY_ROW_BG = "bg-[#e6f4ea]";')
+     && !/won \? "bg-/.test(view) && view.includes('name={labelOf(game, "away")}\n        away\n'), "[S5]", "the on-screen card is two-tone and never colours the winner's row");
   const result = read("src/components/playoffs/enter-result-modal.tsx");
   ok(result.includes('slotName(game.home_team_name, game, "home", allGames, format)') && !result.includes('?? "Home"'), "[S4]", "the result modal names empty slots with slotName");
 });

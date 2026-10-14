@@ -10,11 +10,18 @@
 // bye leaves a gap. Every connector comes from singleElimTarget — the same
 // rule that moves the winner — into the exact slot (home or away) it fills.
 //
-// PAGE: US Letter LANDSCAPE, 0.35in margins. The tree is drawn at full size
-// and scaled down only if it would not fit the page: up to 16 teams it fits at
-// full size (scale 1; asserted by sim:bracket-print). 17–32 teams scale to
-// about half size on ONE page (team names ~5pt — readable but small). Above 32
-// it keeps shrinking; that size is not supported for printing.
+// PAGE: US Letter LANDSCAPE, 0.35in margins. The tree is drawn at a natural
+// size and scaled to the page: 9–16 teams print at full size (scale 1); 8
+// teams and fewer use under 60% of the height, so they are scaled UP to fill
+// the page, capped at 1.4× (10pt team names → at most 14pt); 17–32 teams
+// scale DOWN to about 57% on ONE page (team names ~5–6pt). Above 32 it keeps
+// shrinking; that size is not supported for printing. All asserted by
+// sim:bracket-print [P4].
+//
+// CARD: a two-tone card — the home row white, the away row a light field
+// green kept in print by print-color-adjust (no "Print backgrounds" needed in
+// Safari). Row colour NEVER marks a winner; the winner is bold text + a
+// trophy.
 //
 // ROUND ROBIN and DOUBLE ELIMINATION print as columns per round (cards in
 // normal flow, columns wrap onto further rows and pages). Double elimination
@@ -52,17 +59,28 @@ export const PRINT_COLORS = {
   text: "#111827",
   heading: "#1f2937",
   meta: "#374151",
-  placeholder: "#4b5563",
+  placeholder: "#374151",
   line: "#4b5563",
   border: "#6b7280",
   winText: "#0c1f3f",
-  winBg: "#ecfdf5",
+  /** The AWAY (second) row's background — a two-tone card, nothing more. It
+   *  never marks a winner: the winner is bold text + a trophy, in any row. */
+  awayRowBg: "#e6f4ea",
 };
+
+/** Keeps a background in print without "Print backgrounds" (Safari). */
+const KEEP_BG = "-webkit-print-color-adjust:exact;print-color-adjust:exact;";
+
+/** A small trophy for the winner's row (inline SVG — prints in every engine,
+ *  unlike an emoji). */
+const TROPHY_SVG = `<svg data-trophy width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="${"#0c1f3f"}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>`;
 
 // Page box in CSS px (96/in): 11in × 8.5in less 0.35in margins.
 export const PAGE = { width: Math.floor(10.3 * 96), height: Math.floor(7.8 * 96) };
 const HEADER_H = 76;   // the print header's height incl. its bottom margin
 const CANVAS_H = PAGE.height - HEADER_H;
+export const SCALE_UP_BELOW = 0.6;   // of the canvas height
+export const MAX_SCALE = 14 / 10;    // team names are 10pt; never above 14pt
 
 export const CARD = { width: 210, metaH: 26, rowH: 22 };
 export const CARD_H = 1 + CARD.metaH + CARD.rowH + 1 + CARD.rowH + 1;
@@ -117,9 +135,10 @@ export function gameCardHtml(game: PrintGame, allGames: PrintGame[], format: str
     const nameSt = !teamId
       ? `color:${PRINT_COLORS.placeholder};font-style:italic`
       : won ? `color:${PRINT_COLORS.winText};font-weight:700` : `color:${PRINT_COLORS.text}`;
-    return `<div style="height:${CARD.rowH}px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;gap:6px;background:${won ? PRINT_COLORS.winBg : "white"}">
+    const bg = side === "away" ? `background:${PRINT_COLORS.awayRowBg};${KEEP_BG}` : "background:white;";
+    return `<div data-row="${side}" style="height:${CARD.rowH}px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;gap:6px;${bg}">
       <span style="font-size:10pt;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${nameSt}">${escapeHtml(name)}</span>
-      ${done && score != null ? `<span style="font-size:10pt;font-weight:700;color:${won ? PRINT_COLORS.winText : PRINT_COLORS.meta}">${score}</span>` : ""}
+      <span style="display:flex;align-items:center;gap:4px;flex:none">${done && score != null ? `<span style="font-size:10pt;font-weight:700;color:${won ? PRINT_COLORS.winText : PRINT_COLORS.meta}">${score}</span>` : ""}${won ? TROPHY_SVG : ""}</span>
     </div>`;
   };
   const when = gameWhen(game.game_number, game.scheduled_date, game.start_time);
@@ -194,7 +213,10 @@ export function singleElimLayout(games: PrintGame[]): TreeLayout {
     });
   }
 
-  const scale = Math.min(1, PAGE.width / width, CANVAS_H / height);
+  // Fit the page; a small bracket (under 60% of the page's height — 8 teams
+  // and fewer) is scaled UP to fill it, capped so 10pt team names stay ≤ 14pt.
+  const fit = Math.min(PAGE.width / width, CANVAS_H / height);
+  const scale = height < SCALE_UP_BELOW * CANVAS_H ? Math.min(fit, MAX_SCALE) : Math.min(1, fit);
   return { rounds, cards, connectors, width, height, scale };
 }
 

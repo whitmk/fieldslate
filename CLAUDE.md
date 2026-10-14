@@ -500,13 +500,24 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   were clipped) and drew lines only between rounds whose sizes doubled. Each
   card: "Game N · Sat 11/7 · 10:45 AM" over the field on its own line (real
   field names are long), or "Game N · Date TBD". **US Letter LANDSCAPE, 0.35in
-  margins; up to 16 teams at full size on one page** (sim [P4]); 17–32 teams
-  scale to about 57% on one page; above 32 it keeps shrinking and is not a
-  supported print size. Round robin and double elimination print as wrapping
+  margins. 9–16 teams print at full size on one page; 8 and fewer use under
+  60% of the height and are scaled UP to fill it, capped at 1.4× (10pt team
+  names never exceed 14pt); 17–32 teams scale down to about 57% on one page;
+  above 32 it keeps shrinking and is not a supported print size** (sim [P4]). Round robin and double elimination print as wrapping
   columns (double elimination was reported, not redesigned). Colours are
   WCAG-checked against white by the sim (text ≥ 7:1, lines ≥ 4.5:1). The
   schedule table print now shares the header and the 0.35in margins (still
   portrait).
+- **TWO-TONE CARDS, and the winner is NEVER a row colour** (print and screen
+  alike, 2026-10-13). The home row is white; the away (second) row is a light
+  field green, `#e6f4ea` (`PRINT_COLORS.awayRowBg`, `AWAY_ROW_BG` on screen),
+  kept in print by `-webkit-print-color-adjust` / `print-color-adjust: exact`
+  on the row AND the document, so Safari prints it without "Print
+  backgrounds". The winner is shown by bold text + a trophy (an inline SVG in
+  print) only — never a tint, in either row. Text on the green is
+  WCAG-checked (sim [C1]: names ≥ 7:1); placeholders moved to `#374151` so
+  they stay ≥ 7:1 on it, and on screen the empty-slot and losing-score greys
+  were darkened (gray-300/400 → gray-600).
 - **The ON-SCREEN bracket tree still lays out by row index** (same defect the
   print had: with byes, round 1 stacks at the top and some lines are missing).
   Not fixed here — the print was the scope. The fix is `singleElimLayout` with
@@ -517,9 +528,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   output; the 11-team one is the live Majors SHAPE with placeholder names).
   Open one in Safari and print to check WebKit; Chromium PDFs come from
   headless Chrome `--print-to-pdf`.
-- **Harness: `npm run sim:bracket-print`** (535 checks × 3 zones, 5 counters:
-  feeders vs advancement, labels, trophy, date line, layout, contrast, wiring)
-  + `:mutants` (13, each killed at its own assertion).
+- **Harness: `npm run sim:bracket-print`** (569 checks × 3 zones, 7 counters:
+  feeders vs advancement, labels, trophy, two-tone and winner styling, date
+  line, layout and page fit, contrast, wiring) + `:mutants` (18, each killed
+  at its own assertion).
 
 ## Playoff bracket delete and rebuild (0107, applied 2026-10-08)
 

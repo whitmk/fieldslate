@@ -108,6 +108,7 @@ function GameCard({
 
       <TeamRow
         name={labelOf(game, "home")}
+        away={false}
         won={homeWon}
         tbd={!game.home_team_id}
         score={game.home_score}
@@ -116,6 +117,7 @@ function GameCard({
       <div className="h-px bg-gray-100" />
       <TeamRow
         name={labelOf(game, "away")}
+        away
         won={awayWon}
         tbd={!game.away_team_id}
         score={game.away_score}
@@ -164,34 +166,41 @@ function GameCard({
   );
 }
 
+// Two-tone card, matching the print (bracket-print.ts PRINT_COLORS.awayRowBg):
+// the away (second) row is a light field green, the home row white. Row colour
+// NEVER marks a winner — the winner is bold text + the trophy.
+const AWAY_ROW_BG = "bg-[#e6f4ea]";
+
 function TeamRow({
   name,
   won,
   tbd,
   score,
   isDone,
+  away,
 }: {
   name: string;
   won: boolean;
   tbd: boolean;
   score: number | null;
   isDone: boolean;
+  away: boolean;
 }) {
   return (
-    <div className={`flex items-center gap-2 px-2.5 py-2 ${won ? "bg-[#22C55E]/5" : ""}`}>
+    <div className={`flex items-center gap-2 px-2.5 py-2 ${away ? AWAY_ROW_BG : "bg-white"}`}>
       <span
         className={`flex-1 truncate text-xs ${
-          tbd ? "italic text-gray-300" : won ? "font-semibold text-[#0C1F3F]" : "text-gray-700"
+          tbd ? "italic text-gray-600" : won ? "font-bold text-[#0C1F3F]" : "text-gray-800"
         }`}
       >
         {name}
       </span>
       {isDone && score != null && (
-        <span className={`text-xs font-semibold tabular-nums ${won ? "text-[#0C1F3F]" : "text-gray-400"}`}>
+        <span className={`text-xs tabular-nums ${won ? "font-bold text-[#0C1F3F]" : "font-semibold text-gray-600"}`}>
           {score}
         </span>
       )}
-      {won && <Trophy className="h-3 w-3 flex-shrink-0 text-[#22C55E]" />}
+      {won && <Trophy className="h-3 w-3 flex-shrink-0 text-[#0C1F3F]" />}
     </div>
   );
 }
