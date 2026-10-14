@@ -472,6 +472,55 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   mutants applied to the real source, each required to die FIRST at its own
   assertion). Read the sim's header before touching any of this.
 
+## Printable playoff bracket + slot labels (2026-10-13)
+
+- **ONE RULE for where a winner goes: `singleElimTarget` (advancement.ts).**
+  `computeSingleElimAdvancement` writes through it; `singleElimFeeder` finds a
+  slot's feeder by ASKING it of every game (never an inverse formula); the
+  "Winner of Game N" labels and the printed bracket's connector lines come
+  from those two. 0108's `playoff_single_elim_target` is its SQL port.
+- **Labels and winners: `src/lib/playoffs/bracket-labels.ts` (pure).** An empty
+  single-elimination slot reads "Winner of Game N"; round 1, a bye-less gap and
+  every other format read "TBD". Used by the on-screen bracket (cards AND list
+  rows), the Edit-result modal (it said "Home"/"Away") and the print.
+  **`slotWon` is the only winner test:** a slot wins only when the game's
+  winner AND the slot's team are both set and equal — `winner_id ===
+  home_team_id` was true for an empty slot in an undecided game, which put a
+  trophy (and the print's green highlight) on every TBD row.
+- **The public schedule page has an OLDER SECOND COPY of the label**
+  (`openSlotLabel`, `src/lib/public-schedule/view.ts`, positional arithmetic).
+  Left in place; `sim:bracket-print` [F3] requires the two to agree on every
+  slot of 4/6/8/11/12/16/32-team brackets. Converting it to `singleElimFeeder`
+  is a safe follow-up.
+- **The print: `src/lib/playoffs/bracket-print.ts` (pure HTML builders).** The
+  export modal only opens a window around `printDocument(…)`. Single
+  elimination is a tree laid out by BRACKET POSITION (`singleElimPosition`),
+  never by index in the round's row list — with byes that index stacked round
+  1 at the top, sized the canvas for round 1 only (so the lower half's lines
+  were clipped) and drew lines only between rounds whose sizes doubled. Each
+  card: "Game N · Sat 11/7 · 10:45 AM" over the field on its own line (real
+  field names are long), or "Game N · Date TBD". **US Letter LANDSCAPE, 0.35in
+  margins; up to 16 teams at full size on one page** (sim [P4]); 17–32 teams
+  scale to about 57% on one page; above 32 it keeps shrinking and is not a
+  supported print size. Round robin and double elimination print as wrapping
+  columns (double elimination was reported, not redesigned). Colours are
+  WCAG-checked against white by the sim (text ≥ 7:1, lines ≥ 4.5:1). The
+  schedule table print now shares the header and the 0.35in margins (still
+  portrait).
+- **The ON-SCREEN bracket tree still lays out by row index** (same defect the
+  print had: with byes, round 1 stacks at the top and some lines are missing).
+  Not fixed here — the print was the scope. The fix is `singleElimLayout` with
+  the screen card's dimensions.
+- **Proof and the Safari check:** `npx tsx scripts/sim/bracket-print-render.ts
+  <dir>` writes the exact print documents for 8/11/12/16/32-team, round-robin
+  and double-elim fixtures (`bracket-print-fixtures.ts` — real generator
+  output; the 11-team one is the live Majors SHAPE with placeholder names).
+  Open one in Safari and print to check WebKit; Chromium PDFs come from
+  headless Chrome `--print-to-pdf`.
+- **Harness: `npm run sim:bracket-print`** (535 checks × 3 zones, 5 counters:
+  feeders vs advancement, labels, trophy, date line, layout, contrast, wiring)
+  + `:mutants` (13, each killed at its own assertion).
+
 ## Playoff bracket delete and rebuild (0107, applied 2026-10-08)
 
 - **Two SECURITY DEFINER functions, each its own preview (`p_commit=false`

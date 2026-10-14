@@ -16,8 +16,8 @@ const LIB = "src/lib/playoffs/playoff-result.ts";
 const MUTANTS: Mutant[] = [
   {
     id: "PR1", what: "cross-check skew: advancement.ts writes the other slot", file: "src/lib/playoffs/advancement.ts",
-    find: `    field: pos % 2 === 0 ? "home_team_id" : "away_team_id",`,
-    replace: `    field: pos % 2 === 0 ? "away_team_id" : "home_team_id",`,
+    find: `  return { target, field: pos % 2 === 0 ? "home_team_id" : "away_team_id" };`,
+    replace: `  return { target, field: pos % 2 === 0 ? "away_team_id" : "home_team_id" };`,
     expect: "XC1",
   },
   {
@@ -84,3 +84,7 @@ runMutants({
 //   PR1 → [XC1]  PR2 → [R1]  PR3 → [R3]  PR4 → [E1]  PR5 → [O1]
 //   PR6 → [O2]   PR7 → [O3]  PR8 → [C1]  PR9 → [S1]
 // Source restored and re-verified green after the pass.
+// 2026-10-13 (printable bracket) — PR1 repointed: the parity line moved into
+// singleElimTarget (advancement.ts) when the target lookup was split out for
+// the feeder labels and the print's connectors. Same flip, new line; re-run
+// green and PR1 still killed at its own assertion.

@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { X, Printer, Download, Trophy, CalendarDays, LayoutList } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { PlayoffGame } from "@/types/database";
+import { buildBracketPrintHtml, escapeHtml, printDocument, printHeader } from "@/lib/playoffs/bracket-print";
+import { playoffRoundLabel as roundLabel } from "@/lib/playoffs/playoff-result";
 
 interface GameWithTeams extends PlayoffGame {
   home_team_name: string | null;
@@ -20,40 +22,6 @@ interface Props {
   leagueName: string;
   format: string;
   onClose: () => void;
-}
-
-// ─── Round helpers (mirrors bracket-view) ────────────────────────────────────
-
-const ROUND_ORDER: Record<string, number> = {
-  "WB-R1": 10, "WB-R2": 11, "WB-R3": 12, "WB-R4": 13,
-  "WB-F": 20,
-  "LB-R1": 30, "LB-R2": 31, "LB-R3": 32, "LB-R4": 33,
-  "LB-R5": 34, "LB-R6": 35, "LB-R7": 36, "LB-R8": 37,
-  "LB-F": 40,
-  "GF": 50, "GF-R": 51,
-};
-
-function getRoundOrder(round: string): number {
-  if (round in ROUND_ORDER) return ROUND_ORDER[round];
-  const m = round.match(/^(RR|R|SF|F)(\d*)/);
-  if (!m) return 99;
-  if (m[1] === "F") return 50;
-  if (m[1] === "SF") return 40;
-  return parseInt(m[2] || "0");
-}
-
-function roundLabel(round: string): string {
-  const map: Record<string, string> = {
-    F: "Final", SF: "Semifinals",
-    "WB-F": "Winners Final", "LB-F": "Losers Final",
-    GF: "Grand Final", "GF-R": "Grand Final (Reset)",
-  };
-  if (round in map) return map[round];
-  if (round.startsWith("RR")) return `Round ${round.slice(2)}`;
-  if (round.startsWith("WB-R")) return `Winners Rd ${round.slice(4)}`;
-  if (round.startsWith("LB-R")) return `Losers Rd ${round.slice(4)}`;
-  if (round.startsWith("R")) return `Round ${round.slice(1)}`;
-  return round;
 }
 
 // ─── Date / time helpers ──────────────────────────────────────────────────────
@@ -98,173 +66,21 @@ function slugify(s: string) {
   return s.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 // ─── Print window ─────────────────────────────────────────────────────────────
 
-function openPrintWindow(body: string, title: string) {
+// The document comes from the pure builders in bracket-print.ts (the bracket
+// prints landscape, the schedule table portrait); this only opens and prints.
+function openPrintWindow(body: string, title: string, orientation: "landscape" | "portrait") {
   const win = window.open("", "_blank");
   if (!win) return;
-  win.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>${escapeHtml(title)}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0.75in;
-      font-family: Arial, Helvetica, sans-serif;
-      background: white;
-      color: #000;
-    }
-    @media print {
-      @page { margin: 0.75in; size: letter portrait; }
-    }
-  </style>
-</head>
-<body>${body}</body>
-</html>`);
+  win.document.write(printDocument(body, title, orientation));
   win.document.close();
   setTimeout(() => { win.print(); }, 300);
 }
 
-// ─── Shared print header ──────────────────────────────────────────────────────
-
-function printHeader(leagueName: string, divisionName: string, subtitle: string): string {
-  const today = new Date().toLocaleDateString("en-US", {
-    month: "long", day: "numeric", year: "numeric",
-  });
-  return `
-<div style="padding-bottom:12pt;border-bottom:2pt solid #000;margin-bottom:16pt">
-  <div style="font-size:20pt;font-weight:800;color:#0c1f3f;letter-spacing:-0.3pt;line-height:1">
-    Field<span style="color:#16a34a">Slate</span>
-  </div>
-  <div style="font-size:13pt;font-weight:700;color:#000;margin-top:8pt">${escapeHtml(leagueName)}</div>
-  <div style="font-size:10pt;font-weight:600;color:#444;margin-top:2pt">
-    ${escapeHtml(divisionName)} — ${escapeHtml(subtitle)}
-  </div>
-  <div style="font-size:8.5pt;color:#666;margin-top:6pt">Printed ${today}</div>
-</div>`;
-}
-
-// ─── Bracket print ────────────────────────────────────────────────────────────
-
-const PW = 188;   // card width
-const PH = 70;   // card body height (2 rows × 35px)
-const HG = 48;   // horizontal gap
-const VS = 90;   // vertical slot per game in round 0
-
-function pGameTop(rIdx: number, gIdx: number): number {
-  const slotH = VS * Math.pow(2, rIdx);
-  return gIdx * slotH + slotH / 2 - PH / 2;
-}
-function pGameCenter(rIdx: number, gIdx: number): number {
-  return pGameTop(rIdx, gIdx) + PH / 2;
-}
-
-function gameCardHtml(game: GameWithTeams): string {
-  const homeWon = game.winner_id === game.home_team_id;
-  const awayWon = game.winner_id === game.away_team_id;
-  const done = game.status === "completed";
-
-  function teamRow(name: string | null, won: boolean, score: number | null, tbd: boolean) {
-    const nameSt = tbd
-      ? "color:#d1d5db;font-style:italic"
-      : won
-        ? "font-weight:700;color:#0c1f3f"
-        : "color:#374151";
-    const scoreSt = won ? "color:#0c1f3f;font-weight:700" : "color:#9ca3af;font-weight:600";
-    return `<div style="padding:5px 8px;display:flex;align-items:center;justify-content:space-between;min-height:35px;background:${won ? "#f0fdf4" : "white"}">
-      <span style="font-size:8pt;${nameSt}">${escapeHtml(name ?? "TBD")}</span>
-      ${done && score != null ? `<span style="font-size:8pt;${scoreSt}">${score}</span>` : ""}
-    </div>`;
-  }
-
-  return `<div style="border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;background:white;width:${PW}px">
-    ${teamRow(game.home_team_name, homeWon, game.home_score, !game.home_team_id)}
-    <div style="height:1px;background:#f3f4f6"></div>
-    ${teamRow(game.away_team_name, awayWon, game.away_score, !game.away_team_id)}
-  </div>`;
-}
-
-function buildBracketHtml(
-  rounds: [string, GameWithTeams[]][],
-  leagueName: string,
-  divisionName: string,
-): string {
-  if (!rounds.length) return printHeader(leagueName, divisionName, "Playoff Bracket") + "<p>No games yet.</p>";
-
-  const r0Count = rounds[0][1].length;
-  const totalH = r0Count * VS;
-  const totalW = rounds.length * (PW + HG) - HG;
-
-  // SVG connector lines
-  let svgLines = "";
-  for (let rIdx = 0; rIdx < rounds.length - 1; rIdx++) {
-    const src = rounds[rIdx][1];
-    const next = rounds[rIdx + 1][1];
-    if (src.length !== next.length * 2) continue;
-    for (let pi = 0; pi < next.length; pi++) {
-      const xR = rIdx * (PW + HG) + PW;
-      const xM = xR + HG / 2;
-      const xN = (rIdx + 1) * (PW + HG);
-      const y1 = pGameCenter(rIdx, pi * 2);
-      const y2 = pGameCenter(rIdx, pi * 2 + 1);
-      const yN = (y1 + y2) / 2;
-      svgLines += `<line x1="${xR}" y1="${y1}" x2="${xM}" y2="${y1}" stroke="#d1d5db" stroke-width="1.5"/>
-<line x1="${xR}" y1="${y2}" x2="${xM}" y2="${y2}" stroke="#d1d5db" stroke-width="1.5"/>
-<line x1="${xM}" y1="${y1}" x2="${xM}" y2="${y2}" stroke="#d1d5db" stroke-width="1.5"/>
-<line x1="${xM}" y1="${yN}" x2="${xN}" y2="${yN}" stroke="#d1d5db" stroke-width="1.5"/>`;
-    }
-  }
-
-  // Round headers + game cards
-  let elements = "";
-  for (let rIdx = 0; rIdx < rounds.length; rIdx++) {
-    const [round, roundGames] = rounds[rIdx];
-    const hdrLeft = rIdx * (PW + HG);
-    elements += `<div style="position:absolute;top:0;left:${hdrLeft}px;width:${PW}px;text-align:center;font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:0.6pt;color:#9ca3af">
-      ${escapeHtml(roundLabel(round))}
-    </div>`;
-    for (let gIdx = 0; gIdx < roundGames.length; gIdx++) {
-      const x = rIdx * (PW + HG);
-      const y = pGameTop(rIdx, gIdx) + 16;
-      elements += `<div style="position:absolute;left:${x}px;top:${y}px">${gameCardHtml(roundGames[gIdx])}</div>`;
-    }
-  }
-
-  return `${printHeader(leagueName, divisionName, "Playoff Bracket")}
-<div style="position:relative;height:${totalH + 20}px;width:${totalW}px;min-width:${totalW}px">
-  <svg width="${totalW}" height="${totalH + 20}" style="position:absolute;top:0;left:0;pointer-events:none">${svgLines}</svg>
-  ${elements}
-</div>`;
-}
-
-function buildColumnBracketHtml(
-  rounds: [string, GameWithTeams[]][],
-  leagueName: string,
-  divisionName: string,
-): string {
-  let cols = "";
-  for (const [round, roundGames] of rounds) {
-    let cards = "";
-    for (const g of roundGames) cards += `<div style="margin-bottom:12pt">${gameCardHtml(g)}</div>`;
-    cols += `<div style="min-width:${PW}px;margin-right:24pt">
-      <div style="font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:0.6pt;color:#9ca3af;text-align:center;margin-bottom:8pt">
-        ${escapeHtml(roundLabel(round))}
-      </div>
-      ${cards}
-    </div>`;
-  }
-  return `${printHeader(leagueName, divisionName, "Playoff Bracket")}
-<div style="display:flex;align-items:flex-start">${cols}</div>`;
+function printedOn(): string {
+  return new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
 
 // ─── Schedule print ───────────────────────────────────────────────────────────
@@ -301,7 +117,7 @@ function buildScheduleHtml(
     </tr>`;
   });
 
-  return `${printHeader(leagueName, divisionName, "Playoff Schedule")}
+  return `${printHeader(leagueName, divisionName, "Playoff Schedule", printedOn())}
 <table style="width:100%;border-collapse:collapse;font-size:9pt">
   <thead>
     <tr style="background:#ebebeb">
@@ -393,26 +209,19 @@ export function PlayoffExportModal({
       });
   }, [playoffId]);
 
-  // Group and sort rounds (needed for bracket print)
-  const roundMap = new Map<string, GameWithTeams[]>();
-  for (const g of games) {
-    if (!roundMap.has(g.round)) roundMap.set(g.round, []);
-    roundMap.get(g.round)!.push(g);
-  }
-  const rounds = [...roundMap.entries()].sort(([a], [b]) => getRoundOrder(a) - getRoundOrder(b));
-
   function handlePrintBracket() {
-    const html =
-      format === "single_elimination"
-        ? buildBracketHtml(rounds, leagueName, divisionName)
-        : buildColumnBracketHtml(rounds, leagueName, divisionName);
-    openPrintWindow(html, `${divisionName} Playoff Bracket`);
+    openPrintWindow(
+      buildBracketPrintHtml(games, format, leagueName, divisionName, printedOn()),
+      `${divisionName} Playoff Bracket`,
+      "landscape",
+    );
   }
 
   function handlePrintSchedule() {
     openPrintWindow(
       buildScheduleHtml(games, leagueName, divisionName),
       `${divisionName} Playoff Schedule`,
+      "portrait",
     );
   }
 

@@ -45,8 +45,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "PM5", what: "advancement writes the wrong slot (parity flipped)", file: ADV,
-    find: "    field: pos % 2 === 0 ? \"home_team_id\" : \"away_team_id\",",
-    replace: "    field: pos % 2 === 0 ? \"away_team_id\" : \"home_team_id\",",
+    find: "  return { target, field: pos % 2 === 0 ? \"home_team_id\" : \"away_team_id\" };",
+    replace: "  return { target, field: pos % 2 === 0 ? \"away_team_id\" : \"home_team_id\" };",
     expect: "B1",
   },
   {
@@ -100,3 +100,7 @@ const MUTANTS: Mutant[] = [
 ];
 
 runMutants({ sim: "scripts/sim/playoff-bracket-sim.ts", timezones: ["UTC"], mutants: MUTANTS });
+// 2026-10-13 (printable bracket) — PM5 repointed: the parity line moved into
+// singleElimTarget (advancement.ts) when the target lookup was split out for
+// the feeder labels and the print's connectors. Same flip, new line; re-run
+// green and PM5 still killed at its own assertion.

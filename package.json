@@ -68,6 +68,8 @@
     "sim:bracket-delete:mutants": "npx tsx scripts/sim/bracket-delete-mutants.ts",
     "sim:playoff-result": "TZ=UTC npx tsx scripts/sim/playoff-result-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/playoff-result-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/playoff-result-sim.ts",
     "sim:playoff-result:mutants": "npx tsx scripts/sim/playoff-result-mutants.ts",
+    "sim:bracket-print": "TZ=UTC npx tsx scripts/sim/bracket-print-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/bracket-print-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/bracket-print-sim.ts",
+    "sim:bracket-print:mutants": "npx tsx scripts/sim/bracket-print-mutants.ts",
     "sim:snack-shifts": "TZ=UTC npx tsx scripts/sim/snack-shifts-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/snack-shifts-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/snack-shifts-sim.ts",
     "sim:snack-shifts:mutants": "npx tsx scripts/sim/snack-shifts-mutants.ts",
     "sim:week-grid": "TZ=UTC npx tsx scripts/sim/week-grid-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/week-grid-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/week-grid-sim.ts",

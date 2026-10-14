@@ -115,37 +115,65 @@ export function singleElimPosition(
   return roundGames.findIndex((g) => g.id === game.id);
 }
 
-export function computeSingleElimAdvancement(
+/** THE single-elimination rule: the game (and the slot in it) a game's winner
+ *  moves into, or null for the championship / an unknown round. Advancement,
+ *  the "Winner of Game N" labels and the printed bracket's connector lines
+ *  all come from here; 0108's playoff_single_elim_target is its SQL port. */
+export function singleElimTarget(
   game: GameRow,
-  winnerId: string,
   allGames: GameRow[],
-): Advancement {
+): { target: GameRow; field: SlotField } | null {
   const rounds = groupRounds(allGames);
   const roundOrder = [...rounds.keys()].sort(byOrder);
   const roundIdx = roundOrder.indexOf(game.round);
 
   // Championship (or unknown round) — nothing to advance to.
-  if (roundIdx === -1 || roundIdx === roundOrder.length - 1) return { writes: [] };
+  if (roundIdx === -1 || roundIdx === roundOrder.length - 1) return null;
 
   // Every round after the first is complete, so the round count fixes the
   // bracket size even when round 1 is short because of byes.
   const bracketSize = Math.pow(2, roundOrder.length);
   const pos = singleElimPosition(game, roundIdx, bracketSize, rounds.get(game.round)!);
-  if (pos < 0) return { writes: [] };
+  if (pos < 0) return null;
 
   const next = rounds.get(roundOrder[roundIdx + 1])!;
   const targetPos = Math.floor(pos / 2);
   const targetNumber = singleElimFirstNumber(roundIdx + 1, bracketSize) + targetPos;
   const target = next.find((g) => g.game_number === targetNumber) ?? next[targetPos];
-  if (!target) return { writes: [] };
+  if (!target) return null;
+  return { target, field: pos % 2 === 0 ? "home_team_id" : "away_team_id" };
+}
 
+/** The game whose winner fills `side` of `game`, or null (round 1, a bye, or
+ *  no such game). Found by asking singleElimTarget of every game — the
+ *  inverse is never re-derived, so it cannot disagree with advancement. */
+export function singleElimFeeder(
+  game: GameRow,
+  side: SlotField,
+  allGames: GameRow[],
+): GameRow | null {
+  for (const g of allGames) {
+    if (g.id === game.id) continue;
+    const t = singleElimTarget(g, allGames);
+    if (t && t.target.id === game.id && t.field === side) return g;
+  }
+  return null;
+}
+
+export function computeSingleElimAdvancement(
+  game: GameRow,
+  winnerId: string,
+  allGames: GameRow[],
+): Advancement {
+  const t = singleElimTarget(game, allGames);
+  if (!t) return { writes: [] };
   const writes: SlotWrite[] = [{
-    gameId: target.id,
-    round: target.round,
-    field: pos % 2 === 0 ? "home_team_id" : "away_team_id",
+    gameId: t.target.id,
+    round: t.target.round,
+    field: t.field,
     teamId: winnerId,
   }];
-  return checkBlocked(writes, rounds) ?? { writes };
+  return checkBlocked(writes, groupRounds(allGames)) ?? { writes };
 }
 
 // ─── Double elimination ───────────────────────────────────────────────────────

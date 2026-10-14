@@ -6,6 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 import { EnterResultModal } from "@/components/playoffs/enter-result-modal";
 import { EditPlayoffGameModal } from "@/components/playoffs/edit-playoff-game-modal";
 import { playoffRoundLabel, resultButtonShown } from "@/lib/playoffs/playoff-result";
+import { slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
+
+/** A slot's text: the team, else "Winner of Game N" / "TBD" (bracket-labels). */
+type LabelOf = (game: GameWithTeams, side: Side) => string;
 import type { PlayoffGame } from "@/types/database";
 
 export interface GameWithTeams extends PlayoffGame {
@@ -75,16 +79,18 @@ const CARD_W = 200;
 function GameCard({
   game,
   isChampionship,
+  labelOf,
   onEnterResult,
   onEdit,
 }: {
   game: GameWithTeams;
   isChampionship: boolean;
+  labelOf: LabelOf;
   onEnterResult: () => void;
   onEdit: () => void;
 }) {
-  const homeWon = game.winner_id === game.home_team_id;
-  const awayWon = game.winner_id === game.away_team_id;
+  const homeWon = slotWon(game.winner_id, game.home_team_id);
+  const awayWon = slotWon(game.winner_id, game.away_team_id);
   const bothTeams = !!game.home_team_id && !!game.away_team_id;
   const isDone = game.status === "completed";
 
@@ -101,7 +107,7 @@ function GameCard({
       )}
 
       <TeamRow
-        name={game.home_team_name ?? "TBD"}
+        name={labelOf(game, "home")}
         won={homeWon}
         tbd={!game.home_team_id}
         score={game.home_score}
@@ -109,7 +115,7 @@ function GameCard({
       />
       <div className="h-px bg-gray-100" />
       <TeamRow
-        name={game.away_team_name ?? "TBD"}
+        name={labelOf(game, "away")}
         won={awayWon}
         tbd={!game.away_team_id}
         score={game.away_score}
@@ -121,11 +127,11 @@ function GameCard({
       <div className="border-t border-gray-50 px-2.5 py-1.5">
         {game.scheduled_date ? (
           <p className="text-[10px] text-gray-400">
-            {fmtDate(game.scheduled_date)}
+            Game {game.game_number} · {fmtDate(game.scheduled_date)}
             {game.start_time ? ` · ${fmtTime(game.start_time)}` : ""}
           </p>
         ) : (
-          <p className="text-[10px] italic text-amber-600">No date yet</p>
+          <p className="text-[10px] italic text-amber-600">Game {game.game_number} · No date yet</p>
         )}
         {game.venue_name && (
           <p className="truncate text-[10px] text-gray-400">{game.venue_name}</p>
@@ -196,19 +202,21 @@ function ListGameRow({
   game,
   idx,
   isChampionship,
+  labelOf,
   onEnterResult,
   onEdit,
 }: {
   game: GameWithTeams;
   idx: number;
   isChampionship: boolean;
+  labelOf: LabelOf;
   onEnterResult: () => void;
   onEdit: () => void;
 }) {
   const bothTeams = !!game.home_team_id && !!game.away_team_id;
   const isDone = game.status === "completed";
-  const homeWon = game.winner_id === game.home_team_id;
-  const awayWon = game.winner_id === game.away_team_id;
+  const homeWon = slotWon(game.winner_id, game.home_team_id);
+  const awayWon = slotWon(game.winner_id, game.away_team_id);
 
   return (
     <div className="flex items-center gap-3 border-b border-gray-50 px-4 py-3 last:border-0">
@@ -237,9 +245,7 @@ function ListGameRow({
           </p>
         ) : (
           <p className={`text-sm font-medium ${!bothTeams ? "italic text-gray-400" : "text-gray-900"}`}>
-            {!bothTeams
-              ? "TBD vs TBD"
-              : `${game.home_team_name ?? "TBD"} vs ${game.away_team_name ?? "TBD"}`}
+            {`${labelOf(game, "home")} vs ${labelOf(game, "away")}`}
           </p>
         )}
         <p className="text-xs text-gray-400">{roundLabel(game.round)}</p>
@@ -322,11 +328,13 @@ function gameCenter(roundIdx: number, gameIdx: number): number {
 function BracketTree({
   rounds,
   championshipRound,
+  labelOf,
   onEnterResult,
   onEdit,
 }: {
   rounds: [string, GameWithTeams[]][];
   championshipRound: string | null;
+  labelOf: LabelOf;
   onEnterResult: (game: GameWithTeams) => void;
   onEdit: (game: GameWithTeams) => void;
 }) {
@@ -394,6 +402,7 @@ function BracketTree({
             <GameCard
               game={game}
               isChampionship={game.round === championshipRound}
+              labelOf={labelOf}
               onEnterResult={() => onEnterResult(game)}
               onEdit={() => onEdit(game)}
             />
@@ -409,11 +418,13 @@ function BracketTree({
 function ColumnView({
   rounds,
   championshipRound,
+  labelOf,
   onEnterResult,
   onEdit,
 }: {
   rounds: [string, GameWithTeams[]][];
   championshipRound: string | null;
+  labelOf: LabelOf;
   onEnterResult: (game: GameWithTeams) => void;
   onEdit: (game: GameWithTeams) => void;
 }) {
@@ -430,6 +441,7 @@ function ColumnView({
                 key={g.id}
                 game={g}
                 isChampionship={g.round === championshipRound}
+                labelOf={labelOf}
                 onEnterResult={() => onEnterResult(g)}
                 onEdit={() => onEdit(g)}
               />
@@ -477,6 +489,9 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
   }, [playoffId]);
 
   useEffect(() => { void loadGames(); }, [loadGames]);
+
+  const labelOf: LabelOf = (g, side) =>
+    slotName(side === "home" ? g.home_team_name : g.away_team_name, g, side, games, format);
 
   if (loading) {
     return (
@@ -553,6 +568,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
               game={g}
               idx={i}
               isChampionship={g.round === championshipRound}
+              labelOf={labelOf}
               onEnterResult={() => setActiveGame(g)}
               onEdit={() => setEditingGame(g)}
             />
@@ -564,6 +580,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
             <BracketTree
               rounds={rounds}
               championshipRound={championshipRound}
+              labelOf={labelOf}
               onEnterResult={setActiveGame}
               onEdit={setEditingGame}
             />
@@ -571,6 +588,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
             <ColumnView
               rounds={rounds}
               championshipRound={championshipRound}
+              labelOf={labelOf}
               onEnterResult={setActiveGame}
               onEdit={setEditingGame}
             />

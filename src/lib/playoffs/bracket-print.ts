@@ -1,0 +1,247 @@
+// The printable playoff bracket — pure HTML builders, no React, no DOM, no
+// clock (the "Printed …" date is passed in). The export modal opens the result
+// in a print window; scripts/sim/bracket-print-render.ts writes the same
+// documents to files for proof and for the Safari check.
+//
+// SINGLE ELIMINATION is drawn as a tree, laid out by BRACKET POSITION
+// (singleElimPosition — the numbering advancement uses), never by a game's
+// index in its round's list of rows. With byes, round 1 is short: its games
+// keep their positions, so each sits beside the round-2 slot it feeds and a
+// bye leaves a gap. Every connector comes from singleElimTarget — the same
+// rule that moves the winner — into the exact slot (home or away) it fills.
+//
+// PAGE: US Letter LANDSCAPE, 0.35in margins. The tree is drawn at full size
+// and scaled down only if it would not fit the page: up to 16 teams it fits at
+// full size (scale 1; asserted by sim:bracket-print). 17–32 teams scale to
+// about half size on ONE page (team names ~5pt — readable but small). Above 32
+// it keeps shrinking; that size is not supported for printing.
+//
+// ROUND ROBIN and DOUBLE ELIMINATION print as columns per round (cards in
+// normal flow, columns wrap onto further rows and pages). Double elimination
+// has no tree drawing — reported, not redesigned (2026-10-13).
+//
+// COLOURS are chosen for a home printer and checked against white by the sim
+// (WCAG ratio): text and labels ≥ 7:1, lines and borders ≥ 4.5:1.
+
+import {
+  getRoundOrder,
+  singleElimPosition,
+  singleElimTarget,
+} from "@/lib/playoffs/advancement";
+import { gameWhen, slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
+import { playoffRoundLabel } from "@/lib/playoffs/playoff-result";
+
+export interface PrintGame {
+  id: string;
+  round: string;
+  game_number: number;
+  home_team_id: string | null;
+  away_team_id: string | null;
+  winner_id: string | null;
+  status: string;
+  home_score: number | null;
+  away_score: number | null;
+  scheduled_date: string | null;
+  start_time: string | null;
+  home_team_name: string | null;
+  away_team_name: string | null;
+  venue_name: string | null;
+}
+
+export const PRINT_COLORS = {
+  text: "#111827",
+  heading: "#1f2937",
+  meta: "#374151",
+  placeholder: "#4b5563",
+  line: "#4b5563",
+  border: "#6b7280",
+  winText: "#0c1f3f",
+  winBg: "#ecfdf5",
+};
+
+// Page box in CSS px (96/in): 11in × 8.5in less 0.35in margins.
+export const PAGE = { width: Math.floor(10.3 * 96), height: Math.floor(7.8 * 96) };
+const HEADER_H = 76;   // the print header's height incl. its bottom margin
+const CANVAS_H = PAGE.height - HEADER_H;
+
+export const CARD = { width: 210, metaH: 26, rowH: 22 };
+export const CARD_H = 1 + CARD.metaH + CARD.rowH + 1 + CARD.rowH + 1;
+const GAP = 44;          // between columns
+const SLOT_H = 81;       // vertical room per round-1 position
+const ROUND_HDR = 20;    // column heading row
+
+export function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** The whole print document. The bracket prints landscape; the schedule
+ *  table keeps portrait. */
+export function printDocument(body: string, title: string, orientation: "landscape" | "portrait"): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: white; color: ${PRINT_COLORS.text}; }
+    @media screen { body { margin: 0.35in; } }
+    @page { margin: 0.35in; size: letter ${orientation}; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  </style>
+</head>
+<body>${body}</body>
+</html>`;
+}
+
+export function printHeader(leagueName: string, divisionName: string, subtitle: string, printedOn: string): string {
+  return `
+<div style="height:${HEADER_H - 12}px;padding-bottom:6px;border-bottom:2px solid #000;margin-bottom:12px;display:flex;align-items:flex-end;justify-content:space-between">
+  <div>
+    <div style="font-size:16pt;font-weight:800;color:#0c1f3f;letter-spacing:-0.3pt;line-height:1">Field<span style="color:#15803d">Slate</span></div>
+    <div style="font-size:12pt;font-weight:700;color:#000;margin-top:6px">${escapeHtml(leagueName)} — ${escapeHtml(divisionName)} ${escapeHtml(subtitle)}</div>
+  </div>
+  <div style="font-size:9pt;color:${PRINT_COLORS.meta}">Printed ${escapeHtml(printedOn)}</div>
+</div>`;
+}
+
+// ─── One game card ────────────────────────────────────────────────────────────
+
+export function gameCardHtml(game: PrintGame, allGames: PrintGame[], format: string): string {
+  const done = game.status === "completed";
+  const row = (side: Side) => {
+    const teamId = side === "home" ? game.home_team_id : game.away_team_id;
+    const name = slotName(side === "home" ? game.home_team_name : game.away_team_name, game, side, allGames, format);
+    const score = side === "home" ? game.home_score : game.away_score;
+    const won = slotWon(game.winner_id, teamId);
+    const nameSt = !teamId
+      ? `color:${PRINT_COLORS.placeholder};font-style:italic`
+      : won ? `color:${PRINT_COLORS.winText};font-weight:700` : `color:${PRINT_COLORS.text}`;
+    return `<div style="height:${CARD.rowH}px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;gap:6px;background:${won ? PRINT_COLORS.winBg : "white"}">
+      <span style="font-size:10pt;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${nameSt}">${escapeHtml(name)}</span>
+      ${done && score != null ? `<span style="font-size:10pt;font-weight:700;color:${won ? PRINT_COLORS.winText : PRINT_COLORS.meta}">${score}</span>` : ""}
+    </div>`;
+  };
+  const when = gameWhen(game.game_number, game.scheduled_date, game.start_time);
+  const field = game.scheduled_date && game.venue_name ? game.venue_name : "";
+  return `<div data-game="${game.game_number}" style="width:${CARD.width}px;height:${CARD_H}px;border:1px solid ${PRINT_COLORS.border};border-radius:5px;overflow:hidden;background:white">
+    <div style="height:${CARD.metaH}px;padding:1px 7px 0;font-size:7.5pt;line-height:12px;color:${PRINT_COLORS.meta};border-bottom:1px solid ${PRINT_COLORS.border}">
+      <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700">${escapeHtml(when)}</div>
+      <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(field)}</div>
+    </div>
+    ${row("home")}
+    <div style="height:1px;background:${PRINT_COLORS.border}"></div>
+    ${row("away")}
+  </div>`;
+}
+
+// ─── Single-elimination tree layout ───────────────────────────────────────────
+
+export type PlacedCard = { game: PrintGame; round: number; pos: number; x: number; y: number };
+export type Connector = { from: number; to: number; side: "home_team_id" | "away_team_id"; points: [number, number][] };
+export type TreeLayout = {
+  rounds: string[];
+  cards: PlacedCard[];
+  connectors: Connector[];
+  width: number;
+  height: number;
+  scale: number;
+};
+
+function sortedRounds(games: PrintGame[]): string[] {
+  return [...new Set(games.map((g) => g.round))].sort((a, b) => getRoundOrder(a) - getRoundOrder(b));
+}
+
+/** Where every card and line goes, in natural (unscaled) px. */
+export function singleElimLayout(games: PrintGame[]): TreeLayout {
+  const rounds = sortedRounds(games);
+  const n = rounds.length;
+  const size = Math.pow(2, n);
+  const width = n * CARD.width + Math.max(0, n - 1) * GAP;
+  const height = ROUND_HDR + (size / 2) * SLOT_H;
+
+  const cards: PlacedCard[] = [];
+  const byId = new Map<string, PlacedCard>();
+  rounds.forEach((round, k) => {
+    const inRound = games.filter((g) => g.round === round).sort((a, b) => a.game_number - b.game_number);
+    for (const g of inRound) {
+      const pos = singleElimPosition(g, k, size, inRound);
+      const centre = ROUND_HDR + (pos + 0.5) * SLOT_H * Math.pow(2, k);
+      const card = { game: g, round: k, pos, x: k * (CARD.width + GAP), y: centre - CARD_H / 2 };
+      cards.push(card);
+      byId.set(g.id, card);
+    }
+  });
+
+  const rowCentre = (c: PlacedCard, side: "home_team_id" | "away_team_id") =>
+    c.y + 1 + CARD.metaH + (side === "home_team_id" ? CARD.rowH / 2 : CARD.rowH + 1 + CARD.rowH / 2);
+
+  const connectors: Connector[] = [];
+  for (const c of cards) {
+    const t = singleElimTarget(c.game, games);
+    if (!t) continue;
+    const to = byId.get(t.target.id);
+    if (!to) continue;
+    const x1 = c.x + CARD.width;
+    const y1 = c.y + CARD_H / 2;
+    const xm = x1 + GAP / 2;
+    const y2 = rowCentre(to, t.field);
+    connectors.push({
+      from: c.game.game_number,
+      to: to.game.game_number,
+      side: t.field,
+      points: [[x1, y1], [xm, y1], [xm, y2], [to.x, y2]],
+    });
+  }
+
+  const scale = Math.min(1, PAGE.width / width, CANVAS_H / height);
+  return { rounds, cards, connectors, width, height, scale };
+}
+
+export function buildBracketPrintHtml(
+  games: PrintGame[],
+  format: string,
+  leagueName: string,
+  divisionName: string,
+  printedOn: string,
+): string {
+  const header = printHeader(leagueName, divisionName, "Playoff Bracket", printedOn);
+  if (!games.length) return `${header}<p>No games yet.</p>`;
+  if (format !== "single_elimination") return header + columnsHtml(games, format);
+
+  const L = singleElimLayout(games);
+  const heads = L.rounds.map((r, k) =>
+    `<div style="position:absolute;top:0;left:${k * (CARD.width + GAP)}px;width:${CARD.width}px;text-align:center;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:0.6pt;color:${PRINT_COLORS.heading}">${escapeHtml(playoffRoundLabel(r))}</div>`,
+  ).join("");
+  const lines = L.connectors.map((c) =>
+    `<polyline data-from="${c.from}" data-to="${c.to}" points="${c.points.map(([x, y]) => `${x},${y}`).join(" ")}" fill="none" stroke="${PRINT_COLORS.line}" stroke-width="1.5"/>`,
+  ).join("");
+  const cards = L.cards.map((c) =>
+    `<div style="position:absolute;left:${c.x}px;top:${c.y}px">${gameCardHtml(c.game, games, format)}</div>`,
+  ).join("");
+  return `${header}
+<div style="width:${Math.ceil(L.width * L.scale)}px;height:${Math.ceil(L.height * L.scale)}px;overflow:hidden">
+  <div data-scale="${L.scale.toFixed(3)}" style="position:relative;width:${L.width}px;height:${L.height}px;transform:scale(${L.scale});transform-origin:top left">
+    <svg width="${L.width}" height="${L.height}" style="position:absolute;top:0;left:0">${lines}</svg>
+    ${heads}
+    ${cards}
+  </div>
+</div>`;
+}
+
+// ─── Columns (round robin, double elimination) ────────────────────────────────
+
+function columnsHtml(games: PrintGame[], format: string): string {
+  const cols = sortedRounds(games).map((round) => {
+    const cards = games
+      .filter((g) => g.round === round)
+      .sort((a, b) => a.game_number - b.game_number)
+      .map((g) => `<div style="margin-bottom:10px;break-inside:avoid">${gameCardHtml(g, games, format)}</div>`)
+      .join("");
+    return `<div style="width:${CARD.width}px">
+      <div style="font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:0.6pt;color:${PRINT_COLORS.heading};text-align:center;margin-bottom:8px">${escapeHtml(playoffRoundLabel(round))}</div>
+      ${cards}
+    </div>`;
+  }).join("");
+  return `<div style="display:flex;flex-wrap:wrap;gap:16px 24px;align-items:flex-start">${cols}</div>`;
+}

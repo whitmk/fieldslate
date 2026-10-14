@@ -6,6 +6,7 @@ import { enterGameResult } from "@/lib/playoffs/enter-result";
 import { clearResult, previewClearResult } from "@/lib/playoffs/clear-result";
 import { clearConfirm, clearOffered, saveBlockedReason, type ClearPreview } from "@/lib/playoffs/playoff-result";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { slotName } from "@/lib/playoffs/bracket-labels";
 import type { GameWithTeams } from "@/components/playoffs/bracket-view";
 
 const CHAMPIONSHIP_ROUNDS = new Set(["F", "GF"]);
@@ -100,8 +101,8 @@ export function EnterResultModal({ game, allGames, format, onClose, onSaved }: P
 
           {/* Score inputs */}
           <div className="space-y-3 px-5 py-5">
-            <ScoreRow label={game.home_team_name ?? "Home"} value={homeScore} onChange={setHomeScore} />
-            <ScoreRow label={game.away_team_name ?? "Away"} value={awayScore} onChange={setAwayScore} />
+            <ScoreRow label={slotName(game.home_team_name, game, "home", allGames, format)} value={homeScore} onChange={setHomeScore} />
+            <ScoreRow label={slotName(game.away_team_name, game, "away", allGames, format)} value={awayScore} onChange={setAwayScore} />
             {saveBlocked && <p className="text-xs text-gray-500">{saveBlocked}</p>}
             {error && <p className="text-xs text-red-500">{error}</p>}
             {isDone && clearOffered(format) && (
