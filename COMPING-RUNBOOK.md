@@ -118,6 +118,26 @@ Verify:
 - Confirm no other rows were touched.
 ```
 
+## Giving a comped league a new season (needs migration 0111)
+
+Once 0111 is applied, every paid league's new season is paid for, and a
+comped league never reaches checkout — its admins see "This league's billing
+is managed by FieldSlate — contact us." To let them create one more season,
+add ONE season credit; they then use the normal New season form, which uses
+the credit up:
+
+```sql
+insert into season_purchases (org_id, kind, tier, plan_at_checkout, status, completed_at)
+select id, 'comp', plan, plan, 'credited', now()
+  from profiles
+ where email = 'THEIR_EMAIL_HERE' and comped = true and plan in ('pro', 'elite');
+```
+
+One row = one season. Check it worked: `select * from season_purchases where
+org_id = <their id> order by created_at desc limit 1;` shows `credited` with
+an empty `league_id` until they create the season. Restoring an archived
+season needs no credit.
+
 ## Reversing a comp (if a league leaves or a comp was a mistake)
 
 Set them back to free and turn the guard off:

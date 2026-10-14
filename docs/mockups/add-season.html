@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Add season — FieldSlate mockup</title>
+<style>
+:root{
+  --navy:#0C1F3F; --bg:#f4f5f0; --card:#fff; --ink:#0C1F3F; --muted:#5b6577; --line:#e2e5dd; --soft:#f7f8f4;
+  --green:#22c55e; --green-dk:#16a34a; --green-bg:#e9f8ef;
+  --warn-bg:#fdf3d4; --warn-ink:#854d0e; --warn-bd:#efd27a;
+  --flag-bg:#fde8dc; --flag-ink:#9a3412; --flag-bd:#f5b998;
+  --scrim:rgba(12,31,63,.38);
+  box-sizing:border-box;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0a1830; --card:#10223f; --ink:#e8ecf3; --muted:#9aa6bb; --line:#22385c; --soft:#0d1d37; --green-bg:#123a24;
+    --warn-bg:#3d2f06; --warn-ink:#ffe08a; --warn-bd:#6b5410;
+    --flag-bg:#4a1d0a; --flag-ink:#ffc4a3; --flag-bd:#7a3412; --scrim:rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1830; --card:#10223f; --ink:#e8ecf3; --muted:#9aa6bb; --line:#22385c; --soft:#0d1d37; --green-bg:#123a24;
+  --warn-bg:#3d2f06; --warn-ink:#ffe08a; --warn-bd:#6b5410;
+  --flag-bg:#4a1d0a; --flag-ink:#ffc4a3; --flag-bd:#7a3412; --scrim:rgba(0,0,0,.5);
+}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px 60px}
+.mock{background:var(--navy);color:#cfd8e8;font-size:13px;text-align:center;padding:7px 12px}
+.mock b{color:#fff}
+header{padding:26px 0 6px}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.4px}
+.lede{color:var(--muted);margin:0;max-width:78ch}
+.lede code,.why code{font-size:12.5px;background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:0 4px}
+
+.screen{margin-top:40px}
+.screen h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+.screen h3{font-size:18px;margin:0 0 4px}
+.screen .why{color:var(--muted);font-size:13.5px;margin:0 0 14px;max-width:80ch}
+.frames{display:grid;grid-template-columns:minmax(0,1fr) 391px;gap:22px;align-items:start}
+@media (max-width:980px){.frames{grid-template-columns:minmax(0,1fr)}}
+.flabel{font-size:11.5px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin:0 0 6px}
+
+/* desktop frame: a dimmed dashboard with the modal centred */
+.desk{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--soft);min-height:560px}
+.desk .shell{position:absolute;inset:0;display:grid;grid-template-columns:150px 1fr}
+.desk .side{background:var(--navy);opacity:.9}
+.desk .main{padding:22px}
+.desk .ghost{height:14px;border-radius:6px;background:var(--line);margin-bottom:12px}
+.desk .scrim{position:absolute;inset:0;background:var(--scrim)}
+.desk .modal{position:relative;margin:34px auto;width:min(560px,calc(100% - 32px))}
+.desk.page{background:var(--bg);min-height:420px}
+.desk.page .pagebody{position:relative;padding:40px 24px;display:flex;justify-content:center}
+
+/* phone frame: 375 wide, bottom sheet */
+.phone{width:391px;max-width:100%;border:8px solid #1d2a40;border-radius:34px;overflow:hidden;background:var(--soft);position:relative;min-height:700px}
+.phone .scr{width:375px;max-width:100%;min-height:684px;position:relative;display:flex;flex-direction:column;justify-content:flex-end}
+.phone .scrim{position:absolute;inset:0;background:var(--scrim)}
+.phone .modal{position:relative;border-radius:16px 16px 0 0 !important;border-bottom:none !important;max-height:640px;overflow:auto}
+.phone.page .scr{justify-content:flex-start;background:var(--bg)}
+.phone.page .pagebody{padding:28px 16px}
+
+/* the modal itself */
+.modal{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 14px 40px rgba(12,31,63,.18);padding:20px}
+.mh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.mh h4{margin:0;font-size:17px;font-weight:800}
+.x{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--muted);flex:none}
+.sub{color:var(--muted);font-size:13.5px;margin:6px 0 16px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fields .full{grid-column:1 / -1}
+.f label{display:block;font-size:12.5px;font-weight:700;margin-bottom:4px}
+.f .in{border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:14px;background:var(--card);min-height:42px;display:flex;align-items:center}
+.f .hint{font-size:12px;color:var(--muted);margin-top:3px}
+.phone .fields{grid-template-columns:1fr}
+.phone .f .in{font-size:16px}
+.sum{margin-top:16px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--soft);display:flex;justify-content:space-between;gap:12px;align-items:center}
+.sum .what{font-size:13.5px}
+.sum .what b{display:block;font-size:14.5px}
+.sum .amt{font-size:22px;font-weight:800;white-space:nowrap}
+.sum .amt small{font-size:12px;color:var(--muted);font-weight:600}
+.tiers{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.phone .tiers{grid-template-columns:1fr}
+.tier{border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;position:relative}
+.tier.on{border-color:var(--green-dk);box-shadow:0 0 0 3px var(--green-bg)}
+.tier .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.tier .nm{font-weight:800}
+.tier .pr{font-size:20px;font-weight:800}
+.tier .pr small{font-size:12px;color:var(--muted);font-weight:600}
+.tier .cur{font-size:11.5px;font-weight:700;color:var(--green-dk)}
+.tier ul{margin:8px 0 0;padding:0 0 0 18px;color:var(--muted);font-size:12.5px}
+.tier .radio{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;vertical-align:-3px;margin-right:6px}
+.tier.on .radio{border-color:var(--green-dk);background:radial-gradient(var(--green-dk) 45%,transparent 50%)}
+.note{display:flex;gap:10px;align-items:flex-start;border-radius:10px;padding:10px 12px;font-size:13.5px;border:1px solid;margin-top:12px}
+.note.warn{background:var(--warn-bg);color:var(--warn-ink);border-color:var(--warn-bd)}
+.note.flag{background:var(--flag-bg);color:var(--flag-ink);border-color:var(--flag-bd)}
+.note svg{flex:none;margin-top:2px}
+.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;flex-wrap:wrap}
+.phone .actions{flex-direction:column-reverse}
+.phone .actions .btn{width:100%;justify-content:center;min-height:46px}
+.btn{display:inline-flex;align-items:center;gap:6px;border-radius:10px;padding:9px 14px;font-weight:700;font-size:14px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.btn.primary{background:var(--green);border-color:var(--green-dk);color:#0C1F3F}
+.fine{font-size:12px;color:var(--muted);margin-top:10px}
+.link{color:var(--green-dk);font-weight:700;text-decoration:underline}
+
+/* success page card */
+.result{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px 24px;max-width:480px;width:100%;text-align:center}
+.result .ic{width:52px;height:52px;border-radius:50%;margin:0 auto 14px;display:grid;place-items:center}
+.result .ic.ok{background:var(--green-bg);color:var(--green-dk)}
+.result .ic.wait{background:var(--soft);color:var(--muted)}
+.result .ic.flag{background:var(--flag-bg);color:var(--flag-ink)}
+.result h4{margin:0 0 6px;font-size:19px}
+.result p{margin:0 auto 8px;color:var(--muted);max-width:44ch}
+.result .meta{font-size:13px;color:var(--ink);font-weight:600;margin-bottom:14px}
+.result .actions{justify-content:center}
+.spin{width:22px;height:22px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--green-dk);animation:s 1s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+
+.cfg{margin-top:34px;border:1px dashed var(--line);border-radius:12px;padding:14px 16px;font-size:13px;color:var(--muted)}
+.cfg pre{margin:6px 0 0;white-space:pre-wrap;font-size:12px;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="mock"><b>MOCKUP</b> — Add season, every state, desktop and 375px. Static, no data. Prices and the “what you lose” line are filled in from one config block at the bottom, never typed into a screen.</div>
+<div class="wrap">
+<header>
+  <h1>Add season</h1>
+  <p class="lede">What each league sees when it starts a new season and can’t create one free. The server decides which screen applies (<code>begin_season_purchase</code>); the page only renders it. The example league is on Elite with “Fall 2026” active, adding “Spring 27” (Apr 3 – May 22, 2027).</p>
+</header>
+
+<!-- ═══ 1 ═══ -->
+<section class="screen">
+  <h2>Screen 1 · paid league, a season active</h2>
+  <h3>Add season</h3>
+  <p class="why">Every new season is paid for, at the league’s current plan. No plan choice here and no “upgrade” wording. The season is created only after payment clears.</p>
+  <div class="frames" data-tpl="t-add" data-kind="modal"></div>
+</section>
+<template id="t-add">
+  <div class="modal">
+    <div class="mh"><h4>Add a season</h4><span class="x">✕</span></div>
+    <p class="sub">Your league is on <b data-plan-name="elite"></b>. Each season is paid once — <span data-price="elite"></span>, no subscription.</p>
+    <div class="fields">
+      <div class="f full"><label>Season name</label><div class="in">Spring 27</div></div>
+      <div class="f"><label>Sport</label><div class="in">Baseball</div></div>
+      <div class="f"><label>Season label</label><div class="in">Spring 2027</div><div class="hint">Filled in from the start date.</div></div>
+      <div class="f"><label>Season start</label><div class="in">04/03/2027</div></div>
+      <div class="f"><label>Season end</label><div class="in">05/22/2027</div></div>
+    </div>
+    <div class="sum">
+      <div class="what"><b>Elite season · Spring 27</b>Apr 3 – May 22, 2027</div>
+      <div class="amt"><span data-price="elite"></span> <small>once</small></div>
+    </div>
+    <div class="actions">
+      <span class="btn">Cancel</span>
+      <span class="btn primary">Add season — <span data-price="elite"></span></span>
+    </div>
+    <p class="fine">You’ll pay on Stripe’s secure page. Leaving checkout charges nothing and creates nothing.</p>
+  </div>
+</template>
+
+<!-- ═══ 2 ═══ -->
+<section class="screen">
+  <h2>Screen 2 · paid league, nothing active</h2>
+  <h3>Tier choice, with the “what you lose” line</h3>
+  <p class="why">With no active season the league picks the plan for this one — up or down. Shown with Pro picked on an Elite league, so the line appears; with Elite picked it isn’t shown. The line lists only what the code actually turns off, built from the plan limits and the Elite-only pages.</p>
+  <div class="frames" data-tpl="t-tier" data-kind="modal"></div>
+</section>
+<template id="t-tier">
+  <div class="modal">
+    <div class="mh"><h4>Add a season</h4><span class="x">✕</span></div>
+    <p class="sub">You have no active seasons, so you can choose the plan for this one. The plan applies to your whole league.</p>
+    <div class="fields">
+      <div class="f full"><label>Season name</label><div class="in">Spring 27</div></div>
+      <div class="f"><label>Season start</label><div class="in">04/03/2027</div></div>
+      <div class="f"><label>Season end</label><div class="in">05/22/2027</div></div>
+    </div>
+    <div class="tiers">
+      <div class="tier on">
+        <div class="top"><span class="nm"><span class="radio"></span>Pro</span><span class="pr"><span data-price="pro"></span> <small>once</small></span></div>
+      </div>
+      <div class="tier">
+        <div class="top"><span class="nm"><span class="radio"></span>Elite</span><span class="pr"><span data-price="elite"></span> <small>once</small></span></div>
+        <div class="cur">Your current plan</div>
+      </div>
+    </div>
+    <div class="note warn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <span>Choosing Pro moves your whole league to Pro. <span data-lose="elite-pro"></span></span>
+    </div>
+    <div class="actions">
+      <span class="btn">Cancel</span>
+      <span class="btn primary">Add season — <span data-price="pro"></span></span>
+    </div>
+    <p class="fine">You’ll pay on Stripe’s secure page. Leaving checkout charges nothing and creates nothing.</p>
+  </div>
+</template>
+
+<!-- ═══ 3 ═══ -->
+<section class="screen">
+  <h2>Screen 3 · Free league, its season active</h2>
+  <h3>Upgrade this season</h3>
+  <p class="why">Free gets one active season at a time. To get another, the league first upgrades the one it has, in place (nothing is copied or lost). After that, new seasons are bought at the new plan. “Upgrade” is the right word here — it is the only screen that uses it. No season form: nothing new is created.</p>
+  <div class="frames" data-tpl="t-convert" data-kind="modal"></div>
+</section>
+<template id="t-convert">
+  <div class="modal">
+    <div class="mh"><h4>Upgrade this season</h4><span class="x">✕</span></div>
+    <p class="sub">The Free plan includes one active season. Upgrade <b>Fall 2026</b> to a paid plan — everything in it stays as it is. After that you can add seasons at your new plan’s price.</p>
+    <div class="tiers">
+      <div class="tier on">
+        <div class="top"><span class="nm"><span class="radio"></span>Pro</span><span class="pr"><span data-price="pro"></span> <small>once</small></span></div>
+        <ul data-highlights="pro"></ul>
+      </div>
+      <div class="tier">
+        <div class="top"><span class="nm"><span class="radio"></span>Elite</span><span class="pr"><span data-price="elite"></span> <small>once</small></span></div>
+        <ul data-highlights="elite"></ul>
+      </div>
+    </div>
+    <div class="actions">
+      <span class="btn">Not now</span>
+      <span class="btn primary">Upgrade Fall 2026 — <span data-price="pro"></span></span>
+    </div>
+    <p class="fine">You’ll pay on Stripe’s secure page. Leaving checkout changes nothing.</p>
+  </div>
+</template>
+
+<!-- ═══ 4 ═══ -->
+<section class="screen">
+  <h2>Screen 4 · comped league</h2>
+  <h3>Billing managed by FieldSlate</h3>
+  <p class="why">A comped league never reaches checkout. One plain sentence, the contact link, and a way out. No price, no plan names.</p>
+  <div class="frames" data-tpl="t-comped" data-kind="modal"></div>
+</section>
+<template id="t-comped">
+  <div class="modal">
+    <div class="mh"><h4>Add a season</h4><span class="x">✕</span></div>
+    <p class="sub" style="color:var(--ink);font-size:14.5px;margin-bottom:4px">This league’s billing is managed by FieldSlate — <a class="link" href="mailto:hello@thefieldslate.com?subject=New%20season">contact us</a>.</p>
+    <div class="actions"><span class="btn">Close</span></div>
+  </div>
+</template>
+
+<!-- ═══ 5 ═══ -->
+<section class="screen">
+  <h2>Screen 5 · after Stripe</h2>
+  <h3>Success page — waiting</h3>
+  <p class="why">Stripe sends the buyer back before our webhook has necessarily run. The page reads the purchase and waits for it; it never assumes the season exists yet.</p>
+  <div class="frames" data-tpl="t-wait" data-kind="page"></div>
+</section>
+<template id="t-wait">
+  <div class="result">
+    <div class="ic wait"><span class="spin"></span></div>
+    <h4>Payment received — creating your season</h4>
+    <p>This usually takes a few seconds. You can leave this page; Spring 27 will be on your Seasons page when it’s ready.</p>
+  </div>
+</template>
+
+<section class="screen">
+  <h3>Success page — ready</h3>
+  <p class="why">The purchase is completed and the season exists.</p>
+  <div class="frames" data-tpl="t-ready" data-kind="page"></div>
+</section>
+<template id="t-ready">
+  <div class="result">
+    <div class="ic ok"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>
+    <h4>Spring 27 is ready</h4>
+    <div class="meta">Elite season · Apr 3 – May 22, 2027</div>
+    <p>Stripe has emailed your receipt.</p>
+    <div class="actions"><span class="btn">Back to Overview</span><span class="btn primary">Open Spring 27</span></div>
+  </div>
+</template>
+
+<section class="screen">
+  <h3>Success page — flagged</h3>
+  <p class="why">The payment arrived but didn’t match what was expected (a second tab, a plan that changed mid-checkout, an old checkout). The money is never lost: it becomes a season credit (or, for the $100 upgrade, is held for a refund), FieldSlate is emailed at once, and the page says so without blaming anyone. No season is created automatically.</p>
+  <div class="frames" data-tpl="t-flag" data-kind="page"></div>
+</section>
+<template id="t-flag">
+  <div class="result">
+    <div class="ic flag"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 8v5m0 4h.01"/><circle cx="12" cy="12" r="9.5"/></svg></div>
+    <h4>Payment received — we’ll finish this for you</h4>
+    <p>Something about this purchase didn’t match what we expected, so we didn’t create the season automatically. Your payment is safe and held as a credit for one season. FieldSlate has been notified and will be in touch.</p>
+    <p>You won’t be charged again.</p>
+    <div class="actions"><span class="btn primary">Back to Overview</span></div>
+    <p class="fine">Questions now? <a class="link" href="mailto:hello@thefieldslate.com">hello@thefieldslate.com</a></p>
+  </div>
+</template>
+
+<section class="screen">
+  <h3>Success page — taking longer than usual</h3>
+  <p class="why">After about 30 seconds with no answer. Honest, no promise we can’t keep, no retry button that could look like “pay again”.</p>
+  <div class="frames" data-tpl="t-slow" data-kind="page"></div>
+</section>
+<template id="t-slow">
+  <div class="result">
+    <div class="ic wait"><span class="spin"></span></div>
+    <h4>Still working on it</h4>
+    <p>This is taking longer than usual. Your payment went through and your season will appear on your Seasons page — you don’t need to pay again.</p>
+    <div class="actions"><span class="btn">Go to Seasons</span></div>
+    <p class="fine">If it isn’t there in a few minutes, <a class="link" href="mailto:hello@thefieldslate.com">contact us</a>.</p>
+  </div>
+</template>
+
+<div class="cfg">
+  <b>Where the numbers come from.</b> In the app these come from one shared config: prices from <code>SEASON_PRICE_USD</code> (<code>src/lib/stripe.ts</code>, checked against the live Stripe prices), limits from <code>PLAN_LIMITS</code>, the Elite-only pages from one feature list beside it. This mockup copies them into the block below and fills every screen from it.
+  <pre id="cfgdump"></pre>
+</div>
+</div>
+
+<script>
+// ── The one config the screens read (mirrors the app's shared config) ──────
+const CONFIG = {
+  prices: { pro: 249, elite: 349, pro_to_elite: 100 },        // SEASON_PRICE_USD
+  planName: { pro: "Pro", elite: "Elite" },
+  limits: {                                                    // PLAN_LIMITS
+    pro:   { admins: 2, interleagueOrgsPerSeason: 5 },
+    elite: { admins: 5, interleagueOrgsPerSeason: -1 },
+  },
+  eliteOnly: ["playoff brackets", "officials", "snack shack", "reports",
+              "team scheduling constraints", "browsing and restoring archived seasons"],
+  highlights: {
+    pro:   ["Unlimited divisions and teams", "Interleague (up to 5 partner leagues)", "Rainouts, practices, activity log"],
+    elite: ["Everything in Pro", "Playoffs, officials, snack shack, reports", "Unlimited partners · 5 admin seats"],
+  },
+};
+const fmt = (n) => "$" + n;
+
+// "What you lose" going from one plan to a lower one — built, never typed.
+function loseLine(from, to) {
+  const parts = [];
+  if (from === "elite" && to === "pro") {
+    parts.push("You’ll lose " + CONFIG.eliteOnly.join(", ") + ".");
+    const a = CONFIG.limits.pro.admins, p = CONFIG.limits.pro.interleagueOrgsPerSeason;
+    parts.push(`Partner leagues are limited to ${p} per season and admin seats to ${a}.`);
+  }
+  return parts.join(" ");
+}
+
+// Render every screen twice: desktop and 375px.
+document.querySelectorAll(".frames").forEach((host) => {
+  const tpl = document.getElementById(host.dataset.tpl);
+  const page = host.dataset.kind === "page";
+  const d = document.createElement("div");
+  d.innerHTML = `<p class="flabel">Desktop</p>` + (page
+    ? `<div class="desk page"><div class="pagebody"></div></div>`
+    : `<div class="desk"><div class="shell"><div class="side"></div><div class="main"><div class="ghost" style="width:40%"></div><div class="ghost"></div><div class="ghost" style="width:70%"></div><div class="ghost"></div></div></div><div class="scrim"></div></div>`);
+  const p = document.createElement("div");
+  p.innerHTML = `<p class="flabel">Phone · 375px</p>` + (page
+    ? `<div class="phone page"><div class="scr"><div class="pagebody"></div></div></div>`
+    : `<div class="phone"><div class="scr"><div class="scrim"></div></div></div>`);
+  const dSlot = page ? d.querySelector(".pagebody") : d.querySelector(".desk");
+  const pSlot = page ? p.querySelector(".pagebody") : p.querySelector(".scr");
+  dSlot.appendChild(tpl.content.cloneNode(true));
+  pSlot.appendChild(tpl.content.cloneNode(true));
+  host.append(d, p);
+});
+
+document.querySelectorAll("[data-price]").forEach((el) => { el.textContent = fmt(CONFIG.prices[el.dataset.price]); });
+document.querySelectorAll("[data-plan-name]").forEach((el) => { el.textContent = CONFIG.planName[el.dataset.planName]; });
+document.querySelectorAll("[data-lose]").forEach((el) => {
+  const [from, to] = el.dataset.lose.split("-");
+  el.textContent = loseLine(from, to);
+});
+document.querySelectorAll("[data-highlights]").forEach((el) => {
+  el.innerHTML = CONFIG.highlights[el.dataset.highlights].map((h) => `<li>${h}</li>`).join("");
+});
+document.getElementById("cfgdump").textContent = JSON.stringify(CONFIG, null, 2);
+</script>
+</body>
+</html>

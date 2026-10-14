@@ -222,6 +222,28 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   fault (read its RUN LOG), run 2 green, 10/10 killed at their own tag; run 3
   (owner_id added at review) green, 11/11 killed at their own tag; leak check
   clean after each.
+- **Season purchases + credits (0111, WRITTEN AND PROVEN 2026-10-14, NOT
+  APPLIED — held for Whit).** Every paid season is paid for. `season_purchases`
+  holds one row per checkout; a row `credited` with `league_id` null IS an
+  unused season credit. `begin_season_purchase` decides what may be bought
+  (comped → `billing_managed`; Free with a season active → `convert_free`
+  only; paid with one active → `add_season` at the CURRENT plan; nothing
+  active → tier choice, a downgrade allowed; `upgrade_tier` Pro only; `signup`
+  Free with nothing active) — never the browser. `process_checkout_event`
+  gains `p_purchase_id` and returns jsonb; with no purchase id it runs the
+  0071 body unchanged plus a credit for a paid signup with nothing to
+  convert (proven against a twin of the real 0071 body — remove that branch
+  after the 24-hour window). A payment that doesn't match its purchase
+  becomes a credit, never lowers the plan, and is flagged `needs_review`; a
+  $100 upgrade that no longer fits is flagged only (no credit, no plan
+  change). `create_league`: Free unchanged; a PAID league (comped included)
+  must use up a credit, else `cap_reached` + `reason: purchase_required`.
+  **After 0111, a comped league can create a season only from a `comp`
+  credit inserted by hand — COMPING-RUNBOOK.md.** Proof:
+  `scripts/sim/season-purchase-sim.sql` (+ build script; rolled back in the
+  "test" org; 19 mutants). Run 2026-10-14: run 1 refused at compile (read
+  its RUN LOG), run 2 green, 19/19 killed at their own tag, leak check clean.
+  UI not built — mockup `docs/mockups/add-season.html` awaits approval.
 - **`is_org_member` IS the admin gate, because every org member is an admin
   today.** If a non-admin member role (e.g. coach) is ever added,
   `set_org_timezone`, `regenerate_team_calendar_link` and
