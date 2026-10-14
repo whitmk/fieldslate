@@ -121,6 +121,9 @@ export function VenueEditForm({
   const [name, setName] = useState(venue.name);
   const [locationId, setLocationId] = useState<string | null>(venue.location_id);
   const [address, setAddress] = useState(venue.address ?? "");
+  // Default false (0109): an unmarked field is flagged when a game on it ends
+  // after or near sunset. `?? false` covers a row read before the column existed.
+  const [hasLights, setHasLights] = useState<boolean>(venue.has_lights ?? false);
   const [draft, setDraft] = useState<AvailabilityDraft>(() =>
     draftFromAvailability(parseAvailability(venue.availability)),
   );
@@ -214,6 +217,7 @@ export function VenueEditForm({
         name: name.trim(),
         location_id: locationId,
         address: normalizeAddress(address),
+        has_lights: hasLights,
         availability: availability as never,
         availability_configured: hasAnyDayConfigured(availability),
       } as never)
@@ -267,6 +271,21 @@ export function VenueEditForm({
             Maps. Not printed, not exported. Leave blank to use the park&apos;s address.
           </p>
         </div>
+        <label className="flex cursor-pointer items-start gap-2">
+          <input
+            type="checkbox"
+            checked={hasLights}
+            onChange={(e) => setHasLights(e.target.checked)}
+            className="mt-0.5 h-4 w-4 cursor-pointer rounded border-gray-300 text-[#22C55E] focus:ring-[#22C55E]/30"
+          />
+          <span className="flex flex-col">
+            <span className="text-xs font-medium text-gray-700">Has lights</span>
+            <span className="text-xs text-gray-400">
+              Games on a field without lights are flagged for admins when they end after or near
+              sunset.
+            </span>
+          </span>
+        </label>
       </div>
 
       {/* Availability section */}

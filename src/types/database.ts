@@ -948,6 +948,7 @@ export type Database = {
         Row: {
           avatar_url: string | null
           created_at: string
+          daylight_flags_enabled: boolean
           email: string
           full_name: string | null
           id: string
@@ -956,12 +957,14 @@ export type Database = {
           plan: string
           role: string
           setup_dismissed: boolean
+          sunset_city: string | null
           timezone: string
           updated_at: string
         }
         Insert: {
           avatar_url?: string | null
           created_at?: string
+          daylight_flags_enabled?: boolean
           email: string
           full_name?: string | null
           id: string
@@ -970,12 +973,14 @@ export type Database = {
           plan?: string
           role?: string
           setup_dismissed?: boolean
+          sunset_city?: string | null
           timezone?: string
           updated_at?: string
         }
         Update: {
           avatar_url?: string | null
           created_at?: string
+          daylight_flags_enabled?: boolean
           email?: string
           full_name?: string | null
           id?: string
@@ -984,6 +989,7 @@ export type Database = {
           plan?: string
           role?: string
           setup_dismissed?: boolean
+          sunset_city?: string | null
           timezone?: string
           updated_at?: string
         }
@@ -1792,6 +1798,7 @@ export type Database = {
           capacity: number | null
           city: string | null
           created_at: string
+          has_lights: boolean
           id: string
           location_id: string | null
           name: string
@@ -1807,6 +1814,7 @@ export type Database = {
           capacity?: number | null
           city?: string | null
           created_at?: string
+          has_lights?: boolean
           id?: string
           location_id?: string | null
           name: string
@@ -1822,6 +1830,7 @@ export type Database = {
           capacity?: number | null
           city?: string | null
           created_at?: string
+          has_lights?: boolean
           id?: string
           location_id?: string | null
           name?: string

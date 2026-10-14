@@ -1,5 +1,6 @@
 "use client";
 
+import { LightsTag } from "@/components/daylight/daylight-pieces";
 import { useState, useEffect } from "react";
 import {
   MapPin,
@@ -552,6 +553,7 @@ function DisplayCard({
       <div className="flex min-w-0 flex-col gap-1.5">
         <div className="flex items-center gap-2">
           <p className="font-semibold text-[#0C1F3F]">{venue.name}</p>
+          {venue.has_lights && <LightsTag />}
           {!venue.availability_configured && (
             <button
               type="button"

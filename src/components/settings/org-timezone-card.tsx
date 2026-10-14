@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Clock, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export function OrgTimezoneCard({ orgId, initialTimezone }: Props) {
+  const router = useRouter();
   const [timezone, setTimezone] = useState(initialTimezone);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -62,6 +64,9 @@ export function OrgTimezoneCard({ orgId, initialTimezone }: Props) {
       return;
     }
     notify("success", `Timezone set to ${findOrgTimezone(next)?.label ?? next}.`);
+    // Re-render the server page so the Daylight card's timezone-mismatch
+    // warning reads the new setting.
+    router.refresh();
   }
 
   return (

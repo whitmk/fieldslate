@@ -6,6 +6,8 @@ import { OrgNameCard } from "@/components/settings/org-name-card";
 import { TeamMembersCard } from "@/components/settings/team-members-card";
 import { OrgTimezoneCard } from "@/components/settings/org-timezone-card";
 import { PublicScheduleCard, type PublicScheduleCardData } from "@/components/settings/public-schedule-card";
+import { DaylightCard } from "@/components/settings/daylight-card";
+import { loadDaylight } from "@/lib/daylight/load";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/calendar/timezones";
 import type { Profile } from "@/types/database";
@@ -34,6 +36,7 @@ export default async function SettingsPage() {
   ]);
   const plan = await getOrgPlan(currentOrgId);
   const publicSchedule = await loadPublicScheduleCard(supabase, currentOrgId);
+  const daylight = await loadDaylight(supabase, currentOrgId);
   const profile = rawProfile as Profile | null;
   const orgTimezone =
     (orgRow as { timezone: string } | null)?.timezone ?? DEFAULT_ORG_TIMEZONE;
@@ -55,6 +58,14 @@ export default async function SettingsPage() {
       <TeamMembersCard userId={user!.id} />
 
       <OrgTimezoneCard orgId={currentOrgId} initialTimezone={orgTimezone} />
+
+      <DaylightCard
+        orgId={currentOrgId}
+        initialCity={daylight.sunsetCity}
+        initialEnabled={daylight.enabled}
+        leagueTimezone={daylight.timezone}
+        loadFailed={daylight.state.kind === "error"}
+      />
 
       <PublicScheduleCard orgId={currentOrgId} orgName={orgName} plan={plan} data={publicSchedule} />
 
