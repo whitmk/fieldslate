@@ -122,6 +122,11 @@ export function sunsetMinuteOn(date: string, city: UsCity): number {
   return Math.round(sunsetMinutes(Date.UTC(y, m - 1, d), city));
 }
 
+/** "6:23 PM" — sunset alone, for a narrow day cell (title it with sunsetLabel). */
+export function sunsetTime(date: string, city: UsCity): string {
+  return fmtClock(sunsetMinuteOn(date, city));
+}
+
 /** "Sunset 6:23 PM" — a day header or slot-group label. */
 export function sunsetLabel(date: string, city: UsCity): string {
   return `Sunset ${fmtClock(sunsetMinuteOn(date, city))}`;
@@ -295,4 +300,35 @@ function clockToMinutes(t: string): number | null {
   const h = Number(match[1]);
   const m = Number(match[2]);
   return h < 24 && m < 60 ? h * 60 + m : null;
+}
+
+// ── A games-table row (Schedule page, division panel, dashboard cards) ──────
+
+/** The minimum a `games` row needs for its flag. */
+export type DaylightGamesRow = {
+  scheduled_at: string;
+  status: string;
+  is_away?: boolean | null;
+  venue_id?: string | null;
+  venue: { has_lights?: boolean | null } | null;
+};
+
+/**
+ * A `games` row's flag, and whether it is on a lit field (the "Lights" tag —
+ * shown only while flags are on). The venue counts as present only when the
+ * row has a field id AND its embed; an away interleague game is never either.
+ * `has_lights` missing from the embed reads as unlit (the column's default).
+ */
+export function gamesRowDaylight(
+  row: DaylightGamesRow,
+  rawDuration: unknown,
+  state: DaylightState,
+  today: string,
+): { flag: DaylightFlag | null; lit: boolean } {
+  const isAway = row.is_away === true;
+  const venue = row.venue_id && row.venue ? { has_lights: row.venue.has_lights === true } : null;
+  const { date, startTime } = partsFromScheduledAt(row.scheduled_at);
+  const flag = daylightFlag({ date, startTime, rawDuration, venue, isAway, status: row.status }, state, today);
+  const lit = state.kind === "on" && !isAway && venue?.has_lights === true;
+  return { flag, lit };
 }

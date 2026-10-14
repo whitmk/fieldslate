@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DAY_KEYS, DAY_LABELS } from "@/lib/venues/availability";
 import { GameNoteDot } from "./game-note";
+import { SlotDaylightDot } from "@/components/daylight/daylight-pieces";
+import { sunsetLabel } from "@/lib/daylight/flags";
+import type { UsCity } from "@/lib/sun/us-cities";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
 import type { ScheduleGame } from "./schedule-list";
 import {
@@ -43,6 +46,9 @@ interface Props {
    *  Color assignment runs over the season so a division's stripe cannot change
    *  when the user pages to a different week. */
   seasonDivisionIds?: string[];
+  /** The league's city while daylight flags are on — each day header shows
+   *  its sunset. Null = flags off / no city. */
+  sunsetCity?: UsCity | null;
 }
 
 export function ScheduleWeekGrid({
@@ -51,6 +57,7 @@ export function ScheduleWeekGrid({
   eligibleVenues,
   divisionFilterName = null,
   seasonDivisionIds = [],
+  sunsetCity = null,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -198,6 +205,11 @@ export function ScheduleWeekGrid({
                     <span className="font-normal text-gray-400">
                       {dates[i].substring(8)}
                     </span>
+                    {sunsetCity && (
+                      <span className="block text-[10px] font-normal text-gray-400">
+                        {sunsetLabel(dates[i], sunsetCity)}
+                      </span>
+                    )}
                   </th>
                 ))}
               </tr>
@@ -324,6 +336,11 @@ function GameBlock({
       >
         {fmtTimeRange(game.scheduled_at, game.durationMin)}
         <GameNoteDot game={game} />
+        {game.daylight && (
+          <span className="ml-1 inline-flex align-middle">
+            <SlotDaylightDot flag={game.daylight} />
+          </span>
+        )}
       </div>
       <div
         className={`text-xs ${

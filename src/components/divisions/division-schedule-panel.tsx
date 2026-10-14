@@ -49,6 +49,9 @@ import { MoveGameIcon, MoveNoticeLine } from "./move-game-row";
 import { useRecordPlayed } from "@/components/schedule/use-record-played";
 import { RAINED_OUT_ENTRY_LABEL } from "@/lib/schedule/record-played";
 import { useGameNoteEditor } from "@/components/schedule/use-game-note-editor";
+import { useDaylight } from "@/components/daylight/use-daylight";
+import { DaylightChip, DaylightExplanation, DaylightStatusLine, LightsTag } from "@/components/daylight/daylight-pieces";
+import { gamesRowDaylight, sunsetLabel } from "@/lib/daylight/flags";
 import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
 import type { GameNoteFields } from "@/lib/schedule/game-notes";
 import {
@@ -154,7 +157,7 @@ type GameRow = {
   home_team: { name: string } | null;
   away_team: { name: string } | null;
   interleague_org: { name: string } | null;
-  venue: { name: string } | null;
+  venue: { name: string; has_lights?: boolean | null } | null;
 } & GameNoteFields;
 
 type ScheduleEvent = { kind: "game"; sortKey: string; data: GameRow };
@@ -186,6 +189,11 @@ export function DivisionSchedulePanel({
   const [teams, setTeams] = useState<Team[]>([]);
   const [gamesPerTeam, setGamesPerTeam] = useState(0);
   const [games, setGames] = useState<GameRow[]>([]);
+  // Daylight (admin-only): the league's settings after mount, and this
+  // division's RAW game_duration — the flag resolves it with the one rule.
+  const daylight = useDaylight({ leagueId });
+  const [rawGameDuration, setRawGameDuration] = useState<unknown>(undefined);
+  const [daylightOpenId, setDaylightOpenId] = useState<string | null>(null);
   const [loadingGames, setLoadingGames] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [finishing, setFinishing] = useState(false);
@@ -352,6 +360,7 @@ export function DivisionSchedulePanel({
       .reduce((sum, r) => sum + Number(r.game_count ?? 0), 0);
     setGamesPerTeam(intraTarget + interleagueTarget);
     setGameDurationMinutes(Number(settings.game_duration ?? 90));
+    setRawGameDuration(settings.game_duration);
 
     const upg = Number(divData?.umpires_per_game ?? 0);
     setUmpiresPerGame(upg);
@@ -370,7 +379,7 @@ export function DivisionSchedulePanel({
          home_team:teams!home_team_id(name),
          away_team:teams!away_team_id(name),
          interleague_org:interleague_orgs!interleague_org_id(name),
-         venue:venues(name),
+         venue:venues(name, has_lights),
          notes, notes_updated_at, notes_editor:profiles!games_notes_updated_by_fkey(full_name)`,
       )
       .in("home_team_id", teamIds)
@@ -1377,6 +1386,11 @@ export function DivisionSchedulePanel({
             )}
           </div>
 
+          {daylight.state && daylight.state.kind !== "on" && daylight.state.kind !== "off" && (
+            <div className="px-4 py-2">
+              <DaylightStatusLine state={daylight.state} />
+            </div>
+          )}
           {Array.from(grouped.entries()).map(([dateKey, dayEvents], groupIdx) => {
             // Bye line renders once per week, at that week's first day-group.
             const weekKey = weekKeyFromIsoDate(dateKey);
@@ -1392,10 +1406,13 @@ export function DivisionSchedulePanel({
                   </p>
                 </div>
               )}
-              <div className="bg-gray-50/70 px-4 py-2">
+              <div className="flex items-baseline justify-between gap-2 bg-gray-50/70 px-4 py-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                   {fmtGameDate(dateKey)}
                 </p>
+                {daylight.state?.kind === "on" && (
+                  <p className="text-[11px] text-gray-400">{sunsetLabel(dateKey, daylight.state.city)}</p>
+                )}
               </div>
               <div className="divide-y divide-gray-50">
                 {dayEvents.map((ev) => {
@@ -1407,6 +1424,10 @@ export function DivisionSchedulePanel({
                   const gameAssignments = assignmentsByGame.get(game.id) ?? [];
                   const showSlots =
                     !isCancelled && !selectMode && umpiresPerGame > 0;
+                  const dl =
+                    daylight.state && daylight.today
+                      ? gamesRowDaylight(game, rawGameDuration, daylight.state, daylight.today)
+                      : { flag: null, lit: false };
                   return (
                     <div
                       key={game.id}
@@ -1463,8 +1484,9 @@ export function DivisionSchedulePanel({
                           (basis-full) so the team names keep their width. */}
                       <div className="flex basis-full flex-wrap items-center justify-end gap-2 pl-[76px] sm:ml-3 sm:basis-auto sm:flex-shrink-0 sm:flex-nowrap sm:pl-0">
                         {game.venue?.name ? (
-                          <span className={`text-xs ${isCancelled ? "text-gray-300" : "text-gray-400"}`}>
+                          <span className={`inline-flex items-center gap-1 text-xs ${isCancelled ? "text-gray-300" : "text-gray-400"}`}>
                             {game.venue.name}
+                            {dl.lit && <LightsTag />}
                           </span>
                         ) : game.is_away && game.proposed_venue_name ? (
                           <span className={`text-xs ${isCancelled ? "text-gray-300" : "text-gray-400"}`}>
@@ -1552,6 +1574,25 @@ export function DivisionSchedulePanel({
                     <div className="ml-[80px] mr-2 -mt-1">
                       <GameNoteLine game={game} onClick={() => note.open(noteGame(game))} />
                     </div>
+                    {/* Daylight (admin-only): the chip opens why, and the
+                        start-by time; the row's Reschedule icon is beside it. */}
+                    {dl.flag && game.venue && (
+                      <div className="ml-[80px] mr-2 -mt-1 flex flex-col items-start gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDaylightOpenId(daylightOpenId === game.id ? null : game.id);
+                          }}
+                          title="Why is this flagged?"
+                        >
+                          <DaylightChip flag={dl.flag} />
+                        </button>
+                        {daylightOpenId === game.id && (
+                          <DaylightExplanation flag={dl.flag} fieldLabel={game.venue.name} />
+                        )}
+                      </div>
+                    )}
                     {rowNotice?.gameId === game.id && !selectMode && (
                       <MoveNoticeLine
                         message={rowNotice.message}

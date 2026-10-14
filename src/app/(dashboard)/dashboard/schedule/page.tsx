@@ -41,6 +41,11 @@ import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isProPlus } from "@/lib/plan/limits";
 import { isSetupIncomplete } from "@/lib/setup/derive-step";
+import { loadDaylight } from "@/lib/daylight/load";
+import { daylightState, gamesRowDaylight, type DaylightState } from "@/lib/daylight/flags";
+import { todayInTimezone } from "@/lib/utils/org-today";
+import { DaylightFilter } from "@/components/schedule/daylight-filter";
+import { DaylightStatusLine } from "@/components/daylight/daylight-pieces";
 
 function parseMode(raw: string | undefined): ViewMode {
   if (raw === "calendar") return "calendar";
@@ -102,6 +107,7 @@ export default async function SchedulePage({
     mode?: string;
     month?: string;
     week?: string;
+    daylight?: string;
   };
 }) {
   const supabase = createClient();
@@ -125,7 +131,22 @@ export default async function SchedulePage({
   const weekStart = mode === "week" ? parseWeekParam(searchParams.week) : null;
   // Default ON; the URL only carries `past=1` when the user has switched it OFF.
   const hidePast = searchParams.past !== "1";
+  // Daylight filter (admin-only): show only flagged games. Narrows what the
+  // list / calendar / week SHOW, never the shared query and never the print
+  // region (a print of "the games in the dark" that doesn't say so would be
+  // the filtered-print misread).
+  const daylightOnly = searchParams.daylight === "1";
 
+  // Daylight settings + the league's "today" (the one org-today rule). A
+  // failed read is the `error` state — said on the page, never silent.
+  const daylightLoad = await loadDaylight(supabase, currentOrgId);
+  let daylightToday: string | null = null;
+  try {
+    daylightToday = daylightLoad.timezone ? todayInTimezone(daylightLoad.timezone) : null;
+  } catch {
+    daylightToday = null;
+  }
+  const daylight: DaylightState = daylightToday ? daylightLoad.state : daylightState(null);
   // Season-scoped (Chunk B1): the games list, the filter dropdowns, and the
   // Add Game modal all follow the topbar's selected season. A null season
   // (no active seasons) renders the existing empty list state.
@@ -335,7 +356,7 @@ export default async function SchedulePage({
         home_team:teams!home_team_id(name, division_id, division:divisions(name, umpires_per_game)),
         away_team:teams!away_team_id(name),
         interleague_org:interleague_orgs(name),
-        venue:venues(name, location:locations(name)),
+        venue:venues(name, has_lights, location:locations(name)),
         game_umpires:game_umpires(id, role, umpire:umpires(id, name)),
         notes, notes_updated_at, notes_editor:profiles!games_notes_updated_by_fkey(full_name)
       `,
@@ -423,7 +444,25 @@ export default async function SchedulePage({
         : undefined;
       return minutes === undefined ? g : { ...g, durationMin: minutes };
     });
+
+    // ── Daylight (admin-only) ────────────────────────────────────────────────
+    // Every flag comes from gamesRowDaylight with the division's RAW
+    // game_duration (the same projected key) — the module resolves it with
+    // the one rule (durationFromSettings). Rides objects the print region
+    // also receives; the print never reads these fields (sim:daylight-leaks).
+    if (daylightToday) {
+      const rawDurationByDivisionId = new Map(divisionRows.map((d) => [d.id, d.game_duration]));
+      games = games.map((g) => {
+        const divisionId = g.home_team?.division_id;
+        const raw = divisionId ? rawDurationByDivisionId.get(divisionId) : undefined;
+        const { flag, lit } = gamesRowDaylight(g, raw, daylight, daylightToday);
+        return flag || lit ? { ...g, daylight: flag, daylightLit: lit } : g;
+      });
+    }
   }
+  const daylightCount = games.filter((g) => g.daylight).length;
+  const shownGames = daylightOnly ? games.filter((g) => g.daylight) : games;
+  const sunsetCity = daylight.kind === "on" ? daylight.city : null;
 
   // ── Week-by-field row set ────────────────────────────────────────────────────
   // Venues flagged `division_venues.allow_games` for a division in THIS season.
@@ -553,6 +592,8 @@ export default async function SchedulePage({
         {mode !== "week" && <HidePastToggle hidePast={hidePast} />}
       </div>
 
+      <DaylightStatusLine state={daylight} />
+
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -585,6 +626,9 @@ export default async function SchedulePage({
                   selectedId={venueScope.venueId}
                 />
               )}
+              {daylight.kind === "on" && (
+                <DaylightFilter active={daylightOnly} count={daylightCount} />
+              )}
             </div>
           </div>
         </CardHeader>
@@ -612,7 +656,8 @@ export default async function SchedulePage({
               </div>
             ) : (
               <ScheduleWeekGrid
-                games={games}
+                games={shownGames}
+                sunsetCity={sunsetCity}
                 weekStart={weekStart}
                 eligibleVenues={weekVenues}
                 divisionFilterName={
@@ -631,7 +676,8 @@ export default async function SchedulePage({
             )
           ) : mode === "calendar" ? (
             <ScheduleCalendar
-              games={games}
+              games={shownGames}
+              sunsetCity={sunsetCity}
               month={month}
               today={today}
               canReschedule={isProPlus(plan)}
@@ -639,7 +685,7 @@ export default async function SchedulePage({
             />
           ) : (
             <ScheduleList
-              games={games}
+              games={shownGames}
               canReschedule={isProPlus(plan)}
               lockedDivisionIds={lockedDivisionIds}
               seasonRoleNames={seasonRoleNames}

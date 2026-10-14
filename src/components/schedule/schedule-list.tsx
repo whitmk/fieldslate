@@ -35,6 +35,9 @@ import {
   rescheduleItemVisible,
 } from "@/lib/schedule/schedule-page-reschedule-route";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
+import { DaylightChip, DaylightExplanation, LightsTag } from "@/components/daylight/daylight-pieces";
+import type { DaylightFlag } from "@/lib/daylight/flags";
+import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 
 export type ScheduleGameUmpire = {
   id: string;
@@ -70,7 +73,7 @@ export type ScheduleGame = {
    *  everyone else. Display surfaces keep rendering the bare `venue.name` — the
    *  qualified "Complex — Field" label is for CHOOSERS, not for reading a
    *  schedule. */
-  venue: { name: string; location?: { name: string } | null } | null;
+  venue: { name: string; has_lights?: boolean | null; location?: { name: string } | null } | null;
   game_umpires?: ScheduleGameUmpire[];
 } & GameNoteFields & {
   /** The two fields below are OPTIONAL and exist for the week-by-field view
@@ -94,6 +97,11 @@ export type ScheduleGame = {
    *  confident wrong answer gets rendered. Decide on an explicit default or an
    *  honest "not set" state. */
   durationMin?: number;
+  /** ADMIN-ONLY daylight flag, computed on the server by gamesRowDaylight
+   *  (src/lib/daylight). Absent = none. The print region never reads it. */
+  daylight?: DaylightFlag | null;
+  /** Flags are on and this game's field has lights — the "Lights" tag. */
+  daylightLit?: boolean;
 };
 
 interface Props {
@@ -537,7 +545,18 @@ function GameCard({
           <GameNoteLine game={game} onClick={onEditNote} className="mt-0.5" />
           <p className="mt-1 text-sm text-gray-600">
             {venueLabel(game)} · {game.home_team?.division?.name ?? "—"}
+            {game.daylightLit && (
+              <>
+                {" "}
+                <LightsTag />
+              </>
+            )}
           </p>
+          {game.daylight && (
+            <button type="button" onClick={onMenuToggle} className="mt-1.5 block" title="Why is this flagged?">
+              <DaylightChip flag={game.daylight} />
+            </button>
+          )}
         </div>
         <div className="flex flex-shrink-0 items-center gap-1">
           <GameNoteIcon game={game} onClick={onEditNote} size="md" />
@@ -649,6 +668,13 @@ function GameActionsMenu({
       role="menu"
       className={`overflow-hidden rounded-xl border border-gray-100 bg-white text-left shadow-lg ${className}`}
     >
+      {/* Daylight (admin-only): why it's flagged and the start-by time, with
+          Reschedule right below. */}
+      {game.daylight && game.venue && (
+        <div className="max-w-xs border-b border-gray-100 p-2.5">
+          <DaylightExplanation flag={game.daylight} fieldLabel={qualifiedVenueLabel(game.venue)} />
+        </div>
+      )}
       <button
         onClick={onRainout}
         disabled={RAINOUT_BLOCKED_STATUSES.has(game.status)}
@@ -770,7 +796,17 @@ function GameRowCells({
         <GameNoteLine game={game} onClick={onEditNote} className="mt-0.5 w-0 min-w-full font-normal" />
       </td>
       <td className="py-3 text-gray-600">{game.home_team?.division?.name ?? "—"}</td>
-      <td className="py-3 text-gray-600">{venueLabel(game)}</td>
+      <td className="py-3 text-gray-600">
+        <span className="inline-flex flex-wrap items-center gap-1">
+          {venueLabel(game)}
+          {game.daylightLit && <LightsTag />}
+        </span>
+        {game.daylight && (
+          <button type="button" onClick={onMenuToggle} className="mt-1 block" title="Why is this flagged?">
+            <DaylightChip flag={game.daylight} />
+          </button>
+        )}
+      </td>
       <td className="py-3">
         {umpiresPerGame === 0 ? (
           <span className="text-xs text-gray-300">—</span>

@@ -30,6 +30,10 @@ import {
 } from "@/lib/schedule/schedule-page-reschedule-route";
 import { GameDetailModal } from "@/components/umpires/game-detail-modal";
 import type { ScheduleGame } from "./schedule-list";
+import { DaylightChip, DaylightExplanation, LightsTag, SlotDaylightDot } from "@/components/daylight/daylight-pieces";
+import { sunsetLabel, sunsetTime } from "@/lib/daylight/flags";
+import type { UsCity } from "@/lib/sun/us-cities";
+import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 
 interface Props {
   games: ScheduleGame[];
@@ -39,6 +43,9 @@ interface Props {
   canReschedule?: boolean;
   /** Divisions locked as of this page load (the page's divisions read). */
   lockedDivisionIds?: string[];
+  /** The league's city while daylight flags are on — each day shows its
+   *  sunset. Null = flags off / no city. */
+  sunsetCity?: UsCity | null;
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -107,6 +114,7 @@ export function ScheduleCalendar({
   today,
   canReschedule = false,
   lockedDivisionIds = [],
+  sunsetCity = null,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -313,6 +321,14 @@ export function ScheduleCalendar({
                   >
                     {cell.getDate()}
                   </span>
+                  {sunsetCity && inMonth && (
+                    <span
+                      title={sunsetLabel(cellDate, sunsetCity)}
+                      className="hidden text-[10px] tabular-nums text-gray-400 sm:inline"
+                    >
+                      {sunsetTime(cellDate, sunsetCity)}
+                    </span>
+                  )}
                 </div>
                 {/* Below sm the seven columns are ~40px wide, so pills read as
                     one character. The phone shows a count badge that opens the
@@ -397,6 +413,11 @@ export function ScheduleCalendar({
                     </span>
                   )}
                 </p>
+                {pill.data.daylight && (
+                  <div className="mt-1.5">
+                    <DaylightChip flag={pill.data.daylight} />
+                  </div>
+                )}
                 <div className="mt-1 flex items-start justify-between gap-2">
                   <p className="min-w-0 text-sm font-semibold text-[#0C1F3F]">
                     {pillMatchupLabel(pill.data)}
@@ -421,6 +442,7 @@ export function ScheduleCalendar({
                     <span className="inline-flex items-center gap-1.5">
                       <MapPin className="h-3 w-3" />
                       {pill.data.venue.name}
+                      {pill.data.daylightLit && <LightsTag />}
                     </span>
                   ) : pill.data.is_away && pill.data.proposed_venue_name ? (
                     <span className="inline-flex items-center gap-1.5">
@@ -434,6 +456,15 @@ export function ScheduleCalendar({
                     </span>
                   ) : null}
                 </div>
+                {/* Daylight (admin-only): why, and the start-by time; Reschedule is right below. */}
+                {pill.data.daylight && pill.data.venue && (
+                  <div className="mt-2">
+                    <DaylightExplanation
+                      flag={pill.data.daylight}
+                      fieldLabel={qualifiedVenueLabel(pill.data.venue)}
+                    />
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => setRainoutTarget(pill.data)}
@@ -533,8 +564,11 @@ export function ScheduleCalendar({
                 className="max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
-                <h3 className="mb-3 text-base font-bold text-[#0C1F3F]">
+                <h3 className="mb-3 flex items-baseline justify-between gap-2 text-base font-bold text-[#0C1F3F]">
                   {fmtGameDate(dayDetail)}
+                  {sunsetCity && (
+                    <span className="text-xs font-normal text-gray-500">{sunsetLabel(dayDetail, sunsetCity)}</span>
+                  )}
                 </h3>
                 <div className="flex flex-col gap-2">
                   {items.map((pill) => (
@@ -639,6 +673,7 @@ function PillButton({ pill, muted, loading, size = "sm", onClick }: PillButtonPr
       )}
       <span className="truncate">{label}</span>
       <GameNoteDot game={pill.data} />
+      {pill.data.daylight && <SlotDaylightDot flag={pill.data.daylight} />}
     </button>
   );
 }
