@@ -7,6 +7,7 @@ import { EnterResultModal } from "@/components/playoffs/enter-result-modal";
 import { EditPlayoffGameModal } from "@/components/playoffs/edit-playoff-game-modal";
 import { playoffRoundLabel, resultButtonShown } from "@/lib/playoffs/playoff-result";
 import { slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
+import { SCREEN_TREE, singleElimLayout } from "@/lib/playoffs/bracket-print";
 
 /** A slot's text: the team, else "Winner of Game N" / "TBD" (bracket-labels). */
 type LabelOf = (game: GameWithTeams, side: Side) => string;
@@ -73,8 +74,10 @@ const CHAMPIONSHIP_ROUNDS = new Set(["F", "GF"]);
 
 // ─── Game card ────────────────────────────────────────────────────────────────
 
-const CARD_BODY_H = 72;
-const CARD_W = 200;
+// The card's geometry is SCREEN_TREE (bracket-print.ts): the tree layout
+// places cards and lines with those numbers, so the bands below have fixed
+// heights that match them — h-10 when/where, h-8 rows, h-8 actions.
+const CARD_W = SCREEN_TREE.cardW;
 
 function GameCard({
   game,
@@ -95,73 +98,77 @@ function GameCard({
   const isDone = game.status === "completed";
 
   return (
-    <div className="overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm" style={{ width: CARD_W }}>
-      {/* Champion banner */}
+    <div style={{ width: CARD_W }}>
+      <div
+        className="flex flex-col overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm"
+        style={{ height: SCREEN_TREE.cardH }}
+      >
+        {/* When and where — shown for every game, so an unplaced (TBD) game
+            reads "No date yet" instead of hiding the gap. */}
+        <div className="h-10 flex-none border-b border-gray-100 px-2.5 py-1 text-[10px] leading-4">
+          {game.scheduled_date ? (
+            <p className="truncate text-gray-500">
+              Game {game.game_number} · {fmtDate(game.scheduled_date)}
+              {game.start_time ? ` · ${fmtTime(game.start_time)}` : ""}
+            </p>
+          ) : (
+            <p className="truncate italic text-amber-600">Game {game.game_number} · No date yet</p>
+          )}
+          <p className="truncate text-gray-500">{game.venue_name ?? ""}</p>
+        </div>
+
+        <TeamRow
+          name={labelOf(game, "home")}
+          away={false}
+          won={homeWon}
+          tbd={!game.home_team_id}
+          score={game.home_score}
+          isDone={isDone}
+        />
+        <div className="h-px flex-none bg-gray-100" />
+        <TeamRow
+          name={labelOf(game, "away")}
+          away
+          won={awayWon}
+          tbd={!game.away_team_id}
+          score={game.away_score}
+          isDone={isDone}
+        />
+
+        <div className="flex h-8 flex-none items-center border-t border-gray-100 px-2">
+          {resultButtonShown(bothTeams, isDone) && (
+            <button
+              onClick={onEnterResult}
+              className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-[#0C1F3F] hover:bg-gray-50"
+            >
+              <ClipboardEdit className="h-3 w-3" />
+              {isDone ? "Edit result" : "Enter result"}
+            </button>
+          )}
+          {!isDone && (
+            <button
+              onClick={onEdit}
+              aria-label="Set date, time and field"
+              title="Set date, time and field"
+              className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-gray-500 hover:bg-gray-50 hover:text-[#0C1F3F]"
+            >
+              <CalendarClock className="h-3 w-3" />
+              {game.scheduled_date ? "Move" : "Set time"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Champion banner — BELOW the card, so it never moves the rows the
+          tree's lines point at. */}
       {isChampionship && isDone && (
-        <div className="flex items-center justify-center gap-1 bg-amber-50 px-2 py-1">
+        <div className="mt-1 flex items-center justify-center gap-1 rounded-md bg-amber-50 px-2 py-1">
           <Trophy className="h-3 w-3 text-amber-500" />
           <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-600">
             Champion: {homeWon ? game.home_team_name : game.away_team_name}
           </span>
         </div>
       )}
-
-      <TeamRow
-        name={labelOf(game, "home")}
-        away={false}
-        won={homeWon}
-        tbd={!game.home_team_id}
-        score={game.home_score}
-        isDone={isDone}
-      />
-      <div className="h-px bg-gray-100" />
-      <TeamRow
-        name={labelOf(game, "away")}
-        away
-        won={awayWon}
-        tbd={!game.away_team_id}
-        score={game.away_score}
-        isDone={isDone}
-      />
-
-      {/* Date/field line — shown for every game, so an unplaced (TBD) game
-          reads "No date yet" instead of hiding the gap. */}
-      <div className="border-t border-gray-50 px-2.5 py-1.5">
-        {game.scheduled_date ? (
-          <p className="text-[10px] text-gray-400">
-            Game {game.game_number} · {fmtDate(game.scheduled_date)}
-            {game.start_time ? ` · ${fmtTime(game.start_time)}` : ""}
-          </p>
-        ) : (
-          <p className="text-[10px] italic text-amber-600">Game {game.game_number} · No date yet</p>
-        )}
-        {game.venue_name && (
-          <p className="truncate text-[10px] text-gray-400">{game.venue_name}</p>
-        )}
-      </div>
-
-      <div className="flex border-t border-gray-50 px-2 py-1.5">
-        {resultButtonShown(bothTeams, isDone) && (
-          <button
-            onClick={onEnterResult}
-            className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-[#0C1F3F] hover:bg-gray-50"
-          >
-            <ClipboardEdit className="h-3 w-3" />
-            {isDone ? "Edit result" : "Enter result"}
-          </button>
-        )}
-        {!isDone && (
-          <button
-            onClick={onEdit}
-            aria-label="Set date, time and field"
-            title="Set date, time and field"
-            className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-gray-500 hover:bg-gray-50 hover:text-[#0C1F3F]"
-          >
-            <CalendarClock className="h-3 w-3" />
-            {game.scheduled_date ? "Move" : "Set time"}
-          </button>
-        )}
-      </div>
     </div>
   );
 }
@@ -187,7 +194,7 @@ function TeamRow({
   away: boolean;
 }) {
   return (
-    <div className={`flex items-center gap-2 px-2.5 py-2 ${away ? AWAY_ROW_BG : "bg-white"}`}>
+    <div className={`flex h-8 flex-none items-center gap-2 px-2.5 ${away ? AWAY_ROW_BG : "bg-white"}`}>
       <span
         className={`flex-1 truncate text-xs ${
           tbd ? "italic text-gray-600" : won ? "font-bold text-[#0C1F3F]" : "text-gray-800"
@@ -322,102 +329,68 @@ function ListGameRow({
 
 // ─── Bracket tree (single / double elimination) ───────────────────────────────
 
-const V_SLOT = 92;
-const H_GAP  = 56;
-
-function gameTop(roundIdx: number, gameIdx: number): number {
-  const slotH = V_SLOT * Math.pow(2, roundIdx);
-  return gameIdx * slotH + slotH / 2 - CARD_BODY_H / 2;
-}
-
-function gameCenter(roundIdx: number, gameIdx: number): number {
-  return gameTop(roundIdx, gameIdx) + CARD_BODY_H / 2;
-}
-
 function BracketTree({
-  rounds,
+  games,
   championshipRound,
   labelOf,
   onEnterResult,
   onEdit,
 }: {
-  rounds: [string, GameWithTeams[]][];
+  games: GameWithTeams[];
   championshipRound: string | null;
   labelOf: LabelOf;
   onEnterResult: (game: GameWithTeams) => void;
   onEdit: (game: GameWithTeams) => void;
 }) {
-  if (rounds.length === 0) return null;
+  if (games.length === 0) return null;
 
-  const r0Count = rounds[0][1].length;
-  const totalH = r0Count * V_SLOT;
-  const totalW = rounds.length * (CARD_W + H_GAP) - H_GAP;
+  // The print's layout with the screen's dimensions: cards by bracket
+  // position (round 1 beside the slot it feeds, byes leave gaps), one line per
+  // advancing game into the exact row it fills (singleElimTarget).
+  const L = singleElimLayout(games, SCREEN_TREE);
 
   return (
-    <div style={{ position: "relative", height: totalH, width: totalW, minWidth: totalW }}>
-      {/* SVG connector lines */}
+    <div style={{ position: "relative", height: L.height, width: L.width, minWidth: L.width }}>
       <svg
-        width={totalW}
-        height={totalH}
+        width={L.width}
+        height={L.height}
         style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
       >
-        {rounds.slice(0, -1).map(([, srcGames], rIdx) => {
-          const nextGames = rounds[rIdx + 1][1];
-          if (srcGames.length !== nextGames.length * 2) return null;
-          return nextGames.map((_, pairIdx) => {
-            const g1 = pairIdx * 2;
-            const g2 = pairIdx * 2 + 1;
-            const xRight = rIdx * (CARD_W + H_GAP) + CARD_W;
-            const xMid   = xRight + H_GAP / 2;
-            const xNext  = (rIdx + 1) * (CARD_W + H_GAP);
-            const y1    = gameCenter(rIdx, g1);
-            const y2    = gameCenter(rIdx, g2);
-            const yNext = (y1 + y2) / 2;
-            return (
-              <g key={`c-${rIdx}-${pairIdx}`}>
-                <line x1={xRight} y1={y1} x2={xMid} y2={y1} stroke="#e5e7eb" strokeWidth={1.5} />
-                <line x1={xRight} y1={y2} x2={xMid} y2={y2} stroke="#e5e7eb" strokeWidth={1.5} />
-                <line x1={xMid} y1={y1} x2={xMid} y2={y2} stroke="#e5e7eb" strokeWidth={1.5} />
-                <line x1={xMid} y1={yNext} x2={xNext} y2={yNext} stroke="#e5e7eb" strokeWidth={1.5} />
-              </g>
-            );
-          });
-        })}
+        {L.connectors.map((c) => (
+          <polyline
+            key={`c-${c.from}`}
+            points={c.points.map(([x, y]) => `${x},${y}`).join(" ")}
+            fill="none"
+            stroke="#9ca3af"
+            strokeWidth={1.5}
+          />
+        ))}
       </svg>
 
       {/* Round headers */}
-      {rounds.map(([round], rIdx) => (
+      {L.rounds.map((round, rIdx) => (
         <div
           key={`hdr-${round}`}
-          style={{ position: "absolute", top: 0, left: rIdx * (CARD_W + H_GAP), width: CARD_W, textAlign: "center" }}
+          style={{ position: "absolute", top: 0, left: rIdx * (SCREEN_TREE.cardW + SCREEN_TREE.gap), width: SCREEN_TREE.cardW, textAlign: "center" }}
         >
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
             {roundLabel(round)}
           </span>
         </div>
       ))}
 
       {/* Game cards */}
-      {rounds.map(([, roundGames], rIdx) =>
-        roundGames.map((game, gIdx) => (
-          <div
-            key={game.id}
-            style={{
-              position: "absolute",
-              left: rIdx * (CARD_W + H_GAP),
-              top: gameTop(rIdx, gIdx) + 18,
-            }}
-          >
-            <GameCard
-              game={game}
-              isChampionship={game.round === championshipRound}
-              labelOf={labelOf}
-              onEnterResult={() => onEnterResult(game)}
-              onEdit={() => onEdit(game)}
-            />
-          </div>
-        ))
-      )}
+      {L.cards.map((c) => (
+        <div key={c.game.id} style={{ position: "absolute", left: c.x, top: c.y }}>
+          <GameCard
+            game={c.game}
+            isChampionship={c.game.round === championshipRound}
+            labelOf={labelOf}
+            onEnterResult={() => onEnterResult(c.game)}
+            onEdit={() => onEdit(c.game)}
+          />
+        </div>
+      ))}
     </div>
   );
 }
@@ -587,7 +560,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
         <div className="overflow-x-auto rounded-xl border border-gray-100 bg-gray-50 p-6">
           {useBracketTree ? (
             <BracketTree
-              rounds={rounds}
+              games={games}
               championshipRound={championshipRound}
               labelOf={labelOf}
               onEnterResult={setActiveGame}

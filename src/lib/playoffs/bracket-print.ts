@@ -156,15 +156,46 @@ export function gameCardHtml(game: PrintGame, allGames: PrintGame[], format: str
 
 // ─── Single-elimination tree layout ───────────────────────────────────────────
 
-export type PlacedCard = { game: PrintGame; round: number; pos: number; x: number; y: number };
+export type PlacedCard<G extends PrintGame = PrintGame> = { game: G; round: number; pos: number; x: number; y: number };
 export type Connector = { from: number; to: number; side: "home_team_id" | "away_team_id"; points: [number, number][] };
-export type TreeLayout = {
+export type TreeLayout<G extends PrintGame = PrintGame> = {
   rounds: string[];
-  cards: PlacedCard[];
+  cards: PlacedCard<G>[];
   connectors: Connector[];
   width: number;
   height: number;
+  /** Print only: the page-fit scale. The screen ignores it (it scrolls). */
   scale: number;
+};
+
+/** The geometry a tree is laid out with. The SAME layout serves the print and
+ *  the on-screen bracket; only these numbers differ. `rowTop` is where the
+ *  home row starts inside a card, `sourceY` where a card's outgoing line
+ *  leaves it — both measured from the card's top edge. */
+export type TreeDims = {
+  cardW: number;
+  cardH: number;
+  gap: number;
+  slotH: number;
+  roundHdr: number;
+  rowTop: number;
+  rowH: number;
+  divider: number;
+  sourceY: number;
+};
+
+export const PRINT_TREE: TreeDims = {
+  cardW: CARD.width, cardH: CARD_H, gap: GAP, slotH: SLOT_H, roundHdr: ROUND_HDR,
+  rowTop: 1 + CARD.metaH, rowH: CARD.rowH, divider: 1, sourceY: CARD_H / 2,
+};
+
+/** The on-screen card (bracket-view.tsx GameCard). These numbers ARE its
+ *  Tailwind heights — keep them in step: 1px border + h-10 when/where band
+ *  (40) → rows h-8 (32) + h-px divider + h-8 (32) → h-8 action row (32) +
+ *  1px border = 139. Lines leave at the divider between the two rows. */
+export const SCREEN_TREE: TreeDims = {
+  cardW: 200, cardH: 139, gap: 56, slotH: 156, roundHdr: 22,
+  rowTop: 41, rowH: 32, divider: 1, sourceY: 41 + 32 + 0.5,
 };
 
 function sortedRounds(games: PrintGame[]): string[] {
@@ -172,28 +203,29 @@ function sortedRounds(games: PrintGame[]): string[] {
 }
 
 /** Where every card and line goes, in natural (unscaled) px. */
-export function singleElimLayout(games: PrintGame[]): TreeLayout {
+export function singleElimLayout<G extends PrintGame>(games: G[], dims: TreeDims = PRINT_TREE): TreeLayout<G> {
+  const D = dims;
   const rounds = sortedRounds(games);
   const n = rounds.length;
   const size = Math.pow(2, n);
-  const width = n * CARD.width + Math.max(0, n - 1) * GAP;
-  const height = ROUND_HDR + (size / 2) * SLOT_H;
+  const width = n * D.cardW + Math.max(0, n - 1) * D.gap;
+  const height = D.roundHdr + (size / 2) * D.slotH;
 
-  const cards: PlacedCard[] = [];
-  const byId = new Map<string, PlacedCard>();
+  const cards: PlacedCard<G>[] = [];
+  const byId = new Map<string, PlacedCard<G>>();
   rounds.forEach((round, k) => {
     const inRound = games.filter((g) => g.round === round).sort((a, b) => a.game_number - b.game_number);
     for (const g of inRound) {
       const pos = singleElimPosition(g, k, size, inRound);
-      const centre = ROUND_HDR + (pos + 0.5) * SLOT_H * Math.pow(2, k);
-      const card = { game: g, round: k, pos, x: k * (CARD.width + GAP), y: centre - CARD_H / 2 };
+      const centre = D.roundHdr + (pos + 0.5) * D.slotH * Math.pow(2, k);
+      const card = { game: g, round: k, pos, x: k * (D.cardW + D.gap), y: centre - D.cardH / 2 };
       cards.push(card);
       byId.set(g.id, card);
     }
   });
 
-  const rowCentre = (c: PlacedCard, side: "home_team_id" | "away_team_id") =>
-    c.y + 1 + CARD.metaH + (side === "home_team_id" ? CARD.rowH / 2 : CARD.rowH + 1 + CARD.rowH / 2);
+  const rowCentre = (c: PlacedCard<G>, side: "home_team_id" | "away_team_id") =>
+    c.y + D.rowTop + (side === "home_team_id" ? D.rowH / 2 : D.rowH + D.divider + D.rowH / 2);
 
   const connectors: Connector[] = [];
   for (const c of cards) {
@@ -201,9 +233,9 @@ export function singleElimLayout(games: PrintGame[]): TreeLayout {
     if (!t) continue;
     const to = byId.get(t.target.id);
     if (!to) continue;
-    const x1 = c.x + CARD.width;
-    const y1 = c.y + CARD_H / 2;
-    const xm = x1 + GAP / 2;
+    const x1 = c.x + D.cardW;
+    const y1 = c.y + D.sourceY;
+    const xm = x1 + D.gap / 2;
     const y2 = rowCentre(to, t.field);
     connectors.push({
       from: c.game.game_number,

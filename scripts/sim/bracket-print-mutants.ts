@@ -122,6 +122,24 @@ const MUTANTS: Mutant[] = [
     replace: "  return asRow(game) && \"TBD\";",
     expect: "F3",
   },
+  {
+    id: "BP20", what: "screen lines leave from the card's centre, not the row divider", file: PRINT,
+    find: "  rowTop: 41, rowH: 32, divider: 1, sourceY: 41 + 32 + 0.5,",
+    replace: "  rowTop: 41, rowH: 32, divider: 1, sourceY: 139 / 2 + 10,",
+    expect: "P6",
+  },
+  {
+    id: "BP21", what: "the on-screen tree laid out with the PRINT dimensions", file: "src/components/playoffs/bracket-view.tsx",
+    find: "  const L = singleElimLayout(games, SCREEN_TREE);",
+    replace: "  const L = singleElimLayout(games);",
+    expect: "S7",
+  },
+  {
+    id: "BP22", what: "a team row loses its fixed height", file: "src/components/playoffs/bracket-view.tsx",
+    find: "flex h-8 flex-none items-center gap-2 px-2.5",
+    replace: "flex flex-none items-center gap-2 px-2.5 py-2",
+    expect: "S7",
+  },
 ];
 
 runMutants({
@@ -151,3 +169,10 @@ runMutants({
 // with the public page's delegation, so a drift in the rule moves both sides
 // and the literals catch it. BP19 added (view.ts stops delegating → [F3]).
 // 19/19 KILLED at their own assertion.
+// 2026-10-13 — fourth run (on-screen tree on the shared layout, P6/S7):
+// 713 checks × 3 zones. BP20 SURVIVED the first pass — P6 compared each line's
+// start against SCREEN_TREE.sourceY itself, so moving sourceY moved the
+// expectation with it (a tautology). P6 now requires the line to leave at the
+// divider between the rows (rowTop + rowH + divider/2). BP21 made realistic
+// (the tree laid out with the print's dimensions). Second pass 22/22 KILLED:
+//   BP20 → [P6]  BP21 → [S7]  BP22 → [S7]; BP1–BP19 unchanged.

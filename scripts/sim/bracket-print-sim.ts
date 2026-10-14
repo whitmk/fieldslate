@@ -28,6 +28,9 @@
 //   connector per game that advances, ending at the exact row it fills; every
 //   card inside the canvas; ≤16 teams at scale 1 within the landscape page;
 //   32 teams scaled to fit; landscape page CSS.
+//   P6: the ON-SCREEN tree runs the same layout with SCREEN_TREE — no
+//   overlapping cards, one line per advancing game, each from the card's edge
+//   into the exact row; SCREEN_TREE equals the card's band heights.
 // - C: contrast — the heading, placeholder, meta and "Printed" colours ≥ 7:1
 //   on white, lines and borders ≥ 4.5:1, and the document actually uses them.
 // - S: wiring (source greps — weak by nature, stated): the modal prints
@@ -50,7 +53,9 @@ import {
   CARD_H,
   MAX_SCALE,
   PAGE,
+  PRINT_TREE,
   SCALE_UP_BELOW,
+  SCREEN_TREE,
   PRINT_COLORS,
   buildBracketPrintHtml,
   gameCardHtml,
@@ -82,7 +87,7 @@ function section(name: string, fn: () => void) {
     console.log(`  FAIL: [CRASH-${name}] ${(e as Error).message}`);
   }
 }
-const counters = { feederLabels: 0, byeSeats: 0, nullTrophyCase: 0, connectors: 0, scaledLayout: 0, scaledUp: 0, awayWinner: 0 };
+const counters = { feederLabels: 0, byeSeats: 0, nullTrophyCase: 0, connectors: 0, scaledLayout: 0, scaledUp: 0, awayWinner: 0, screenLines: 0 };
 
 const SIZES = [4, 6, 8, 11, 12, 16, 32];
 const byNum = (gs: PrintGame[], n: number) => gs.find((g) => g.game_number === n)!;
@@ -249,6 +254,39 @@ section("P", () => {
   }
   const doc = printDocument(buildBracketPrintHtml(singleElim(11, 5), "single_elimination", "L", "Majors", "October 13, 2026"), "t", "landscape");
   ok(doc.includes("size: letter landscape"), "[P5]", "the bracket prints landscape");
+
+  // The ON-SCREEN tree: the same layout with the screen card's dimensions.
+  ok(JSON.stringify(singleElimLayout(singleElim(11, 0))) === JSON.stringify(singleElimLayout(singleElim(11, 0), PRINT_TREE)), "[P6]",
+    "the print's default dimensions are PRINT_TREE");
+  for (const n of SIZES) {
+    const games = singleElim(n, 0);
+    const L = singleElimLayout(games, SCREEN_TREE);
+    const D = SCREEN_TREE;
+    const byRound = new Map<number, typeof L.cards>();
+    for (const c of L.cards) byRound.set(c.round, [...(byRound.get(c.round) ?? []), c]);
+    for (const cs of byRound.values()) {
+      const ys = cs.map((c) => c.y).sort((a, b) => a - b);
+      for (let i = 1; i < ys.length; i++) ok(ys[i] - ys[i - 1] >= D.cardH, "[P6]", `${n} teams on screen: two cards overlap`);
+    }
+    let advancing = 0;
+    for (const c of L.cards) {
+      if (!singleElimTarget(c.game, games)) continue;
+      advancing++;
+    }
+    ok(L.connectors.length === advancing, "[P6]", `${n} teams on screen: ${L.connectors.length} lines for ${advancing} advancing games`);
+    for (const con of L.connectors) {
+      const from = L.cards.find((c) => c.game.game_number === con.from)!;
+      const to = L.cards.find((c) => c.game.game_number === con.to)!;
+      const [sx, sy] = con.points[0];
+      const [ex, ey] = con.points[con.points.length - 1];
+      const rowY = to.y + D.rowTop + (con.side === "home_team_id" ? D.rowH / 2 : D.rowH + D.divider + D.rowH / 2);
+      ok(Math.abs(sx - (from.x + D.cardW)) < 0.5 && Math.abs(sy - (from.y + D.rowTop + D.rowH + D.divider / 2)) < 0.5 && Math.abs(ex - to.x) < 0.5 && Math.abs(ey - rowY) < 0.5,
+        "[P6]", `${n} teams on screen: line ${con.from}→${con.to} does not run from the card's edge at its row divider into the target row`);
+      counters.screenLines++;
+    }
+  }
+  ok(SCREEN_TREE.cardH === 1 + 40 + 32 + 1 + 32 + 32 + 1 && SCREEN_TREE.rowTop === 41 && SCREEN_TREE.rowH === 32, "[P6]",
+    "SCREEN_TREE matches the card's bands (h-10, h-8 ×2 + divider, h-8, borders)");
 });
 
 // ─── C: contrast ─────────────────────────────────────────────────────────────
@@ -294,9 +332,13 @@ section("S", () => {
   ok(view.includes("slotName(side === \"home\" ? g.home_team_name : g.away_team_name, g, side, games, format)")
      && view.includes('name={labelOf(game, "home")}') && !view.includes('"TBD vs TBD"'), "[S3]", "the bracket view names empty slots with slotName");
   ok(view.includes("${away ? AWAY_ROW_BG : \"bg-white\"}") && view.includes('const AWAY_ROW_BG = "bg-[#e6f4ea]";')
-     && !/won \? "bg-/.test(view) && view.includes('name={labelOf(game, "away")}\n        away\n'), "[S5]", "the on-screen card is two-tone and never colours the winner's row");
+     && !/won \? "bg-/.test(view) && /name=\{labelOf\(game, "away"\)\}\s*\n\s*away\n/.test(view), "[S5]", "the on-screen card is two-tone and never colours the winner's row");
   const result = read("src/components/playoffs/enter-result-modal.tsx");
   ok(result.includes('slotName(game.home_team_name, game, "home", allGames, format)') && !result.includes('?? "Home"'), "[S4]", "the result modal names empty slots with slotName");
+  ok(view.includes("const L = singleElimLayout(games, SCREEN_TREE);") && !view.includes("function gameTop(") && !view.includes("V_SLOT")
+     && view.includes("style={{ height: SCREEN_TREE.cardH }}") && view.includes('className="h-10 flex-none border-b')
+     && view.includes("flex h-8 flex-none items-center gap-2 px-2.5") && view.includes("flex h-8 flex-none items-center border-t"),
+    "[S7]", "the on-screen tree uses the shared layout and the card keeps the bands SCREEN_TREE measures");
   const pub = read("src/lib/public-schedule/view.ts");
   ok(pub.includes("return emptySlotLabel(asRow(game), side, bracket.map(asRow), game.format);") && !pub.includes("singleElimFirstNumber"),
     "[S6]", "the public page has no label arithmetic of its own");

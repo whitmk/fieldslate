@@ -519,20 +519,24 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   WCAG-checked (sim [C1]: names ≥ 7:1); placeholders moved to `#374151` so
   they stay ≥ 7:1 on it, and on screen the empty-slot and losing-score greys
   were darkened (gray-300/400 → gray-600).
-- **The ON-SCREEN bracket tree still lays out by row index** (same defect the
-  print had: with byes, round 1 stacks at the top and some lines are missing).
-  Not fixed here — the print was the scope. The fix is `singleElimLayout` with
-  the screen card's dimensions.
+- **The ON-SCREEN bracket tree uses the SAME layout** (2026-10-13):
+  `singleElimLayout(games, SCREEN_TREE)`; the print passes `PRINT_TREE` (the
+  default). Only the numbers differ. **`SCREEN_TREE` IS the screen card's
+  band heights** — 1px border, `h-10` when/where band, two `h-8` team rows
+  with an `h-px` divider, `h-8` action row, 1px border = 139; lines leave at
+  the divider between the rows and enter the target's exact row. Change a band
+  and `SCREEN_TREE` together (sim [P6] pins the arithmetic, [S7] the classes).
+  The champion banner sits BELOW the card so it can never move the rows.
 - **Proof and the Safari check:** `npx tsx scripts/sim/bracket-print-render.ts
   <dir>` writes the exact print documents for 8/11/12/16/32-team, round-robin
   and double-elim fixtures (`bracket-print-fixtures.ts` — real generator
   output; the 11-team one is the live Majors SHAPE with placeholder names).
   Open one in Safari and print to check WebKit; Chromium PDFs come from
   headless Chrome `--print-to-pdf`.
-- **Harness: `npm run sim:bracket-print`** (569 checks × 3 zones, 7 counters:
+- **Harness: `npm run sim:bracket-print`** (713 checks × 3 zones, 8 counters:
   feeders vs advancement, labels, trophy, two-tone and winner styling, date
-  line, layout and page fit, contrast, wiring) + `:mutants` (18, each killed
-  at its own assertion).
+  line, print and on-screen layout, page fit, contrast, wiring) + `:mutants`
+  (22, each killed at its own assertion).
 
 ## Playoff bracket delete and rebuild (0107, applied 2026-10-08)
 
