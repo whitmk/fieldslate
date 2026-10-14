@@ -11,7 +11,8 @@
 // Permanent deletion goes through the delete_league_permanently RPC (0065),
 // which enforces org membership and the archived-first rule server-side —
 // this modal is only ever offered on archived seasons, but the RPC is the
-// actual gate.
+// actual gate. Unarchive goes through restore_season (0110) the same way — it
+// owns the season cap; the database refuses a direct un-archive.
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -144,6 +145,25 @@ export function ArchiveSeasonModal({
 
 // ── Unarchive ────────────────────────────────────────────────────────────────
 
+const RESTORE_CAP_MESSAGE =
+  "The Free plan includes one active season. Archive your active season first, or upgrade to restore this one.";
+
+function friendlyRestoreError(msg: string): string {
+  if (msg.includes("league_not_archived")) {
+    return "This season isn't archived — refresh to see its current state.";
+  }
+  if (msg.includes("not_org_member") || msg.includes("not_authenticated")) {
+    return "You don't have permission to unarchive this season.";
+  }
+  if (msg.includes("league_not_found")) {
+    return "Season not found — it may have been deleted.";
+  }
+  if (msg.includes("end_before_start")) {
+    return "The new end date is before the season's start date. Pick a later date.";
+  }
+  return msg || "Unarchive failed.";
+}
+
 export function UnarchiveSeasonModal({
   seasonId,
   seasonName,
@@ -169,19 +189,26 @@ export function UnarchiveSeasonModal({
     setBusy(true);
     setError(null);
     const supabase = createClient();
-    const patch: Record<string, unknown> = {
-      archived_at: null,
-      status: "active",
-    };
-    if (endIsPast && extendDate && newEndDate) {
-      patch.end_date = newEndDate;
-    }
-    const { error: err } = await supabase
-      .from("leagues")
-      .update(patch as never)
-      .eq("id", seasonId);
-    if (err) {
-      setError(err.message);
+    // restore_season (0110) is the only way back from archived: a direct
+    // update of archived_at to null is refused by the leagues trigger. It
+    // decides the cap — paid orgs restore freely, a Free org only when no
+    // other season is active.
+    const { data, error: err } = await supabase.rpc(
+      "restore_season" as never,
+      {
+        p_league_id: seasonId,
+        p_new_end_date: endIsPast && extendDate && newEndDate ? newEndDate : null,
+      } as never,
+    );
+    const reply = data as { row?: unknown; error?: string } | null;
+    if (err || !reply?.row) {
+      setError(
+        err
+          ? friendlyRestoreError(err.message ?? "")
+          : reply?.error === "cap_reached"
+            ? RESTORE_CAP_MESSAGE
+            : "Nothing was saved. Refresh and try again.",
+      );
       setBusy(false);
       return;
     }

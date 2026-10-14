@@ -126,7 +126,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") APPLIED 2026-10-08 21:31 UTC, catalog `20261008213156`**, verbatim from the repo file after a rolled-back proof; md5(prosrc) `bab8adef7841de9abe9709854e900b28` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Its UTC-today mutant (MU3) still owes a run inside 00:00–10:00 UTC against the applied function — applied first by the founder's decision; a survivor means a follow-up migration. **0107 (playoff bracket delete + rebuild) APPLIED 2026-10-08 22:44 UTC, catalog `20261008224427`**, verbatim from the repo file after a rolled-back proof (green, 15/15 mutants); md5(prosrc) verified: `delete_playoff_bracket` `f628628e93de210df18a7869cdb85e0f`, `replace_playoff_games` `ae2a1f70a09a3396f398dc1bdca9fbba`; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. **0108 (playoff result enter + clear) APPLIED 2026-10-13 19:35 UTC, catalog `20261013193530`**, verbatim from the repo file after a rolled-back proof (run 2 green, 18/18 mutants at their own tag); md5(prosrc) verified: `enter_playoff_result` `a615f53400778f02d598421693265b64`, `clear_playoff_result` `919f1320b088b7077870e6c39ca86f74`, `playoff_single_elim_target` `0c2020ebf93bf2e870198f86702078b0`, `playoff_round_order` `abae907097f0761fd87873b2290b0c59`; both entry points SECURITY DEFINER with `search_path=public, pg_temp`, EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); both helpers callable by no role; leak check clean. See "Playoff results — enter and clear (0108)". **0109 (daylight flags) APPLIED 2026-10-14 16:30 UTC, catalog `20261014163026`**, verbatim from the repo file after a first-run-green rolled-back proof (6/6 mutants at their own tag); md5(prosrc) `set_org_daylight` `0c203887a6630c4868da8df056c8cc73` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); the two profiles columns not updatable by authenticated/anon; no token function names a 0109 column; leak check clean. The code is on `feat/daylight-flags`, not yet on `main`. See "Daylight flags". Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
+  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") APPLIED 2026-10-08 21:31 UTC, catalog `20261008213156`**, verbatim from the repo file after a rolled-back proof; md5(prosrc) `bab8adef7841de9abe9709854e900b28` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Its UTC-today mutant (MU3) still owes a run inside 00:00–10:00 UTC against the applied function — applied first by the founder's decision; a survivor means a follow-up migration. **0107 (playoff bracket delete + rebuild) APPLIED 2026-10-08 22:44 UTC, catalog `20261008224427`**, verbatim from the repo file after a rolled-back proof (green, 15/15 mutants); md5(prosrc) verified: `delete_playoff_bracket` `f628628e93de210df18a7869cdb85e0f`, `replace_playoff_games` `ae2a1f70a09a3396f398dc1bdca9fbba`; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. **0108 (playoff result enter + clear) APPLIED 2026-10-13 19:35 UTC, catalog `20261013193530`**, verbatim from the repo file after a rolled-back proof (run 2 green, 18/18 mutants at their own tag); md5(prosrc) verified: `enter_playoff_result` `a615f53400778f02d598421693265b64`, `clear_playoff_result` `919f1320b088b7077870e6c39ca86f74`, `playoff_single_elim_target` `0c2020ebf93bf2e870198f86702078b0`, `playoff_round_order` `abae907097f0761fd87873b2290b0c59`; both entry points SECURITY DEFINER with `search_path=public, pg_temp`, EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); both helpers callable by no role; leak check clean. See "Playoff results — enter and clear (0108)". **0109 (daylight flags) APPLIED 2026-10-14 16:30 UTC, catalog `20261014163026`**, verbatim from the repo file after a first-run-green rolled-back proof (6/6 mutants at their own tag); md5(prosrc) `set_org_daylight` `0c203887a6630c4868da8df056c8cc73` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); the two profiles columns not updatable by authenticated/anon; no token function names a 0109 column; leak check clean. The code is on `feat/daylight-flags`, not yet on `main`. See "Daylight flags". **0110 (season create/restore/move guard) APPLIED 2026-10-14 19:32 UTC, catalog `20261014193205`**, verbatim from the repo file after a rolled-back proof (run 3 green, 11/11 mutants at their own tag); md5(prosrc) verified: `protect_leagues_season_cap` `0efefd567f7b5bd166104351dad05c27` (SECURITY INVOKER), `restore_season` `e24d8152509f30c9034c23a008e8e741` (DEFINER, `search_path=public, pg_temp`); `restore_season` EXECUTE authenticated only and the trigger function callable by no role (anon, service_role, dashboard_readonly and PUBLIC verified false); INSERT on `leagues` held by none of anon/authenticated/service_role/dashboard_readonly; trigger enabled, type 23; leak check clean. See "Season create/restore guard (0110)". Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -177,11 +177,51 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     SECURITY DEFINER trigger on `auth.users` UPDATE copies it — which would
     pass 0098 (it runs as its owner). A client-side write would be refused.
   - **STILL OPEN, same class, not fixed by 0098:** plan LIMITS are enforced in
-    the create RPCs only (`create_league` season cap, `create_division_atomic`,
-    `create_team`, `create_interleague_org`), while RLS lets an org member
-    INSERT into `leagues`, `divisions`, `teams` and `interleague_orgs`
-    directly, and UPDATE `leagues.archived_at`. A season is the unit of sale,
-    so a direct insert or un-archive is an unpaid season.
+    the create RPCs only (`create_division_atomic`, `create_team`,
+    `create_interleague_org`), while RLS lets an org member INSERT into
+    `divisions`, `teams` and `interleague_orgs` directly. (The `leagues` half —
+    a direct season insert, un-archive or move — is CLOSED by 0110, applied
+    2026-10-14; see "Season create/restore guard (0110)".)
+- **Season create/restore guard (0110, APPLIED 2026-10-14 19:32 UTC, catalog
+  `20261014193205`; md5(prosrc) and privileges verified).** A season is the unit of sale; before 0110 any
+  org member could INSERT a `leagues` row or set `archived_at` back to null
+  from the browser (RLS "Org members can manage leagues" is ALL), skipping
+  `create_league`'s cap — or, as a member of two orgs, move a season into the
+  other org by changing `owner_id`. 0110: INSERT on `leagues` is REVOKED from
+  `authenticated`/`anon`, and `protect_leagues_season_cap` (BEFORE INSERT OR
+  UPDATE, SECURITY INVOKER — decides by `current_user`, 0098's rule; MUST STAY
+  INVOKER) refuses, for those two roles, every INSERT, any UPDATE taking
+  `archived_at` from set to null, and any UPDATE changing `owner_id` (a
+  season never changes org; nothing legitimate writes it, added at review
+  2026-10-14). Archiving and every other browser write
+  (name, `schedule_settings`, pay settings, `end_date`, `status`) stay
+  allowed. **The ONE way back from archived is `restore_season(p_league_id,
+  p_new_end_date)`** (SECURITY DEFINER, `search_path = public, pg_temp`,
+  EXECUTE authenticated only): row lock → `is_org_member` → archived → end
+  date not before start → per-org advisory lock → cap → counted UPDATE.
+  **Paid orgs (pro/elite) restore free with no cap** (decided 2026-10-14: an
+  archived season was already paid for); **a Free org only when no other
+  season is active** (`cap_reached`, `create_league`'s JSON). **Restore
+  reopens a season at the org's CURRENT plan, in either direction (Pro→Elite
+  or Elite→Pro), at no charge** (decided 2026-10-14): seasons carry no tier of
+  their own and `profiles.plan` is org-wide — an accepted consequence, not a
+  bug to fix in `restore_season`. The Unarchive
+  modal (`UnarchiveSeasonModal`) calls it and shows every refusal in the
+  modal. Legitimate `leagues` writers, all DEFINER-as-postgres and proven
+  still working: `create_league`, `process_checkout_event`,
+  `delete_league_permanently`, `create_division_atomic` (schedule_settings),
+  `restore_season`. **A new SECURITY DEFINER path that creates or restores a
+  season (e.g. the paid "Add season" flow) needs no grant — but a
+  browser-side one will be refused; route it through a function.**
+  **Deploy order (met 2026-10-14): 0110 was applied BEFORE the modal change
+  reached `main`** (the modal calls `restore_season`). Proof:
+  `scripts/sim/season-guard-sim.sql` (assembled by `season-guard-build.ts`;
+  applies 0110 rolled back in the "test" org — the owner_id checks also make
+  the test owner an admin of "Test 2" for the run; holds SHARE ROW EXCLUSIVE
+  on `leagues` for the run; 11 mutants). Run 2026-10-14: run 1 a harness
+  fault (read its RUN LOG), run 2 green, 10/10 killed at their own tag; run 3
+  (owner_id added at review) green, 11/11 killed at their own tag; leak check
+  clean after each.
 - **`is_org_member` IS the admin gate, because every org member is an admin
   today.** If a non-admin member role (e.g. coach) is ever added,
   `set_org_timezone`, `regenerate_team_calendar_link` and
