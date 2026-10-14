@@ -76,7 +76,9 @@
     "sim:stripe-checkout-auth": "npx tsx scripts/sim/stripe-checkout-auth-sim.ts",
     "sim:stripe-checkout-auth:mutants": "npx tsx scripts/sim/stripe-checkout-auth-mutants.ts",
     "sim:practice-planner": "TZ=UTC npx tsx scripts/sim/practice-planner-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/practice-planner-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/practice-planner-sim.ts",
-    "sim:practice-planner:mutants": "npx tsx scripts/sim/practice-planner-mutants.ts"
+    "sim:practice-planner:mutants": "npx tsx scripts/sim/practice-planner-mutants.ts",
+    "sim:daylight": "TZ=UTC npx tsx scripts/sim/daylight-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/daylight-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/daylight-sim.ts",
+    "sim:daylight:mutants": "npx tsx scripts/sim/daylight-mutants.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
