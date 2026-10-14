@@ -30,8 +30,6 @@ import { durationFromSettings } from "@/lib/schedule/reschedule-slots";
 import { parseManualDateTime } from "@/lib/schedule/manual-move";
 import { bookingsFromRows, type UmpireBookingRow } from "@/lib/umpires/conflicts";
 import { useDayOccupancy } from "@/components/divisions/use-day-occupancy";
-import { useDaylight } from "@/components/daylight/use-daylight";
-import { DaylightPickNotice } from "@/components/daylight/daylight-pieces";
 import {
   DATE_HELP,
   ENTRY_LABEL,
@@ -72,14 +70,12 @@ type VenueRow = {
   name: string;
   availability: unknown;
   availability_configured: boolean | null;
-  has_lights: boolean;
   location: { name: string } | null;
 };
 
 type Venue = {
   id: string;
   label: string;
-  hasLights: boolean;
   availabilityConfigured: boolean;
   availability: VenueAvailability;
 };
@@ -96,8 +92,6 @@ type Ctx = {
   divisionName: string;
   playingDays: string[];
   durationMin: number;
-  /** The division's RAW game_duration — the daylight flag resolves it itself. */
-  rawDuration: unknown;
   bufferMin: number;
   blackoutDates: Set<string>;
   officials: AssignedOfficial[];
@@ -169,7 +163,7 @@ export function RecordPlayedModal({
       supabase.from("profiles").select("timezone").eq("id", league.owner_id).maybeSingle(),
       supabase
         .from("venues")
-        .select("id, name, availability, availability_configured, has_lights, location:locations(name)")
+        .select("id, name, availability, availability_configured, location:locations(name)")
         .eq("owner_id", league.owner_id),
       supabase.from("blackout_dates").select("date").eq("league_id", game.league_id),
       supabase
@@ -203,11 +197,10 @@ export function RecordPlayedModal({
         label: qualifiedVenueLabel({ name: v.name, location: v.location }),
         availabilityConfigured: v.availability_configured === true,
         availability: parseAvailability(v.availability),
-        hasLights: v.has_lights === true,
       }))
       .sort(byQualifiedVenueLabel)
-      .map(({ id, label, availabilityConfigured, availability, hasLights }) => ({
-        id, label, availabilityConfigured, availability, hasLights,
+      .map(({ id, label, availabilityConfigured, availability }) => ({
+        id, label, availabilityConfigured, availability,
       }));
 
     // A failed officials read is a "couldn't check" notice, never all-clear.
@@ -229,7 +222,6 @@ export function RecordPlayedModal({
         ? (divisionSettings.playing_days as string[])
         : ["Sa", "Su"],
       durationMin: durationFromSettings(divisionSettings),
-      rawDuration: divisionSettings.game_duration,
       bufferMin: Number.isFinite(buffer) && buffer >= 0 ? buffer : 15,
       blackoutDates: new Set(((blackoutQ.data ?? []) as { date: string }[]).map((b) => b.date)),
       officials,
@@ -242,13 +234,6 @@ export function RecordPlayedModal({
 
   const when = useMemo(() => parseManualDateTime(date, time), [date, time]);
   const venue = ctx?.venues.find((v) => v.id === venueId) ?? null;
-  // Daylight (admin-only): a notice when the recorded time ended after or
-  // near sunset on a field without lights. Never gates the save.
-  const daylight = useDaylight({ leagueId: ctx?.game.league_id ?? null });
-  const daylightPick =
-    ctx && venue && /^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}/.test(time)
-      ? daylight.slotFlag({ date, startTime: time.substring(0, 5) }, ctx.rawDuration, { has_lights: venue.hasLights })
-      : null;
   const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
   const dateRefusal =
     ctx && validDate ? playedDateRefusal(validDate, ctx.today, ctx.seasonStart) : null;
@@ -448,8 +433,6 @@ export function RecordPlayedModal({
             </div>
           ) : null
         )}
-
-        {daylightPick && venue && <DaylightPickNotice flag={daylightPick} fieldLabel={venue.label} />}
 
         <div className="flex items-start gap-2 text-sm text-gray-700">
           <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />

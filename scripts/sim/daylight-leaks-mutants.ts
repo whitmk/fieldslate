@@ -46,6 +46,12 @@ const MUTANTS: Mutant[] = [
     replace: 'import { DaylightPickNotice } from "@/components/daylight/daylight-pieces-copy";',
     expect: "S2",
   },
+  {
+    id: "LK8", what: "the daylight notice is re-added to Record where it was played", file: "src/components/schedule/record-played-modal.tsx",
+    find: 'import { useDayOccupancy } from "@/components/divisions/use-day-occupancy";',
+    replace: 'import { useDayOccupancy } from "@/components/divisions/use-day-occupancy";\nimport { DaylightPickNotice } from "@/components/daylight/daylight-pieces";',
+    expect: "N1",
+  },
 ];
 
 runMutants({

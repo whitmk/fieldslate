@@ -26,6 +26,8 @@
 //   S1  ONE SOURCE — nothing under src outside src/lib/daylight and the
 //       practice calculator imports the sunset math, and no file outside
 //       src/lib/daylight hand-writes a daylight sentence.
+//   N1  EXPECTED NON-SURFACE — "Record where it was played" (past games only,
+//       and past games never show flags) imports and reads nothing daylight.
 //   S2  WIRING (anti-vacuity) — every admin surface the founder listed
 //       imports the shared daylight pieces, so the fence is not guarding an
 //       empty feature.
@@ -211,7 +213,6 @@ let wired = 0;
     "src/components/playoffs/edit-playoff-game-modal.tsx",
     "src/components/divisions/rainout-reschedule-modal.tsx",
     "src/components/divisions/manual-move-form.tsx",
-    "src/components/schedule/record-played-modal.tsx",
     "src/components/interleague/resolve-edit-modal.tsx",
     "src/components/schedule/add-game-modal.tsx",
   ];
@@ -221,6 +222,14 @@ let wired = 0;
     if (has) wired++;
     ok(has, "[S2] admin surface renders the shared daylight pieces", f);
   }
+  // EXPECTED NON-SURFACES (decided 2026-10-14): "Record where it was played"
+  // is only ever about a game that already happened, and past games never
+  // show flags — so it must not import or read anything daylight.
+  const NON_SURFACES = ["src/components/schedule/record-played-modal.tsx", "src/lib/schedule/record-played.ts"];
+  for (const f of NON_SURFACES) {
+    const src = read(f);
+    ok(!IMPORTS_DAYLIGHT.test(src) && !DAYLIGHT_WORDS.test(src), "[N1] record-played shows no daylight (past games are never flagged)", f);
+  }
   const page = read("src/app/(dashboard)/dashboard/schedule/page.tsx");
   ok(page.includes("gamesRowDaylight(g, raw, daylight, daylightToday)") && page.includes("<DaylightFilter"),
     "[S2] the Schedule page computes flags with gamesRowDaylight and offers the filter");
@@ -229,7 +238,7 @@ let wired = 0;
 // ── counters ────────────────────────────────────────────────────────────
 ok(fenced >= 60, "[COUNT-fenced] outbound files fenced", String(fenced));
 ok(tokenFns >= 6, "[COUNT-tokenFns] token functions scanned", String(tokenFns));
-ok(wired >= 11, "[COUNT-wired] admin surfaces wired", String(wired));
+ok(wired >= 10, "[COUNT-wired] admin surfaces wired", String(wired));
 
 console.log(`daylight-leaks: ${checks} checks, ${failures} failed (fenced ${fenced} files, ${tokenFns} token functions, ${wired} surfaces)`);
 process.exit(failures ? 1 : 0);

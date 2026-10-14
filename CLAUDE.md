@@ -465,10 +465,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   card like the champion banner: a 200px card can't hold it beside a real
   field name; `SCREEN_TREE` unchanged); pickers (rainout/move slots and the
   interleague picker: dot + sunset per date + notice when picked; manual
-  move, Record where it was played, Edit playoff game, Add Game: notice).
+  move, Edit playoff game, Add Game: notice).
+  **"Record where it was played" deliberately has NO notice** (decided
+  2026-10-14): it is only ever about a past game, and past games never show
+  flags — sim:daylight-leaks [N1] keeps it that way (mutant LK8).
   Settings → Daylight flags (state → city, toggle, mismatch warning).
   NOT the dashboard cards (later).
-- **ADMIN-ONLY — the fence:** `npm run sim:daylight-leaks` (+ `:mutants`, 7):
+- **ADMIN-ONLY — the fence:** `npm run sim:daylight-leaks` (+ `:mutants`, 8):
   no print / export / email / feed / token / public file imports the daylight
   module or names a daylight field (77 files fenced), the division panel's
   print slice reads none, the Schedule print gets the UNFILTERED games, no
