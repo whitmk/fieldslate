@@ -31,10 +31,16 @@ const CHIP_NEAR = "border-amber-200 bg-amber-50 text-amber-800";
  *  variant reads "Ends 5 min before sunset". */
 export function DaylightChip({ flag, variant = "row" }: { flag: DaylightFlag; variant?: "row" | "bracket" }) {
   const text = variant === "bracket" ? daylightBracketChipText(flag) : daylightChipText(flag);
+  // The bracket card's band is a fixed 16px line (SCREEN_TREE): no border, no
+  // vertical padding there.
+  const shape =
+    variant === "bracket"
+      ? "rounded px-1 leading-4"
+      : "rounded-full border px-1.5 py-0.5";
   return (
     <span
       data-daylight-chip={flag.kind}
-      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] font-semibold ${shape} ${
         flag.kind === "after" ? CHIP_AFTER : CHIP_NEAR
       }`}
     >

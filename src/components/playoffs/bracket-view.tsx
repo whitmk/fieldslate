@@ -8,6 +8,12 @@ import { EditPlayoffGameModal } from "@/components/playoffs/edit-playoff-game-mo
 import { playoffRoundLabel, resultButtonShown } from "@/lib/playoffs/playoff-result";
 import { slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
 import { SCREEN_TREE, singleElimLayout } from "@/lib/playoffs/bracket-print";
+import { useDaylight } from "@/components/daylight/use-daylight";
+import { DaylightChip, DaylightStatusLine } from "@/components/daylight/daylight-pieces";
+import type { DaylightFlag } from "@/lib/daylight/flags";
+
+/** A game's daylight flag (admin-only; the print never reads this). */
+type FlagOf = (game: GameWithTeams) => DaylightFlag | null;
 
 /** A slot's text: the team, else "Winner of Game N" / "TBD" (bracket-labels). */
 type LabelOf = (game: GameWithTeams, side: Side) => string;
@@ -17,6 +23,8 @@ export interface GameWithTeams extends PlayoffGame {
   home_team_name: string | null;
   away_team_name: string | null;
   venue_name: string | null;
+  /** The field's lights (0109); null when the game has no field. */
+  venue_has_lights: boolean | null;
   winner_name: string | null;
   home_score: number | null;
   away_score: number | null;
@@ -83,12 +91,14 @@ function GameCard({
   game,
   isChampionship,
   labelOf,
+  flagOf,
   onEnterResult,
   onEdit,
 }: {
   game: GameWithTeams;
   isChampionship: boolean;
   labelOf: LabelOf;
+  flagOf: FlagOf;
   onEnterResult: () => void;
   onEdit: () => void;
 }) {
@@ -96,6 +106,7 @@ function GameCard({
   const awayWon = slotWon(game.winner_id, game.away_team_id);
   const bothTeams = !!game.home_team_id && !!game.away_team_id;
   const isDone = game.status === "completed";
+  const daylight = flagOf(game);
 
   return (
     <div style={{ width: CARD_W }}>
@@ -114,7 +125,12 @@ function GameCard({
           ) : (
             <p className="truncate italic text-amber-600">Game {game.game_number} · No date yet</p>
           )}
-          <p className="truncate text-gray-500">{game.venue_name ?? ""}</p>
+          {/* Field, and the daylight chip on the same 16px line (the band's
+              height is SCREEN_TREE's — the chip must not grow it). */}
+          <div className="flex h-4 items-center gap-1">
+            <p className="min-w-0 flex-1 truncate text-gray-500">{game.venue_name ?? ""}</p>
+            {daylight && <DaylightChip flag={daylight} variant="bracket" />}
+          </div>
         </div>
 
         <TeamRow
@@ -219,6 +235,7 @@ function ListGameRow({
   idx,
   isChampionship,
   labelOf,
+  flagOf,
   onEnterResult,
   onEdit,
 }: {
@@ -226,6 +243,7 @@ function ListGameRow({
   idx: number;
   isChampionship: boolean;
   labelOf: LabelOf;
+  flagOf: FlagOf;
   onEnterResult: () => void;
   onEdit: () => void;
 }) {
@@ -233,6 +251,7 @@ function ListGameRow({
   const isDone = game.status === "completed";
   const homeWon = slotWon(game.winner_id, game.home_team_id);
   const awayWon = slotWon(game.winner_id, game.away_team_id);
+  const daylight = flagOf(game);
 
   return (
     <div className="flex items-center gap-3 border-b border-gray-50 px-4 py-3 last:border-0">
@@ -265,6 +284,11 @@ function ListGameRow({
           </p>
         )}
         <p className="text-xs text-gray-400">{roundLabel(game.round)}</p>
+        {daylight && (
+          <div className="mt-1">
+            <DaylightChip flag={daylight} variant="bracket" />
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col items-end gap-0.5">
@@ -333,12 +357,14 @@ function BracketTree({
   games,
   championshipRound,
   labelOf,
+  flagOf,
   onEnterResult,
   onEdit,
 }: {
   games: GameWithTeams[];
   championshipRound: string | null;
   labelOf: LabelOf;
+  flagOf: FlagOf;
   onEnterResult: (game: GameWithTeams) => void;
   onEdit: (game: GameWithTeams) => void;
 }) {
@@ -386,6 +412,7 @@ function BracketTree({
             game={c.game}
             isChampionship={c.game.round === championshipRound}
             labelOf={labelOf}
+            flagOf={flagOf}
             onEnterResult={() => onEnterResult(c.game)}
             onEdit={() => onEdit(c.game)}
           />
@@ -401,12 +428,14 @@ function ColumnView({
   rounds,
   championshipRound,
   labelOf,
+  flagOf,
   onEnterResult,
   onEdit,
 }: {
   rounds: [string, GameWithTeams[]][];
   championshipRound: string | null;
   labelOf: LabelOf;
+  flagOf: FlagOf;
   onEnterResult: (game: GameWithTeams) => void;
   onEdit: (game: GameWithTeams) => void;
 }) {
@@ -424,6 +453,7 @@ function ColumnView({
                 game={g}
                 isChampionship={g.round === championshipRound}
                 labelOf={labelOf}
+                flagOf={flagOf}
                 onEnterResult={() => onEnterResult(g)}
                 onEdit={() => onEdit(g)}
               />
@@ -443,6 +473,10 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
   const [view, setView] = useState<"bracket" | "list">("list");
   const [activeGame, setActiveGame] = useState<GameWithTeams | null>(null);
   const [editingGame, setEditingGame] = useState<GameWithTeams | null>(null);
+  // The bracket division's RAW game_duration (projected key, never the whole
+  // settings blob) — the daylight flag resolves it with the one rule.
+  const [rawDuration, setRawDuration] = useState<unknown>(undefined);
+  const daylight = useDaylight({ leagueId });
 
   const loadGames = useCallback(async () => {
     const supabase = createClient();
@@ -451,7 +485,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
       .select(
         `*, home:teams!playoff_games_home_team_id_fkey(name),
          away:teams!playoff_games_away_team_id_fkey(name),
-         venue:venues(name),
+         venue:venues(name, has_lights),
          winner:teams!playoff_games_winner_id_fkey(name)`,
       )
       .eq("playoff_id", playoffId)
@@ -462,15 +496,34 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
       home_team_name: (g.home as { name?: string } | null)?.name ?? null,
       away_team_name: (g.away as { name?: string } | null)?.name ?? null,
       venue_name: (g.venue as { name?: string } | null)?.name ?? null,
+      venue_has_lights: (g.venue as { has_lights?: boolean } | null)?.has_lights ?? null,
       winner_name: (g.winner as { name?: string } | null)?.name ?? null,
       home_score: (g.home_score as number | null) ?? null,
       away_score: (g.away_score as number | null) ?? null,
     }));
     setGames(rows);
+    const { data: div } = await supabase
+      .from("divisions")
+      .select("game_duration:settings->game_duration")
+      .eq("id", divisionId)
+      .maybeSingle();
+    setRawDuration((div as { game_duration?: unknown } | null)?.game_duration);
     setLoading(false);
-  }, [playoffId]);
+  }, [playoffId, divisionId]);
 
   useEffect(() => { void loadGames(); }, [loadGames]);
+
+  const flagOf: FlagOf = (g) =>
+    g.scheduled_date && g.start_time
+      ? daylight.flag({
+          date: g.scheduled_date,
+          startTime: g.start_time,
+          rawDuration,
+          venue: g.venue_id ? { has_lights: g.venue_has_lights === true } : null,
+          isAway: false,
+          status: g.status,
+        })
+      : null;
 
   const labelOf: LabelOf = (g, side) =>
     slotName(side === "home" ? g.home_team_name : g.away_team_name, g, side, games, format);
@@ -521,6 +574,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
           </p>
         </div>
       )}
+      {daylight.state && <DaylightStatusLine state={daylight.state} />}
       {/* Header + view toggle */}
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-[#0C1F3F]">{divisionName}</p>
@@ -551,6 +605,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
               idx={i}
               isChampionship={g.round === championshipRound}
               labelOf={labelOf}
+              flagOf={flagOf}
               onEnterResult={() => setActiveGame(g)}
               onEdit={() => setEditingGame(g)}
             />
@@ -563,6 +618,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
               games={games}
               championshipRound={championshipRound}
               labelOf={labelOf}
+              flagOf={flagOf}
               onEnterResult={setActiveGame}
               onEdit={setEditingGame}
             />
@@ -571,6 +627,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
               rounds={rounds}
               championshipRound={championshipRound}
               labelOf={labelOf}
+              flagOf={flagOf}
               onEnterResult={setActiveGame}
               onEdit={setEditingGame}
             />
