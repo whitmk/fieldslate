@@ -9,8 +9,8 @@
 // WALL-CLOCK TIMES. `scheduled_at` is local time with a literal +00 — read by
 // substring, never parsed as an instant (house rule, game-time.ts).
 
-import { getRoundOrder } from "@/lib/playoffs/advancement";
-import { singleElimFirstNumber } from "@/lib/playoffs/bracket-plan";
+import type { GameRow } from "@/lib/playoffs/advancement";
+import { emptySlotLabel } from "@/lib/playoffs/bracket-labels";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   gameStatusDisplay,
@@ -128,25 +128,25 @@ export function playoffRoundName(round: string): string {
   return round;
 }
 
-/** The label for an empty slot. Single elimination only: the slot's feeder is
- *  the previous round's game at position 2q (home) / 2q+1 (away), numbered
- *  positionally (bracket-plan.ts). A feeder that does not exist (a bye) or any
- *  other format → "TBD"; we never guess a source. */
+/** The label for an empty slot: "Winner of Game N" or "TBD". No rule of its
+ *  own — it maps the public rows onto the shared one (emptySlotLabel →
+ *  singleElimFeeder → singleElimTarget in advancement.ts), the same rule that
+ *  moves a winner and labels the in-app and printed brackets. A feeder that
+ *  does not exist (a bye) or any other format → "TBD"; we never guess. */
 export function openSlotLabel(
   game: PublicPlayoffGame,
   side: "home" | "away",
   bracket: PublicPlayoffGame[],
 ): string {
-  if (game.format !== "single_elimination") return "TBD";
-  const rounds = [...new Set(bracket.map((g) => g.round))].sort((a, b) => getRoundOrder(a) - getRoundOrder(b));
-  const k = rounds.indexOf(game.round);
-  if (k <= 0) return "TBD";
-  const size = Math.pow(2, rounds.length);
-  const pos = game.game_number - singleElimFirstNumber(k, size);
-  if (pos < 0) return "TBD";
-  const feederNumber = singleElimFirstNumber(k - 1, size) + 2 * pos + (side === "home" ? 0 : 1);
-  const feeder = bracket.find((g) => g.round === rounds[k - 1] && g.game_number === feederNumber);
-  return feeder ? `Winner of Game ${feederNumber}` : "TBD";
+  const asRow = (g: PublicPlayoffGame): GameRow => ({
+    id: g.id,
+    round: g.round,
+    game_number: g.game_number,
+    home_team_id: g.home_team?.id ?? null,
+    away_team_id: g.away_team?.id ?? null,
+    winner_id: null,
+  });
+  return emptySlotLabel(asRow(game), side, bracket.map(asRow), game.format);
 }
 
 /** Every row the season can show: regular games + DATED playoff games, sorted

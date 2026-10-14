@@ -8,8 +8,10 @@
 // - F: for 4-, 6-, 8-, 11- (the live Majors shape), 12-, 16- and 32-team
 //   brackets, every slot's feeder (singleElimFeeder) is a game whose
 //   singleElimTarget is exactly that slot; every non-first-round slot is
-//   either fed or holds a bye team; and the public schedule's own label
-//   (openSlotLabel, view.ts — an older second copy) agrees on every slot.
+//   either fed or holds a bye team; and the public schedule's label
+//   (openSlotLabel, view.ts) answers the same on every slot — it delegates to
+//   emptySlotLabel since 2026-10-13 (its old positional copy is gone), so this
+//   is a WIRING check: a view.ts that stops delegating fails here.
 // - L: the labels, as literals — the Majors shape's "Winner of Game 2/6/8",
 //   the semifinals and final; round 1, round robin and double elimination
 //   read "TBD".
@@ -295,6 +297,9 @@ section("S", () => {
      && !/won \? "bg-/.test(view) && view.includes('name={labelOf(game, "away")}\n        away\n'), "[S5]", "the on-screen card is two-tone and never colours the winner's row");
   const result = read("src/components/playoffs/enter-result-modal.tsx");
   ok(result.includes('slotName(game.home_team_name, game, "home", allGames, format)') && !result.includes('?? "Home"'), "[S4]", "the result modal names empty slots with slotName");
+  const pub = read("src/lib/public-schedule/view.ts");
+  ok(pub.includes("return emptySlotLabel(asRow(game), side, bracket.map(asRow), game.format);") && !pub.includes("singleElimFirstNumber"),
+    "[S6]", "the public page has no label arithmetic of its own");
 });
 
 for (const [name, n] of Object.entries(counters)) ok(n > 0, "[AV]", `counter ${name} is ${n}`);

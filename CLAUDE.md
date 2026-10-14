@@ -487,11 +487,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   winner AND the slot's team are both set and equal — `winner_id ===
   home_team_id` was true for an empty slot in an undecided game, which put a
   trophy (and the print's green highlight) on every TBD row.
-- **The public schedule page has an OLDER SECOND COPY of the label**
-  (`openSlotLabel`, `src/lib/public-schedule/view.ts`, positional arithmetic).
-  Left in place; `sim:bracket-print` [F3] requires the two to agree on every
-  slot of 4/6/8/11/12/16/32-team brackets. Converting it to `singleElimFeeder`
-  is a safe follow-up.
+- **The public schedule page uses the SAME rule** (2026-10-13):
+  `openSlotLabel` (`src/lib/public-schedule/view.ts`) maps its rows onto
+  `GameRow` and calls `emptySlotLabel`; its old positional copy is gone.
+  `sim:public-schedule` P1–P6 still pin its literals; `sim:bracket-print` [F3]
+  is the wiring check (the page answers the same on every slot of 4–32-team
+  brackets) and [S6] fails if label arithmetic reappears in view.ts.
 - **The print: `src/lib/playoffs/bracket-print.ts` (pure HTML builders).** The
   export modal only opens a window around `printDocument(…)`. Single
   elimination is a tree laid out by BRACKET POSITION (`singleElimPosition`),

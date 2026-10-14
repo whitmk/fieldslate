@@ -24,7 +24,7 @@ const MUTANTS: Mutant[] = [
     id: "BP3", what: "label drifts: every empty slot reads TBD", file: LABELS,
     find: "  return feeder ? `Winner of Game ${feeder.game_number}` : \"TBD\";",
     replace: "  return feeder ? \"TBD\" : \"TBD\";",
-    expect: "F3",
+    expect: "L1",
   },
   {
     id: "BP4", what: "label ignores the format", file: LABELS,
@@ -116,6 +116,12 @@ const MUTANTS: Mutant[] = [
     replace: "${won ? \"bg-[#22C55E]/5\" : away ? AWAY_ROW_BG : \"bg-white\"}",
     expect: "S5",
   },
+  {
+    id: "BP19", what: "the public page stops using the shared rule", file: "src/lib/public-schedule/view.ts",
+    find: "  return emptySlotLabel(asRow(game), side, bracket.map(asRow), game.format);",
+    replace: "  return asRow(game) && \"TBD\";",
+    expect: "F3",
+  },
 ];
 
 runMutants({
@@ -140,3 +146,8 @@ runMutants({
 // their own assertion:
 //   BP14 → [P4]  BP15 → [P4]  BP16 → [G2]  BP17 → [G1]  BP18 → [S5];
 //   BP1–BP13 unchanged.
+// 2026-10-13 — third run (public page delegates to the shared rule): 570
+// checks × 3 zones. BP3 now expected at [L1] — F3 compares the shared rule
+// with the public page's delegation, so a drift in the rule moves both sides
+// and the literals catch it. BP19 added (view.ts stops delegating → [F3]).
+// 19/19 KILLED at their own assertion.
