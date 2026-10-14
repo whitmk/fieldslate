@@ -1,4 +1,5 @@
 // Harness for the practice field calculator's math: src/lib/practice-planner/
+// (plus the shared sunset + city list in src/lib/sun/, moved there 2026-10-14)
 // — the pure module the public page (/tools/practice-field-calculator) calls,
 // and that a later in-app version must reuse.
 //
@@ -33,6 +34,7 @@
 //   F10 packing sort: narrowest window first                 ← PP12
 //   K   the example league (the mockup's known answers)
 //   S   sunset, Santa Rosa                                   ← PP5 (S2)
+//       + the shared city list: pinned ids, no fallback, zones ← PP20 (S8), PP19 (S9), PP21 (S10)
 //   D   daylight: from / until / never / ok / between / gap  ← PP15 (D1), PP10 (D2), PP11 (D3)
 //   L   daylight is judged at the practices' ACTUAL end       ← PP13 (L1)
 //   W   warnings; W5 the never wording                      ← PP16 (W5)
@@ -45,8 +47,11 @@
 
 import { computeMode, distribute } from "@/lib/practice-planner/plan";
 import { busiestLabel, computePlan, requestText } from "@/lib/practice-planner/report";
-import { daylightFor, sunsetMinutes, type DaylightResult } from "@/lib/practice-planner/sunset";
-import { cityById, US_CITIES } from "@/lib/practice-planner/us-cities";
+import { daylightFor, sunsetMinutes, type DaylightResult } from "@/lib/sun/sunset";
+import { cityById, cityByIdOrNull, cityTimezone, US_CITIES } from "@/lib/sun/us-cities";
+import { ORG_TIMEZONES } from "@/lib/calendar/timezones";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { EXAMPLE_LEAGUE } from "@/lib/practice-planner/example-league";
 import { fmtDate, formatDayList, parseIsoDate } from "@/lib/practice-planner/format";
 import type { DivisionInput, ModeResult, PlannerInput } from "@/lib/practice-planner/types";
@@ -215,6 +220,16 @@ section("S", () => {
   ok(ids.size === US_CITIES.length, "[S5] city ids unique");
   ok(new Set(US_CITIES.map((c) => c.state)).size === 51, "[S6] 50 states + DC");
   ok(ids.has("ca-santa-rosa") && ids.has("ca-sacramento"), "[S7] Santa Rosa and Sacramento listed");
+  // A league STORES a city id (daylight flags), so the list may only GROW: every
+  // pinned id must still exist. Adding a city adds an id; append it to the pin.
+  const pinned: string[] = JSON.parse(readFileSync(join(__dirname, "fixtures", "sun-city-ids.json"), "utf8"));
+  const missing = pinned.filter((id) => !ids.has(id));
+  ok(pinned.length >= 142 && missing.length === 0, "[S8] pinned city ids all still exist (additions only)", missing.join(", "));
+  // A stored key that no longer exists is "no city" — never the calculator's Sacramento fallback.
+  ok(cityByIdOrNull("xx-nowhere") === null && cityByIdOrNull(null) === null && cityByIdOrNull("ca-santa-rosa")?.name === "Santa Rosa", "[S9] cityByIdOrNull: unknown → null");
+  const zones = new Set(ORG_TIMEZONES.map((z) => z.id));
+  const unmapped = US_CITIES.filter((c) => !zones.has(cityTimezone(c) ?? "")).map((c) => c.id);
+  ok(unmapped.length === 0 && cityTimezone(cityById("az-phoenix")) === "America/Phoenix" && cityTimezone(cityById("co-denver")) === "America/Denver", "[S10] every city maps to a league timezone", unmapped.join(", "));
 });
 
 // ── D: daylight, Sacramento ─────────────────────────────────────────────
@@ -438,3 +453,9 @@ process.exit(failures ? 1 : 0);
 // - Only literal fixed in the harness itself: W3's spring date. I guessed
 //   May 3; sunset in Sacramento gains about a minute a day from 7:58pm on
 //   May 1, so 8pm first holds on May 4. The code was right.
+// 2026-10-14, shared sun module (daylight flags): sunset.ts and us-cities.ts
+// moved to src/lib/sun/ (one copy, imported by the calculator AND
+// src/lib/daylight). PP5/PP10/PP11/PP15 now target src/lib/sun/sunset.ts and
+// die where they did. New in S: S8 pins the city ids (a league stores one;
+// additions only) ← PP20; S9 cityByIdOrNull never falls back ← PP19; S10
+// every city maps to one of the seven league timezones ← PP21. 64 checks.

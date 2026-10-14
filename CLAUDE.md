@@ -363,8 +363,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   footer only (the headers are homepage anchors), in the sitemap and llms.txt.
   WebApplication JSON-LD, free, deliberately NO ratings (same call as the
   testimonial).
-- **ALL math is `src/lib/practice-planner/` — pure TypeScript, no React, no
-  DOM, no clock.** The page only renders its numbers and sentences VERBATIM.
+- **ALL math is `src/lib/practice-planner/` (plus the shared sunset + city
+  list in `src/lib/sun/`) — pure TypeScript, no React, no DOM, no clock.** The page only renders its numbers and sentences VERBATIM.
   A later in-app version (saved plans per season) must call this SAME module,
   never a copy. Class strings never go in it (Tailwind doesn't scan `src/lib`).
 - **The approved mockup's script is the source of truth**
@@ -388,6 +388,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   142 curated cities, with the standard offset and DST flag PER CITY (states
   span zones; Arizona and Hawaii have no DST). Default city Sacramento; Santa
   Rosa stays in the list and in the harness. No geolocation, no external API.
+  **It lives in `src/lib/sun/` (moved 2026-10-14) because the in-app daylight
+  flags read the SAME `sunset.ts` / `us-cities.ts` — one copy, never fork it.**
+  A league STORES a city id, so ids are stable keys: the list may only GROW
+  (sim [S8] pins `scripts/sim/fixtures/sun-city-ids.json`), and a stored id is
+  read with `cityByIdOrNull` — `cityById`'s Sacramento fallback is for the
+  calculator only.
 - **The first render is deterministic** (fixed example league, fixed ids, no
   clock, no `toLocale*`, no `localeCompare`) so server and browser markup match.
 - **Print uses `.fieldslate-print-region`** (no shared print CSS changed), so
@@ -399,11 +405,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Day lists go through `formatDayList`** (three or more in a row → "Mon–Fri",
   otherwise listed) and the busiest night through `busiestLabel` (one night →
   "Monday", a tie → the day list). Never hand-format a day list.
-- **Harness: `npm run sim:practice-planner`** (61 checks × 3 zones, 9
+- **Harness: `npm run sim:practice-planner`** (64 checks × 3 zones, 9
   anti-vacuity counters: the example league's 6/14, 2/4, 2/3; Santa Rosa
   sunsets ±3 min; every daylight outcome pinned AND mutant-killed: from D1,
   until D2, never D3 + its wording W5; day lists and busiest-night ties N) +
-  `:mutants` (18, each killed first at
+  `:mutants` (21, each killed first at
   its own assertion). Every F fixture states its real AND mutated answer by
   hand — confirm a new fixture separates them before trusting its mutant.
 

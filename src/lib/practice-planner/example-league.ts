@@ -5,7 +5,7 @@
 // would be a render-path clock read (a hydration mismatch). They need bumping
 // before spring 2028 — see CLAUDE.md "Open items".
 
-import { DEFAULT_CITY_ID } from "./us-cities";
+import { DEFAULT_CITY_ID } from "@/lib/sun/us-cities";
 import type { DivisionInput, PlannerInput } from "./types";
 
 const WEEKDAYS = [0, 1, 2, 3, 4];

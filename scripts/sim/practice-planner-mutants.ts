@@ -6,9 +6,10 @@ import { runMutants, type Mutant } from "./mutant-runner";
 
 const PLAN = "src/lib/practice-planner/plan.ts";
 const CONSTANTS = "src/lib/practice-planner/constants.ts";
-const SUNSET = "src/lib/practice-planner/sunset.ts";
+const SUNSET = "src/lib/sun/sunset.ts";
 const REPORT = "src/lib/practice-planner/report.ts";
 const FORMAT = "src/lib/practice-planner/format.ts";
+const CITIES = "src/lib/sun/us-cities.ts";
 
 const MUTANTS: Mutant[] = [
   {
@@ -118,6 +119,24 @@ const MUTANTS: Mutant[] = [
     find: "    if (j - i >= 2) parts.push(`${DAY_SHORT[sorted[i]]}–${DAY_SHORT[sorted[j]]}`);",
     replace: "    if (false) parts.push(\"\");",
     expect: "N1",
+  },
+  {
+    id: "PP19", what: "an unknown stored city falls back to Sacramento", file: CITIES,
+    find: "  return US_CITIES.find((c) => c.id === id) ?? null;",
+    replace: "  return cityById(id);",
+    expect: "S9",
+  },
+  {
+    id: "PP20", what: "a listed city renamed (its stored id orphaned)", file: CITIES,
+    find: '["Yakima", 46.6, -120.51, -8]',
+    replace: '["Yakima Valley", 46.6, -120.51, -8]',
+    expect: "S8",
+  },
+  {
+    id: "PP21", what: "a no-DST Mountain city mapped to Denver", file: CITIES,
+    find: '    case -7: return city.dst ? "America/Denver" : "America/Phoenix";',
+    replace: '    case -7: return "America/Denver";',
+    expect: "S10",
   },
 ];
 

@@ -14,7 +14,7 @@ import { DAY_LONG, fieldTypeLabel } from "@/lib/practice-planner/constants";
 import { fmtDate, fmtInt, fmtTime, parseIsoDate } from "@/lib/practice-planner/format";
 import { EXAMPLE_LEAGUE, NEW_DIVISION } from "@/lib/practice-planner/example-league";
 import { busiestLabel, computePlan, requestText } from "@/lib/practice-planner/report";
-import { STATES_SORTED, STATE_NAMES, cityById, citiesInState } from "@/lib/practice-planner/us-cities";
+import { STATES_SORTED, STATE_NAMES, cityById, citiesInState } from "@/lib/sun/us-cities";
 import type { DivisionInput, ModeResult, PlannerInput, SpreadMode } from "@/lib/practice-planner/types";
 import { DivisionRow, NumberField, type DivisionDraft } from "./division-row";
 import { NightBoard } from "./night-board";

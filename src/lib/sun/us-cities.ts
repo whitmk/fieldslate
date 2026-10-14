@@ -11,6 +11,12 @@
 //
 // Santa Rosa, CA is the mockup's location and the harness's known answers;
 // Sacramento, CA is the page default (DEFAULT_CITY_ID).
+//
+// SHARED (2026-10-14): the practice field calculator AND the in-app daylight
+// flags read this list. A league STORES a city id (profiles.sunset_city), so
+// an id is a stable key: it is derived from the name below, and renaming or
+// removing a city would orphan every saved league. The harness pins the id
+// list (scripts/sim/fixtures/sun-city-ids.json) — additions only.
 
 export type UsCity = {
   id: string;
@@ -143,7 +149,34 @@ export function citiesInState(state: string): UsCity[] {
   return US_CITIES.filter((c) => c.state === state).sort((a, b) => byText(a.name, b.name));
 }
 
-/** The city for an id; an unknown id falls back to the default city. */
+/** The city for an id; an unknown id falls back to the default city.
+ *  For the CALCULATOR only — a stored league city must use cityByIdOrNull,
+ *  or a key that no longer exists would quietly read as Sacramento. */
 export function cityById(id: string): UsCity {
   return US_CITIES.find((c) => c.id === id) ?? US_CITIES.find((c) => c.id === DEFAULT_CITY_ID)!;
+}
+
+/** The city for a stored id, or null when the id is missing or unknown —
+ *  never a fallback. Daylight flags treat null as "no city": no flags. */
+export function cityByIdOrNull(id: string | null | undefined): UsCity | null {
+  if (typeof id !== "string") return null;
+  return US_CITIES.find((c) => c.id === id) ?? null;
+}
+
+/**
+ * The league timezone (one of the seven `profiles.timezone` names,
+ * src/lib/calendar/timezones.ts) a city's clock matches, from its standard
+ * offset and whether it observes daylight saving. Every listed city maps to
+ * one; null only for a city added later outside those zones.
+ */
+export function cityTimezone(city: UsCity): string | null {
+  switch (city.utcOffset) {
+    case -5: return city.dst ? "America/New_York" : null;
+    case -6: return city.dst ? "America/Chicago" : null;
+    case -7: return city.dst ? "America/Denver" : "America/Phoenix";
+    case -8: return city.dst ? "America/Los_Angeles" : null;
+    case -9: return city.dst ? "America/Anchorage" : null;
+    case -10: return city.dst ? null : "Pacific/Honolulu";
+    default: return null;
+  }
 }

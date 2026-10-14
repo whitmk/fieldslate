@@ -5,6 +5,10 @@
 // arithmetic, so the host's timezone never leaks in (the harness runs under
 // three zones). The city carries its own standard offset and whether it
 // observes DST — Arizona and Hawaii don't.
+//
+// SHARED (2026-10-14): the practice field calculator (src/lib/practice-planner)
+// and the in-app daylight flags (src/lib/daylight) both import this file. One
+// copy; never fork it.
 
 import type { UsCity } from "./us-cities";
 

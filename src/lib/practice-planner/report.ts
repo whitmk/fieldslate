@@ -17,9 +17,9 @@
 import { DAY_LONG, fieldTypeLabel } from "./constants";
 import { fmtDate, fmtTime, formatDayList, isIsoDate, parseIsoDate, toMinutes } from "./format";
 import { computeMode, countedPerWeek, divisionIsActive, fieldTypesInUse, normalizeDays } from "./plan";
-import { daylightFor, sunsetMinutes } from "./sunset";
+import { daylightFor, sunsetMinutes } from "@/lib/sun/sunset";
 import type { DivisionInput, FieldNeed, FieldTypeId, ModeResult, PlannerInput, SpreadMode } from "./types";
-import { cityById } from "./us-cities";
+import { cityById } from "@/lib/sun/us-cities";
 
 const DAY_MS = 864e5;
 
