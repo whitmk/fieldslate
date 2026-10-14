@@ -27,8 +27,8 @@ import {
 const CHIP_AFTER = "border-amber-300 bg-amber-100 text-amber-900";
 const CHIP_NEAR = "border-amber-200 bg-amber-50 text-amber-800";
 
-/** "52 min after sunset" on a row, card, popover or panel row; the bracket
- *  variant reads "Ends 5 min before sunset". */
+/** The chip on a row, card, popover or panel row (daylightChipText); the
+ *  bracket variant adds "Ends" (daylightBracketChipText). */
 export function DaylightChip({ flag, variant = "row" }: { flag: DaylightFlag; variant?: "row" | "bracket" }) {
   const text = variant === "bracket" ? daylightBracketChipText(flag) : daylightChipText(flag);
   // The bracket card's band is a fixed 16px line (SCREEN_TREE): no border, no

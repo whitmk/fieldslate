@@ -62,6 +62,9 @@
 --   V1    a member sets has_lights on their own field; it reads back true
 --   V2    a non-member's update of that field changes zero rows
 --   V3    a field inserted without has_lights reads false
+--   K1    LEAK: no public get_*_by_token function body (comments stripped)
+--         names has_lights, sunset_city or daylight_flags_enabled — the live
+--         twin of sim:daylight-leaks [D1]
 --
 -- MUTANTS — each in its own rolled-back block (a rewrite that changes no
 -- text is MUTANT_NOOP, never a kill). KILLED only if the FIRST failure is the
@@ -301,6 +304,15 @@ begin
     select has_lights into v_lights from public.venues where id = fx.v_new;
     if v_lights is distinct from false then
       v_fails := array_append(v_fails, format('V3: new field lights = %s', v_lights));
+    end if;
+
+    -- ── K1 ──────────────────────────────────────────────────────────────────
+    select count(*) into v_n
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname like 'get\_%\_by\_token'
+       and regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ '(has_lights|sunset_city|daylight_flags_enabled)';
+    if v_n <> 0 then
+      v_fails := array_append(v_fails, format('K1: %s token function(s) name a daylight column', v_n));
     end if;
   exception when others then
     v_fails := array_append(v_fails, 'CRASH: ' || sqlstate || ' ' || sqlerrm);

@@ -126,7 +126,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 ## Database & migrations
 
 - Migrations live in `supabase/migrations/` (numbered `00NN_name.sql`).
-  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") APPLIED 2026-10-08 21:31 UTC, catalog `20261008213156`**, verbatim from the repo file after a rolled-back proof; md5(prosrc) `bab8adef7841de9abe9709854e900b28` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Its UTC-today mutant (MU3) still owes a run inside 00:00–10:00 UTC against the applied function — applied first by the founder's decision; a survivor means a follow-up migration. **0107 (playoff bracket delete + rebuild) APPLIED 2026-10-08 22:44 UTC, catalog `20261008224427`**, verbatim from the repo file after a rolled-back proof (green, 15/15 mutants); md5(prosrc) verified: `delete_playoff_bracket` `f628628e93de210df18a7869cdb85e0f`, `replace_playoff_games` `ae2a1f70a09a3396f398dc1bdca9fbba`; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. **0108 (playoff result enter + clear) APPLIED 2026-10-13 19:35 UTC, catalog `20261013193530`**, verbatim from the repo file after a rolled-back proof (run 2 green, 18/18 mutants at their own tag); md5(prosrc) verified: `enter_playoff_result` `a615f53400778f02d598421693265b64`, `clear_playoff_result` `919f1320b088b7077870e6c39ca86f74`, `playoff_single_elim_target` `0c2020ebf93bf2e870198f86702078b0`, `playoff_round_order` `abae907097f0761fd87873b2290b0c59`; both entry points SECURITY DEFINER with `search_path=public, pg_temp`, EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); both helpers callable by no role; leak check clean. See "Playoff results — enter and clear (0108)". Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
+  **Latest migration APPLIED: 0104 (snack shack shift notes + cash people, applied 2026-10-06 02:54 UTC, catalog `20261006025451`; md5(prosrc) verified against the repo file: `regenerate_snack_shack_shifts` `7881278e78eb8a513d0ae678f378f6a2`, `set_snack_shack_blocks_notes_attribution` `6190ad28b15a7a7cef1566230b75832d`).** 0102 is RESERVED by the parked `feat/game-change-alerts` branch and is NOT applied — the catalog goes 0101 → 0103 → 0104. **0105 (public league schedule) APPLIED 2026-10-08 18:28 UTC, catalog `20261008182811`**, verbatim from the repo file after a rolled-back proof (green 2026-10-08); md5(prosrc) verified: reader `42b8926dd2c0efb2555128b1693752d1`, `set_public_schedule_enabled` `a26e52df4e42e41c010d30685eb07cb9`, `reset_public_schedule_link` `847e50d16e5c53002cc551b99405c47b`; privileges verified per role, zero link rows and zero home parks at apply). **0106 (`record_game_played`, "Record where it was played") APPLIED 2026-10-08 21:31 UTC, catalog `20261008213156`**, verbatim from the repo file after a rolled-back proof; md5(prosrc) `bab8adef7841de9abe9709854e900b28` verified; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. Its UTC-today mutant (MU3) still owes a run inside 00:00–10:00 UTC against the applied function — applied first by the founder's decision; a survivor means a follow-up migration. **0107 (playoff bracket delete + rebuild) APPLIED 2026-10-08 22:44 UTC, catalog `20261008224427`**, verbatim from the repo file after a rolled-back proof (green, 15/15 mutants); md5(prosrc) verified: `delete_playoff_bracket` `f628628e93de210df18a7869cdb85e0f`, `replace_playoff_games` `ae2a1f70a09a3396f398dc1bdca9fbba`; EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); leak check clean. **0108 (playoff result enter + clear) APPLIED 2026-10-13 19:35 UTC, catalog `20261013193530`**, verbatim from the repo file after a rolled-back proof (run 2 green, 18/18 mutants at their own tag); md5(prosrc) verified: `enter_playoff_result` `a615f53400778f02d598421693265b64`, `clear_playoff_result` `919f1320b088b7077870e6c39ca86f74`, `playoff_single_elim_target` `0c2020ebf93bf2e870198f86702078b0`, `playoff_round_order` `abae907097f0761fd87873b2290b0c59`; both entry points SECURITY DEFINER with `search_path=public, pg_temp`, EXECUTE authenticated only (anon, service_role, dashboard_readonly and PUBLIC verified false); both helpers callable by no role; leak check clean. See "Playoff results — enter and clear (0108)". **0109 (daylight flags) is WRITTEN on `feat/daylight-flags` and NOT applied** (latest in the catalog on 2026-10-14: 0108); its rolled-back proof has not run. See "Daylight flags". Check `list_migrations` before numbering a new one; this file has been stale about the latest number before (2026-10-05). The repo files are the record, not the
   applicator — apply via the Supabase MCP/dashboard, and verify schema changes
   against the live catalog before writing code that depends on them.
 - **Apply migrations VERBATIM from the repo file, comments included.** The
@@ -412,6 +412,74 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `:mutants` (21, each killed first at
   its own assertion). Every F fixture states its real AND mutated answer by
   hand — confirm a new fixture separates them before trusting its mutant.
+
+## Daylight flags (admin-only, branch `feat/daylight-flags`, 2026-10-14)
+
+- **What it is.** A game on a field WITHOUT lights is flagged "After sunset"
+  if it ends after sunset and "Near sunset" if it ends within 20 minutes
+  before it (ending exactly at sunset, or exactly 20 before, is Near; 21
+  before is clear). Flags WARN, never block a save. Games only (practices
+  come with the planner). Mockup: `docs/mockups/daylight-flags.html`.
+- **ALL rules and words: `src/lib/daylight/flags.ts` (pure).** Surfaces render
+  its sentences VERBATIM and get flags only from `daylightFlag`,
+  `slotDaylightFlag` (pickers: no status/today) or `gamesRowDaylight` (a
+  `games` row). Render pieces: `src/components/daylight/daylight-pieces.tsx`;
+  client state: `useDaylight` (reads after mount — no render-path clock);
+  the one settings read: `src/lib/daylight/load.ts`.
+- **End = start + `durationFromSettings`** (the conflict notices' rule; 90 for
+  an unusable setting). Surfaces pass the division's RAW `game_duration`
+  (projected key `game_duration:settings->game_duration`), never a resolved
+  number and never the rainout modal's own `?? 90`. Playoff games use the
+  same rule (the bracket's division).
+- **Sunset** is the shared NOAA math in `src/lib/sun/` (also the calculator's),
+  for the league's city, in the CITY's clock, rounded to the minute ONCE
+  (`sunsetMinuteOn`) so a flag and a printed "Sunset 6:23 PM" can't disagree.
+  Game times are compared as wall clock with the city's clock; when the city's
+  zone differs from `profiles.timezone`, Settings warns
+  (`timezoneMismatchLine`) — nothing is converted.
+- **Never flagged:** a lit field (`venues.has_lights`), no field, an away
+  interleague game, a game dated before today in the LEAGUE's timezone
+  (org-today rule), any status but scheduled / pending_interleague /
+  reschedule_pending — so a rained-out game never is (its makeup is checked
+  when picked). No city / an unknown stored city / the toggle off → no flags;
+  every case but "off" shows ONE line saying why, and an unreadable setting
+  says "Couldn't check daylight", never silence.
+- **"Start by"** = the latest 5-minute start that carries NO flag
+  (sunset − 21 − duration, floored) — not the mockup's 4:20, which was Near.
+- **Storage (0109, NOT YET APPLIED):** `venues.has_lights` default FALSE (an
+  unmarked field is flagged — the safe direction; edited in the shared venue
+  editor, per-field payload); `profiles.sunset_city` (a key from the pinned
+  city list, CHECKed for shape only) + `daylight_flags_enabled` default TRUE,
+  protected by 0098 and written ONLY by `set_org_daylight` (SECURITY DEFINER,
+  `is_org_member`, EXECUTE authenticated only). **0109 must be applied before
+  this code reaches `main`** — the Schedule page, Settings and every picker
+  select the new columns.
+- **All plans** (decided 2026-10-14): a safety warning is not paywalled; the
+  paid surfaces (pickers Pro, bracket Elite) stay paid by their own gates.
+- **Surfaces:** Schedule list row + phone card (chip; tap → the game menu,
+  which opens with the explanation above Reschedule), calendar pill (dot) +
+  popover (chip + explanation) + per-day sunset, week grid (dot, sunset per
+  day header), `?daylight=1` filter (list/calendar/week only), Lights tag on
+  lit fields while flags are on; division panel (chip → explanation, sunset
+  per day); bracket cards and list rows (chip — inside the card's fixed 16px
+  field line, `SCREEN_TREE` unchanged); pickers (rainout/move slots and the
+  interleague picker: dot + sunset per date + notice when picked; manual
+  move, Record where it was played, Edit playoff game, Add Game: notice).
+  Settings → Daylight flags (state → city, toggle, mismatch warning).
+  NOT the dashboard cards (later).
+- **ADMIN-ONLY — the fence:** `npm run sim:daylight-leaks` (+ `:mutants`, 7):
+  no print / export / email / feed / token / public file imports the daylight
+  module or names a daylight field (77 files fenced), the division panel's
+  print slice reads none, the Schedule print gets the UNFILTERED games, no
+  `get_*_by_token` body names a 0109 column (live twin: the SQL proof's K1),
+  sentences only in `src/lib/daylight`, and every listed surface is wired.
+  A new outbound file belongs in its fence list.
+- **Harnesses:** `npm run sim:daylight` (73 checks × 3 zones, 7 counters;
+  `:mutants` 13, each killed at its own assertion — read its log: DL4 first
+  died early, a harness ordering fault). SQL proof:
+  `scripts/sim/daylight-flags-sim.sql` (+ build script; applies 0109 rolled
+  back in the "test" org; 18 assertions, 6 mutants; holds ACCESS EXCLUSIVE on
+  `venues` and `profiles` for the run — NOT YET RUN).
 
 ## Playoffs
 
