@@ -34,6 +34,7 @@
 //   Z  timezone mismatch: computed in the city, warned       ← DL11 (Z1)
 //   W  sentences, verbatim
 //   X  playoff cards from the mockup; picker slots
+//   G  a games-table row (gamesRowDaylight): lit tag only while on
 // then ANTI-VACUITY COUNTERS — a zero counter fails the run.
 //
 // The leak mutant (a flag reaching a public reader) lives in
@@ -51,10 +52,12 @@ import {
   daylightState,
   daylightStatusLine,
   fmtClock,
+  gamesRowDaylight,
   partsFromScheduledAt,
   slotDaylightFlag,
   sunsetLabel,
   sunsetMinuteOn,
+  sunsetTime,
   timezoneMismatchLine,
   type DaylightFlag,
   type DaylightGame,
@@ -291,6 +294,28 @@ section("X", () => {
   ok(slot("2026-11-07", "14:45")?.kind === "near", "[X6] Nov 7 2:45 PM slot: near dot");
   // A slot dated before today still gets its dot: the admin is choosing it now.
   ok(slot("2026-10-01", "17:15")?.kind === "after", "[X7] slots ignore today");
+});
+
+// ── G: a games-table row (Schedule page, division panel) ────────────────
+section("G", () => {
+  const row = (over: Record<string, unknown>) => ({
+    scheduled_at: "2026-10-22T17:15:00+00:00", status: "scheduled", is_away: false,
+    venue_id: "v1", venue: { has_lights: false }, ...over,
+  });
+  const g1 = gamesRowDaylight(row({}), 120, SANTA_ROSA, TODAY);
+  ok(g1.flag?.kind === "after" && g1.flag.minutes === 52 && !g1.lit, "[G1] games row: flagged, not lit", show(g1.flag));
+  const g2 = gamesRowDaylight(row({ venue: { has_lights: true } }), 120, SANTA_ROSA, TODAY);
+  ok(g2.flag === null && g2.lit, "[G2] lit field: no flag, Lights tag");
+  const g3 = gamesRowDaylight(row({ venue: { has_lights: true } }), 120, { kind: "off" }, TODAY);
+  ok(g3.flag === null && !g3.lit, "[G3] flags off: no Lights tag either");
+  const g4 = gamesRowDaylight(row({ is_away: true, venue_id: null, venue: null }), 120, SANTA_ROSA, TODAY);
+  ok(g4.flag === null && !g4.lit, "[G4] away row: nothing");
+  const g5 = gamesRowDaylight(row({ venue_id: null }), 120, SANTA_ROSA, TODAY);
+  ok(g5.flag === null, "[G5] a venue embed without a field id is no field");
+  const g6 = gamesRowDaylight(row({ venue: {} }), 120, SANTA_ROSA, TODAY);
+  ok(g6.flag?.kind === "after", "[G6] has_lights missing from the embed reads unlit (the column default)");
+  const sr = cityById("ca-santa-rosa");
+  ok(sunsetTime("2026-10-22", sr) === "6:23 PM", "[G7] sunsetTime");
 });
 
 // ── counters ────────────────────────────────────────────────────────────

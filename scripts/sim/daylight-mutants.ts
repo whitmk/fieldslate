@@ -81,6 +81,12 @@ const MUTANTS: Mutant[] = [
     replace: "  if (endMin >= sunsetMin) return { kind: \"after\"",
     expect: "B3",
   },
+  {
+    id: "DL14", what: "Lights tag shown while flags are off", file: FLAGS,
+    find: "  const lit = state.kind === \"on\" && !isAway && venue?.has_lights === true;",
+    replace: "  const lit = !isAway && venue?.has_lights === true;",
+    expect: "G3",
+  },
 ];
 
 runMutants({
