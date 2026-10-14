@@ -31,6 +31,9 @@ import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { occupancyWindow, type SlotOption, type SlotOverrides } from "@/lib/schedule/reschedule-slots";
 import { SlotExceptionChips, SlotOverrideToggles } from "@/components/schedule/slot-overrides";
+import { useDaylight } from "@/components/daylight/use-daylight";
+import { DaylightPickNotice, SlotDaylightDot } from "@/components/daylight/daylight-pieces";
+import { sunsetLabel } from "@/lib/daylight/flags";
 import {
   NOT_ATTEMPTED,
   buildResolvePicker,
@@ -106,7 +109,7 @@ async function loadPickerReads(game: ResolveEditGame): Promise<PickerReads> {
       : Promise.resolve({ data: null, error: { message: "game has no division" } }),
     supabase
       .from("venues")
-      .select("id, name, availability, availability_configured, location:locations(name)")
+      .select("id, name, availability, availability_configured, has_lights, location:locations(name)")
       .eq("id", venueId)
       .single(),
   ]);
@@ -229,6 +232,21 @@ export function ResolveEditModal({
   // division's dates and this one field, never by weekday). The rainout modal
   // holds the builder's params for the same reason.
   const [reads, setReads] = useState<PickerReads | null>(null);
+  // Daylight (admin-only): a dot on slots that would end after or near sunset
+  // at this field (if it has no lights), and the notice once one is picked.
+  // The flag resolves the division's RAW game_duration with the one rule.
+  const daylight = useDaylight({ leagueId: game.league_id });
+  const daylightRawDuration = (reads?.division.data?.settings as { game_duration?: unknown } | null | undefined)
+    ?.game_duration;
+  const daylightVenue = reads?.venue.data ? { has_lights: reads.venue.data.has_lights === true } : null;
+  const slotDaylight = (slot: SlotOption) =>
+    daylightVenue
+      ? daylight.slotFlag(
+          { date: slot.date, startTime: slot.isoString.substring(11, 16) },
+          daylightRawDuration,
+          daylightVenue,
+        )
+      : null;
 
   const buildWith = useCallback((r: PickerReads, o: SlotOverrides) => {
     setBuild(
@@ -474,6 +492,10 @@ export function ResolveEditModal({
               </p>
               <p className="mt-0.5 text-sm text-gray-500">{picked.venueName}</p>
             </div>
+            {(() => {
+              const f = slotDaylight(picked);
+              return f ? <DaylightPickNotice flag={f} fieldLabel={picked.venueName} /> : null;
+            })()}
             {errorBox}
             <div className="flex gap-3">
               <button
@@ -550,10 +572,13 @@ export function ResolveEditModal({
 
                   {Array.from(grouped.entries()).map(([date, daySlots]) => (
                     <div key={date}>
-                      <div className="bg-gray-50/70 px-6 py-2">
+                      <div className="flex items-baseline justify-between gap-2 bg-gray-50/70 px-6 py-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                           {fmtGameDate(date)}
                         </p>
+                        {daylight.state?.kind === "on" && (
+                          <p className="text-[11px] text-gray-400">{sunsetLabel(date, daylight.state.city)}</p>
+                        )}
                       </div>
                       <div className="divide-y divide-gray-50">
                         {daySlots.map((slot) => {
@@ -578,6 +603,10 @@ export function ResolveEditModal({
                                   </span>
                                 )}
                                 <SlotExceptionChips exceptions={slot.exceptions} />
+                                {(() => {
+                                  const f = slotDaylight(slot);
+                                  return f ? <SlotDaylightDot flag={f} /> : null;
+                                })()}
                               </span>
                               <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-300" />
                             </button>

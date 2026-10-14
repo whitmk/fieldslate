@@ -21,6 +21,8 @@ import { parseAvailability, type VenueAvailability } from "@/lib/venues/availabi
 import { qualifiedVenueLabel, byQualifiedVenueLabel } from "@/lib/venues/venue-label";
 import { durationFromSettings } from "@/lib/schedule/reschedule-slots";
 import { useDayOccupancy } from "./use-day-occupancy";
+import { useDaylight } from "@/components/daylight/use-daylight";
+import { DaylightPickNotice } from "@/components/daylight/daylight-pieces";
 import {
   fetchDivisionLocks,
   formatLockError,
@@ -39,12 +41,14 @@ type VenueRow = {
   name: string;
   availability: unknown;
   availability_configured: boolean | null;
+  has_lights: boolean;
   location: { name: string } | null;
 };
 
 type Venue = {
   id: string;
   label: string;
+  hasLights: boolean;
   availabilityConfigured: boolean;
   availability: VenueAvailability;
 };
@@ -54,6 +58,8 @@ type Ctx = {
   divisionName: string;
   playingDays: string[];
   durationMin: number;
+  /** The division's RAW game_duration — the daylight flag resolves it itself. */
+  rawDuration: unknown;
   bufferMin: number;
   blackoutDates: Set<string>;
 };
@@ -124,7 +130,7 @@ export function ManualMoveForm({
     const [venuesQ, divQ, blackoutQ] = await Promise.all([
       supabase
         .from("venues")
-        .select("id, name, availability, availability_configured, location:locations(name)")
+        .select("id, name, availability, availability_configured, has_lights, location:locations(name)")
         .eq("owner_id", ownerId),
       supabase.from("divisions").select("name, settings").eq("id", divisionId).single(),
       supabase.from("blackout_dates").select("date").eq("league_id", leagueId),
@@ -141,10 +147,11 @@ export function ManualMoveForm({
         label: qualifiedVenueLabel({ name: v.name, location: v.location }),
         availabilityConfigured: v.availability_configured === true,
         availability: parseAvailability(v.availability),
+        hasLights: v.has_lights === true,
       }))
       .sort(byQualifiedVenueLabel)
-      .map(({ id, label, availabilityConfigured, availability }) => ({
-        id, label, availabilityConfigured, availability,
+      .map(({ id, label, availabilityConfigured, availability, hasLights }) => ({
+        id, label, availabilityConfigured, availability, hasLights,
       }));
     const div = divQ.data as { name: string; settings: Record<string, unknown> | null };
     const s = div.settings ?? {};
@@ -155,6 +162,7 @@ export function ManualMoveForm({
       // Same fallback as the picker's own read (rainout-reschedule-modal).
       playingDays: Array.isArray(s.playing_days) ? (s.playing_days as string[]) : ["Sa", "Su"],
       durationMin: durationFromSettings(s),
+      rawDuration: s.game_duration,
       // Same fallback the picker's occupancy uses for a missing buffer.
       bufferMin: Number.isFinite(buffer) && buffer >= 0 ? buffer : 15,
       blackoutDates: new Set(
@@ -165,6 +173,13 @@ export function ManualMoveForm({
 
   const when = useMemo(() => parseManualDateTime(date, time), [date, time]);
   const venue = ctx?.venues.find((v) => v.id === venueId) ?? null;
+  // Daylight (admin-only): a notice when the chosen time ends after or near
+  // sunset on a field without lights. Never gates the save.
+  const daylight = useDaylight({ leagueId });
+  const daylightPick =
+    ctx && venue && /^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}/.test(time)
+      ? daylight.slotFlag({ date, startTime: time.substring(0, 5) }, ctx.rawDuration, { has_lights: venue.hasLights })
+      : null;
 
   // Day reads depend on (date, venue) only — a time change recomputes locally.
   const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
@@ -359,6 +374,8 @@ export function ManualMoveForm({
           </div>
         )
       )}
+
+      {daylightPick && venue && <DaylightPickNotice flag={daylightPick} fieldLabel={venue.label} />}
 
       {saveError && (
         <div className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2.5">

@@ -109,6 +109,8 @@ export type PickerVenueRow = {
   name: string;
   availability: unknown;
   availability_configured: boolean;
+  /** 0109 — read for the admin-only daylight dot; the picker ignores it. */
+  has_lights?: boolean;
   location: { name: string } | null;
 };
 

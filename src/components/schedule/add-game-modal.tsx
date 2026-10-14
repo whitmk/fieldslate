@@ -20,6 +20,8 @@ import {
   parseAvailability,
 } from "@/lib/venues/availability";
 import { qualifiedVenueLabel, byQualifiedVenueLabel } from "@/lib/venues/venue-label";
+import { useDaylight } from "@/components/daylight/use-daylight";
+import { DaylightPickNotice } from "@/components/daylight/daylight-pieces";
 import {
   CONFLICT_TYPE_LABELS,
   insertConflictOverrides,
@@ -49,7 +51,7 @@ export type AddGameSeason = { id: string; name: string };
 export type AddGameDivision = { id: string; name: string; league_id: string };
 export type AddGameTeam = { id: string; name: string; division_id: string };
 
-type VenueOption = { id: string; name: string; location: { name: string } | null };
+type VenueOption = { id: string; name: string; has_lights?: boolean; location: { name: string } | null };
 
 const inputClasses =
   "h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-[#0C1F3F] focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400";
@@ -172,7 +174,7 @@ export function AddGameModal({
       }
       const { data } = await supabase
         .from("venues")
-        .select("id, name, location:locations(name)")
+        .select("id, name, has_lights, location:locations(name)")
         .eq("owner_id", ownerId)
         .order("name");
       if (!cancelled) {
@@ -187,6 +189,37 @@ export function AddGameModal({
       cancelled = true;
     };
   }, [firstLeagueId]);
+
+  // Daylight (admin-only): a notice when the chosen time ends after or near
+  // sunset at a field without lights. Never blocks the save. The division's
+  // RAW game_duration (projected key) — the flag resolves it with the one rule.
+  const daylight = useDaylight({ leagueId: seasonId || firstLeagueId || null });
+  const [daylightRawDuration, setDaylightRawDuration] = useState<unknown>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    setDaylightRawDuration(undefined);
+    if (!divisionId) return;
+    void (async () => {
+      const { data } = await createClient()
+        .from("divisions")
+        .select("game_duration:settings->game_duration")
+        .eq("id", divisionId)
+        .maybeSingle();
+      if (!cancelled) setDaylightRawDuration((data as { game_duration?: unknown } | null)?.game_duration);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [divisionId]);
+  const daylightVenue = venues.find((v) => v.id === venueId) ?? null;
+  const daylightPick =
+    daylightVenue && /^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}/.test(time)
+      ? daylight.slotFlag(
+          { date, startTime: time.substring(0, 5) },
+          daylightRawDuration,
+          { has_lights: daylightVenue.has_lights === true },
+        )
+      : null;
 
   const showSeasonField = !lockedDivisionId && seasons.length > 1;
   // Lock state for every division in the selected season, refetched when the
@@ -664,6 +697,10 @@ export function AddGameModal({
               ))}
             </select>
           </div>
+
+          {daylightPick && daylightVenue && (
+            <DaylightPickNotice flag={daylightPick} fieldLabel={qualifiedVenueLabel(daylightVenue)} />
+          )}
 
           {preferNotices.length > 0 && (
             <div className="flex flex-col gap-2">

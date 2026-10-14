@@ -35,6 +35,9 @@ import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { SlotExceptionChips, SlotOverrideToggles } from "@/components/schedule/slot-overrides";
 import { RescheduleModalHeader } from "./reschedule-modal-header";
 import { ManualMoveForm } from "./manual-move-form";
+import { useDaylight } from "@/components/daylight/use-daylight";
+import { DaylightPickNotice, SlotDaylightDot } from "@/components/daylight/daylight-pieces";
+import { sunsetLabel } from "@/lib/daylight/flags";
 import { manualEntryAvailable } from "@/lib/schedule/manual-move";
 import { withLogSource } from "@/lib/schedule/log-source";
 import {
@@ -263,6 +266,13 @@ export function RainoutRescheduleModal({
   const [builderParams, setBuilderParams] = useState<BuildAvailableSlotsParams | null>(null);
   const [overrides, setOverrides] = useState<SlotOverrides>({});
   const [divisionName, setDivisionName] = useState("this division");
+  // Daylight (admin-only): a dot on slots that would end after or near
+  // sunset at a field without lights, and the notice once one is picked.
+  // The division's RAW game_duration goes to the flag, which resolves it with
+  // the one rule — never this modal's own `?? 90` parse.
+  const daylight = useDaylight({ leagueId });
+  const [rawGameDuration, setRawGameDuration] = useState<unknown>(undefined);
+  const [venueLights, setVenueLights] = useState<Record<string, boolean>>({});
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -349,7 +359,7 @@ export function RainoutRescheduleModal({
     const { data: dvRows } = await supabase
       .from("division_venues")
       .select(
-        "venue_id, venue:venues!inner(name, availability, availability_configured, location:locations(name))",
+        "venue_id, venue:venues!inner(name, availability, availability_configured, has_lights, location:locations(name))",
       )
       .eq("division_id", divisionId)
       .eq("venue.availability_configured", true);
@@ -360,6 +370,7 @@ export function RainoutRescheduleModal({
         name: string;
         availability: unknown;
         availability_configured: boolean;
+        has_lights: boolean;
         location: { name: string } | null;
       } | null;
     };
@@ -376,6 +387,8 @@ export function RainoutRescheduleModal({
         : r.venue_id;
       venueAvailability[r.venue_id] = r.venue?.availability ?? {};
     }
+    setVenueLights(Object.fromEntries(venueRows.map((r) => [r.venue_id, r.venue?.has_lights === true])));
+    setRawGameDuration(s.game_duration);
 
     if (!venueIds.length) {
       setLoadError(
@@ -709,6 +722,14 @@ export function RainoutRescheduleModal({
                 </p>
                 <p className="mt-0.5 text-sm text-gray-500">{picked.venueName}</p>
               </div>
+              {(() => {
+                const f = daylight.slotFlag(
+                  { date: picked.date, startTime: picked.isoString.substring(11, 16) },
+                  rawGameDuration,
+                  { has_lights: venueLights[picked.venueId] === true },
+                );
+                return f ? <DaylightPickNotice flag={f} fieldLabel={picked.venueName} /> : null;
+              })()}
               <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Matchup</p>
                 <p className="mt-2 text-sm font-semibold text-[#0C1F3F]">
@@ -816,13 +837,22 @@ export function RainoutRescheduleModal({
               {/* Grouped by date */}
               {Array.from(grouped.entries()).map(([date, daySlots]) => (
                 <div key={date}>
-                  <div className="bg-gray-50/70 px-6 py-2">
+                  <div className="flex items-baseline justify-between gap-2 bg-gray-50/70 px-6 py-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                       {fmtGameDate(date)}
                     </p>
+                    {daylight.state?.kind === "on" && (
+                      <p className="text-[11px] text-gray-400">{sunsetLabel(date, daylight.state.city)}</p>
+                    )}
                   </div>
                   <div className="divide-y divide-gray-50">
-                    {daySlots.map((slot) => (
+                    {daySlots.map((slot) => {
+                      const dayFlag = daylight.slotFlag(
+                        { date: slot.date, startTime: slot.isoString.substring(11, 16) },
+                        rawGameDuration,
+                        { has_lights: venueLights[slot.venueId] === true },
+                      );
+                      return (
                       <button
                         key={`${slot.isoString}:${slot.venueId}`}
                         onClick={() => setPicked(slot)}
@@ -834,10 +864,12 @@ export function RainoutRescheduleModal({
                           </span>
                           <span className="text-sm font-medium text-[#0C1F3F]">{slot.venueName}</span>
                           <SlotExceptionChips exceptions={slot.exceptions} />
+                          {dayFlag && <SlotDaylightDot flag={dayFlag} />}
                         </div>
                         <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-300" />
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
