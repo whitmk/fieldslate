@@ -420,4 +420,27 @@ $h109$;
 --   (select count(*) from venues where name like 'ZZ109%') as fixtures_must_be_0;
 
 -- ── RUN LOG ─────────────────────────────────────────────────────────────────
--- (not yet run — the founder picks the time)
+-- 2026-10-14 ~16:29 UTC — against production, on the founder's go-ahead,
+-- "test" org fixtures only (SRALL test org owner as the non-member), rolled
+-- back. Before the run: 3 idle client backends, no open transaction.
+-- Run 1: GREEN.
+--   BASELINE failures (0): []
+--   MD1 membership gate removed            → KILLED, first failure [S6]
+--   MD2 EXECUTE granted to anon            → KILLED, first failure [P1]
+--   MD3 UPDATE (sunset_city) granted       → KILLED, first failure [P2] —
+--       and ONLY P2: D1 still held, the 0098 trigger refused the direct write
+--       (the second layer)
+--   MD4 has_lights defaults true           → KILLED, first failure [V3]
+--   MD5 function made SECURITY INVOKER     → KILLED, first failure [T1]
+--   MD6 sunset_city CHECK dropped          → KILLED, first failure [S4]
+--   prosrc md5 set_org_daylight: 0c203887a6630c4868da8df056c8cc73 — equal to
+--   the body computed from the repo file.
+-- Leak check after: function 0, columns 0, ZZ109 fixtures 0, temp tables 0.
+-- 0109 APPLIED 2026-10-14 16:30 UTC (catalog 20261014163026), verbatim from
+-- the repo file. Verified after apply: md5(prosrc) 0c203887a6630c4868da8df056c8cc73;
+-- SECURITY DEFINER, search_path=public, pg_temp; EXECUTE authenticated only
+-- (anon / service_role / dashboard_readonly / PUBLIC false); no UPDATE on
+-- sunset_city / daylight_flags_enabled for authenticated or anon; UPDATE on
+-- venues.has_lights for authenticated; 0 of 7 get_*_by_token bodies name a
+-- 0109 column (K1, live); 37 venues all unlit, every profile at defaults,
+-- no fixtures left.
