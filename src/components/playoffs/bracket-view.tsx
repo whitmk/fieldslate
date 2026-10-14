@@ -125,12 +125,7 @@ function GameCard({
           ) : (
             <p className="truncate italic text-amber-600">Game {game.game_number} · No date yet</p>
           )}
-          {/* Field, and the daylight chip on the same 16px line (the band's
-              height is SCREEN_TREE's — the chip must not grow it). */}
-          <div className="flex h-4 items-center gap-1">
-            <p className="min-w-0 flex-1 truncate text-gray-500">{game.venue_name ?? ""}</p>
-            {daylight && <DaylightChip flag={daylight} variant="bracket" />}
-          </div>
+          <p className="truncate text-gray-500">{game.venue_name ?? ""}</p>
         </div>
 
         <TeamRow
@@ -174,6 +169,16 @@ function GameCard({
           )}
         </div>
       </div>
+
+      {/* Daylight chip (admin-only) — BELOW the card like the champion banner,
+          so it never moves the rows and never hides the field name (the card
+          is 200px wide). A flagged game is never completed, so the two never
+          stack. */}
+      {daylight && (
+        <div className="mt-1 flex justify-center">
+          <DaylightChip flag={daylight} variant="bracket" />
+        </div>
+      )}
 
       {/* Champion banner — BELOW the card, so it never moves the rows the
           tree's lines point at. */}

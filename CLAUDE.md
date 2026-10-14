@@ -461,8 +461,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   popover (chip + explanation) + per-day sunset, week grid (dot, sunset per
   day header), `?daylight=1` filter (list/calendar/week only), Lights tag on
   lit fields while flags are on; division panel (chip → explanation, sunset
-  per day); bracket cards and list rows (chip — inside the card's fixed 16px
-  field line, `SCREEN_TREE` unchanged); pickers (rainout/move slots and the
+  per day); bracket cards and list rows (chip — on a card it sits BELOW the
+  card like the champion banner: a 200px card can't hold it beside a real
+  field name; `SCREEN_TREE` unchanged); pickers (rainout/move slots and the
   interleague picker: dot + sunset per date + notice when picked; manual
   move, Record where it was played, Edit playoff game, Add Game: notice).
   Settings → Daylight flags (state → city, toggle, mismatch warning).

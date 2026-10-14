@@ -31,8 +31,8 @@ const CHIP_NEAR = "border-amber-200 bg-amber-50 text-amber-800";
  *  bracket variant adds "Ends" (daylightBracketChipText). */
 export function DaylightChip({ flag, variant = "row" }: { flag: DaylightFlag; variant?: "row" | "bracket" }) {
   const text = variant === "bracket" ? daylightBracketChipText(flag) : daylightChipText(flag);
-  // The bracket card's band is a fixed 16px line (SCREEN_TREE): no border, no
-  // vertical padding there.
+  // The bracket chip sits in the 17px gap under a fixed-height card
+  // (SCREEN_TREE slotH − cardH): one 16px line, no border.
   const shape =
     variant === "bracket"
       ? "rounded px-1 leading-4"
