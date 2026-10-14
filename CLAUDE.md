@@ -237,12 +237,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   becomes a credit, never lowers the plan, and is flagged `needs_review`; a
   $100 upgrade that no longer fits is flagged only (no credit, no plan
   change). `create_league`: Free unchanged; a PAID league (comped included)
-  must use up a credit, else `cap_reached` + `reason: purchase_required`.
-  **After 0111, a comped league can create a season only from a `comp`
-  credit inserted by hand — COMPING-RUNBOOK.md.** Proof:
+  must use up a credit, else `cap_reached` + `reason: purchase_required`;
+  a COMPED league creates freely (no credit, no checkout, no limit). A
+  one-time backfill credits every paid, non-comped league that has never had
+  a season (exactly one on 2026-10-14: the paying Pro league, which paid at
+  signup). **Apply 0111 immediately before the new screens ship, not
+  earlier:** the old form answers `purchase_required` with its "plan limit …
+  Upgrade" email modal, which is not a clear message. Proof:
   `scripts/sim/season-purchase-sim.sql` (+ build script; rolled back in the
-  "test" org; 19 mutants). Run 2026-10-14: run 1 refused at compile (read
-  its RUN LOG), run 2 green, 19/19 killed at their own tag, leak check clean.
+  "test" org; 21 mutants; the run prints each function's md5 so the
+  hand-sent batch is matched to the file). Run 2026-10-14: run 1 refused at
+  compile (read its RUN LOG), run 2 green 19/19, run 3 (comped bypass +
+  backfill) green 21/21 at their own tag, md5s matched, leak check clean.
   UI not built — mockup `docs/mockups/add-season.html` awaits approval.
 - **`is_org_member` IS the admin gate, because every org member is an admin
   today.** If a non-admin member role (e.g. coach) is ever added,

@@ -88,8 +88,11 @@
 --   C-*       create_league: Free creates with nothing active; Free capped;
 --             paid without a credit → cap_reached + purchase_required (with a
 --             season active AND with none — the archive-everything hole);
---             paid with a credit (a comped league's 'comp' credit) creates
---             and uses it up, the next create needs another
+--             C-comped: a comped league creates freely, with a season active
+--             and with none, and no credit is touched; paid with a credit
+--             creates and uses it up, the next create needs another
+--   BF1       the backfill: every paid, non-comped league with no season at
+--             all holds exactly one unused credit (counter: leagues checked)
 --   R-*       RLS: members read their own league's purchases, not another's;
 --             no browser write
 --   G-*/S-*   EXECUTE per role on all four functions; table grants; RLS on;
@@ -117,6 +120,8 @@
 --   MU17 process: a stale $100 upgrade becomes a credit     → P-upgrade-stale
 --   MU18 process: an unmatched $100 upgrade raises the plan → P-unmatched-upgrade
 --   MU19 legacy: the paid-signup credit removed             → L5-credit
+--   MU20 create_league: the comped bypass removed           → C-comped
+--   MU21 the backfill's credits missing (deleted)           → BF1
 --
 -- NOT EXERCISED, stated: two create_league calls racing for one credit (FOR
 -- UPDATE SKIP LOCKED needs two sessions; one batch is one session); the
@@ -137,6 +142,18 @@
 --     table, no new functions, process_checkout_event still the 5-argument
 --     0071 body (md5 fb3b7eb4…), create_league unchanged (78b70490…), no
 --     H111 seasons or events, test/Test 2 profiles back to elite/comped.
+--   RUN 3 (2026-10-14, at review) — 0111 changed: comped leagues create
+--     freely in create_league (C-comped, MU20); 'comp' credits dropped; a
+--     one-time backfill credits every paid, non-comped league with no season
+--     (BF1, MU21 — it found exactly one league, the paying Pro league, which
+--     paid at signup and would otherwise have been refused its first season).
+--     The run now prints each created function's md5, so the hand-sent batch
+--     is proven to be the repo file: all four matched (attach 97bc5d48…,
+--     begin 3b92e7bc…, create_league 91749851…, process 87fbb719…).
+--     Baseline GREEN, zero failures, no zero counter (seasons_created 5,
+--     backfilled_leagues 1, the rest as run 2). MU1–MU21 → all KILLED at
+--     their own tag. AFTER MUTANTS: zero failures. Leak check clean, as run 2,
+--     plus the Pro league untouched (no seasons, no credit).
 
 -- check_function_bodies off (transaction-local): the assertion function
 -- names season_purchases, which the migration creates later in this batch.
@@ -278,6 +295,7 @@ declare
   v_credits  integer := 0;
   v_flagged  integer := 0;
   v_twins    integer := 0;
+  v_backfill integer := 0;
   v_res      text;
   v_j        jsonb;
   v_pid      uuid;
@@ -822,12 +840,36 @@ begin
     if sqlerrm <> 'H111_ROLLBACK' then v_fails := array_append(v_fails, 'CRASH-C-paid-none: ' || sqlerrm); end if;
   end;
 
-  -- A comped league's season: FieldSlate inserts a 'comp' credit, the
-  -- league's admin uses the form.
+  -- A comped league creates freely: with a season active and with none, and
+  -- an unused credit sitting there is NOT touched.
   begin
     perform pg_temp.h111_state(p_uid, p_active, 'elite', true, true);
     insert into public.season_purchases (org_id, kind, tier, plan_at_checkout, status, completed_at)
-    values (p_uid, 'comp', 'elite', 'elite', 'credited', now())
+    values (p_uid, 'signup', 'elite', 'free', 'credited', now())
+    returning id into v_pid;
+    v_res := pg_temp.h111_try('authenticated', p_uid, format(
+      'select public.create_league(%L::uuid, %L, %L, %L, %L::date, %L::date)::text',
+      p_uid, 'H111 Comped A', 'Baseball', 'Spring 2027', '2027-04-03', '2027-05-22'), true);
+    v_j := pg_temp.h111_json(v_res);
+    perform pg_temp.h111_state(p_uid, p_active, 'elite', true, false);
+    v_res := v_res || ' | none active: ' || pg_temp.h111_try('authenticated', p_uid, format(
+      'select public.create_league(%L::uuid, %L, %L, %L, %L::date, %L::date)::text',
+      p_uid, 'H111 Comped B', 'Baseball', 'Spring 2027', '2027-04-03', '2027-05-22'), true);
+    select * into v_row from public.season_purchases where id = v_pid;
+    if v_j -> 'row' is null or v_res not like '%none active: OK {"row"%'
+       or v_row.league_id is not null or v_row.credit_used_at is not null then
+      v_fails := array_append(v_fails, 'C-comped: ' || v_res);
+    else v_seasons := v_seasons + 1; end if;
+    raise exception 'H111_ROLLBACK';
+  exception when others then
+    if sqlerrm <> 'H111_ROLLBACK' then v_fails := array_append(v_fails, 'CRASH-C-comped: ' || sqlerrm); end if;
+  end;
+
+  -- A paid (not comped) league with a credit creates and uses it up.
+  begin
+    perform pg_temp.h111_state(p_uid, p_active, 'elite', false, true);
+    insert into public.season_purchases (org_id, kind, tier, plan_at_checkout, status, completed_at)
+    values (p_uid, 'signup', 'elite', 'free', 'credited', now())
     returning id into v_pid;
     v_res := pg_temp.h111_try('authenticated', p_uid, format(
       'select public.create_league(%L::uuid, %L, %L, %L, %L::date, %L::date)::text',
@@ -846,10 +888,24 @@ begin
     if sqlerrm <> 'H111_ROLLBACK' then v_fails := array_append(v_fails, 'CRASH-C-paid-credit: ' || sqlerrm); end if;
   end;
 
+  -- ══ BF: the one-time backfill ═════════════════════════════════════════
+  for t in
+    select p.id,
+           (select count(*) from public.season_purchases sp
+             where sp.org_id = p.id and sp.status = 'credited' and sp.league_id is null) as credits
+      from public.profiles p
+     where p.plan in ('pro', 'elite') and not p.comped
+       and not exists (select 1 from public.leagues l where l.owner_id = p.id)
+  loop
+    if t.credits <> 1 then
+      v_fails := array_append(v_fails, format('BF1: league %s… holds %s unused credits', left(t.id::text, 8), t.credits));
+    else v_backfill := v_backfill + 1; end if;
+  end loop;
+
   -- ══ R: RLS and browser writes ═════════════════════════════════════════
   begin
     insert into public.season_purchases (org_id, kind, tier, plan_at_checkout, status)
-    values (p_uid, 'comp', 'elite', 'elite', 'credited'), (p_other, 'comp', 'elite', 'elite', 'credited');
+    values (p_uid, 'signup', 'elite', 'free', 'credited'), (p_other, 'signup', 'elite', 'free', 'credited');
     v_res := pg_temp.h111_try('authenticated', p_uid, format(
       'select count(*)::text from public.season_purchases where org_id = %L', p_uid), true);
     if v_res <> 'OK 1' then v_fails := array_append(v_fails, 'R-own: ' || v_res); end if;
@@ -858,7 +914,7 @@ begin
     if v_res <> 'OK 0' then v_fails := array_append(v_fails, 'R-other: ' || v_res); end if;
     v_res := pg_temp.h111_try('authenticated', p_uid, format(
       'insert into public.season_purchases (org_id, kind, tier, plan_at_checkout, status) values (%L, %L, %L, %L, %L)',
-      p_uid, 'comp', 'elite', 'elite', 'credited'));
+      p_uid, 'signup', 'elite', 'free', 'credited'));
     if v_res not like 'ERR 42501 permission denied%' then v_fails := array_append(v_fails, 'R-insert: ' || v_res); end if;
     v_res := pg_temp.h111_try('authenticated', p_uid, format(
       'update public.season_purchases set league_id = null where org_id = %L', p_uid));
@@ -919,7 +975,8 @@ begin
       'seasons_created', v_seasons,
       'credits', v_credits,
       'flagged', v_flagged,
-      'legacy_twins_equal', v_twins));
+      'legacy_twins_equal', v_twins,
+      'backfilled_leagues', v_backfill));
 end;
 $fn$;
 
@@ -985,7 +1042,14 @@ begin
     end if;
   end loop;
 
-  v_out := format(
+  -- The md5 of every function the migration created, so the run can be
+  -- matched to the repo file (the batch is sent by hand).
+  v_out := (select string_agg(proname || '=' || md5(prosrc), ' ' order by proname)
+              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+             where n.nspname = 'public'
+               and proname in ('begin_season_purchase', 'attach_purchase_session',
+                               'process_checkout_event', 'create_league')) || E'\n';
+  v_out := v_out || format(
     E'H111 RESULTS\nH0 free season for an Elite league with nothing active (before 0111): %s  [expected OK {"row": …]\nBASELINE failures: %s\nBASELINE counters: %s\nZERO counters:%s\n',
     left(v_hole, 60), v_base -> 'fails', v_base -> 'counters',
     case when v_zero = '' then ' none' else v_zero end);
@@ -1032,7 +1096,10 @@ begin
       ('MU18', 'process: an unmatched $100 upgrade raises the plan','P-unmatched-upgrade','process',
          'set plan = case when p_upgrade_only then v_cur_plan', 'set plan = case when false then v_cur_plan'),
       ('MU19', 'legacy: the paid-signup credit removed',          'L5-credit',      'process',
-         'elsif p_quantity = 1 and not v_was_paid and not v_has_seed then', 'elsif false then')
+         'elsif p_quantity = 1 and not v_was_paid and not v_has_seed then', 'elsif false then'),
+      ('MU20', 'create_league: the comped bypass removed',        'C-comped',       'create',
+         'if coalesce(v_comped, false) then', 'if false then'),
+      ('MU21', 'the backfill''s credits missing',                  'BF1',            'backfill', null, null)
     ) as t(id, what, target, kind, old_text, new_text)
   loop
     begin
@@ -1040,6 +1107,8 @@ begin
         grant execute on function public.process_checkout_event(text, uuid, text, int, boolean, uuid) to authenticated;
       elsif m.kind = 'policy' then
         alter policy "Org members can read season purchases" on public.season_purchases using (true);
+      elsif m.kind = 'backfill' then
+        delete from public.season_purchases where kind = 'signup' and stripe_event_id is null;
       else
         v_fn := case m.kind
                   when 'begin'   then 'public.begin_season_purchase(uuid, text, text, text, text, text, date, date)'

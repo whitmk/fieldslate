@@ -15,8 +15,8 @@
 --     flagged needs_review. The webhook emails hello@ when it sees the flag.
 --   * Pending purchases expire after 24 hours, worked out on read; no job.
 --   * Comped leagues never buy: begin_season_purchase refuses them
---     (`billing_managed`). Their seasons come from FieldSlate — a credit
---     inserted by hand (kind 'comp', see COMPING-RUNBOOK.md), then the form.
+--     (`billing_managed`). They create seasons freely in create_league — no
+--     credit, no checkout, no limit.
 --
 -- WHAT THIS FILE DOES
 --   1. Table season_purchases: one row per checkout. A row with status
@@ -31,15 +31,20 @@
 --      addition: a paid signup with nothing to convert gets a credit, so it is
 --      not stranded by (5). Remove that branch in a follow-up migration once
 --      the window has passed.
---   5. create_league: Free unchanged; a PAID league must use up a credit.
---      Without one it returns the old cap_reached shape plus
---      reason 'purchase_required', so the screens shipped before this change
---      still show their existing message instead of breaking.
+--   5. create_league: Free unchanged; a comped league creates freely; any
+--      other PAID league must use up a credit. Without one it returns the old
+--      cap_reached shape plus reason 'purchase_required'.
+--   6. BACKFILL, once: a paid, non-comped league that has NEVER had a season
+--      paid at signup under the old flow and had its first season coming free
+--      from create_league. It gets one credit so (5) doesn't strand it. On
+--      2026-10-14 that is exactly one league (the one paying Pro league).
 --
--- DEPLOY ORDER: apply this BEFORE the route/screens that call
--- begin_season_purchase reach main. The live code keeps working on it: the
--- webhook's named-argument call resolves to the new function (p_purchase_id
--- defaults to null) and ignores the reply's shape.
+-- DEPLOY ORDER: apply this IMMEDIATELY BEFORE the route/screens ship
+-- (decided 2026-10-14), not earlier. The old new-season form shows its
+-- "plan limit … Upgrade" email modal for a purchase_required reply, which
+-- is not a clear message. The webhook's named-argument call does resolve to
+-- the new function (p_purchase_id defaults to null) and ignores the reply's
+-- shape, so a webhook in flight during the apply is safe.
 --
 -- APPLY VERBATIM, comments included (CLAUDE.md). Verify md5(prosrc) of
 -- begin_season_purchase, attach_purchase_session, process_checkout_event and
@@ -79,7 +84,7 @@ create table public.season_purchases (
 
   constraint season_purchases_kind_check check (kind in
     ('add_season', 'first_season', 'convert_free', 'upgrade_tier', 'signup',
-     'unmatched', 'comp')),
+     'unmatched')),
   constraint season_purchases_tier_check check (tier in ('pro', 'elite')),
   constraint season_purchases_plan_check check (plan_at_checkout in ('free', 'pro', 'elite')),
   constraint season_purchases_status_check check (status in
@@ -119,6 +124,16 @@ create policy "Org members can read season purchases"
 
 revoke all on table public.season_purchases from public, anon, authenticated, service_role, dashboard_readonly;
 grant select on table public.season_purchases to authenticated;
+
+-- Backfill (see 6 above): one credit per paid, non-comped league with no
+-- season at all. Runs once, here; a league that later archives everything
+-- is NOT given another.
+insert into public.season_purchases (org_id, kind, tier, plan_at_checkout, status, completed_at)
+select p.id, 'signup', p.plan, p.plan, 'credited', now()
+  from public.profiles p
+ where p.plan in ('pro', 'elite')
+   and not p.comped
+   and not exists (select 1 from public.leagues l where l.owner_id = p.id);
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- 2. begin_season_purchase
@@ -573,8 +588,9 @@ grant execute on function public.process_checkout_event(text, uuid, text, int, b
 -- ────────────────────────────────────────────────────────────────────────────
 -- 5. create_league
 -- ────────────────────────────────────────────────────────────────────────────
--- Free: one active season at a time, as in 0059. Paid (pro/elite, comped
--- included): every season is paid for, so a create uses up one credit — the
+-- Comped: FieldSlate manages the billing, so seasons are created freely — no
+-- credit, no limit. Free: one active season at a time, as in 0059. Paid
+-- (pro/elite): every season is paid for, so a create uses up one credit — the
 -- oldest unused one. Without a credit the reply keeps 0059's cap_reached
 -- shape and adds reason 'purchase_required'.
 create or replace function public.create_league(
@@ -593,6 +609,7 @@ as $$
 declare
   v_caller   uuid := auth.uid();
   v_plan     text;
+  v_comped   boolean;
   v_count    int;
   v_credit   uuid;
   v_row      public.leagues%rowtype;
@@ -610,12 +627,15 @@ begin
    where owner_id    = p_org_id
      and archived_at is null;
 
-  v_plan := coalesce(
-    (select plan from public.profiles where id = p_org_id),
-    'free'
-  );
+  select plan, comped into v_plan, v_comped
+    from public.profiles
+   where id = p_org_id;
+  v_plan := coalesce(v_plan, 'free');
 
-  if v_plan = 'free' then
+  if coalesce(v_comped, false) then
+    -- Comped: billing is FieldSlate's; seasons are created freely.
+    null;
+  elsif v_plan = 'free' then
     -- Free: one active season at a time (0059).
     if v_count >= 1 then
       return jsonb_build_object(
