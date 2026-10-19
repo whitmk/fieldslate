@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Pencil,
   X,
@@ -15,6 +16,12 @@ import {
   UnarchiveSeasonModal,
 } from "@/components/seasons/archive-modals";
 import { UpgradeModal } from "@/components/plan/upgrade-cta";
+import {
+  END_DATE_NOTE,
+  LAST_GAME_UNKNOWN,
+  endDateEditCheck,
+  fmtSeasonDate,
+} from "@/lib/seasons/end-date";
 
 const MAX_NAME_LENGTH = 80;
 
@@ -31,6 +38,12 @@ interface Props {
   archivedAt: string | null;
   /** End date (YYYY-MM-DD or null) — fed to the unarchive modal. */
   endDate: string | null;
+  /** Start date (YYYY-MM-DD or null) — the end date can't be before it. */
+  startDate: string | null;
+  /** The season's last dated game (regular or playoff), for the warning. */
+  lastGameDate: string | null;
+  /** The last-game read failed — the editor says it couldn't check. */
+  lastGameUnknown: boolean;
   sportClassName: string;
   /** Elite-only: restoring (unarchiving). Archiving stays open to all tiers. */
   canRestore: boolean;
@@ -44,9 +57,13 @@ export function EditableLeagueHeader({
   status,
   archivedAt,
   endDate,
+  startDate,
+  lastGameDate,
+  lastGameUnknown,
   sportClassName,
   canRestore,
 }: Props) {
+  const [endDateOpen, setEndDateOpen] = useState(false);
   const [name, setName] = useState(initialName);
   const [editing, setEditing] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -103,6 +120,18 @@ export function EditableLeagueHeader({
             </button>
           </div>
           <p className="text-sm text-gray-500">{season}</p>
+          {!isArchived && (
+            <p className="flex flex-wrap items-center gap-x-2 text-sm text-gray-500">
+              <span>{endDate ? `Ends ${fmtSeasonDate(endDate)}` : "No end date"}</span>
+              <button
+                type="button"
+                onClick={() => setEndDateOpen(true)}
+                className="font-medium text-[#16a34a] underline-offset-2 hover:underline"
+              >
+                {endDate ? "Change end date" : "Set end date"}
+              </button>
+            </p>
+          )}
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           <span
@@ -143,6 +172,21 @@ export function EditableLeagueHeader({
             notify("success", "Season name updated");
           }}
           onError={(message) => notify("error", message)}
+        />
+      )}
+
+      {endDateOpen && (
+        <EndDateModal
+          leagueId={leagueId}
+          startDate={startDate}
+          endDate={endDate}
+          lastGameDate={lastGameDate}
+          lastGameUnknown={lastGameUnknown}
+          onClose={() => setEndDateOpen(false)}
+          onSaved={() => {
+            setEndDateOpen(false);
+            notify("success", "End date updated");
+          }}
         />
       )}
 
@@ -407,6 +451,132 @@ function ToastBanner({
       >
         <X className="h-3.5 w-3.5" />
       </button>
+    </div>
+  );
+}
+
+// ── End date ─────────────────────────────────────────────────────────────────
+// Rules and every sentence: src/lib/seasons/end-date.ts. The write is a plain
+// browser UPDATE — 0110's guard allows end_date — chained with .select("id")
+// so a refused or zero-row write reads as "nothing was saved", never success.
+
+function EndDateModal({
+  leagueId,
+  startDate,
+  endDate,
+  lastGameDate,
+  lastGameUnknown,
+  onClose,
+  onSaved,
+}: {
+  leagueId: string;
+  startDate: string | null;
+  endDate: string | null;
+  lastGameDate: string | null;
+  lastGameUnknown: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const router = useRouter();
+  const [value, setValue] = useState(endDate ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const check = endDateEditCheck(startDate, value, lastGameDate);
+  const unchanged = value === (endDate ?? "");
+  const canSave = !check.error && !unchanged && !saving;
+
+  async function save() {
+    if (!canSave) return;
+    setSaving(true);
+    setSaveError(null);
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("leagues")
+      .update({ end_date: value } as never)
+      .eq("id", leagueId)
+      .select("id");
+    setSaving(false);
+    if (error || !data || data.length !== 1) {
+      setSaveError(error?.message || "Nothing was saved — refresh the page and try again.");
+      return;
+    }
+    router.refresh();
+    onSaved();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={() => !saving && onClose()}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <h2 className="font-semibold text-[#0C1F3F]">Season end date</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Close"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex flex-col gap-4 px-6 py-5">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="season-end-date" className="text-sm font-medium text-gray-700">
+              End date
+            </label>
+            <input
+              id="season-end-date"
+              type="date"
+              value={value}
+              min={startDate ?? undefined}
+              onChange={(e) => {
+                setValue(e.target.value);
+                setSaveError(null);
+              }}
+              className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+            />
+            {startDate && <p className="text-xs text-gray-400">Season starts {fmtSeasonDate(startDate)}.</p>}
+          </div>
+          <p className="text-xs text-gray-500">{END_DATE_NOTE}</p>
+          {check.error && value !== "" && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{check.error}</p>
+          )}
+          {check.warning && (
+            <p className="flex gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{check.warning}</span>
+            </p>
+          )}
+          {lastGameUnknown && <p className="text-xs text-gray-400">{LAST_GAME_UNKNOWN}</p>}
+          {saveError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{saveError}</p>}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={!canSave}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#16a34a] disabled:opacity-50"
+            >
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

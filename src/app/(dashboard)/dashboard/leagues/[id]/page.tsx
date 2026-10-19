@@ -63,6 +63,35 @@ export default async function LeaguePage({ params }: { params: { id: string } })
   type DivVenueRow = { division_id: string; venue_id: string };
   type BlackoutRow = { date: string; label: string | null };
 
+  // The season's last dated game — regular season or playoff — for the
+  // end-date editor's warning. Two max reads (newest first, one row). A
+  // failed read leaves the editor saying it couldn't check, never silent.
+  const [lastGameRes, lastPlayoffRes] = await Promise.all([
+    supabase
+      .from("games")
+      .select("scheduled_at")
+      .eq("league_id", league.id)
+      .order("scheduled_at", { ascending: false })
+      .limit(1),
+    supabase
+      .from("playoff_games")
+      .select("scheduled_date")
+      .eq("league_id", league.id)
+      .not("scheduled_date", "is", null)
+      .order("scheduled_date", { ascending: false })
+      .limit(1),
+  ]);
+  const lastGameUnknown = !!lastGameRes.error || !!lastPlayoffRes.error;
+  const lastGameDate = lastGameUnknown
+    ? null
+    : ([
+        ((lastGameRes.data ?? []) as { scheduled_at: string }[])[0]?.scheduled_at?.substring(0, 10) ?? null,
+        ((lastPlayoffRes.data ?? []) as { scheduled_date: string | null }[])[0]?.scheduled_date ?? null,
+      ]
+        .filter((d): d is string => !!d)
+        .sort()
+        .pop() ?? null);
+
   // Fetch divisions first so we can scope the two queries that key off
   // division_id directly. Previously those two queries had no narrowing at
   // all — for a multi-org admin RLS would return rows from BOTH orgs'
@@ -432,6 +461,9 @@ export default async function LeaguePage({ params }: { params: { id: string } })
         status={league.status}
         archivedAt={league.archived_at}
         endDate={league.end_date}
+        startDate={league.start_date ?? null}
+        lastGameDate={lastGameDate}
+        lastGameUnknown={lastGameUnknown}
         sportClassName={sportColor[league.sport] ?? "bg-gray-100 text-gray-600"}
         canRestore={isElite(plan)}
       />

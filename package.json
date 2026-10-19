@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "sim:officials": "TZ=UTC npx tsx scripts/sim/auto-assign-season-sim.ts",
+    "sim:auto-archive": "TZ=UTC npx tsx scripts/sim/auto-archive-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/auto-archive-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/auto-archive-sim.ts",
+    "sim:auto-archive:mutants": "npx tsx scripts/sim/auto-archive-mutants.ts",
     "sim:auto-assign-past": "TZ=UTC npx tsx scripts/sim/auto-assign-past-sim.ts",
     "sim:auto-assign-past:mutants": "npx tsx scripts/sim/auto-assign-past-mutants.ts",
     "sim:game-constraints": "TZ=UTC npx tsx scripts/sim/team-game-constraints-sim.ts",

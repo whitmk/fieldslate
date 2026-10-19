@@ -2429,6 +2429,56 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   the owner's row under RLS because every owner has their own
   `organization_members` row (10/10, verified 2026-10-08).
 
+## Auto-archive — when a season archives by itself (2026-10-19, `fix/auto-archive`)
+
+- **CLOSED: auto-archive used the SERVER's date (UTC on Vercel) and nothing
+  else.** It archived any season whose end date was before the server's
+  today, so a Pacific league's season vanished from Overview, Seasons and
+  Reports on the EVENING of its last day, and a season with playoffs
+  scheduled after its end date was archived mid-playoffs.
+- **THE RULE — one pure function, `decideAutoArchive`
+  (`src/lib/seasons/archive-decision.ts`).** A season archives only when ALL
+  hold: (1) its end date is BEFORE today in the LEAGUE's timezone
+  (`todayInTimezone(profiles.timezone)` — the end date itself is still a
+  season day); (2) no game of any kind — regular season of ANY status, or a
+  dated playoff game — is dated today or later; (3) no playoff game is
+  unfinished: no result (completed, a winner or a score — 0107's test) OR no
+  date at all. Anything unreadable (timezone, games, playoff games) → NO
+  archive. It returns `{archive, reason, detail}`.
+- **Regular-season STATUS and SCORES are deliberately not read.** Leagues
+  don't enter regular-season results; requiring them would stop every season
+  from ever archiving. A regular-season game matters only by its DATE.
+- **A playoff bracket left in draft, or a round never scheduled, keeps the
+  season active** (its games are undated) — the safe direction: the admin can
+  delete the bracket or archive by hand.
+- **`autoArchivePastSeasons` (`src/lib/seasons/auto-archive.ts`) only reads
+  and writes** — called by `/dashboard`, `/dashboard/leagues` and
+  `/dashboard/reports` before they read the season list. It reads the
+  unarchived seasons with an end date and the org's timezone; skips every
+  season whose end date hasn't passed (`endDatePassed`, the decision's own
+  rule — running seasons cost no further reads); for the rest reads every
+  game date and every playoff game (`fetchAllRows`, complete or throw), asks
+  `decideAutoArchive`, and archives only on yes (one UPDATE per season,
+  `.is("archived_at", null)`). Never put a second copy of the rule in a caller.
+- **The end date is editable on the season page** (header: "Ends Oct 25,
+  2026 · Change end date", unarchived seasons only — the Unarchive modal owns
+  an archived season's end date). Rules and words: `src/lib/seasons/end-date.ts`
+  (`endDateEditCheck`, `END_DATE_NOTE`): before the start date is refused;
+  before the season's last dated game (regular or playoff) is a NON-blocking
+  warning; the note says the end date controls archiving AND when parents'
+  calendar feeds and the public schedule stop (7 days after it). A plain
+  browser UPDATE (0110 allows `end_date`), `.select("id")`, zero rows →
+  "Nothing was saved". No migration.
+- **Harness: `npm run sim:auto-archive`** (36 checks × 3 host zones, 4
+  counters; fixed NOW = 2026-10-26 03:00Z, 8pm Oct 25 in Pacific) drives the
+  decision and the REAL helper against a small fake client: playoffs after the
+  end date, undated playoff games, results all in, a future regular-season
+  game (even cancelled), a game today, past unscored games, the Pacific
+  evening of the end date, every read failure, and the editor rules.
+  `:mutants` (11, three zones), each killed at its own assertion — read the
+  mutation log in the mutants file (AA6 first crashed instead of failing
+  open; AA10's true catcher is I1).
+
 ## Record where it was played (0106, applied 2026-10-08)
 
 - **What it is.** A retroactive CORRECTION for a game that was already played
@@ -3544,16 +3594,16 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   section A (+ TC22/TC23), `sim:game-notes` O1a/O1c.
 - **Expiry is 7 days after `leagues.end_date`, with "today" computed in the
   ORG's timezone in the database** (`now() at time zone profiles.timezone`),
-  never `current_date` — the auto-archive helper's UTC-date bug must not be
-  inherited. Archived seasons are expired at once.
+  never `current_date` (the old auto-archive helper's UTC-date bug, CLOSED
+  2026-10-19 — see "Auto-archive"). Archived seasons are expired at once.
 - **`profiles.timezone`** (7 US IANA zones, CHECK-constrained, default
   Pacific; the same list as `ORG_TIMEZONES` in `src/lib/calendar/timezones.ts`
   — change one, change the other) is written ONLY through `set_org_timezone`.
   Under 0098 the column has no user grant and the trigger would refuse a
   direct write; the Settings card calls the function. It LABELS wall-clock
   game times (DTSTART;TZID=…) and never converts them. **Still reading server
-  time instead of this column, listed and unchanged:** `auto-archive.ts`,
-  `derived-status.ts`, the Schedule page's `todayLocalDateString`, and the
+  time instead of this column, listed and unchanged:** `derived-status.ts`,
+  the Schedule page's `todayLocalDateString`, and the
   `Date.now()` past-game checks on the token schedule page and the reschedule
   route.
 - **`is_org_member` is the admin gate because every member is an admin
