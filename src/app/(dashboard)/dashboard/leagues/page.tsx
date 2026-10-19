@@ -49,7 +49,6 @@ export default async function LeaguesPage({ searchParams }: PageProps) {
     <SeasonsListClient
       leagues={leagues}
       initialTab={initialTab}
-      orgId={currentOrgId}
       activeSeasonCount={activeSeasonCount}
       activeSeasonLimit={activeSeasonLimit}
       plan={plan}

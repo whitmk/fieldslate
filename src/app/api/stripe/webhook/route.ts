@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendEmail } from "@/lib/email";
+import { NEEDS_REVIEW_TO, reviewEmail } from "@/lib/billing/season-purchase";
 
 // Stripe webhook. MUST run on Node (Stripe SDK + raw-body crypto) and MUST
 // read the unparsed request body for signature verification — in the App
@@ -14,16 +16,46 @@ type CheckoutMeta = {
   plan: "pro" | "elite";
   quantity: number;
   upgradeOnly: boolean;
+  purchaseId: string | null;
 };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// A purchaseId that is present but malformed must NOT fall into the legacy
+// (no-purchase) path, which provisions on its own terms. The nil uuid matches
+// no purchase, so process_checkout_event credits the payment and flags it.
+const NO_SUCH_PURCHASE = "00000000-0000-0000-0000-000000000000";
 
 function readMeta(session: Stripe.Checkout.Session): CheckoutMeta | null {
   const orgId = session.metadata?.orgId;
   const plan = session.metadata?.plan;
-  const quantity = Number(session.metadata?.quantity ?? "1");
+  const rawQty = Number(session.metadata?.quantity ?? "1");
   const upgradeOnly = session.metadata?.upgradeOnly === "true";
+  const rawPurchase = session.metadata?.purchaseId;
   if (!orgId || (plan !== "pro" && plan !== "elite")) return null;
-  return { orgId, plan, quantity: quantity === 2 ? 2 : 1, upgradeOnly };
+  return {
+    orgId,
+    plan,
+    // Passed as sent: the purchase path flags anything but 1, and the legacy
+    // path treats it as plan-only. Never mapped onto 2 (removed in 0069).
+    quantity: Number.isInteger(rawQty) ? rawQty : 0,
+    upgradeOnly,
+    purchaseId:
+      rawPurchase === undefined || rawPurchase === ""
+        ? null
+        : UUID_RE.test(rawPurchase)
+          ? rawPurchase
+          : NO_SUCH_PURCHASE,
+  };
 }
+
+type RpcResult = {
+  result?: string;
+  outcome?: string | null;
+  purchase_id?: string | null;
+  kind?: string | null;
+  needs_review?: boolean;
+  review_reason?: string | null;
+};
 
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
@@ -68,7 +100,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { orgId, plan, quantity, upgradeOnly } = meta;
+  const { orgId, plan, quantity, upgradeOnly, purchaseId } = meta;
 
   try {
     const admin = createAdminClient();
@@ -80,10 +112,15 @@ export async function POST(request: Request) {
     // flag is independent of plan: a "never let billing touch this row" marker.
     const { data: orgProfile, error: compErr } = await admin
       .from("profiles")
-      .select("comped")
+      .select("comped, org_name, email")
       .eq("id", orgId)
       .maybeSingle();
-    const comped = (orgProfile as unknown as { comped: boolean } | null)?.comped;
+    const profile = orgProfile as unknown as {
+      comped: boolean;
+      org_name: string | null;
+      email: string | null;
+    } | null;
+    const comped = profile?.comped;
     if (comped === true) {
       console.log(
         `[stripe webhook] skipped checkout event ${event.id} for comped org ${orgId}`,
@@ -123,6 +160,7 @@ export async function POST(request: Request) {
         p_plan: plan,
         p_quantity: quantity,
         p_upgrade_only: upgradeOnly,
+        p_purchase_id: purchaseId,
       } as never,
     );
 
@@ -130,6 +168,35 @@ export async function POST(request: Request) {
       // Transient failure: the transaction rolled back, so event.id was NOT
       // recorded. Return 500 so Stripe retries — the retry re-runs cleanly.
       return NextResponse.json({ error: rpcErr.message }, { status: 500 });
+    }
+
+    // A payment that did not do what was bought is flagged in the database
+    // and emailed to FieldSlate at once. The event is already claimed, so a
+    // failed send is LOGGED with everything in it, never retried by making
+    // Stripe redeliver (a redelivery is skipped_duplicate and sends nothing);
+    // the flagged row stays queryable (season_purchases.needs_review).
+    const r = (result ?? {}) as RpcResult;
+    if (r.needs_review) {
+      const mail = reviewEmail({
+        leagueName: profile?.org_name || profile?.email || orgId,
+        orgId,
+        kind: r.kind ?? "unknown",
+        outcome: r.outcome ?? null,
+        reason: r.review_reason ?? "unknown",
+        amountCents: typeof session.amount_total === "number" ? session.amount_total : null,
+        currency: session.currency ?? null,
+        purchaseId: r.purchase_id ?? null,
+        sessionId: session.id,
+        eventId: event.id,
+      });
+      try {
+        const sent = await sendEmail(NEEDS_REVIEW_TO, mail.subject, mail.html, mail.text);
+        if (!sent.ok) {
+          console.error("[stripe webhook] needs_review email NOT sent", { error: sent.error, ...mail });
+        }
+      } catch (err) {
+        console.error("[stripe webhook] needs_review email threw", { err, ...mail });
+      }
     }
 
     // 'processed' or 'skipped_duplicate' — both are success. Ack 200 so Stripe

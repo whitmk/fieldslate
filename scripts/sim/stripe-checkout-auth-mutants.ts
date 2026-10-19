@@ -1,10 +1,12 @@
 // Mutation pass for stripe-checkout-auth-sim.ts. Each mutant is applied to
-// the REAL route source, the sim runs, the source is restored and verified
+// the REAL source, the sim runs, the source is restored and verified
 // byte-for-byte, and the mutant counts as killed only if the FIRST failing
 // assertion is the one written for it.
 import { runMutants, type Mutant } from "./mutant-runner";
 
 const ROUTE = "src/app/api/stripe/checkout/route.ts";
+const START = "src/lib/billing/start-checkout.ts";
+const CALLBACK = "src/app/api/auth/callback/route.ts";
 
 const MUTANTS: Mutant[] = [
   {
@@ -32,54 +34,88 @@ const MUTANTS: Mutant[] = [
     expect: "A3",
   },
   {
-    id: "SB1", what: "upgradeOnly accepted from any plan", file: ROUTE,
-    find: "  if (upgradeOnly && currentPlan !== \"pro\") {",
-    replace: "  if (false && upgradeOnly && currentPlan !== \"pro\") {",
+    id: "SA5", what: "the comp guard removed (a comped league reaches begin)", file: ROUTE,
+    find: "  if (comped === true) {",
+    replace: "  if (false && comped === true) {",
+    expect: "A8",
+  },
+  {
+    id: "SK1", what: "unknown kinds accepted", file: ROUTE,
+    find: "  if (requested !== \"upgrade\" && !PURCHASE_KINDS.includes(requested as PurchaseKind)) {",
+    replace: "  if (false && requested !== \"upgrade\" && !PURCHASE_KINDS.includes(requested as PurchaseKind)) {",
     expect: "B1",
   },
   {
-    id: "SB2", what: "upgradeOnly refused only from Free (Elite let through)", file: ROUTE,
-    find: "  if (upgradeOnly && currentPlan !== \"pro\") {",
-    replace: "  if (upgradeOnly && currentPlan === \"free\") {",
+    id: "SK2", what: "the session's tier taken from the request, not the database", file: START,
+    find: "    plan: reply.tier,",
+    replace: "    plan: i.tier ?? reply.tier,",
     expect: "B2",
   },
   {
-    id: "SB3", what: "a Pro season accepted on an Elite org (downgrade)", file: ROUTE,
-    find: "  if (!upgradeOnly && plan === \"pro\" && currentPlan === \"elite\") {",
-    replace: "  if (false && !upgradeOnly && plan === \"pro\" && currentPlan === \"elite\") {",
+    id: "SK3", what: "a Free upgrade ignores the active-season count", file: ROUTE,
+    find: "    const k = upgradeKindFor(profileRow.plan, count, tier);",
+    replace: "    const k = upgradeKindFor(profileRow.plan, 1, tier);",
     expect: "B4",
   },
   {
-    id: "SB4", what: "the current plan is not read", file: ROUTE,
-    find: "    .select(\"comped, pending_promo, plan\")",
-    replace: "    .select(\"comped, pending_promo\")",
-    expect: "B3",
+    id: "SK4", what: "the upgrade flag dropped from the session", file: START,
+    find: "    quantity: 1,\n    upgradeOnly: reply.upgrade_only,",
+    replace: "    quantity: 1,\n    upgradeOnly: false,",
+    expect: "B5",
   },
   {
-    id: "SC1", what: "the success URL taken from the body again", file: ROUTE,
-    find: "  const successUrl = `${SITE_URL}${RETURN_PATHS[returnTo]}`;",
-    replace:
-      "  const successUrl = typeof (body as { successUrl?: unknown }).successUrl === \"string\" ? String((body as { successUrl?: unknown }).successUrl) : `${SITE_URL}${RETURN_PATHS[returnTo]}`;",
-    expect: "C1a",
+    id: "SK5", what: "season dates no longer required before begin", file: ROUTE,
+    find: "  if (SEASON_KINDS.includes(kind) && (!season || !DATE_RE.test(season.startDate) || !DATE_RE.test(season.endDate))) {",
+    replace: "  if (false && SEASON_KINDS.includes(kind) && (!season || !DATE_RE.test(season.startDate) || !DATE_RE.test(season.endDate))) {",
+    expect: "B8",
   },
   {
-    id: "SC2", what: "the cancel URL taken from the body again", file: ROUTE,
-    find: "  const cancelUrl = `${SITE_URL}${CANCEL_PATH}`;",
-    replace:
-      "  const cancelUrl = typeof (body as { cancelUrl?: unknown }).cancelUrl === \"string\" ? String((body as { cancelUrl?: unknown }).cancelUrl) : `${SITE_URL}${CANCEL_PATH}`;",
-    expect: "C1b",
+    id: "SC1", what: "a season purchase returns to the dashboard, not its page", file: ROUTE,
+    find: "      ? `${SITE_URL}/dashboard/purchases/${purchaseId}`",
+    replace: "      ? `${SITE_URL}/dashboard?upgraded=true`",
+    expect: "C1",
   },
   {
-    id: "SC3", what: "returnTo \"welcome\" ignored", file: ROUTE,
-    find: "  const returnTo: ReturnTo = body.returnTo === \"welcome\" ? \"welcome\" : \"upgraded\";",
-    replace: "  const returnTo: ReturnTo = \"upgraded\";",
-    expect: "C2",
-  },
-  {
-    id: "SC4", what: "a caller sends its own success URL again", file: "src/components/plan/UpgradeModal.tsx",
-    find: "          returnTo: \"upgraded\",",
-    replace: "          successUrl: `${window.location.origin}/dashboard?upgraded=true`,",
+    id: "SC2", what: "a caller sends its own success URL again", file: "src/components/plan/UpgradeModal.tsx",
+    find: "        body: JSON.stringify({ kind: \"upgrade\", tier: plan, orgId }),",
+    replace: "        body: JSON.stringify({ kind: \"upgrade\", tier: plan, orgId, successUrl: `${window.location.origin}/dashboard` }),",
     expect: "C4",
+  },
+  {
+    id: "SP1", what: "the live price check ignored", file: START,
+    find: "  if (!price.ok) {",
+    replace: "  if (false && !price.ok) {",
+    expect: "D1",
+  },
+  {
+    id: "SP2", what: "the purchase not abandoned when the price check fails", file: START,
+    find: "      purchaseId,\n    });\n    await abandon();\n    return refusal(503, \"price_unavailable\");",
+    replace: "      purchaseId,\n    });\n    return refusal(503, \"price_unavailable\");",
+    expect: "D1b",
+  },
+  {
+    id: "SP3", what: "the price checked as a full season for every purchase", file: START,
+    find: "  const price = await verifySeasonPrice(reply.tier, reply.upgrade_only);",
+    replace: "  const price = await verifySeasonPrice(reply.tier, false);",
+    expect: "D2",
+  },
+  {
+    id: "SE1", what: "the purchase id not sent to Stripe", file: START,
+    find: "    orgId: i.orgId,\n    purchaseId,\n",
+    replace: "    orgId: i.orgId,\n    purchaseId: \"\",\n",
+    expect: "E1",
+  },
+  {
+    id: "SE2", what: "the session id never recorded", file: START,
+    find: "    { p_purchase_id: purchaseId, p_session_id: session.id } as never,",
+    replace: "    { p_purchase_id: purchaseId, p_session_id: \"cs_unknown\" } as never,",
+    expect: "E2",
+  },
+  {
+    id: "SF1", what: "the signup callback buys a first season instead of a credit", file: CALLBACK,
+    find: "          kind: \"signup\",",
+    replace: "          kind: \"first_season\",",
+    expect: "F1",
   },
 ];
 

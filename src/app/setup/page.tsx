@@ -13,6 +13,7 @@ import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { deriveSetupStep } from "@/lib/setup/derive-step";
 import { SetupShell } from "@/components/setup/setup-shell";
+import { loadNewSeasonState } from "@/lib/billing/new-season-state";
 
 export default async function SetupPage() {
   const supabase = createClient();
@@ -31,7 +32,7 @@ export default async function SetupPage() {
     redirect("/dashboard");
   }
 
-  const [{ count: venueCount }, seasonId, plan] = await Promise.all([
+  const [{ count: venueCount }, seasonId, plan, newSeason] = await Promise.all([
     supabase
       .from("venues")
       .select("id", { count: "exact", head: true })
@@ -39,6 +40,8 @@ export default async function SetupPage() {
     // The selected season (cookie chain) — null iff zero active seasons.
     getCurrentSeasonId(supabase, currentOrgId),
     getOrgPlan(currentOrgId),
+    // What the Season step offers (create free, use a credit, or buy).
+    loadNewSeasonState(supabase, currentOrgId),
   ]);
 
   // Data-derived progress — the shared deriveSetupStep helper (extracted in
@@ -57,6 +60,8 @@ export default async function SetupPage() {
       initialVenueCount={venueCount ?? 0}
       initialSeasonId={seasonId}
       plan={plan}
+      newSeasonState={newSeason.ok ? newSeason.state : null}
+      newSeasonError={newSeason.ok ? null : newSeason.error}
     />
   );
 }

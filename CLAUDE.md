@@ -236,7 +236,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   after the 24-hour window). A payment that doesn't match its purchase
   becomes a credit, never lowers the plan, and is flagged `needs_review`; a
   $100 upgrade that no longer fits is flagged only (no credit, no plan
-  change). `create_league`: Free unchanged; a PAID league (comped included)
+  change). `create_league`: Free unchanged; a PAID league (not comped)
   must use up a credit, else `cap_reached` + `reason: purchase_required`;
   a COMPED league creates freely (no credit, no checkout, no limit). A
   one-time backfill credits every paid, non-comped league that has never had
@@ -249,7 +249,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   hand-sent batch is matched to the file). Run 2026-10-14: run 1 refused at
   compile (read its RUN LOG), run 2 green 19/19, run 3 (comped bypass +
   backfill) green 21/21 at their own tag, md5s matched, leak check clean.
-  UI not built — mockup `docs/mockups/add-season.html` awaits approval.
+  Route, webhook and screens built 2026-10-19 on the same branch (see the
+  Billing section); 0111 is applied right before that push, on Whit's go.
 - **`is_org_member` IS the admin gate, because every org member is an admin
   today.** If a non-admin member role (e.g. coach) is ever added,
   `set_org_timezone`, `regenerate_team_calendar_link` and
@@ -301,22 +302,62 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `quantity !== 1`. A Free→paid upgrade converts the org's existing season in
   place; add-season buys one more; `upgradeOnly` (Pro→Elite, $100 delta) flips
   the tier without adding a season.
-- **`/api/stripe/checkout` decides WHO buys, FOR WHICH ORG, ON WHAT TERMS —
-  never the request body (2026-10-09).** Before that date it took `orgId`
-  from the body with no sign-in check, and `successUrl`/`cancelUrl` from the
-  body too. The webhook trusts the session's `metadata.orgId`, so whatever the
-  route names is the org that gets upgraded. Now:
+- **`/api/stripe/checkout` decides WHO buys, FOR WHICH ORG — and the
+  DATABASE decides WHAT and AT WHICH TIER; never the request body
+  (2026-10-09, reworked for 0111 on 2026-10-19, branch
+  `feat/season-purchases`).** The webhook trusts the session's metadata, so
+  whatever the route names is what gets provisioned. Now:
   1. No signed-in user → 401, before the body is read.
   2. The org is `getCurrentOrgId` AND must be one of the caller's
-     memberships (403 — its fall-back to the user's own id never reaches
-     Stripe). A body `orgId` that differs → 409 "switched leagues".
-  3. The purchase must fit the CURRENT plan, because `process_checkout_event`
-     applies the tier blind: `upgradeOnly` only from Pro (from Free it was
-     Elite for $100), and no Pro season on an Elite org (it set plan='pro').
-  4. Return URLs are built from `SITE_URL`; the page names one with
-     `returnTo` (`upgraded` | `welcome`, anything else → `upgraded`).
-  Harness: `npm run sim:stripe-checkout-auth` (+ `:mutants`, 12) drives the
-  real route with Supabase/Stripe faked at the module loader.
+     memberships (403). A body `orgId` that differs → 409 "switched leagues".
+  3. Comped → 403 with `code: "billing_managed"` (the screens render "This
+     league's billing is managed by FieldSlate — contact us", linked to
+     hello@); an unconfirmed comp read → 503. Fail closed.
+  4. The body names only a KIND (`add_season` / `first_season` /
+     `convert_free` / `upgrade_tier` / `signup`, or `upgrade`, which the route
+     resolves from the plan and active count it reads — `upgradeKindFor`),
+     a tier only for a choice, and the season's fields. It NEVER sets the
+     plan, quantity, upgrade flag or a URL; `begin_season_purchase` (0111)
+     decides whether that kind is allowed and the tier.
+  5. ONE path opens every checkout — `startPurchaseCheckout`
+     (`src/lib/billing/start-checkout.ts`), shared with the signup callback:
+     begin → **`verifySeasonPrice`: the live Stripe Price must charge exactly
+     `SEASON_PRICE_USD` (one-time, USD, active), or NO session (503
+     `price_unavailable`) and the purchase is abandoned** → session
+     (quantity 1, `purchaseId` in metadata) → `attach_purchase_session`.
+  6. Return URLs come from `SITE_URL`: a season purchase lands on
+     `/dashboard/purchases/<id>` (waits for the webhook; never assumes the
+     season exists), an upgrade on `?upgraded=true`, a signup on
+     `?welcome=true`.
+  Harness: `npm run sim:stripe-checkout-auth` (+ `:mutants`, 18) drives the
+  real route and callback with Supabase/Stripe faked at the module loader.
+- **Displayed prices come from ONE config: `src/lib/billing/prices.ts`
+  (`SEASON_PRICE_USD`, `priceLabel`).** Never type a price into a component —
+  `sim:season-purchase` [PR1] scans all of `src` (comments included) for a
+  hand-typed amount. The checkout refuses rather than charge an amount that
+  disagrees with this file.
+- **"New season" is ONE flow, `NewSeasonFlow`**
+  (`src/components/seasons/new-season-flow.tsx`), rendered by
+  `/dashboard/leagues/new` and the setup wizard from `loadNewSeasonState`
+  (fails closed — an unreadable credit count must never send a league that
+  already paid to checkout again). Every other entry point LINKS there.
+  `newSeasonScreen` picks: comped / Free with nothing active / a paid league
+  holding a credit → the free form (`create_league`); paid with a season
+  active → Add season at the current plan; nothing active → the plan choice
+  with the "what you lose" line (`loseLine`, built from `PLAN_LIMITS` +
+  `ELITE_FEATURES` — every Elite gate in src must be listed there, [LG1]);
+  Free with its season active → "Upgrade this season". All words:
+  `src/lib/billing/season-purchase.ts`, rendered verbatim. Approved mockup:
+  `docs/mockups/add-season.html`. Harness: `npm run sim:season-purchase`
+  (+ `:mutants`, 16).
+- **A flagged payment is emailed to hello@ at once** by the webhook
+  (`reviewEmail`: league, what was bought, amount, why, what happened, ids).
+  The event is already claimed, so a failed send is LOGGED in full and
+  acked 200 (a redelivery would be skipped and send nothing); the row stays
+  in `season_purchases` with `needs_review`. The purchase page shows
+  "flagged" only when NO season was created. A `purchaseId` that is present
+  but malformed is sent as the nil uuid (credited + flagged), never the
+  legacy path. Harness: `npm run sim:stripe-webhook` (+ `:mutants`, 10).
 - **Webhook idempotency is claim-first, inside the RPC.** Stripe delivers
   `checkout.session.completed` at-least-once and retries for ~3 days.
   `process_checkout_event` (migration 0067) claims `event.id` in

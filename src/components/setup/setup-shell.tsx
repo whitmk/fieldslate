@@ -6,7 +6,8 @@ import { ArrowRight, Check, Hammer, Loader2 } from "lucide-react";
 import { FieldSlateLockup } from "@/components/brand/FieldSlateLockup";
 import { createClient } from "@/lib/supabase/client";
 import { VenuesPageClient } from "@/components/venues/venues-page-client";
-import { NewLeagueForm } from "@/components/leagues/new-league-form";
+import { NewSeasonFlow } from "@/components/seasons/new-season-flow";
+import type { NewSeasonState } from "@/lib/billing/season-purchase";
 import { SetupDivisionsStep } from "@/components/setup/setup-divisions-step";
 import { SetupGenerateStep } from "@/components/setup/setup-generate-step";
 import type { Plan } from "@/lib/plan/limits";
@@ -34,6 +35,10 @@ interface Props {
    *  leagueId. Null until a season exists; step 2 fills it client-side. */
   initialSeasonId: string | null;
   plan: Plan;
+  /** What the Season step offers — loadNewSeasonState; null with an error
+   *  when the read failed (the step then says so instead of guessing). */
+  newSeasonState: NewSeasonState | null;
+  newSeasonError: string | null;
 }
 
 export function SetupShell({
@@ -42,6 +47,8 @@ export function SetupShell({
   initialVenueCount,
   initialSeasonId,
   plan,
+  newSeasonState,
+  newSeasonError,
 }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(initialStep);
@@ -99,7 +106,7 @@ export function SetupShell({
   // Rail back-navigation: completed steps are revisitable as an in-session
   // view override (the derived seed still picks the initial step on load —
   // this only overrides within a visit). Excluded: anything not yet
-  // completed; the Season step once a season exists (NewLeagueForm is
+  // completed; the Season step once a season exists (NewSeasonFlow is
   // create-only, so re-entering would attempt a second season and hit the
   // active-season cap); and every step while a generate loop is running
   // (navigating away would orphan it, matching the dismiss button's lock).
@@ -278,8 +285,10 @@ export function SetupShell({
                   A season holds everything you&rsquo;ll build next — divisions,
                   teams, and the game schedule.
                 </p>
-                <NewLeagueForm
+                <NewSeasonFlow
                   currentOrgId={currentOrgId}
+                  state={newSeasonState}
+                  loadError={newSeasonError}
                   onCreated={(leagueId) => void handleSeasonCreated(leagueId)}
                 />
               </div>

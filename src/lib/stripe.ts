@@ -1,20 +1,10 @@
 import Stripe from "stripe";
 import type { Plan } from "@/lib/plan/limits";
+import { expectedPriceCents, PRICE_CURRENCY, type PaidTier } from "@/lib/billing/prices";
 
-// Per-season list price in whole USD, plus the one-time Pro→Elite upgrade
-// delta. Single source of truth for the upgrade-modal math ($249/$349 per
-// season; $100 to lift an existing Pro season to Elite). The actual charge is
-// driven by the Stripe Price IDs (env), NOT these numbers — these are
-// display-only and must stay in sync with the Price objects in Stripe.
-export const SEASON_PRICE_USD: Record<
-  Exclude<Plan, "free"> | "pro_to_elite",
-  number
-> = {
-  pro: 249,
-  elite: 349,
-  // Elite − Pro difference, charged once when a Pro org upgrades a season.
-  pro_to_elite: 100,
-};
+// Prices live in ONE pure config (client components import it without the
+// Stripe SDK). Re-exported here for existing server importers.
+export { SEASON_PRICE_USD } from "@/lib/billing/prices";
 
 // Lazily construct the server-side Stripe client. Lazy (not module-scope) so
 // the build doesn't evaluate `new Stripe()` with an empty key — in test mode
@@ -36,7 +26,7 @@ export function getStripe(): Stripe {
 
 // Resolve the Stripe Price ID for a paid plan from env. Never hardcoded.
 // When upgradeOnly is set, returns the one-time Pro→Elite upgrade price
-// (the $100 difference) instead of a full Elite season.
+// (the Pro → Elite difference) instead of a full Elite season.
 export function seasonPriceId(
   plan: Exclude<Plan, "free">,
   upgradeOnly = false,
@@ -62,6 +52,9 @@ export function seasonPriceId(
 
 export type CheckoutParams = {
   plan: Exclude<Plan, "free">;
+  // The season_purchases row this checkout pays for (0111). The webhook hands
+  // it to process_checkout_event, which decides everything from the row.
+  purchaseId: string;
   // Always 1 — every purchase is a single season. A Free→paid feature upgrade
   // converts the org's current season in place; the add-season flow buys one
   // more. (The old quantity:2 "convert + also provision a second season" path
@@ -87,8 +80,8 @@ export type CheckoutParams = {
 // Throws if Stripe isn't configured or returns no URL — callers handle it.
 export async function createCheckoutSession(
   params: CheckoutParams,
-): Promise<{ url: string }> {
-  const { plan, quantity, upgradeOnly = false, orgId, successUrl, cancelUrl, couponId } =
+): Promise<{ url: string; id: string }> {
+  const { plan, quantity, upgradeOnly = false, orgId, purchaseId, successUrl, cancelUrl, couponId } =
     params;
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({
@@ -110,10 +103,40 @@ export async function createCheckoutSession(
       plan,
       quantity: String(quantity),
       upgradeOnly: String(upgradeOnly),
+      purchaseId,
     },
   });
   if (!session.url) {
     throw new Error("Stripe did not return a checkout URL.");
   }
-  return { url: session.url };
+  return { url: session.url, id: session.id };
+}
+
+// The live Stripe Price object behind a purchase must charge exactly what the
+// screen showed (SEASON_PRICE_USD). Read before every checkout; a mismatch, a
+// non-USD price, a recurring price or a failed read all return a reason and
+// the caller opens NO session. Never charge an amount nobody was shown.
+export async function verifySeasonPrice(
+  tier: PaidTier,
+  upgradeOnly: boolean,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  try {
+    const price = await getStripe().prices.retrieve(seasonPriceId(tier, upgradeOnly));
+    const want = expectedPriceCents(tier, upgradeOnly);
+    if (price.currency !== PRICE_CURRENCY) {
+      return { ok: false, reason: `price currency is ${price.currency}, expected ${PRICE_CURRENCY}` };
+    }
+    if (price.type !== "one_time") {
+      return { ok: false, reason: `price is ${price.type}, expected one_time` };
+    }
+    if (price.unit_amount !== want) {
+      return { ok: false, reason: `price is ${price.unit_amount} cents, config says ${want}` };
+    }
+    if (!price.active) {
+      return { ok: false, reason: "price is not active in Stripe" };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : "could not read the price" };
+  }
 }

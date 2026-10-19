@@ -7,8 +7,8 @@ import { ArrowRight } from "lucide-react";
 // email on a different device than they signed up on, so the PKCE code
 // exchange in /api/auth/callback couldn't run and never bounced them into
 // Stripe. They land here as plan=free with pending_plan still set. This CTA
-// re-triggers the exact same checkout the callback would have (quantity:1 —
-// the plan's included season; NO extra season is provisioned).
+// re-triggers the checkout the callback would have (one purchase, quantity 1;
+// with no season yet it becomes a season credit — 0111).
 //
 // Idempotency: the button disables on first click, and the server only renders
 // this component while pending_plan is set AND plan is still free — so the
@@ -32,13 +32,11 @@ export function CompleteSetupCta({
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          plan,
-          quantity: 1,
-          orgId,
-          // The route builds the return URLs from SITE_URL.
-          returnTo: "welcome",
-        }),
+        // "upgrade": the server decides from the league's state — a paid
+        // signup with no season yet buys a season CREDIT, one that already
+        // made its free season upgrades it in place. The tier is the one
+        // picked at signup; the route builds the return URLs.
+        body: JSON.stringify({ kind: "upgrade", tier: plan, orgId }),
       });
       const data = (await res.json()) as { url?: string; error?: string };
       if (!res.ok || !data.url) {

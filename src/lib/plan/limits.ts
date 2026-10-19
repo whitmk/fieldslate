@@ -23,14 +23,10 @@ export const PLAN_LIMITS = {
   pro: {
     divisions: -1,
     teamsPerOrg: -1,
-    // Seasons are the unit of sale: every tier includes 1 active season, and
-    // additional active seasons are PURCHASED (Stripe → webhook inserts the
-    // row). So the included allowance is 1 for all tiers. The "new season"
-    // trigger uses this to gate FREE creation — Free is hard-blocked at 1,
-    // Pro/Elite are routed to add-season checkout instead. (The create_league
-    // RPC still only hard-blocks Free; paid seasons come via the webhook, not
-    // that RPC — so this JS limit intentionally differs from the RPC for
-    // Pro/Elite. Direct /dashboard/leagues/new remains a route-guard-only gap.)
+    // Seasons are the unit of sale. Free gets one active season at a time;
+    // for a paid league every season is paid for (0111: create_league needs a
+    // season credit, and "New season" goes to checkout via NewSeasonFlow).
+    // This number is only the Free cap and the Seasons-page counter.
     activeSeasons: 1,
     admins: 2,
     interleagueOrgsPerSeason: 5,
@@ -38,7 +34,7 @@ export const PLAN_LIMITS = {
   elite: {
     divisions: -1,
     teamsPerOrg: -1,
-    // See the Pro note above — 1 included active season; more are purchased.
+    // See the Pro note above.
     activeSeasons: 1,
     admins: 5,
     interleagueOrgsPerSeason: -1,
@@ -61,3 +57,21 @@ export const isElite = (plan: Plan): boolean => plan === "elite";
 export function isPlan(value: unknown): value is Plan {
   return value === "free" || value === "pro" || value === "elite";
 }
+
+// What an ELITE league loses by moving to Pro, beyond the PLAN_LIMITS numbers.
+// One entry per Elite-only gate; `gates` are the exact `feature` labels the
+// screens pass to FeatureLockedCard / UpgradeModal with tier="Elite", and
+// `lose` is how the "what you lose" line names it. sim:season-purchase fails
+// when an Elite gate in src is missing here, so the line can't drift from
+// the code. Order is the order the line reads.
+export const ELITE_FEATURES: ReadonlyArray<{ gates: readonly string[]; lose: string }> = [
+  { gates: ["Playoff brackets"], lose: "playoff brackets" },
+  { gates: ["Officials"], lose: "officials" },
+  { gates: ["Snack Shack"], lose: "snack shack" },
+  { gates: ["Reports"], lose: "reports" },
+  { gates: ["Team scheduling constraints"], lose: "team scheduling constraints" },
+  {
+    gates: ["Browsing & restoring archived seasons", "Restoring archived seasons"],
+    lose: "browsing and restoring archived seasons",
+  },
+];

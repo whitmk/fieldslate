@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Check, X } from "lucide-react";
+import { priceLabel } from "@/lib/billing/prices";
 
 type Feature = { text: string; included: boolean };
 
@@ -42,12 +43,12 @@ const plans: {
   },
   {
     name: "Pro",
-    price: "$249",
+    price: priceLabel("pro"),
     period: "/season",
     description: "Core scheduling and coordination tools for your season.",
     features: [
       { text: "Unlimited divisions and teams", included: true },
-      { text: "1 active season included — add more at $249 each", included: true },
+      { text: `1 active season included — add more at ${priceLabel("pro")} each`, included: true },
       { text: "Up to 2 admin seats", included: true },
       { text: "Interleague scheduling (up to 5 partner leagues per season)", included: true },
       { text: "Rainout rescheduler", included: true },
@@ -62,12 +63,12 @@ const plans: {
   },
   {
     name: "Elite",
-    price: "$349",
+    price: priceLabel("elite"),
     period: "/season",
     description: "Everything in Pro, plus brackets, officials assignments, snack shack scheduling, and advanced reporting.",
     features: [
       { text: "Everything in Pro", included: true },
-      { text: "1 active season included — add more at $349 each", included: true },
+      { text: `1 active season included — add more at ${priceLabel("elite")} each`, included: true },
       { text: "Up to 5 admin seats", included: true },
       { text: "Unlimited interleague partner leagues", included: true },
       { text: "Playoff and tournament brackets", included: true },

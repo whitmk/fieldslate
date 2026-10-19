@@ -1,41 +1,54 @@
 import { NextResponse } from "next/server";
-import { createCheckoutSession, type CheckoutParams } from "@/lib/stripe";
-import { resolvePromoCoupon } from "@/lib/promo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrgId, listMemberships } from "@/lib/orgs/context";
 import { SITE_URL } from "@/lib/site";
+import type { Plan } from "@/lib/plan/limits";
+import type { PaidTier } from "@/lib/billing/prices";
+import {
+  PURCHASE_KINDS,
+  billingManagedText,
+  upgradeKindFor,
+  type PurchaseKind,
+} from "@/lib/billing/season-purchase";
+import { startPurchaseCheckout, type SeasonFields } from "@/lib/billing/start-checkout";
 
-// Server-only: creates a Stripe Checkout session for a per-season purchase.
-// Uses STRIPE_SECRET_KEY via getStripe(). Price IDs come from env only.
+// Server-only: starts a Stripe Checkout for ONE season purchase (0111).
 //
-// WHO IS BUYING, AND FOR WHICH ORG, IS DECIDED HERE — never by the request
-// body. The caller must be signed in, and the org is the one they are acting
-// under (getCurrentOrgId) AND a member of. The webhook trusts the session's
-// metadata.orgId, so whatever this route names is the org that gets upgraded.
-// Before 2026-10-09 the org came straight from the body with no sign-in check.
+// WHO IS BUYING, FOR WHICH ORG, WHAT AND AT WHAT PRICE is decided here and in
+// the database — never by the request body. The body names only the KIND of
+// purchase (and, for a season, its name and dates; for a tier choice, the
+// tier). begin_season_purchase decides whether that kind is allowed for the
+// league's plan, comp flag and active seasons, and which tier it is; the
+// route then checks the live Stripe price against the config before opening
+// a session. Before 0111 the body's `plan` set the tier (a Pro league could
+// buy an Elite season and get its existing season upgraded free).
 // Harness: npm run sim:stripe-checkout-auth (+ :mutants).
 export const runtime = "nodejs";
 
 type Body = {
-  plan?: unknown;
-  quantity?: unknown;
-  upgradeOnly?: unknown;
+  kind?: unknown;
+  tier?: unknown;
+  season?: unknown;
   orgId?: unknown;
-  returnTo?: unknown;
 };
 
-// Where Stripe sends the buyer afterwards. Built HERE from SITE_URL — never
-// taken from the request, which let anyone mint a genuine FieldSlate checkout
-// page that returned the payer to a site of their choosing. The page picks one
-// of these by name; anything else (including an older page that still sends
-// successUrl/cancelUrl and no returnTo) gets "upgraded".
-const RETURN_PATHS = {
-  upgraded: "/dashboard?upgraded=true",
-  welcome: "/dashboard?welcome=true",
-} as const;
-type ReturnTo = keyof typeof RETURN_PATHS;
-const CANCEL_PATH = "/dashboard";
+const SEASON_KINDS: readonly PurchaseKind[] = ["add_season", "first_season"];
+
+function seasonFrom(raw: unknown): SeasonFields | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  return {
+    name: str(r.name),
+    sport: str(r.sport),
+    seasonLabel: typeof r.seasonLabel === "string" && r.seasonLabel.trim() ? r.seasonLabel : null,
+    startDate: str(r.startDate),
+    endDate: str(r.endDate),
+  };
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function POST(request: Request) {
   // Signed in, or nothing — checked before the body is even read.
@@ -44,10 +57,7 @@ export async function POST(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.json(
-      { error: "Sign in to start a checkout." },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "Sign in to start a checkout." }, { status: 401 });
   }
 
   let body: Body;
@@ -57,41 +67,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const plan = body.plan;
-  const quantity = body.quantity;
-  // Pro→Elite tier upgrade: charge the one-time difference via a dedicated
-  // Price, and signal the webhook to flip the tier without adding a season.
-  const upgradeOnly = body.upgradeOnly === true;
+  const requested = body.kind;
+  if (requested !== "upgrade" && !PURCHASE_KINDS.includes(requested as PurchaseKind)) {
+    return NextResponse.json(
+      { error: "This page is out of date — refresh it and try again." },
+      { status: 400 },
+    );
+  }
+  const tier: PaidTier | null = body.tier === "pro" || body.tier === "elite" ? body.tier : null;
   const bodyOrgId = typeof body.orgId === "string" ? body.orgId : null;
-  const returnTo: ReturnTo = body.returnTo === "welcome" ? "welcome" : "upgraded";
-  const successUrl = `${SITE_URL}${RETURN_PATHS[returnTo]}`;
-  const cancelUrl = `${SITE_URL}${CANCEL_PATH}`;
-
-  if (plan !== "pro" && plan !== "elite") {
-    return NextResponse.json(
-      { error: "plan must be 'pro' or 'elite'." },
-      { status: 400 },
-    );
-  }
-  // Feature upgrades and add-season purchases are always a single season.
-  // The quantity:2 convert-and-also-provision path has been removed.
-  if (quantity !== 1) {
-    return NextResponse.json(
-      { error: "quantity must be 1." },
-      { status: 400 },
-    );
-  }
-  if (upgradeOnly && plan !== "elite") {
-    return NextResponse.json(
-      { error: "upgradeOnly applies only to an Elite upgrade." },
-      { status: 400 },
-    );
-  }
 
   // The org being bought for: the one the caller is acting under, and only if
-  // they are really a member. The explicit membership test matters because
-  // getCurrentOrgId falls back to the user's own id when memberships can't be
-  // read — a fallback that must never reach Stripe.
+  // they are really a member. getCurrentOrgId falls back to the user's own id
+  // when memberships can't be read — a fallback that must never reach Stripe.
   const memberships = await listMemberships(supabase, user.id);
   const orgId = await getCurrentOrgId(supabase, user.id, memberships);
   if (!memberships.some((m) => m.org_id === orgId)) {
@@ -100,9 +88,8 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   }
-  // The page that opened checkout names the org it showed. If that is not the
-  // org the caller is acting under now (switched leagues in another tab), a
-  // payment would land somewhere they didn't see — refuse instead.
+  // The page names the org it showed; a switch in another tab must not put a
+  // payment somewhere the buyer didn't see.
   if (bodyOrgId !== null && bodyOrgId !== orgId) {
     return NextResponse.json(
       { error: "You switched leagues since this page loaded — refresh and try again." },
@@ -110,17 +97,9 @@ export async function POST(request: Request) {
     );
   }
 
-  // Comp guard (Chunk B): a complimentary account must never reach Stripe —
-  // this is what protects live smoke-testing through the team's own comped
-  // accounts. Independent of plan: a "this row is never charged" marker, not a
-  // tier check. FAIL CLOSED — the session is created ONLY on a confirmed
-  // not-comped read; a comped read, a Supabase error, or a missing row all
-  // refuse, so a transient DB failure can never let a comp through to Stripe.
-  // pending_promo rides the same read: if the user signed up through a promo
-  // link but their first checkout starts here (dashboard CTA retry) instead of
-  // in /api/auth/callback, the discount must still apply. The webhook clears
-  // pending_promo on the first successful checkout, so it can never ride a
-  // second purchase.
+  // Comp guard: a complimentary league never reaches Stripe. FAIL CLOSED — a
+  // session starts ONLY on a confirmed not-comped read. begin_season_purchase
+  // refuses comped leagues too; this check keeps Stripe out even if it didn't.
   const admin = createAdminClient();
   const { data: orgProfile, error: compErr } = await admin
     .from("profiles")
@@ -130,21 +109,16 @@ export async function POST(request: Request) {
   const profileRow = orgProfile as unknown as {
     comped: boolean;
     pending_promo: string | null;
-    plan: string;
+    plan: Plan;
   } | null;
   const comped = profileRow?.comped;
   if (comped === true) {
     return NextResponse.json(
-      { error: "This account has complimentary access and cannot be charged." },
+      { error: billingManagedText(), code: "billing_managed" },
       { status: 403 },
     );
   }
-  if (compErr || comped !== false) {
-    // Could not confirm not-comped (read error or no matching row) — refuse
-    // rather than risk charging a comp.
-    // Diagnostic: surface the swallowed read result so the real cause of a
-    // fail-closed 503 (errored read vs null/RLS-filtered row) is visible in
-    // the runtime logs. Logging only — does not change guard behavior.
+  if (compErr || comped !== false || !profileRow) {
     console.error("[comp-guard]", { compErr, orgId, orgProfile });
     return NextResponse.json(
       { error: "Could not verify account billing status — please try again." },
@@ -152,60 +126,69 @@ export async function POST(request: Request) {
     );
   }
 
-  // The purchase must fit the org's CURRENT plan, because the webhook applies
-  // it without looking (process_checkout_event sets plan = the purchased
-  // tier). The UI never offers either case below; a hand-built request could:
-  //   - upgradeOnly is the $100 Pro→Elite difference. From Free it would buy
-  //     Elite for $100; from Elite it buys nothing.
-  //   - a Pro purchase on an Elite org would set plan = 'pro' — a downgrade.
-  const currentPlan = profileRow?.plan;
-  if (upgradeOnly && currentPlan !== "pro") {
-    return NextResponse.json(
-      { error: "The Elite upgrade price is only for leagues on Pro." },
-      { status: 400 },
-    );
-  }
-  if (!upgradeOnly && plan === "pro" && currentPlan === "elite") {
-    return NextResponse.json(
-      { error: "This league is on Elite — an added season must be Elite too." },
-      { status: 400 },
-    );
-  }
-
-  // Resolve the signup promo (if still pending) to a Stripe coupon via the
-  // promo_codes table. Null for unknown/inactive/expired codes — a bad promo
-  // must never block a purchase; the session then carries the typed
-  // promo-code field instead (allow_promotion_codes).
-  const couponId =
-    (await resolvePromoCoupon(profileRow?.pending_promo)) ?? undefined;
-
-  try {
-    const params: Omit<CheckoutParams, "couponId"> = {
-      plan,
-      quantity,
-      upgradeOnly,
-      orgId,
-      successUrl,
-      cancelUrl,
-    };
-    let url: string;
-    try {
-      ({ url } = await createCheckoutSession({ ...params, couponId }));
-    } catch (couponErr) {
-      // Mirror the auth-callback retry: a stale coupon must never 500 a
-      // purchase — retry ONCE without it. Couponless failures go straight to
-      // the outer catch; a retry would rebuild the identical session.
-      if (!couponId) throw couponErr;
-      console.error(
-        "[stripe-checkout] coupon checkout failed — retrying without coupon",
-        { err: couponErr, orgId, couponId },
-      );
-      ({ url } = await createCheckoutSession(params));
+  // "upgrade" (the feature-lock screens) becomes a concrete kind from the
+  // league's state as read HERE, never from the request.
+  let kind: PurchaseKind;
+  if (requested === "upgrade") {
+    if (!tier) {
+      return NextResponse.json({ error: "Choose Pro or Elite." }, { status: 400 });
     }
-    return NextResponse.json({ url });
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Failed to create checkout session.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const { count, error: countErr } = await supabase
+      .from("leagues")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_id", orgId)
+      .is("archived_at", null);
+    if (countErr || count === null) {
+      return NextResponse.json(
+        { error: "Could not read your seasons — please try again." },
+        { status: 503 },
+      );
+    }
+    const k = upgradeKindFor(profileRow.plan, count, tier);
+    if (!k) {
+      return NextResponse.json(
+        { error: "Your league already has this plan." },
+        { status: 409 },
+      );
+    }
+    kind = k;
+  } else {
+    kind = requested as PurchaseKind;
   }
+
+  const season = SEASON_KINDS.includes(kind) ? seasonFrom(body.season) : null;
+  if (SEASON_KINDS.includes(kind) && (!season || !DATE_RE.test(season.startDate) || !DATE_RE.test(season.endDate))) {
+    return NextResponse.json({ error: "Enter a start date and an end date." }, { status: 400 });
+  }
+
+  // Return URLs are built HERE from SITE_URL. A season purchase lands on its
+  // own page, which waits for the webhook; an upgrade or a signup lands on the
+  // dashboard as before.
+  const successUrl = (purchaseId: string) =>
+    SEASON_KINDS.includes(kind)
+      ? `${SITE_URL}/dashboard/purchases/${purchaseId}`
+      : kind === "signup"
+        ? `${SITE_URL}/dashboard?welcome=true`
+        : `${SITE_URL}/dashboard?upgraded=true`;
+  const cancelUrl = SEASON_KINDS.includes(kind)
+    ? `${SITE_URL}/dashboard/leagues/new`
+    : `${SITE_URL}/dashboard`;
+
+  const result = await startPurchaseCheckout({
+    supabase,
+    orgId,
+    kind,
+    tier,
+    season,
+    pendingPromo: profileRow.pending_promo,
+    successUrl,
+    cancelUrl,
+  });
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error, code: result.code, field: result.field ?? null },
+      { status: result.status },
+    );
+  }
+  return NextResponse.json({ url: result.url, purchaseId: result.purchaseId });
 }

@@ -20,6 +20,7 @@
 // without scrolling (min-w 20rem); if it ever cannot, the wrapper scrolls and
 // the page body never scrolls sideways.
 
+import { priceLabel } from "@/lib/billing/prices";
 import { Fragment, useState } from "react";
 import Link from "next/link";
 import { Check, CircleDashed, X } from "lucide-react";
@@ -155,7 +156,7 @@ export function Compare() {
           </div>
 
           <p className="mt-6 text-sm font-medium text-[#0C1F3F]">
-            FieldSlate: free for one division, then $249 or $349 per season.
+            FieldSlate: free for one division, then {priceLabel("pro")} or {priceLabel("elite")} per season.
           </p>
 
           <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-500" aria-label="Legend">

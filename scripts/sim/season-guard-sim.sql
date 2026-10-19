@@ -94,6 +94,11 @@
 -- UPDATE on leagues, so it never reaches it); the per-org advisory lock in
 -- restore_season (needs two concurrent sessions; one batch is one session).
 --
+-- AFTER 0111 (2026-10-19, edited, not re-run): L-create-cap now runs with
+-- the test org un-comped (a comped league creates freely under 0111), and
+-- L-checkout accepts process_checkout_event's jsonb reply. Both still hold
+-- against the pre-0111 functions.
+--
 -- RUN LOG (2026-10-14, ~11:00 Pacific, against production, rolled back; leak
 -- check clean after each run; no other active backend). 0110 was NOT applied.
 --
@@ -391,12 +396,22 @@ begin
   end if;
 
   -- ── L: every legitimate writer still works ───────────────────────────────
-  v_res := pg_temp.h110_try('authenticated', p_uid, format(
-    'select public.create_league(%L::uuid, %L, %L, %L, %L::date, %L::date)::text',
-    p_uid, 'H110 Created', 'baseball', 'Fall', '2026-11-01', '2026-12-01'), true);
-  if v_res not like 'OK %"cap_reached"%' then
-    v_fails := array_append(v_fails, 'L-create-cap: ' || v_res);
-  else v_legit := v_legit + 1; end if;
+  -- Not comped for this check: since 0111 a comped league creates freely,
+  -- and the "test" org is comped. Rolled back.
+  begin
+    update public.profiles set comped = false where id = p_uid;
+    v_res := pg_temp.h110_try('authenticated', p_uid, format(
+      'select public.create_league(%L::uuid, %L, %L, %L, %L::date, %L::date)::text',
+      p_uid, 'H110 Created', 'baseball', 'Fall', '2026-11-01', '2026-12-01'), true);
+    if v_res not like 'OK %"cap_reached"%' then
+      v_fails := array_append(v_fails, 'L-create-cap: ' || v_res);
+    else v_legit := v_legit + 1; end if;
+    raise exception 'H110_ROLLBACK';
+  exception when others then
+    if sqlerrm <> 'H110_ROLLBACK' then
+      v_fails := array_append(v_fails, 'L-create-cap: ' || sqlstate || ' ' || sqlerrm);
+    end if;
+  end;
 
   begin
     update public.leagues set archived_at = now(), status = 'archived' where id = p_active;
@@ -422,7 +437,8 @@ begin
       'select public.process_checkout_event(%L, %L::uuid, %L, 1, false)',
       'HARNESS-0110-evt', p_uid, 'elite'), true);
     select count(*) into v_n2 from public.leagues where owner_id = p_uid;
-    if v_res <> 'OK processed' or v_n2 <> v_n + 1 then
+    -- 'processed' (text before 0111, inside a jsonb reply after it).
+    if v_res not like 'OK %processed%' or v_n2 <> v_n + 1 then
       v_fails := array_append(v_fails, format('L-checkout: %s (%s → %s seasons)', v_res, v_n, v_n2));
     else v_legit := v_legit + 1; end if;
     raise exception 'H110_ROLLBACK';
