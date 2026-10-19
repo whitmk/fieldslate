@@ -6,14 +6,14 @@ import { priceLabel } from "@/lib/billing/prices";
 type Feature = { text: string; included: boolean };
 
 // Pricing model: FieldSlate bills PER SEASON, not as a monthly/annual
-// subscription. A season is the unit of sale — each plan includes 1 active
-// season and additional active seasons are purchased at the same per-season
-// price.
+// subscription. Every paid season is bought on its own, at its tier's price
+// (src/lib/billing/prices.ts), and a league may run as many at once as it
+// buys. Free runs one active season at a time.
 //
-// The "Choose Pro" / "Choose Elite" CTAs route to /signup?plan=<tier> (new
-// users). After signup, onboarding should kick off a quantity:1 Stripe
-// checkout for the chosen plan (POST /api/stripe/checkout, built in Item 13).
-// TODO Item 13: wire post-signup checkout — onboarding flow not built yet.
+// The "Choose Pro" / "Choose Elite" CTAs route to /signup?plan=<tier>. After
+// email verification /api/auth/callback opens that checkout
+// (startPurchaseCheckout, kind "signup"); the payment becomes a season credit
+// that the league's first season uses up.
 const plans: {
   name: string;
   price: string;
@@ -32,7 +32,7 @@ const plans: {
     features: [
       { text: "1 division", included: true },
       { text: "6 teams", included: true },
-      { text: "1 active season", included: true },
+      { text: "1 active season at a time", included: true },
       { text: "Basic game scheduling", included: true },
       { text: "PDF export", included: true },
       { text: "1 admin seat", included: true },
@@ -48,7 +48,7 @@ const plans: {
     description: "Core scheduling and coordination tools for your season.",
     features: [
       { text: "Unlimited divisions and teams", included: true },
-      { text: `1 active season included — add more at ${priceLabel("pro")} each`, included: true },
+      { text: `${priceLabel("pro")} per season — run as many at once as you buy`, included: true },
       { text: "Up to 2 admin seats", included: true },
       { text: "Interleague scheduling (up to 5 partner leagues per season)", included: true },
       { text: "Rainout rescheduler", included: true },
@@ -68,7 +68,7 @@ const plans: {
     description: "Everything in Pro, plus brackets, officials assignments, snack shack scheduling, and advanced reporting.",
     features: [
       { text: "Everything in Pro", included: true },
-      { text: `1 active season included — add more at ${priceLabel("elite")} each`, included: true },
+      { text: `${priceLabel("elite")} per season — run as many at once as you buy`, included: true },
       { text: "Up to 5 admin seats", included: true },
       { text: "Unlimited interleague partner leagues", included: true },
       { text: "Playoff and tournament brackets", included: true },

@@ -334,8 +334,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Displayed prices come from ONE config: `src/lib/billing/prices.ts`
   (`SEASON_PRICE_USD`, `priceLabel`).** Never type a price into a component —
   `sim:season-purchase` [PR1] scans all of `src` (comments included) for a
-  hand-typed amount. The checkout refuses rather than charge an amount that
-  disagrees with this file.
+  hand-typed amount, and [PR3] scans every `content/blog/*.md` post — body AND
+  frontmatter (the FAQ answers) — and fails on any dollar amount that is not
+  in this file (the blog is markdown and can't call `priceLabel`, so a price
+  change must edit the posts too). The checkout refuses rather than charge an
+  amount that disagrees with this file.
 - **"New season" is ONE flow, `NewSeasonFlow`**
   (`src/components/seasons/new-season-flow.tsx`), rendered by
   `/dashboard/leagues/new` and the setup wizard from `loadNewSeasonState`
@@ -349,7 +352,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Free with its season active → "Upgrade this season". All words:
   `src/lib/billing/season-purchase.ts`, rendered verbatim. Approved mockup:
   `docs/mockups/add-season.html`. Harness: `npm run sim:season-purchase`
-  (+ `:mutants`, 16).
+  (+ `:mutants`, 18).
 - **A flagged payment is emailed to hello@ at once** by the webhook
   (`reviewEmail`: league, what was bought, amount, why, what happened, ids).
   The event is already claimed, so a failed send is LOGGED in full and
@@ -4482,6 +4485,12 @@ Still open:
   ordering faults, and the section order now exists because of them.
 
 ## Open items
+
+- **Remove `process_checkout_event`'s legacy no-purchase-id branch (0111) in a
+  follow-up migration, no earlier than 24 hours after 0111 goes live** (date
+  to be written here at go-live). It serves checkout sessions opened by the
+  pre-0111 code, which Stripe keeps payable for 24 hours; after that nothing
+  can reach it. Same proof standard: rolled back, mutants, md5 after apply.
 
 - **Bump the practice field calculator's example season dates before spring
   2028.** `EXAMPLE_LEAGUE` in `src/lib/practice-planner/example-league.ts` is

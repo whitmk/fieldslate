@@ -43,7 +43,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 let failures = 0;
 let passes = 0;
-const counters = { screensSeen: 0, eliteGatesFound: 0, flagReasonsFound: 0, srcFilesScanned: 0 };
+const counters = { screensSeen: 0, eliteGatesFound: 0, flagReasonsFound: 0, srcFilesScanned: 0, blogPricesChecked: 0, blogFaqPricesChecked: 0 };
 
 function check(tag: string, ok: boolean, detail: string) {
   if (ok) passes++;
@@ -265,6 +265,31 @@ section("PR", () => {
     const src = read(f);
     src.split("\n").forEach((line, i) => {
       if (re.test(line)) check("PR1", false, `${f}:${i + 1} types a price by hand: ${line.trim()}`);
+    });
+  }
+});
+
+// The blog is markdown, so it can't call priceLabel. Every dollar amount in a
+// post — body AND frontmatter (the FAQ answers search engines read) — must be
+// one of the config's amounts, so a price change that misses a post fails here
+// instead of drifting silently.
+section("PB", () => {
+  const amounts = new Set(Object.values(SEASON_PRICE_USD).map(String));
+  const dir = join("content", "blog");
+  for (const name of readdirSync(dir).filter((n) => n.endsWith(".md"))) {
+    const f = join(dir, name);
+    const lines = read(f).split("\n");
+    let fence = 0;
+    lines.forEach((line, i) => {
+      if (line.trim() === "---") fence++;
+      const inFrontmatter = fence === 1;
+      for (const m of line.matchAll(/\$\s?(\d[\d,]*(?:\.\d+)?)/g)) {
+        const amount = m[1].replace(/,/g, "");
+        counters.blogPricesChecked++;
+        if (inFrontmatter) counters.blogFaqPricesChecked++;
+        check("PR3", amounts.has(amount),
+          `${f}:${i + 1} names $${amount}, which is not a price in src/lib/billing/prices.ts: ${line.trim()}`);
+      }
     });
   }
 });

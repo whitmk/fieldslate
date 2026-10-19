@@ -101,6 +101,20 @@ const MUTANTS: Mutant[] = [
     replace: "import { UpgradeModal } from \"@/components/plan/upgrade-cta\";\nimport { SeasonUpgradeModal } from \"@/components/plan/UpgradeModal\";\nvoid SeasonUpgradeModal;",
     expect: "S3",
   },
+  {
+    id: "PM16", what: "a blog post's body states a price the config doesn't have",
+    file: "content/blog/little-league-scheduling-software.md",
+    find: "$249 or $349 per season for the paid tiers",
+    replace: "$249 or $399 per season for the paid tiers",
+    expect: "PR3",
+  },
+  {
+    id: "PM17", what: "a blog post's FAQ frontmatter states a price the config doesn't have",
+    file: "content/blog/league-scheduling-companion.md",
+    find: "one active season. Paid tiers are $249 or $349 per season, not per player and not a subscription.\"",
+    replace: "one active season. Paid tiers are $229 or $349 per season, not per player and not a subscription.\"",
+    expect: "PR3",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/season-purchase-sim.ts", mutants: MUTANTS });
