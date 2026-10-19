@@ -26,11 +26,14 @@ import { join } from "node:path";
 import {
   loseLine,
   newSeasonScreen,
+  newSeasonView,
   purchasePageCopy,
   purchasePageState,
   reviewEmail,
   reviewReasonSentence,
   seasonDateRange,
+  signupAwaitingWebhook,
+  signupWaitStep,
   upgradeKindFor,
   type NewSeasonState,
   type PurchaseRow,
@@ -43,7 +46,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 let failures = 0;
 let passes = 0;
-const counters = { screensSeen: 0, eliteGatesFound: 0, flagReasonsFound: 0, srcFilesScanned: 0, blogPricesChecked: 0, blogFaqPricesChecked: 0 };
+const counters = { awaitCasesSeen: 0, screensSeen: 0, eliteGatesFound: 0, flagReasonsFound: 0, srcFilesScanned: 0, blogPricesChecked: 0, blogFaqPricesChecked: 0 };
 
 function check(tag: string, ok: boolean, detail: string) {
   if (ok) passes++;
@@ -76,6 +79,7 @@ const S = (p: Partial<NewSeasonState>): NewSeasonState => ({
   activeCount: 0,
   creditCount: 0,
   activeSeasonName: null,
+  awaitingSignupPurchaseId: null,
   ...p,
 });
 
@@ -101,6 +105,67 @@ section("N", () => {
     check("N", got === want, `${JSON.stringify(st)} → ${got}, expected ${want}`);
   }
   counters.screensSeen = seen.size;
+});
+
+// The signup race: Stripe's success page can beat the webhook back. Until it
+// lands the league is Free with nothing active, which on its own reads as
+// "create" — a free season, and the payment's credit left unused.
+section("W", () => {
+  for (const st of [
+    { plan: "free" as const, activeCount: 0 },
+    { plan: "pro" as const, activeCount: 0, creditCount: 1 },
+    { plan: "free" as const, activeCount: 1 },
+  ]) {
+    const got = newSeasonView(S({ ...st, awaitingSignupPurchaseId: "p1" }));
+    if (got === "await_payment") counters.awaitCasesSeen++;
+    check("W1", got === "await_payment", `${JSON.stringify(st)} with a paid signup pending → ${got}, expected await_payment`);
+  }
+  check("W1", newSeasonScreen(S({ plan: "free", activeCount: 0 })) === "create",
+    "fixture: the race state without the wait must read as create, or W1 proves nothing");
+  for (const st of [{}, { plan: "pro" as const, activeCount: 1 }, { plan: "elite" as const, comped: true }]) {
+    check("W2", newSeasonView(S(st)) === newSeasonScreen(S(st)), `no pending signup must leave the screen unchanged: ${JSON.stringify(st)}`);
+  }
+
+  const now = Date.parse("2026-10-19T18:00:00Z");
+  const r = (p: Partial<{ kind: string; status: string; stripe_session_id: string | null; created_at: string }>) => ({
+    kind: "signup", status: "pending", stripe_session_id: "cs_1", created_at: "2026-10-19T17:59:00Z", ...p,
+  });
+  const cases: [string, ReturnType<typeof r>, string | null, boolean][] = [
+    ["paid, webhook pending", r({}), "complete", true],
+    ["checkout still open (left without paying)", r({}), "open", false],
+    ["checkout expired", r({}), "expired", false],
+    ["Stripe status unknown", r({}), null, false],
+    ["no session attached", r({ stripe_session_id: null }), "complete", false],
+    ["older than 24 hours", r({ created_at: "2026-10-18T17:59:59Z" }), "complete", false],
+    ["just under 24 hours", r({ created_at: "2026-10-18T18:00:01Z" }), "complete", true],
+    ["already credited", r({ status: "credited" }), "complete", false],
+    ["not a signup", r({ kind: "add_season" }), "complete", false],
+  ];
+  for (const [what, row, status, want] of cases) {
+    check("W3", signupAwaitingWebhook(row, status, now) === want, `${what}: expected ${want}`);
+  }
+
+  const steps: [Parameters<typeof signupWaitStep>[0], string][] = [
+    ["waiting", "poll"], ["slow", "poll"], ["upgraded", "reload"], ["ready", "reload"],
+    ["abandoned", "reload"], ["flagged", "show"], ["unreadable", "show"],
+  ];
+  for (const [st, want] of steps) check("W4", signupWaitStep(st) === want, `${st} → ${signupWaitStep(st)}, expected ${want}`);
+
+  const signupRow = { id: "p1", kind: "signup", tier: "pro", status: "pending", needs_review: false, league_id: null, name: null, start_date: null, end_date: null };
+  check("W5", purchasePageCopy("waiting", signupRow).title === "Payment received — setting up your account", purchasePageCopy("waiting", signupRow).title);
+  const slow = purchasePageCopy("slow", signupRow);
+  check("W5", slow.title === "Still working on it" && slow.lines.join(" ").includes("you don’t need to pay again") && !slow.lines.join(" ").includes("Seasons page"),
+    `signup slow copy: ${JSON.stringify(slow)}`);
+
+  const flow = read("src/components/seasons/new-season-flow.tsx");
+  check("W6", /newSeasonView\(state\) === "await_payment"/.test(flow) && flow.includes("<SignupPaymentWait"),
+    "NewSeasonFlow must gate on newSeasonView and render SignupPaymentWait");
+  const loader = read("src/lib/billing/new-season-state.ts");
+  check("W6", loader.includes("signupAwaitingWebhook(") && loader.includes("checkout.sessions.retrieve(") && loader.includes("awaitingSignupPurchaseId,"),
+    "loadNewSeasonState must ask Stripe and set awaitingSignupPurchaseId");
+  const wait = read("src/components/seasons/purchase-status.tsx");
+  check("W6", wait.includes("signupWaitStep(state)") && wait.includes("router.refresh()"),
+    "SignupPaymentWait must follow signupWaitStep and reload the server state");
 });
 
 section("U", () => {

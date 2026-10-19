@@ -352,7 +352,21 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Free with its season active → "Upgrade this season". All words:
   `src/lib/billing/season-purchase.ts`, rendered verbatim. Approved mockup:
   `docs/mockups/add-season.html`. Harness: `npm run sim:season-purchase`
-  (+ `:mutants`, 18).
+  (+ `:mutants`, 20).
+- **A paid signup can beat its webhook back from Stripe — the flow WAITS
+  (2026-10-19).** Until the webhook lands the league is Free with nothing
+  active, which reads as the free form; a season made there leaves the
+  payment's credit unused (one payment, two seasons). `loadNewSeasonState`
+  finds a pending `signup` purchase under 24 hours old and asks STRIPE for its
+  checkout session; only `complete` sets `awaitingSignupPurchaseId`
+  (`signupAwaitingWebhook` — a pending row alone may be a checkout the person
+  left unpaid, and the wait says "Payment received"). A failed Stripe read
+  fails the load. `newSeasonView` then returns `await_payment` and
+  `NewSeasonFlow` renders `SignupPaymentWait` (purchase-status.tsx: the
+  purchase page's poll and views, signup wording; `signupWaitStep` → poll /
+  `router.refresh()` / show). Every entry point gets it, /setup included.
+  Mutants PM18 (wait removed → [W1]) and PM19 (unpaid checkout waited on →
+  [W3]).
 - **A flagged payment is emailed to hello@ at once** by the webhook
   (`reviewEmail`: league, what was bought, amount, why, what happened, ids).
   The event is already claimed, so a failed send is LOGGED in full and

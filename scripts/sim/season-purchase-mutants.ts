@@ -115,6 +115,18 @@ const MUTANTS: Mutant[] = [
     replace: "one active season. Paid tiers are $229 or $349 per season, not per player and not a subscription.\"",
     expect: "PR3",
   },
+  {
+    id: "PM18", what: "the signup wait removed (the free form shows before the webhook lands)", file: LIB,
+    find: "  if (s.awaitingSignupPurchaseId) return \"await_payment\";\n",
+    replace: "",
+    expect: "W1",
+  },
+  {
+    id: "PM19", what: "any pending signup waited on, paid or not (a left checkout reads as \"Payment received\")", file: LIB,
+    find: "  return stripeSessionStatus === \"complete\";",
+    replace: "  return stripeSessionStatus !== \"expired\";",
+    expect: "W3",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/season-purchase-sim.ts", mutants: MUTANTS });

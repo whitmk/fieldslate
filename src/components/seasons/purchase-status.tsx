@@ -6,6 +6,7 @@
 // words it. The clock is read only in effects, never while rendering.
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle, Check, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -13,6 +14,7 @@ import {
   CONTACT_EMAIL,
   purchasePageCopy,
   purchasePageState,
+  signupWaitStep,
   type PurchasePageState,
   type PurchaseRow,
 } from "@/lib/billing/season-purchase";
@@ -21,6 +23,28 @@ const POLL_MS = 2000;
 const END_STATES: PurchasePageState[] = ["ready", "upgraded", "flagged", "abandoned"];
 
 export function PurchaseStatus({ purchaseId }: { purchaseId: string }) {
+  const { state, row } = usePurchasePoll(purchaseId);
+  return <PurchaseStatusView state={state} row={row} />;
+}
+
+/**
+ * The new-season flow's wait for a paid signup (awaitingSignupPurchaseId):
+ * the purchase page's poll and views, worded for a signup. When the webhook
+ * lands (or the checkout turns out abandoned) it reloads the server state, and
+ * the flow then shows the form that state calls for — with the credit.
+ */
+export function SignupPaymentWait({ purchaseId }: { purchaseId: string }) {
+  const router = useRouter();
+  const { state, row } = usePurchasePoll(purchaseId);
+  const step = signupWaitStep(state);
+  useEffect(() => {
+    if (step === "reload") router.refresh();
+  }, [step, router]);
+  return <PurchaseStatusView state={step === "reload" ? "waiting" : state} row={row} />;
+}
+
+/** Reads the purchase row every POLL_MS until it reaches an end state. */
+function usePurchasePoll(purchaseId: string): { state: PurchasePageState; row: PurchaseRow | null } {
   const [row, setRow] = useState<PurchaseRow | null>(null);
   const [state, setState] = useState<PurchasePageState>("waiting");
   const started = useRef<number | null>(null);
@@ -53,7 +77,7 @@ export function PurchaseStatus({ purchaseId }: { purchaseId: string }) {
     };
   }, [purchaseId]);
 
-  return <PurchaseStatusView state={state} row={row} />;
+  return { state, row };
 }
 
 /** Pure render of one state — the scratch check renders every state with it. */

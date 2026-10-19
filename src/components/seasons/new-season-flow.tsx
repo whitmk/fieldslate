@@ -2,8 +2,9 @@
 
 // "New season" — ONE flow for every entry point (the Overview and Seasons
 // buttons, the empty states, /dashboard/leagues/new, the setup wizard). The
-// server reads the league's state (loadNewSeasonState) and newSeasonScreen
-// picks the screen; this component only renders it and submits:
+// server reads the league's state (loadNewSeasonState) and newSeasonView
+// picks the screen — or the wait for a paid signup's webhook
+// (SignupPaymentWait); this component only renders it and submits:
 //   create        → create_league (Free with nothing active, comped, or a
 //                   paid league using a credit)
 //   add_season    → checkout at the league's current plan
@@ -17,6 +18,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, Check, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { SignupPaymentWait } from "@/components/seasons/purchase-status";
 import { priceLabel, type PaidTier } from "@/lib/billing/prices";
 import {
   BILLING_MANAGED,
@@ -28,6 +30,7 @@ import {
   loseLine,
   newSeasonHeading,
   newSeasonScreen,
+  newSeasonView,
   purchaseErrorMessage,
   seasonDateRange,
   tierName,
@@ -82,6 +85,11 @@ export function NewSeasonFlow({ currentOrgId, state, loadError, onCreated }: Pro
         </div>
       </div>
     );
+  }
+  // A paid signup whose webhook hasn't landed: wait for it, then the server
+  // state (plan + credit) picks the form. Never the free form in between.
+  if (newSeasonView(state) === "await_payment" && state.awaitingSignupPurchaseId) {
+    return <SignupPaymentWait purchaseId={state.awaitingSignupPurchaseId} />;
   }
   return <Flow currentOrgId={currentOrgId} state={state} onCreated={onCreated} />;
 }

@@ -40,6 +40,12 @@ export type NewSeasonState = {
   creditCount: number;
   /** The oldest active season's name (the one a Free upgrade converts). */
   activeSeasonName: string | null;
+  /** A signup purchase Stripe reports PAID whose webhook hasn't landed yet
+   *  (signupAwaitingWebhook). Non-null → the flow waits instead of showing a
+   *  form: as Free with nothing active it would offer a free season, and the
+   *  credit the payment becomes would then sit unused (one payment, two
+   *  seasons). */
+  awaitingSignupPurchaseId: string | null;
 };
 
 /**
@@ -59,6 +65,54 @@ export function newSeasonScreen(s: NewSeasonState): NewSeasonScreen {
   // Paid: a season is paid for. An unused credit already paid for one.
   if (s.creditCount > 0) return "create";
   return s.activeCount > 0 ? "add_season" : "first_season";
+}
+
+/** What the flow renders: a screen, or the wait for a paid signup. */
+export type NewSeasonView = NewSeasonScreen | "await_payment";
+
+export function newSeasonView(s: NewSeasonState): NewSeasonView {
+  // A paid signup whose webhook hasn't landed: wait, never offer a form.
+  if (s.awaitingSignupPurchaseId) return "await_payment";
+  return newSeasonScreen(s);
+}
+
+/** Stripe keeps a checkout session payable for 24 hours; a pending purchase
+ *  older than that can never be paid (0111 "expires on read"). */
+export const PENDING_PURCHASE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Is this purchase a paid signup the webhook hasn't applied yet? Only when
+ * Stripe itself says the checkout is complete — a pending row alone may be
+ * a checkout the person left without paying, and the wait says "Payment
+ * received".
+ */
+export function signupAwaitingWebhook(
+  row: { kind: string; status: string; stripe_session_id: string | null; created_at: string },
+  stripeSessionStatus: string | null,
+  nowMs: number,
+): boolean {
+  if (row.kind !== "signup" || row.status !== "pending" || !row.stripe_session_id) return false;
+  const created = Date.parse(row.created_at);
+  if (!Number.isFinite(created) || nowMs - created >= PENDING_PURCHASE_TTL_MS) return false;
+  return stripeSessionStatus === "complete";
+}
+
+/** What the signup wait does with each purchase-page state: keep polling,
+ *  reload the flow (the webhook landed — or the checkout was abandoned), or
+ *  stop and show the state. */
+export function signupWaitStep(state: PurchasePageState): "poll" | "reload" | "show" {
+  switch (state) {
+    case "waiting":
+    case "slow":
+      return "poll";
+    case "upgraded":
+    case "ready":
+    case "abandoned":
+      return "reload";
+    case "flagged":
+    case "unreadable":
+      return "show";
+  }
 }
 
 /**
@@ -374,8 +428,15 @@ export function purchasePageCopy(
 ): { title: string; lines: string[]; meta?: string } {
   const name = row?.name ?? "Your season";
   const tier = row?.tier === "pro" || row?.tier === "elite" ? (row.tier as PaidTier) : null;
+  const signup = row?.kind === "signup";
   switch (state) {
     case "waiting":
+      if (signup) {
+        return {
+          title: "Payment received — setting up your account",
+          lines: ["This usually takes a few seconds. Your season form will appear here when it’s ready."],
+        };
+      }
       return {
         title: "Payment received — creating your season",
         lines: [
@@ -383,6 +444,16 @@ export function purchasePageCopy(
         ],
       };
     case "slow":
+      if (signup) {
+        // Same title as a season purchase; a signup creates no season, so
+        // the sentence says what to do instead of pointing at Seasons.
+        return {
+          title: "Still working on it",
+          lines: [
+            "This is taking longer than usual. Your payment went through — you don’t need to pay again. Refresh this page in a minute to create your season.",
+          ],
+        };
+      }
       return {
         title: "Still working on it",
         lines: [
