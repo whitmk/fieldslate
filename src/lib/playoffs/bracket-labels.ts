@@ -16,12 +16,19 @@
 // stored number in its bracket: full brackets, round robins and double
 // elimination (all gapless) read exactly as they are stored.
 //
+// Series (series-names.ts): a series game has no "Game N" of its own — it
+// reads "Semifinal 1 · Game 2 of 3" — and "Game N" counts SINGLE games only
+// (decided 2026-10-20, D1), so a bracket's single games stay 1, 2, 3 … with no
+// jumps. A slot fed by a series reads "Winner of Semifinal 1"; a slot fed by
+// a single game keeps "Winner of Game N".
+//
 // Winners: a slot is the winner only when BOTH the game's winner and the
 // slot's team are set and equal. An empty slot (team null) next to an
 // undecided game (winner null) is NOT a match — `null === null` used to put a
 // trophy and the winner's highlight on every empty slot.
 
 import { singleElimFeeder, type GameRow, type SlotField } from "@/lib/playoffs/advancement";
+import { isSeriesGame, seriesLengthOf, seriesName, singleGames, type SeriesRow } from "@/lib/playoffs/series-names";
 
 export type Side = "home" | "away";
 
@@ -31,8 +38,10 @@ const FIELD: Record<Side, SlotField> = { home: "home_team_id", away: "away_team_
  *  two-stage pair is two brackets). */
 export type GameNumbering = (storedNumber: number) => number;
 
-/** The numbering of one bracket's games: 1..N, in stored order. */
-export function gameNumbering(bracket: ReadonlyArray<{ game_number: number }>): GameNumbering {
+/** The numbering of one bracket's SINGLE games: 1..N, in stored order.
+ *  Series games are left out (they are named, not numbered). */
+export function gameNumbering(all: ReadonlyArray<{ game_number: number } & Partial<SeriesRow>>): GameNumbering {
+  const bracket = singleGames(all.map((g) => ({ round: "", ...g })));
   const stored = [...new Set(bracket.map((g) => g.game_number))].sort((a, b) => a - b);
   const shown = new Map(stored.map((n, i) => [n, i + 1]));
   return (n) => shown.get(n) ?? 1 + stored.filter((x) => x < n).length;
@@ -65,6 +74,7 @@ export function emptySlotLabel(game: GameRow & SeedSlots, side: Side, allGames: 
   if (seed != null) return seedLabel(seed);
   if (format !== "single_elimination") return "TBD";
   const feeder = singleElimFeeder(game, FIELD[side], allGames);
+  if (feeder && isSeriesGame(feeder, allGames)) return `Winner of ${seriesName(feeder, allGames)}`;
   return feeder ? `Winner of Game ${shownGameNumber(feeder, allGames)}` : "TBD";
 }
 
@@ -98,22 +108,46 @@ export function shortTime(t: string): string {
  *  or "Game 11 · Date TBD" for a game with no date yet. The number is the
  *  game's SHOWN number in `bracket` (its own bracket's games). */
 export function gameWhen(
-  game: { game_number: number },
-  bracket: ReadonlyArray<{ game_number: number }>,
+  game: { game_number: number } & Partial<SeriesRow>,
+  bracket: ReadonlyArray<{ game_number: number } & Partial<SeriesRow>>,
   date: string | null,
   time: string | null,
 ): string {
-  const label = `Game ${shownGameNumber(game, bracket)}`;
+  const label = gameLabel(game, bracket);
   if (!date) return `${label} · Date TBD`;
   return [label, shortDate(date), ...(time ? [shortTime(time)] : [])].join(" · ");
+}
+
+/** A game's name: "Game 3" for a single game, "Semifinal 1 · Game 2 of 3"
+ *  for a game of a series. */
+export function gameLabel(
+  game: { game_number: number } & Partial<SeriesRow>,
+  bracket: ReadonlyArray<{ game_number: number } & Partial<SeriesRow>>,
+): string {
+  if (game.round !== undefined) {
+    const rows = bracket.map((g) => ({ round: "", ...g }));
+    const row = { round: game.round, game_number: game.game_number, series_game: game.series_game };
+    if (isSeriesGame(row, rows)) {
+      return `${seriesName(row, rows)} · Game ${game.series_game ?? 1} of ${seriesLengthOf(row, rows)}`;
+    }
+  }
+  return singleGameLabel(game, bracket);
+}
+
+function singleGameLabel(
+  game: { game_number: number },
+  bracket: ReadonlyArray<{ game_number: number }>,
+): string {
+  const label = `Game ${shownGameNumber(game, bracket)}`;
+  return label;
 }
 
 /** The whole line: "Game 9 · Sat 11/7 · 10:45 AM · Andrews". The printed card
  *  sets the field on a line of its own (real field names are long); every
  *  other use is this. */
 export function gameWhenLine(
-  game: { game_number: number },
-  bracket: ReadonlyArray<{ game_number: number }>,
+  game: { game_number: number } & Partial<SeriesRow>,
+  bracket: ReadonlyArray<{ game_number: number } & Partial<SeriesRow>>,
   date: string | null,
   time: string | null,
   venue: string | null,

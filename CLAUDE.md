@@ -867,6 +867,58 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   components and Supabase's REST answered in the browser by fixtures (0113
   isn't applied), at 1024px and 375px, then the route was deleted.
 
+## Playoff series — best of 3/5/7 per round (branch `feat/playoff-series`, IN PROGRESS)
+
+- **Approved mockup: `docs/mockups/playoff-series.html` (2026-10-20)**, with
+  all six recommendations: series games have no "Game N" of their own ("Game
+  N" counts single games only); names Final / Semifinal i / Quarterfinal i /
+  "Round k · Series i" (the round labelled R1 is always Round 1, as today); no
+  series score on the public page; if-needed games hold the field, teams and
+  snack shack until not needed; banner "Expos win the Final 2–1"; series
+  lengths change only while the bracket has no results. Single elimination
+  only — never double elimination or round robin.
+- **Home (decided 2026-10-20):** home for every game of a series is decided
+  once BOTH teams are set (seeding or a result): the higher TRUE seed (the
+  seeding list; Stage 2's given seed) is home in games 1, 3, 5, 7. Until then
+  each team sits in its bracket slot and no home team is shown publicly ("Bears
+  and Winner of Semifinal 1"); the park Home/Away tag still shows on every row.
+  Single-game rounds keep today's slot rule.
+- **Model:** every game of a series is a stored row sharing the round and
+  `game_number` (the bracket position advancement keys on); `series_game` is
+  1..length; a round is a series round when any of its rows has `series_game`
+  ≥ 2. If-needed games are created and dated at generation. A decided series'
+  later games become status `not_needed`; clearing a result that un-decides it
+  brings them back. Results go in order (game k needs k−1's result); only the
+  LAST game with a result in a series can be edited or cleared.
+- **Rules and words: `src/lib/playoffs/series.ts`** (pure; state, tags, the
+  Save / Clear lines, refusals, the TypeScript advancement twin, setup and
+  confirm sentences), **`series-names.ts`** (names; no cycle with
+  bracket-labels) and **`series-lengths.ts`** (lengths and `seriesHomeAway`;
+  no imports, used by the planner).
+- **Planner:** `buildSingleElimination(…, series)` emits game k of every series
+  in a round as its own sub-round (`"SF#2"`), so a later game starts after the
+  earlier one ends plus the buffer, and the per-day limit (default 1) applies
+  to a single elimination once ANY round is a series. A bracket with no series
+  plans byte-identically to before (sim [S0]).
+- **`singleElimFeeder` matches the target by round + position, not id**
+  (2026-10-20) — every game of a series shares its position. Identical for
+  single games.
+- **Steps (each held for Whit's go; one go-live):** 1 rules + planner (DONE on
+  the branch) → 2 migration 0114 (series_by_round, series_game, not_needed,
+  enter/clear series logic, season_last_day / auto-archive / public reader /
+  public counts ignore not_needed) written and proven, NOT applied → 3 admin
+  screens → 4 public page, feed, print, CSV, confirms, snack shack/conflicts/
+  daylight → 5 apply 0114, then ship.
+- **Deviations from the mockup, to confirm:** the Review's one-date-short
+  warning names the undated game but not "needs 3 dates after …; 2 are in
+  range" (that count depends on fields and the per-day limit); the two-stage
+  seed confirm keeps today's "Game 1: Mets (4) vs …" for single games (the
+  mockup showed "Round 1 · Game 1:").
+- **Harness: `npm run sim:playoff-series`** (3,186 checks × 3 zones, 8
+  counters; S0 nothing changes without series … S10 confirms, then 300 seeded
+  playthroughs through the TypeScript twin, incl. clear round trips) +
+  `:mutants` (18, each killed at its own assertion — read the RUN LOG).
+
 ## Printable playoff bracket + slot labels (2026-10-13)
 
 - **ONE RULE for where a winner goes: `singleElimTarget` (advancement.ts).**

@@ -50,6 +50,12 @@ import type {
   PlayingDay,
   SeededTeam,
 } from "@/components/playoffs/playoff-wizard-types";
+import {
+  hasSeries,
+  seriesHomeAway,
+  seriesLengthFor,
+  type SeriesByRound,
+} from "@/lib/playoffs/series-lengths";
 
 // ─── Row shape ────────────────────────────────────────────────────────────────
 
@@ -65,6 +71,10 @@ export interface GameInsert {
   scheduled_date: string | null;
   start_time: string | null;
   status: "scheduled";
+  /** Game k (1-based) of a series. Present only on the games of a series
+   *  round; a single game has none (stored as 1). All games of one series
+   *  share `game_number` — the bracket position advancement keys on. */
+  series_game?: number;
 }
 
 export type BracketIds = {
@@ -437,14 +447,46 @@ export function singleElimFirstNumber(roundIdx: number, bracketSize: number): nu
   return 1 + bracketSize - bracketSize / Math.pow(2, roundIdx);
 }
 
+/**
+ * SERIES (2026-10-20, docs/mockups/playoff-series.html): a round listed in
+ * `series` as best of 3/5/7 gets every game of every series as its own row —
+ * if-needed games included, each with a date and a field. Game k of every
+ * series in the round is picked before game k+1 of any of them, as its own
+ * sub-round ("SF#2"), so a later game starts after the earlier one has ended
+ * plus the buffer, and the per-day limit counts each game of a series. Home
+ * and away come from `seriesHomeAway`: once both teams are known the higher
+ * true seed (the seeding list) is home in games 1, 3, 5, 7; until then each
+ * team stays in its bracket slot. A round that isn't listed is planned exactly
+ * as before.
+ */
 export function buildSingleElimination(
   seeds: SeededTeam[],
   ids: BracketIds,
   picker: SlotPicker,
+  series?: SeriesByRound,
 ): GameInsert[] {
   const n = seeds.length;
   if (n < 2) return [];
   const B = bracketSizeFor(n);
+  const seedOf = (teamId: string) => {
+    const i = seeds.findIndex((s) => s.team_id === teamId);
+    return i < 0 ? null : i + 1;
+  };
+  /** Every game of every series in a round: game k of all of them, then k+1. */
+  const seriesRound = (
+    label: string,
+    length: number,
+    matchups: { number: number; home: string | null; away: string | null }[],
+  ): GameInsert[] => {
+    const rows: GameInsert[] = [];
+    for (let k = 1; k <= length; k++) {
+      for (const m of matchups) {
+        const side = seriesHomeAway(k, m.home, m.away, seedOf);
+        rows.push({ ...gameFromSlot(ids, label, m.number, side.home, side.away, picker.pick(`${label}#${k}`)), series_game: k });
+      }
+    }
+    return rows.sort((a, b) => a.game_number - b.game_number || (a.series_game ?? 1) - (b.series_game ?? 1));
+  };
   const order = standardSeedOrder(B);
   const leaves: (SeededTeam | null)[] = order.map((s) => seeds[s - 1] ?? null);
   const roundCount = Math.log2(B);
@@ -464,10 +506,14 @@ export function buildSingleElimination(
   // BYE — that team is written straight into round 2, slot by p's parity, and
   // the pair's game_number is left unused so positions stay honest.
   const r1 = singleElimRoundLabel(0, B);
+  const r1Length = seriesLengthFor(series, r1);
+  const r1Series: { number: number; home: string | null; away: string | null }[] = [];
   for (let p = 0; p < B / 2; p++) {
     const home = leaves[2 * p];
     const away = leaves[2 * p + 1];
-    if (home && away) {
+    if (home && away && r1Length > 1) {
+      r1Series.push({ number: singleElimFirstNumber(0, B) + p, home: home.team_id, away: away.team_id });
+    } else if (home && away) {
       games.push(gameFromSlot(ids, r1, singleElimFirstNumber(0, B) + p, home.team_id, away.team_id, picker.pick(r1)));
     } else {
       const bye = home ?? away;
@@ -475,11 +521,22 @@ export function buildSingleElimination(
     }
   }
 
+  if (r1Series.length) games.push(...seriesRound(r1, r1Length, r1Series));
+
   // Later rounds: every game exists (TBD slots filled by advancement), with any
   // bye team already in its seat.
   for (let r = 1; r < roundCount; r++) {
     const label = singleElimRoundLabel(r, B);
     const first = singleElimFirstNumber(r, B);
+    const length = seriesLengthFor(series, label);
+    if (length > 1) {
+      const matchups = Array.from({ length: singleElimRoundSize(r, B) }, (_, p) => {
+        const pre = placed.get(`${r}:${p}`);
+        return { number: first + p, home: pre?.home ?? null, away: pre?.away ?? null };
+      });
+      games.push(...seriesRound(label, length, matchups));
+      continue;
+    }
     for (let p = 0; p < singleElimRoundSize(r, B); p++) {
       const pre = placed.get(`${r}:${p}`);
       games.push(gameFromSlot(ids, label, first + p, pre?.home ?? null, pre?.away ?? null, picker.pick(label)));
@@ -628,9 +685,12 @@ export type PlanInput = {
   grid: SlotGridInput;
   settings: PlanSettings;
   divisionName: string;
-  /** Round robin only: the most games a team may play in one day (1 or 2).
-   *  Absent → 1. Other formats ignore it. */
+  /** Round robin, and single elimination with any series round: the most
+   *  games a team may play in one day (1 or 2). Absent → 1. Ignored otherwise
+   *  (a single elimination of single games has no limit, as before). */
   gamesPerTeamPerDay?: 1 | 2;
+  /** Single elimination only: each round's series length (absent → 1 game). */
+  seriesByRound?: SeriesByRound;
 };
 
 /** The round robin's per-team daily limit when none is set. */
@@ -651,11 +711,14 @@ export type BracketPlan = {
 export function planBracket(input: PlanInput): BracketPlan {
   const { slots, days } = buildSlotGrid(input.grid);
   const perDay =
-    input.format === "round_robin" ? (input.gamesPerTeamPerDay ?? DEFAULT_GAMES_PER_TEAM_PER_DAY) : undefined;
+    input.format === "round_robin" ||
+    (input.format === "single_elimination" && hasSeries(input.seriesByRound))
+      ? (input.gamesPerTeamPerDay ?? DEFAULT_GAMES_PER_TEAM_PER_DAY)
+      : undefined;
   const picker = makeSlotPicker(slots, input.settings, perDay);
   let games: GameInsert[];
   if (input.format === "single_elimination") {
-    games = buildSingleElimination(input.seeds, input.ids, picker);
+    games = buildSingleElimination(input.seeds, input.ids, picker, input.seriesByRound);
   } else if (input.format === "double_elimination") {
     games = buildDoubleElimination(input.seeds, input.ids, picker);
   } else {

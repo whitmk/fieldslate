@@ -16,8 +16,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "BP2", what: "feeder ignores the side (skewed from advancement)", file: "src/lib/playoffs/advancement.ts",
-    find: "    if (t && t.target.id === game.id && t.field === side) return g;",
-    replace: "    if (t && t.target.id === game.id) return g;",
+    find: "    if (t && t.target.round === game.round && t.target.game_number === game.game_number && t.field === side) return g;",
+    replace: "    if (t && t.target.round === game.round && t.target.game_number === game.game_number) return g;",
     expect: "F1",
   },
   {
@@ -176,3 +176,6 @@ runMutants({
 // divider between the rows (rowTop + rowH + divider/2). BP21 made realistic
 // (the tree laid out with the print's dimensions). Second pass 22/22 KILLED:
 //   BP20 → [P6]  BP21 → [S7]  BP22 → [S7]; BP1–BP19 unchanged.
+// 2026-10-20 (feat/playoff-series): BP2's find string re-pointed — the feeder
+// now matches its target by round + position (series share a position). Same
+// mutant (side ignored); 22/22 killed at their own tag.

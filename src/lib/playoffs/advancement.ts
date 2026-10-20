@@ -146,7 +146,9 @@ export function singleElimTarget(
 
 /** The game whose winner fills `side` of `game`, or null (round 1, a bye, or
  *  no such game). Found by asking singleElimTarget of every game — the
- *  inverse is never re-derived, so it cannot disagree with advancement. */
+ *  inverse is never re-derived, so it cannot disagree with advancement. The
+ *  target is matched by round and bracket position, not id: every game of a
+ *  series shares its position (series.ts), so each is fed by the same game. */
 export function singleElimFeeder(
   game: GameRow,
   side: SlotField,
@@ -155,7 +157,7 @@ export function singleElimFeeder(
   for (const g of allGames) {
     if (g.id === game.id) continue;
     const t = singleElimTarget(g, allGames);
-    if (t && t.target.id === game.id && t.field === side) return g;
+    if (t && t.target.round === game.round && t.target.game_number === game.game_number && t.field === side) return g;
   }
   return null;
 }

@@ -34,6 +34,9 @@ import {
   type SlotGridInput,
 } from "@/lib/playoffs/bracket-plan";
 import { gameNumbering, seedLabel, shortDate, shortTime, type GameNumbering } from "@/lib/playoffs/bracket-labels";
+import type { SeriesByRound } from "@/lib/playoffs/series-lengths";
+import { isSeriesGame, seriesName } from "@/lib/playoffs/series-names";
+import { seriesSeedLine } from "@/lib/playoffs/series";
 import type {
   DayWindowMap,
   PlayingDay,
@@ -126,6 +129,8 @@ export function planStage2(input: {
   settings: PlanSettings;
   divisionName: string;
   gamesPerTeamPerDay?: 1 | 2;
+  /** Each round's series length (absent → 1 game). */
+  seriesByRound?: SeriesByRound;
 }): Stage2Plan {
   const perDay = input.gamesPerTeamPerDay ?? DEFAULT_STAGE2_GAMES_PER_TEAM_PER_DAY;
   const { slots, days } = buildSlotGrid(input.grid);
@@ -134,7 +139,7 @@ export function planStage2(input: {
     team_id: seedId(i + 1),
     team_name: seedLabel(i + 1),
   }));
-  const games: Stage2Game[] = buildSingleElimination(placeholders, input.ids, picker).map((g) => ({
+  const games: Stage2Game[] = buildSingleElimination(placeholders, input.ids, picker, input.seriesByRound).map((g) => ({
     ...g,
     home_team_id: null,
     away_team_id: null,
@@ -157,7 +162,7 @@ export type TwoStageInput = {
   advance: number;
   ids: { stage1: BracketIds; stage2: BracketIds };
   stage1: { grid: SlotGridInput; gamesPerTeamPerDay?: 1 | 2 };
-  stage2: { grid: SlotGridInput; gamesPerTeamPerDay?: 1 | 2 };
+  stage2: { grid: SlotGridInput; gamesPerTeamPerDay?: 1 | 2; seriesByRound?: SeriesByRound };
   settings: PlanSettings;
   divisionName: string;
 };
@@ -195,6 +200,7 @@ export function planTwoStage(input: TwoStageInput): TwoStagePlan {
     settings: input.settings,
     divisionName: input.divisionName,
     gamesPerTeamPerDay: input.stage2.gamesPerTeamPerDay,
+    seriesByRound: input.stage2.seriesByRound,
   });
   return { stage1, stage2, problems };
 }
@@ -404,7 +410,15 @@ export function seedWrites(
   return out;
 }
 
-export type SeedConfirm = { title: string; unplayed: string | null; lines: string[]; notAdvancing: string | null; button: string };
+export type SeedConfirm = {
+  title: string;
+  unplayed: string | null;
+  lines: string[];
+  /** Series rounds' lengths and the home rule, or null with no series. */
+  seriesLine: string | null;
+  notAdvancing: string | null;
+  button: string;
+};
 
 /**
  * What the confirm says before anything is saved: the bye seeds and where
@@ -423,15 +437,29 @@ export function seedConfirm(input: {
   const name = (seed: number) => input.order[seed - 1]?.team_name ?? seedLabel(seed);
   const shown = gameNumbering(input.stage2Games);
   const firstRound = input.stage2Games.filter((g) => g.round === "R1");
-  const byes: { seed: number; gameNumber: number }[] = [];
+  // A bye into a series sits in every game of it: name the series once.
+  const byes: { seed: number; target: string }[] = [];
   for (const g of input.stage2Games.filter((x) => x.round !== "R1")) {
     for (const seed of [g.seed_home, g.seed_away]) {
-      if (seed !== null) byes.push({ seed, gameNumber: shown(g.game_number) });
+      if (seed === null || byes.some((b) => b.seed === seed)) continue;
+      byes.push({
+        seed,
+        target: isSeriesGame(g, input.stage2Games) ? seriesName(g, input.stage2Games) : `Game ${shown(g.game_number)}`,
+      });
     }
   }
   byes.sort((a, b) => a.seed - b.seed);
-  const lines = byes.map((b) => `${name(b.seed)} (${b.seed}) — bye to Game ${b.gameNumber}`);
+  const lines = byes.map((b) => `${name(b.seed)} (${b.seed}) — bye to ${b.target}`);
   for (const g of firstRound) {
+    if (isSeriesGame(g, input.stage2Games)) {
+      // One line per series, from its game 1 (the higher seed is home there).
+      if ((g.series_game ?? 1) !== 1) continue;
+      const when = g.scheduled_date
+        ? ` · from ${shortDate(g.scheduled_date)}${g.start_time ? `, ${shortTime(g.start_time)}` : ""}`
+        : " · Date TBD";
+      lines.push(`${seriesName(g, input.stage2Games)}: ${name(g.seed_home!)} (${g.seed_home}) vs ${name(g.seed_away!)} (${g.seed_away})${when}`);
+      continue;
+    }
     const when = g.scheduled_date
       ? ` · ${shortDate(g.scheduled_date)}${g.start_time ? `, ${shortTime(g.start_time)}` : ""}`
       : " · Date TBD";
@@ -452,6 +480,7 @@ export function seedConfirm(input: {
     title: `Seed the ${input.divisionName} bracket?`,
     unplayed,
     lines,
+    seriesLine: seriesSeedLine(input.stage2Games),
     notAdvancing: out.length ? `Not advancing: ${joinList(out)}.` : null,
     button: seedButtonLabel(input.status),
   };

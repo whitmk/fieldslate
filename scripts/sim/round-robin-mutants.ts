@@ -112,8 +112,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "RM18", what: "the daily limit is applied to elimination brackets too", file: PLAN,
-    find: `    input.format === "round_robin" ? (input.gamesPerTeamPerDay ?? DEFAULT_GAMES_PER_TEAM_PER_DAY) : undefined;`,
-    replace: `    input.format !== "double_elimination" ? (input.gamesPerTeamPerDay ?? DEFAULT_GAMES_PER_TEAM_PER_DAY) : undefined;`,
+    find: `    input.format === "round_robin" ||\n    (input.format === "single_elimination" && hasSeries(input.seriesByRound))\n      ? `,
+    replace: `    input.format !== "double_elimination"\n      ? `,
     expect: "D4",
   },
 ];
@@ -140,3 +140,6 @@ runMutants({
 //   Run 2b: baseline green (259 checks × 3 zones), 18/18 KILLED at their own
 //   assertion: RM1–RM12 as run 1, RM13 → [H1] RM14 → [H2] RM15 → [D1]
 //   RM16 → [D0] RM17 → [D3] RM18 → [D4]. Source restored, green after.
+// 2026-10-20 (feat/playoff-series): RM18's find string re-pointed — the per-day
+// condition now also covers single elimination with a series round. Same
+// mutant (limit applied to elimination brackets); 18/18 killed at their own tag.
