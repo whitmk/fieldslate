@@ -56,6 +56,10 @@ export type PublicPlayoffGame = {
    *  1 for a single game). */
   series_game?: number;
   series_length?: number;
+  /** 0114: true only while this game can still turn out not needed — the
+   *  database decides it from the results (playoff_if_needed) and sends the
+   *  flag alone, never a score, a winner or where the series stands. */
+  if_needed?: boolean;
 };
 
 export type PublicDivision = { id: string; name: string; game_duration: unknown };

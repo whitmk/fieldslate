@@ -819,14 +819,6 @@ export function seriesGameName(name: string, k: number, length: number): string 
   return `${name} · Game ${k} of ${length}`;
 }
 
-/** The PUBLIC page's and feed's "If needed": game k of a best-of-L series is
- *  past the minimum. Static on purpose — the public reader carries no results,
- *  so a series tied 1–1 still marks its Game 3 "If needed" there. The admin
- *  screens, print and CSV know the results and use seriesGameTag instead. */
-export function ifNeededByPosition(k: number, length: number): boolean {
-  return length > 1 && k > winsNeeded(length);
-}
-
 /** The matchup outside the app: "Expos vs Mets", home team first — or, for a
  *  series game whose two teams aren't both known, "Bears and Winner of
  *  Semifinal 1": the known team first, no team named as home (approved

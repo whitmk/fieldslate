@@ -4,14 +4,15 @@
 //
 //   npx tsx scripts/sim/playoff-series-build.ts > proof.sql
 //
-// The 0107, 0108, 0112 and 0113 proofs re-run against 0114: their harness,
+// The 0105 (public schedule), 0107, 0108, 0112 and 0113 proofs re-run
+// against 0114: their harness,
 // with 0114 in place of their own migration. Production already holds 0107,
 // 0108, 0112 and 0113, and 0114 re-creates every function those proofs test
 // except the ones it leaves alone (they keep their live 0113 / 0112 bodies),
 // so the functions they exercise are exactly what production will run.
 //
 //   npx tsx scripts/sim/playoff-series-build.ts 0107 > proof-0107.sql
-//   (also 0108, 0112, 0113)
+//   (also 0105, 0108, 0112, 0113)
 //
 // It only reads files and writes to stdout. It never connects to anything.
 import { readFileSync } from "node:fs";
@@ -23,6 +24,7 @@ const m0114 = read("supabase/migrations/0114_playoff_series.sql");
 
 const TARGETS: Record<string, { harness: string; placeholder: string; quote?: string }> = {
   "0114": { harness: "scripts/sim/playoff-series-sim.sql", placeholder: "-- @@MIGRATION_0114@@" },
+  "0105": { harness: "scripts/sim/public-schedule-sim.sql", placeholder: "-- @@MIGRATION_0105@@", quote: "$mig105$" },
   "0107": { harness: "scripts/sim/playoff-bracket-delete-sim.sql", placeholder: "-- @@MIGRATION_0107@@", quote: "$mig107$" },
   "0108": { harness: "scripts/sim/playoff-result-sim.sql", placeholder: "-- @@MIGRATION_0108@@" },
   "0112": { harness: "scripts/sim/feed-cutoff-sim.sql", placeholder: "-- @@MIGRATION_0112@@", quote: "$mig112$" },
@@ -31,7 +33,7 @@ const TARGETS: Record<string, { harness: string; placeholder: string; quote?: st
 
 const t = TARGETS[process.argv[2] ?? "0114"];
 if (!t) {
-  console.error("Usage: playoff-series-build.ts [0114|0107|0108|0112|0113]");
+  console.error("Usage: playoff-series-build.ts [0114|0105|0107|0108|0112|0113]");
   process.exit(1);
 }
 const harness = read(t.harness);

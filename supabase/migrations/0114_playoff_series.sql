@@ -31,9 +31,10 @@
 --   2. season_last_day (0112): a not-needed game's date doesn't count.
 --   3. New helpers, callable by NO role: playoff_check_series (the payload's
 --      series shape — both writers call it), playoff_series_place (moves a
---      series winner into, or out of, the next round's games), and
+--      series winner into, or out of, the next round's games),
 --      playoff_round_title / playoff_round_in_sentence / playoff_game_title
---      (the log's words).
+--      (the log's words), and playoff_if_needed (the public "If needed"
+--      flag, decided from the results without handing them out).
 --   4. replace_playoff_games and playoff_write_stage (0113): series payloads
 --      (series_game, settings.series_by_round), stored; Stage 2 seeds may sit
 --      in every game of their series.
@@ -43,7 +44,8 @@
 --      `series_later_result`. The log names the round and the teams, never a
 --      stored game number (CLAUDE.md open item, 2026-10-20).
 --   7. get_league_schedule_by_token (0113): not-needed games never leave the
---      database; series_game and series_length are emitted.
+--      database; series_game, series_length and if_needed are emitted — the
+--      flag only, never a score, a winner or where the series stands.
 --   8. replace_two_stage_games (0113): its public counts skip not-needed games.
 --   Every public-schedule mirror (0107's rule) gains `status <> 'not_needed'`,
 --   as the reader does.
@@ -390,6 +392,51 @@ end;
 $$;
 
 revoke execute on function public.playoff_game_title(uuid, text, integer, integer)
+  from public, anon, authenticated, service_role, dashboard_readonly;
+
+-- The public page's "If needed": true only while game k of a series can still
+-- turn out not needed. The TypeScript rule is seriesGameTag (series.ts) =
+-- "if_needed"; one case table pins the two (IFNEEDED-TABLE in
+-- scripts/sim/playoff-series-sim.sql). `p_outcomes` has one character per
+-- game of the series, game 1 first: 'A' won by the team in game 1's home
+-- slot, 'B' won by the other, 'R' a result with no winner, '-' no result,
+-- 'x' not needed. False for a single game, for a game with a result or not
+-- needed, and once the series is decided; otherwise true when some team could
+-- reach the wins the series needs in the games before this one.
+create or replace function public.playoff_if_needed(
+  p_length   integer,
+  p_k        integer,
+  p_outcomes text
+)
+returns boolean
+language plpgsql
+immutable
+set search_path = public, pg_temp
+as $$
+declare
+  v_need   integer;
+  v_a      integer;
+  v_b      integer;
+  v_before integer;
+begin
+  if coalesce(p_length, 1) < 2 or p_k is null or p_outcomes is null then
+    return false;
+  end if;
+  if substr(p_outcomes, p_k, 1) <> '-' then
+    return false;
+  end if;
+  v_need := p_length / 2 + 1;
+  v_a := length(p_outcomes) - length(replace(p_outcomes, 'A', ''));
+  v_b := length(p_outcomes) - length(replace(p_outcomes, 'B', ''));
+  if v_a >= v_need or v_b >= v_need then
+    return false;
+  end if;
+  v_before := length(substr(p_outcomes, 1, p_k - 1)) - length(replace(substr(p_outcomes, 1, p_k - 1), '-', ''));
+  return v_a + v_before >= v_need or v_b + v_before >= v_need;
+end;
+$$;
+
+revoke execute on function public.playoff_if_needed(integer, integer, text)
   from public, anon, authenticated, service_role, dashboard_readonly;
 
 -- ────────────────────────────────────────────────────────────────────────────
@@ -1725,6 +1772,26 @@ begin
                      'series_length',  (select max(s.series_game) from public.playoff_games s
                                          where s.playoff_id = pg.playoff_id and s.round = pg.round
                                            and s.game_number = pg.game_number),
+                     -- 0114: true only while this game can still turn out
+                     -- not needed. The results stay here — only the flag leaves.
+                     'if_needed',      public.playoff_if_needed(
+                                         (select max(s.series_game) from public.playoff_games s
+                                           where s.playoff_id = pg.playoff_id and s.round = pg.round
+                                             and s.game_number = pg.game_number),
+                                         pg.series_game,
+                                         (select string_agg(
+                                                   case when s.status = 'not_needed' then 'x'
+                                                        when not (s.status = 'completed' or s.winner_id is not null
+                                                                  or s.home_score is not null or s.away_score is not null) then '-'
+                                                        when s.winner_id is null then 'R'
+                                                        when s.winner_id = s1.home_team_id then 'A'
+                                                        else 'B' end, '' order by s.series_game)
+                                            from public.playoff_games s
+                                            left join public.playoff_games s1
+                                              on s1.playoff_id = s.playoff_id and s1.round = s.round
+                                             and s1.game_number = s.game_number and s1.series_game = 1
+                                           where s.playoff_id = pg.playoff_id and s.round = pg.round
+                                             and s.game_number = pg.game_number)),
                      'home_team',      case when pht.id is not null
                                          then jsonb_build_object('id', pht.id, 'name', pht.name)
                                          else null end,
@@ -2227,6 +2294,7 @@ begin
       ('public.playoff_round_title(uuid, text)',                                             '', false),
       ('public.playoff_round_in_sentence(uuid, text)',                                       '', false),
       ('public.playoff_game_title(uuid, text, integer, integer)',                            '', false),
+      ('public.playoff_if_needed(integer, integer, text)',                                   '', false),
       ('public.replace_playoff_games(uuid, jsonb, jsonb, boolean)',                          'authenticated', true),
       ('public.delete_playoff_bracket(uuid, boolean)',                                       'authenticated', true),
       ('public.enter_playoff_result(uuid, integer, integer)',                                'authenticated', true),

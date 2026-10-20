@@ -12,7 +12,7 @@
 import type { GameRow } from "@/lib/playoffs/advancement";
 import { emptySlotLabel, shownGameNumber, type SeedSlots } from "@/lib/playoffs/bracket-labels";
 import { rrGameLabel } from "@/lib/playoffs/two-stage";
-import { ifNeededByPosition, NOT_NEEDED, outboundMatchup, seriesGameName } from "@/lib/playoffs/series";
+import { NOT_NEEDED, outboundMatchup, seriesGameName } from "@/lib/playoffs/series";
 import { isSeriesGame, seriesLengthOf, seriesName } from "@/lib/playoffs/series-names";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
@@ -44,8 +44,9 @@ export type ScheduleRow = {
   /** "Playoffs · Semifinal · Game 3" or "Playoffs · Semifinal 1 · Game 2 of
    *  3", playoff rows only. */
   playoffLabel: string | null;
-  /** A series game past the minimum ("If needed" tag) — by position only
-   *  (ifNeededByPosition: the public reader carries no results). */
+  /** The "If needed" tag: the reader's `if_needed` flag, decided in the
+   *  database from the results (true only while the game can still turn out
+   *  not needed). Never derived here — the page has no results. */
   ifNeeded: boolean;
   /** The series a playoff row belongs to (0114), else null. */
   series: { name: string; k: number; length: number } | null;
@@ -270,7 +271,7 @@ export function buildRows(season: PublicSeason): ScheduleRow[] {
       address: field.address,
       interleague: false,
       playoffLabel: playoffLabelOf(p),
-      ifNeeded: series !== null && ifNeededByPosition(series.k, series.length),
+      ifNeeded: series !== null && p.if_needed === true,
       series,
       struck: status.struck,
       statusLabel: status.label,

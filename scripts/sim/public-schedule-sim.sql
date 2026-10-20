@@ -14,6 +14,13 @@
 -- output as ONE batch through the Supabase MCP (one batch = one transaction),
 -- read the raised message, then run the leak check at the bottom.
 --
+-- RE-RUN AGAINST 0114 (playoff series, 2026-10-20):
+-- `npx tsx scripts/sim/playoff-series-build.ts 0105` puts 0114 in place of
+-- 0105. Production already holds 0105's table, column and admin functions;
+-- 0114 re-creates the reader, so the reader proven is the one that will run.
+-- SM6 (a playoff score emitted) was added for that run. Its leak check is the
+-- second one at the bottom.
+--
 -- LOCKS HELD FOR THE LENGTH OF THE RUN (expected: one to two seconds)
 --   ACCESS EXCLUSIVE on public.locations (ADD COLUMN) — blocks every READ and
 --     write of parks: every venue picker and the Venues page, the Schedule
@@ -68,6 +75,7 @@
 --   SM3  the game's note emitted                               → N1
 --   SM4  any park counts as a home park                        → H2
 --   SM5  turning the page back on mints a new token            → L3
+--   SM6  a playoff game's score emitted (0114 reader)          → N1
 --
 -- RUN LOG: see the bottom of this file after the run.
 
@@ -448,7 +456,9 @@ $mig105$;
         $a$coalesce(loc.is_home_park, false)$a$, $a$(loc.id is not null)$a$),
       ('SM5', 'turning back on mints a new token', 'L3', v_set,
         $a$set enabled = true, updated_at = now()$a$,
-        $a$set enabled = true, updated_at = now(), token = encode(extensions.gen_random_bytes(32), 'hex')$a$)
+        $a$set enabled = true, updated_at = now(), token = encode(extensions.gen_random_bytes(32), 'hex')$a$),
+      ('SM6', 'a playoff game''s score emitted', 'N1', v_reader,
+        $a$'status',         pg.status,$a$, $a$'status',         pg.status, 'home_score', pg.home_score,$a$)
     ) as t(id, what, target, fn, find, repl)
   loop
     begin
@@ -497,6 +507,14 @@ $h105$;
 --     + (select count(*) from venues where name like 'ZZ105%') + (select count(*) from interleague_orgs where name like 'ZZ105%') as fixtures_must_be_0,
 --   (select plan from profiles where id = 'aa21d01c-66dc-4c37-b15c-7b743c557eea') as srall_plan_must_be_elite;
 
+-- ── LEAK CHECK for the 0114 re-run (0105 is applied, so its objects stay) ──
+-- select
+--   (select count(*) from leagues where name like 'ZZ105%') + (select count(*) from locations where name like 'ZZ105%')
+--     + (select count(*) from venues where name like 'ZZ105%') + (select count(*) from interleague_orgs where name like 'ZZ105%') as fixtures_must_be_0,
+--   (select count(*) from pg_proc where proname = 'playoff_if_needed') as helper_must_be_0,
+--   (select md5(prosrc) from pg_proc where proname = 'get_league_schedule_by_token') as reader_still_0113,
+--   (select plan from profiles where id = 'aa21d01c-66dc-4c37-b15c-7b743c557eea') as srall_plan_must_be_elite;
+
 -- ── RUN LOG ─────────────────────────────────────────────────────────────────
 -- 2026-10-08 ~16:55 UTC — against production, test org "SRALL" fixtures only,
 -- rolled back. No other active backend before or after.
@@ -521,3 +539,19 @@ $h105$;
 -- Leak check after: is_home_park column 0, link table 0, functions 0,
 -- ZZ105 fixtures 0, SRALL plan elite.
 -- 0105 NOT APPLIED — waiting on the founder for timing.
+-- 2026-10-20 — RE-RUN AGAINST 0114 (the public "If needed" flag), SRALL test
+-- org fixtures, rolled back, no other active backend. Sent by hand as one
+-- batch: this harness with, in place of 0105, the parts of 0114 the reader
+-- needs — the schema ALTERs and index, season_last_day, playoff_if_needed and
+-- the reader — verbatim from the repo file (the full file was proven the same
+-- day by playoff-series-sim.sql). The batch printed the md5s to check that.
+-- Run 1: GREEN. BASELINE failures (0). SM1 → [U1], SM2 → [PI1] (then N1, as
+--   before), SM3 → [N1], SM4 → [H2], SM5 → [L3] (then W1, as before), SM6 (a
+--   playoff score emitted) → [N1] — 6/6 KILLED at their own tag. AFTER
+--   MUTANTS: []. prosrc md5: reader 93db2cf6a40749d38a057be0f1a0737f,
+--   playoff_if_needed 25f7d7ee376edbed65a91d5d68862e20, season_last_day
+--   48e6d5504f19349a0bae92edc34c014d — each equal to 0114's file; set_enabled
+--   and reset unchanged (a26e52df…, 847e50d1…).
+--   Leak check after (the 0114 one above): fixtures 0, helper 0, series_game
+--   column 0, live reader still 0113's (ee9d9bb3…), SRALL test org plan
+--   elite, its link rows 0.

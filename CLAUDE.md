@@ -634,7 +634,15 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   LATEST migration that defines `get_league_schedule_by_token`** — [D1] reads
   only each token function's latest body, so LK3 aimed at 0105 SURVIVED once
   0112 redefined the reader (found 2026-10-20; on `main` it still points at
-  0105 and survives). Move it with every new definition of the reader.
+  0105 and survives). Move it with every new definition of the reader — on
+  `feat/playoff-series` it targets 0114 (killed at D1). **The same rule now
+  holds for `sim:game-notes` O1-public-reader**: it reads the LATEST migration
+  defining the reader (it read 0105 only, so the 0112/0113 readers were never
+  checked); its mutants GM13 (a note) and GM14 (a playoff score beside
+  `if_needed`) target 0114. Since 0114 the reader reads results to decide
+  `if_needed`, so the fence requires that key to be exactly
+  `public.playoff_if_needed(…)` and holds the rest of the body to the
+  no-notes/scores/winners/contacts rule.
 - **Harnesses:** `npm run sim:daylight` (73 checks × 3 zones, 7 counters;
   `:mutants` 13, each killed at its own assertion — read its log: DL4 first
   died early, a harness ordering fault). SQL proof:
@@ -917,21 +925,30 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `seriesGameName` ("Semifinal 1 · Game 2 of 3"), `outboundMatchup` (home team
   first once both teams are known; before that "Bears and Winner of Semifinal
   1" — the known team first, no home named; a single game always "vs"),
-  `ifNeededByPosition`, `seriesPrintLine`, `seriesRoundHeader`.
+  `seriesPrintLine`, `seriesRoundHeader`.
   - **Public page + all-games feed** (`view.ts`, `league-ics.ts`): series rows
     read "Playoffs · Semifinal 1 · Game 2 of 3" ("Playoffs · Bracket · …" for
-    Stage 2) with an amber **If needed** tag; the LENGTH comes from the
+    Stage 2) with an amber **If needed** tag from the reader's `if_needed`
+    flag (below); the LENGTH comes from the
     reader's `series_length` (the reader leaves not-needed games out, so the
     rows can't count it). `buildRows` drops a not-needed row again (second
     lock). Feed titles for series games only: "Majors Playoffs — Semifinal 1,
     Game 3 of 3 (if needed): Expos vs Mets"; a single playoff game keeps its
     matchup title. No scores or standings leave the page (sim checks the text
     and the type).
-  - **The public "If needed" is BY POSITION, not by result** — the reader
-    carries no results, so a best of 3 tied 1–1 still tags Game 3 "If needed"
-    there (the admin screens, print and CSV use `seriesGameTag` and drop it).
-    Recorded deviation; the fix would be an `if_needed` key from the reader
-    (a 0114 change + re-proof).
+  - **The public "If needed" is decided IN THE DATABASE and sent as a flag
+    alone** (decided 2026-10-20, replacing a by-position rule that tagged Game 3
+    at 1–1). 0114's reader emits `if_needed` from `playoff_if_needed(length,
+    k, outcomes)` — pure, callable by NO role; outcomes are one character per
+    game ('A'/'B' winner by game 1's home slot, 'R' result without a winner,
+    '-' none, 'x' not needed): true only while the game can still turn out not
+    needed. Never a score, a winner or the standing — the proof's KY1 pins the
+    exact key set and MU23 (a score beside the flag) dies there. The page and
+    feed read `p.if_needed === true` (absent → no tag) and never work it out.
+    **ONE RULE, TWO LANGUAGES, ONE TABLE:** the `IFNEEDED-TABLE-BEGIN/END`
+    block in `scripts/sim/playoff-series-sim.sql` (26 rows) — the SQL proof
+    runs it through the helper (IX1), `sim:playoff-series` parses the SAME
+    block and runs it through `seriesGameTag` (IX). Never a second copy.
   - **Print** (`bracket-print.ts`): one series card per series (header +
     standing, two team rows with wins, one 15px line per game; a played game's
     line drops the time; not-needed struck; If needed / Next tags), round
@@ -1005,12 +1022,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `clear_playoff_result` `f60c353245d685861b3f3d01456d61e9`,
   `delete_playoff_bracket` `0c788c4b4996dc656655e5d9f1e26ead`,
   `enter_playoff_result` `bf336bf9b03690df35fa12d025f84dae`,
-  `get_league_schedule_by_token` `58de6c61e0b3a29bd3392352b2408718`,
+  `get_league_schedule_by_token` `93db2cf6a40749d38a057be0f1a0737f`,
   `playoff_check_series` `ad4168131434ce72dfe75b43c3c41a32`,
   `playoff_game_title` `3c362c4ecafd99e7385e0f98d483b74d`,
   `playoff_round_in_sentence` `4a0911e0564055cd621d901f85343a75`,
   `playoff_round_title` `0f80e431da34b6767c3b501a41a498ae`,
   `playoff_series_place` `874da41d419f49600b68f6122d9432e1`,
+  `playoff_if_needed` `25f7d7ee376edbed65a91d5d68862e20`,
   `playoff_write_stage` `d43764d1042f4e98bac7cb5fb277c56b`,
   `replace_playoff_games` `2e62187822aa292d6b95c77ec27f293b`,
   `replace_two_stage_games` `265add03389e1c1129297948157273bd`,
@@ -1020,18 +1038,22 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   which also re-targets the 0107, 0108, 0112 and 0113 proofs at 0114). Run
   2026-10-20: green on run 1, 20/20 mutants at their own tag, md5s matched;
   regressions 0108 18/18, 0107 15/15, 0112 12/12 (FM12 new), 0113 23/23 (its
-  SC1/OT1 re-targeted because 0113 is live); leak checks clean. Read the RUN
-  LOGs.
+  SC1/OT1 re-targeted because 0113 is live); leak checks clean. Re-run the
+  same day after the `if_needed` flag: green on run 1, 24/24 at their own tag
+  (IX1/IF1/KY1 new), all fourteen md5s matched; the public-schedule (0105)
+  proof against 0114 (`playoff-series-build.ts 0105`; sent with the reader's
+  parts of 0114) 6/6 incl. SM6 a playoff score emitted → N1; leak checks
+  clean. Read the RUN LOGs.
 - **Deviations from the mockup, to confirm:** the Review's one-date-short
   warning names the undated game but not "needs 3 dates after …; 2 are in
   range" (that count depends on fields and the per-day limit); the two-stage
   seed confirm keeps today's "Game 1: Mets (4) vs …" for single games (the
   mockup showed "Round 1 · Game 1:").
-- **Harness: `npm run sim:playoff-series`** (3,282 checks × 3 zones, 11
+- **Harness: `npm run sim:playoff-series`** (3,363 checks × 3 zones, 12
   counters; S0 nothing changes without series … S10 confirms, S11 screens,
-  S12 outside the app, then 300 seeded playthroughs through the TypeScript
-  twin, incl. clear round trips) + `:mutants` (41, each killed at its own
-  assertion — read the RUN LOG).
+  S12 outside the app, IX the shared if-needed table, then 300 seeded
+  playthroughs through the TypeScript twin, incl. clear round trips) +
+  `:mutants` (42, each killed at its own assertion — read the RUN LOG).
 
 ## Printable playoff bracket + slot labels (2026-10-13)
 

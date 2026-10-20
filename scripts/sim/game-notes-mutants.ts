@@ -40,10 +40,19 @@ const MUTANTS: Mutant[] = [
     expect: "O1-public",
   },
   {
-    id: "GM13", what: "(0105) the public reader emits the game's note",
-    file: "supabase/migrations/0105_public_league_schedule.sql",
+    // Must target the LATEST migration defining the reader — O1-public-reader
+    // reads only that one (moved from 0105 to 0114, 2026-10-20).
+    id: "GM13", what: "(0114) the public reader emits the game's note",
+    file: "supabase/migrations/0114_playoff_series.sql",
     find: "                     'status',              g.status,",
     replace: "                     'status',              g.status, 'notes', g.notes,",
+    expect: "O1-public-reader",
+  },
+  {
+    id: "GM14", what: "(0114) the public reader emits a playoff score beside the if_needed flag",
+    file: "supabase/migrations/0114_playoff_series.sql",
+    find: "                     'if_needed',      public.playoff_if_needed(",
+    replace: "                     'home_score', pg.home_score,\n                     'if_needed',      public.playoff_if_needed(",
     expect: "O1-public-reader",
   },
 ];

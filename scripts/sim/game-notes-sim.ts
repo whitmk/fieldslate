@@ -45,7 +45,7 @@
 // object it already receives.
 
 import * as React from "react";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
@@ -186,16 +186,30 @@ function partO() {
     ok(!mentionsNotes(src), `[O1-public] ${name} never references notes`);
     ok(!mentionsCash(src), `[O1-public-cash] ${name} never references a cash person`);
   }
-  // The reader itself (0105): its BODY, SQL comments removed, never names the
-  // notes column and never emits a whole row. Comments are not returned, and
-  // the body's own comment says what it must not emit.
-  const mig = readFileSync(join(SRC, "..", "supabase", "migrations", "0105_public_league_schedule.sql"), "utf8");
+  // The reader itself — the LATEST migration that defines it (0105, then
+  // redefined by 0112, 0113 and 0114; a check pinned to one file stops
+  // checking the reader that runs). Its BODY, SQL comments removed, never
+  // names the notes column and never emits a whole row. Comments are not
+  // returned, and the body's own comment says what it must not emit.
+  // 0114: the reader READS results to decide `if_needed` and emits only that
+  // flag, so the flag's expression must be the helper's boolean and nothing
+  // else; the rest of the body is held to the original rule.
+  const migDir = join(SRC, "..", "supabase", "migrations");
+  const readerFile = readdirSync(migDir).filter((f) => f.endsWith(".sql")).sort()
+    .filter((f) => readFileSync(join(migDir, f), "utf8").includes("create or replace function public.get_league_schedule_by_token"))
+    .pop() ?? "";
+  const mig = readerFile ? readFileSync(join(migDir, readerFile), "utf8") : "";
   const rStart = mig.indexOf("create or replace function public.get_league_schedule_by_token");
   const bStart = mig.indexOf("$$", rStart) + 2;
   const bEnd = mig.indexOf("$$", bStart);
-  ok(rStart > 0 && bEnd > bStart, "[O1-public-reader] the reader body was found in 0105");
+  ok(rStart > 0 && bEnd > bStart, `[O1-public-reader] the reader body was found in the latest migration defining it (${readerFile || "none"})`);
   const body = mig.slice(bStart, bEnd).replace(/--[^\n]*/g, "");
-  ok(!mentionsNotes(body) && !/to_jsonb\s*\(/.test(body) && !/\b[a-z]+\.\*/.test(body) && !/contact|admin_email|score|winner/.test(body),
+  const ifStart = body.indexOf("'if_needed',");
+  const ifEnd = ifStart >= 0 ? body.indexOf("'home_team',", ifStart) : -1;
+  ok(ifStart < 0 || (ifEnd > ifStart && /^'if_needed',\s*public\.playoff_if_needed\(/.test(body.slice(ifStart, ifEnd))),
+    "[O1-public-reader] if_needed is the helper's boolean and nothing else");
+  const emitted = ifStart >= 0 && ifEnd > ifStart ? body.slice(0, ifStart) + body.slice(ifEnd) : body;
+  ok(!mentionsNotes(emitted) && !/to_jsonb\s*\(/.test(emitted) && !/\b[a-z]+\.\*/.test(emitted) && !/contact|admin_email|score|winner/.test(emitted),
     "[O1-public-reader] get_league_schedule_by_token never selects notes, scores, contacts or a whole row");
 
   // 0104 — the snack shack's outbound paths: two email routes, the Teams page

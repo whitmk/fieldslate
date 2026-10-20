@@ -169,9 +169,9 @@ const MUTANTS: Mutant[] = [
     expect: "S12",
   },
   {
-    id: "SM26", what: "If needed starts one game early on the public page", file: SERIES,
-    find: "  return length > 1 && k > winsNeeded(length);",
-    replace: "  return length > 1 && k >= winsNeeded(length);",
+    id: "SM26", what: "the public page works If needed out by position instead of the reader's flag", file: "src/lib/public-schedule/view.ts",
+    find: "ifNeeded: series !== null && p.if_needed === true,",
+    replace: "ifNeeded: series !== null && series.k > Math.floor(series.length / 2) + 1,",
     expect: "S12",
   },
   {
@@ -258,6 +258,13 @@ const MUTANTS: Mutant[] = [
     replace: "  });",
     expect: "S12",
   },
+  {
+    id: "SM41", what: "the shared IFNEEDED-TABLE says 1–1 is still if needed (proves IX reads the live table)",
+    file: "scripts/sim/playoff-series-sim.sql",
+    find: "  ('B7', 3, 3, 'AB-', false),",
+    replace: "  ('B7', 3, 3, 'AB-', true),",
+    expect: "IX",
+  },
 ];
 
 runMutants({
@@ -292,3 +299,6 @@ runMutants({
 // pass, while writing S12: a "home known, away unknown" Final put Bears
 // (Semifinal 2's team) in the slot Semifinal 1 feeds; corrected to Expos.
 //   Run 1: 41/41 KILLED at their own tag; source restored and verified.
+// 2026-10-20 (later) — the public flag comes from the reader (if_needed):
+// SM26 re-aimed at the page working it out by position; SM41 skews the shared
+// table from the SQL file (killed by IX, the TypeScript side of the pin).

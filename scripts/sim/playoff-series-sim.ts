@@ -13,7 +13,10 @@
 //   S3 names and labels → S4 series state and tags → S5 results in order →
 //   S6 the Save line → S7 the Clear lines → S8 advancement writes → S9 setup
 //   text → S10 confirms → S11 screens (step 3: the card's actions and lines,
-//   the payload, the database's refusal replies, the clear confirm) → PT
+//   the payload, the database's refusal replies, the clear confirm) → S12
+//   outside the app (step 4; incl. IX: the IFNEEDED-TABLE parsed out of
+//   scripts/sim/playoff-series-sim.sql and run through seriesGameTag — the
+//   SQL proof runs the SAME rows through playoff_if_needed) → PT
 //   playthroughs → counters.
 import {
   buildSingleElimination,
@@ -94,7 +97,7 @@ import {
 } from "../../src/lib/snack-shack/derive-shifts";
 import { daylightFlag } from "../../src/lib/daylight/flags";
 import { cityById } from "../../src/lib/sun/us-cities";
-import { ifNeededByPosition, outboundMatchup, seriesPrintLine, seriesRoundHeader } from "../../src/lib/playoffs/series";
+import { outboundMatchup, seriesPrintLine, seriesRoundHeader } from "../../src/lib/playoffs/series";
 import { seriesMockup, seriesSixteen } from "./bracket-print-fixtures";
 
 const failures: string[] = [];
@@ -132,6 +135,7 @@ const counters = {
   clearRoundTrips: 0,
   orderRefusals: 0,
   publicNotNeededDropped: 0,
+  ifNeededTableRows: 0,
   publicPlaceholderMatchups: 0,
   csvIfNeededFromResults: 0,
 };
@@ -823,6 +827,9 @@ function publicGames(rows: SeriesGame[], keepNotNeeded = false): PublicPlayoffGa
       series_length: Math.max(
         ...all.filter((x) => x.round === g.round && x.game_number === g.game_number).map((x) => x.series_game ?? 1),
       ),
+      // The reader's flag, computed here by the TypeScript rule — IX below pins
+      // that rule to the SQL helper the reader calls, row for row.
+      if_needed: seriesGameTag(g, seriesGamesOf(g, rows)) === "if_needed",
     }));
 }
 function publicSeason(playoff: PublicPlayoffGame[]): PublicSeason {
@@ -890,7 +897,10 @@ section("S12 outside the app", () => {
   eq(buildRows(publicSeason(publicGames(half))).find((r) => r.key === "p-F-7-1")?.matchup,
     "Expos and Winner of Semifinal 2", "S12", "public: home slot known, away not → still no home team named");
   eq(outboundMatchup("Expos", "Mets", { seriesGame: false, homeIsTeam: true, awayIsTeam: false }), "Expos vs Mets", "S12", "a single game always reads vs");
-  eq([1, 2, 3, 4, 5, 6, 7].map((k) => ifNeededByPosition(k, 7)), [false, false, false, false, true, true, true], "S12", "public: best of 7 → games 5–7 if needed");
+  // The page shows the reader's flag and nothing else: a row whose flag is
+  // false reads no tag even when its position is past the minimum.
+  const flagOff = publicGames(rows).map((g) => (g.id === "SF-5-3" ? { ...g, if_needed: false } : g));
+  eq(buildRows(publicSeason(flagOff)).find((r) => r.key === "p-SF-5-3")?.ifNeeded, false, "S12", "public: the tag is the reader's flag, never worked out on the page");
 
   // ── Feed ──
   eq(playoffEventTitle(row("SF-5-3")!), "Majors Playoffs — Semifinal 1, Game 3 of 3 (if needed): Expos vs Mets", "S12", "feed: an if-needed game's title");
@@ -918,7 +928,7 @@ section("S12 outside the app", () => {
   const tied = mockupState();
   result(tied, "SF-5-2", 5, 3); // Mets (home) win → 1–1
   eq(exportGameName(exportGames(tied).find((g) => g.id === "SF-5-3")!, exportGames(tied), null), "Semifinal 1 · Game 3 of 3", "S12", "CSV: at 1–1 Game 3 is not marked if needed (results known)");
-  eq(buildRows(publicSeason(publicGames(tied))).find((r) => r.key === "p-SF-5-3")?.ifNeeded, true, "S12", "public: at 1–1 Game 3 still reads If needed (static, no results on the page — recorded)");
+  eq(buildRows(publicSeason(publicGames(tied))).find((r) => r.key === "p-SF-5-3")?.ifNeeded, false, "S12", "public: at 1–1 Game 3 will be played — no If needed (the reader's flag)");
   if (!exportGameName(exportGames(tied).find((g) => g.id === "SF-5-3")!, exportGames(tied), null).includes("if needed")) counters.csvIfNeededFromResults++;
   // A bracket with no series exports exactly as before.
   const plain = exportGames(withIds(planBracket({ ...mockupInput(undefined), gamesPerTeamPerDay: 1 }).games));
@@ -996,6 +1006,58 @@ section("S12 outside the app", () => {
   ok(readFileSync("src/components/public-schedule/public-schedule-client.tsx", "utf8").includes("{row.ifNeeded && !row.struck && <PlainTag tone=\"amber\">{SERIES_TAG_TEXT.if_needed}</PlainTag>}"),
     "S12", "public page: renders the If needed tag");
   ok(readFileSync("src/components/playoffs/seed-stage2-modal.tsx", "utf8").includes("{confirm.seriesLine && <p"), "S12", "seed confirm: shows the series line");
+});
+
+// ─── IX: the public "If needed" rule, one table for both languages ──────────
+// The IFNEEDED-TABLE block of scripts/sim/playoff-series-sim.sql is the only
+// copy. The SQL proof runs it through playoff_if_needed (IX1); here every row
+// becomes a series and goes through seriesGameTag. Change either rule alone
+// and its side goes red.
+
+section("IX if-needed table", () => {
+  const sql = readFileSync("scripts/sim/playoff-series-sim.sql", "utf8").split("\n");
+  const begin = sql.filter((l) => l.trim() === "-- IFNEEDED-TABLE-BEGIN").length;
+  const end = sql.filter((l) => l.trim() === "-- IFNEEDED-TABLE-END").length;
+  ok(begin === 1 && end === 1, "IX", `the table's markers appear once each (BEGIN ×${begin}, END ×${end})`);
+  const from = sql.findIndex((l) => l.trim() === "-- IFNEEDED-TABLE-BEGIN");
+  const to = sql.findIndex((l) => l.trim() === "-- IFNEEDED-TABLE-END");
+  const ROW = /^\s*\('([A-Z0-9]+)', (\d), (\d), '([ABRx-]+)', (true|false)\),?\s*$/;
+  let rowsRun = 0;
+  for (const line of from >= 0 && to > from ? sql.slice(from + 1, to) : []) {
+    if (!line.trim()) continue;
+    const m = ROW.exec(line);
+    ok(!!m, "IX", `a table row parses: ${line.trim()}`);
+    if (!m) continue;
+    const [, id, lenRaw, kRaw, outcomes, expectRaw] = m;
+    const length = Number(lenRaw);
+    const k = Number(kRaw);
+    ok(outcomes.length === length, "IX", `${id}: one outcome per game`);
+    // Slot A is game 1's home team; teams alternate home as the planner does.
+    const games: SeriesGame[] = [...outcomes].map((c, i) => {
+      const gameNo = i + 1;
+      const home = gameNo % 2 === 1 ? "ta" : "tb";
+      const away = home === "ta" ? "tb" : "ta";
+      const winner = c === "A" ? "ta" : c === "B" ? "tb" : null;
+      const result = c === "A" || c === "B" || c === "R";
+      return {
+        id: `${id}-${gameNo}`,
+        round: "SF",
+        game_number: 5,
+        series_game: gameNo,
+        home_team_id: home,
+        away_team_id: away,
+        winner_id: winner,
+        status: c === "x" ? NOT_NEEDED : result ? "completed" : "scheduled",
+        home_score: result ? (winner === home ? 5 : winner === away ? 2 : 3) : null,
+        away_score: result ? (winner === away ? 5 : winner === home ? 2 : 3) : null,
+      };
+    });
+    const got = seriesGameTag(games[k - 1], games) === "if_needed";
+    eq(got, expectRaw === "true", "IX", `${id}: best of ${length}, game ${k}, outcomes ${outcomes}`);
+    rowsRun++;
+  }
+  ok(rowsRun >= 20, "IX", `20+ rows run (${rowsRun})`);
+  counters.ifNeededTableRows += rowsRun;
 });
 
 // ─── PT: playthroughs (the TypeScript twin, end to end) ───────────────────────

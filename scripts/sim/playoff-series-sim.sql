@@ -56,8 +56,10 @@
 -- the same series rounds.
 --
 -- ASSERTIONS (in order; a mutant must die FIRST at its own tag)
---   P1   privileges: the five helpers callable by no role; the entry points
+--   P1   privileges: the six helpers callable by no role; the entry points
 --        authenticated only; the reader anon + authenticated; DEFINER flags
+--   IX1  playoff_if_needed answers every row of the IFNEEDED-TABLE (the same
+--        rows `npm run sim:playoff-series` runs through seriesGameTag)
 --   SC1  schema: a duplicate (playoff, round, game number, series game) is
 --        refused (23505); series_game 8 is refused (23514); 'not_needed' is a
 --        valid status; existing games are all series game 1, none not needed
@@ -76,6 +78,11 @@
 --   LT1  an earlier result can't be changed while a later one stands
 --   PUB1 the public reader leaves the not-needed game out and emits
 --        series_game and series_length
+--   IF1  the reader's if_needed flag, end to end: at 0–0 only Game 3 of each
+--        best of 3; at 1–0 Game 3 still; at 1–1 Game 3 is NOT if needed (it
+--        will be played) and is still listed
+--   KY1  every public playoff game carries exactly the reader's keys — no
+--        score, no winner, nothing about where a series stands
 --   LD1  season_last_day no longer counts the not-needed game
 --   HM1  Expos win Semifinal 1: its Game 3 not needed; the Final alternates
 --        (Expos 1 home in games 1 and 3, Bears 2 in game 2)
@@ -120,6 +127,10 @@
 --   MU18 delete: not-needed games on the public count          → DL1
 --   MU19 EXECUTE on playoff_series_place granted to PUBLIC     → P1
 --   MU20 enter: the log names the stored game number           → LG1
+--   MU21 if_needed: by position, the results ignored           → IX1
+--   MU22 reader: the results not passed to the flag            → IF1
+--   MU23 reader: a score emitted beside the flag               → KY1
+--   MU24 EXECUTE on playoff_if_needed granted to anon          → P1
 --
 -- RUN LOG: see the bottom of this file after the run.
 
@@ -202,6 +213,61 @@ with k as (
   on conflict (org_id) do update set enabled = true
   returning token)
 update h114_fx set token = (select token from k);
+
+-- The public "If needed" rule, one row per case: series length, game k, the
+-- series' outcomes game 1 first ('A' won by game 1's home-slot team, 'B' by
+-- the other, 'R' a result with no winner, '-' no result, 'x' not needed) and
+-- the expected flag. `npm run sim:playoff-series` parses THIS block and runs
+-- every row through seriesGameTag (series.ts). One copy — never a second.
+create temp table h114_ifneeded on commit drop as
+select * from (values
+-- IFNEEDED-TABLE-BEGIN
+  ('A1', 1, 1, '-', false),
+  ('B1', 3, 1, '---', false),
+  ('B2', 3, 2, '---', false),
+  ('B3', 3, 3, '---', true),
+  ('B4', 3, 2, 'A--', false),
+  ('B5', 3, 3, 'A--', true),
+  ('B6', 3, 3, 'B--', true),
+  ('B7', 3, 3, 'AB-', false),
+  ('B8', 3, 3, 'BA-', false),
+  ('B9', 3, 3, 'AAx', false),
+  ('B10', 3, 1, 'A--', false),
+  ('B11', 3, 3, 'R--', false),
+  ('C1', 5, 3, '-----', false),
+  ('C2', 5, 4, '-----', true),
+  ('C3', 5, 5, '-----', true),
+  ('C4', 5, 4, 'AA---', true),
+  ('C5', 5, 4, 'AB---', false),
+  ('C6', 5, 5, 'AB---', true),
+  ('C7', 5, 5, 'AAB--', true),
+  ('C8', 5, 5, 'AABB-', false),
+  ('C9', 5, 4, 'AAAxx', false),
+  ('D1', 7, 4, '-------', false),
+  ('D2', 7, 5, '-------', true),
+  ('D3', 7, 6, 'ABAB---', false),
+  ('D4', 7, 7, 'ABAB---', true),
+  ('D5', 7, 7, 'AAAB---', true)
+-- IFNEEDED-TABLE-END
+) as t(case_id, series_length, k, outcomes, expect_if_needed);
+
+-- The public reader's flags for one bracket, as 'SF5.3=true …' in bracket order.
+create function pg_temp.h114_flags(p_token text, p_playoff uuid)
+returns text
+language plpgsql
+as $fn$
+declare r text; j jsonb;
+begin
+  r := pg_temp.h114_call('anon', null, format('public.get_league_schedule_by_token(%L)', p_token));
+  j := pg_temp.h114_j(r);
+  return (select string_agg((pg ->> 'round') || (pg ->> 'game_number') || '.' || (pg ->> 'series_game')
+                            || '=' || coalesce(pg ->> 'if_needed', 'null'), ' '
+                            order by (pg ->> 'game_number')::int, (pg ->> 'series_game')::int)
+            from jsonb_array_elements(coalesce(j -> 'seasons', '[]'::jsonb)) s,
+                 jsonb_array_elements(s -> 'playoff_games') pg
+           where pg ->> 'playoff_id' = p_playoff::text);
+end;
+$fn$;
 
 -- Calls one function as a user (or anon). 'OK <json>' or 'ERR <sqlstate> <message>'.
 create function pg_temp.h114_call(p_role text, p_uid uuid, p_sql text)
@@ -386,6 +452,7 @@ begin
       ('public.playoff_round_title(uuid, text)', ''),
       ('public.playoff_round_in_sentence(uuid, text)', ''),
       ('public.playoff_game_title(uuid, text, integer, integer)', ''),
+      ('public.playoff_if_needed(integer, integer, text)', ''),
       ('public.playoff_write_stage(public.playoffs, uuid, jsonb, jsonb, integer, boolean)', ''),
       ('public.replace_playoff_games(uuid, jsonb, jsonb, boolean)', 'authenticated'),
       ('public.delete_playoff_bracket(uuid, boolean)', 'authenticated'),
@@ -403,12 +470,21 @@ begin
               where n.nspname = 'public' and p.prosecdef
                 and p.proname in ('playoff_check_series', 'playoff_series_place', 'playoff_round_title',
                                   'playoff_round_in_sentence', 'playoff_game_title', 'season_last_day',
-                                  'playoff_write_stage'))
+                                  'playoff_write_stage', 'playoff_if_needed'))
      or exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                  where n.nspname = 'public' and not p.prosecdef
                    and p.proname in ('replace_playoff_games', 'delete_playoff_bracket', 'enter_playoff_result',
                                      'clear_playoff_result', 'replace_two_stage_games', 'get_league_schedule_by_token')) then
     v_f := v_f || 'P1: a SECURITY DEFINER flag is wrong'::text;
+  end if;
+
+  -- IX1 ──────────────────────────────────────────────────────────────────────
+  select string_agg(format('%s got %s', c.case_id,
+                           public.playoff_if_needed(c.series_length, c.k, c.outcomes)), '; ') into v_t
+    from h114_ifneeded c
+   where public.playoff_if_needed(c.series_length, c.k, c.outcomes) is distinct from c.expect_if_needed;
+  if v_t is not null or (select count(*) from h114_ifneeded) < 20 then
+    v_f := v_f || ('IX1: playoff_if_needed disagrees with the table — ' || coalesce(v_t, 'too few rows'));
   end if;
 
   -- SC1 ──────────────────────────────────────────────────────────────────────
@@ -562,6 +638,41 @@ begin
                      where pg ->> 'round' = 'R1' and pg ->> 'series_game' = '1' and pg ->> 'series_length' = '1') then
     v_f := v_f || format('PUB1: public rows %s; not-needed shown %s', jsonb_array_length(v_pub),
       exists (select 1 from jsonb_array_elements(v_pub) pg where pg ->> 'id' = pg_temp.h114_g(fx.p6, 6, 3)::text));
+  end if;
+
+  -- IF1 ──────────────────────────────────────────────────────────────────────
+  -- 0–0 in Semifinal 1 and the Final; Semifinal 2 decided (its Game 3 gone).
+  v_t := pg_temp.h114_flags(fx.token, fx.p6);
+  if v_t is distinct from 'R12.1=false R14.1=false SF5.1=false SF5.2=false SF5.3=true SF6.1=false SF6.2=false F7.1=false F7.2=false F7.3=true' then
+    v_f := v_f || ('IF1: flags at 0–0 — ' || coalesce(v_t, 'none'));
+  end if;
+  begin
+    r := pg_temp.h114_enter(pg_temp.h114_g(fx.p6, 5, 1), 5, 2);   -- Expos (home) win: 1–0
+    v_t := pg_temp.h114_flags(fx.token, fx.p6);
+    if position('SF5.2=false SF5.3=true' in coalesce(v_t, '')) = 0 then
+      v_f := v_f || ('IF1: flags at 1–0 — ' || coalesce(v_t, 'none') || ' / ' || r);
+    end if;
+    r := pg_temp.h114_enter(pg_temp.h114_g(fx.p6, 5, 2), 5, 3);   -- Mets (home in Game 2) win: 1–1
+    v_t := pg_temp.h114_flags(fx.token, fx.p6);
+    if position('SF5.3=false' in coalesce(v_t, '')) = 0 then
+      v_f := v_f || ('IF1: at 1–1 Game 3 will be played, so it is not if needed — ' || coalesce(v_t, 'none') || ' / ' || r);
+    end if;
+    raise exception 'H114_UNDO';
+  exception when others then
+    if sqlerrm <> 'H114_UNDO' then
+      v_f := v_f || ('IF1: crashed — ' || sqlstate || ' ' || sqlerrm);
+    end if;
+  end;
+
+  -- KY1 ──────────────────────────────────────────────────────────────────────
+  -- The reader's keys, exactly. Round 1 and Semifinal 2 hold scores and
+  -- winners right now; none of it may leave.
+  select string_agg(distinct z.ks, ' | ') into v_t
+    from (select (select string_agg(k, ',' order by k) from jsonb_object_keys(pg) k) as ks
+            from jsonb_array_elements(v_pub) pg) z;
+  if v_t is distinct from 'away_team,division_id,format,game_number,home_team,id,if_needed,playoff_id,round,scheduled_date,seed_away,seed_home,series_game,series_length,stage,start_time,status,venue'
+     or v_pub::text ~ '(score|winner|wins|lead)' then
+    v_f := v_f || ('KY1: a public playoff game carries other keys — ' || coalesce(v_t, 'none'));
   end if;
 
   -- LD1 ──────────────────────────────────────────────────────────────────────
@@ -830,7 +941,17 @@ begin
         $a$public.playoff_game_title(v_po.id, v_game.round, v_game.game_number, v_k),
     coalesce(v_home_name, 'Home'), p_home_score$a$,
         $a$format('Game %s', v_game.game_number),
-    coalesce(v_home_name, 'Home'), p_home_score$a$, null, null)
+    coalesce(v_home_name, 'Home'), p_home_score$a$, null, null),
+      ('MU21', 'if_needed: by position, the results ignored', 'IX1', 'public.playoff_if_needed(integer, integer, text)',
+        $a$  return v_a + v_before >= v_need or v_b + v_before >= v_need;$a$,
+        $a$  return p_k > v_need;$a$, null, null),
+      ('MU22', 'reader: the results not passed to the flag', 'IF1', 'public.get_league_schedule_by_token(text)',
+        $a$when s.winner_id is null then 'R'$a$, $a$when true then '-'$a$, null, null),
+      ('MU23', 'reader: a score emitted beside the flag', 'KY1', 'public.get_league_schedule_by_token(text)',
+        $a$'if_needed',      public.playoff_if_needed($a$,
+        $a$'home_score', pg.home_score, 'if_needed',      public.playoff_if_needed($a$, null, null),
+      ('MU24', 'EXECUTE on playoff_if_needed granted to anon', 'P1', null,
+        null, $a$grant execute on function public.playoff_if_needed(integer, integer, text) to anon$a$, null, null)
     ) as t(id, what, target, fn, find, repl, find2, repl2)
   loop
     begin
@@ -876,7 +997,7 @@ begin
                                           'playoff_round_title', 'playoff_round_in_sentence', 'playoff_game_title',
                                           'replace_playoff_games', 'delete_playoff_bracket', 'enter_playoff_result',
                                           'clear_playoff_result', 'get_league_schedule_by_token',
-                                          'playoff_write_stage', 'replace_two_stage_games'));
+                                          'playoff_write_stage', 'replace_two_stage_games', 'playoff_if_needed'));
 
   raise exception '%', v_out;
 end;
@@ -887,7 +1008,8 @@ $h114$;
 --   (select count(*) from information_schema.columns where table_name = 'playoff_games' and column_name = 'series_game')
 --     + (select count(*) from information_schema.columns where table_name = 'playoffs' and column_name = 'series_by_round')
 --     + (select count(*) from pg_proc where proname in ('playoff_check_series', 'playoff_series_place',
---          'playoff_round_title', 'playoff_round_in_sentence', 'playoff_game_title')) as zero_before_apply,
+--          'playoff_round_title', 'playoff_round_in_sentence', 'playoff_game_title',
+--          'playoff_if_needed')) as zero_before_apply,
 --   (select count(*) from leagues where name like 'ZZ114%')
 --     + (select count(*) from teams where name like 'ZZ114%') as fixtures_must_be_0,
 --   (select count(*) from public_schedule_links where org_id = 'bbf9afe1-9e62-41e0-becc-895085bfc9d6') as test_link_must_be_0,
@@ -931,4 +1053,18 @@ $h114$;
 --   0113: BASELINE 0; 23/23 KILLED at their own tag; md5s = 0114's for the
 --     seven it re-creates, 0113's for seed/acknowledge/apply. Its SC1/OT1
 --     check was re-targeted first (0113 is live now) — see its log.
+-- 2026-10-20 (later) — the public "If needed" flag (playoff_if_needed + the
+-- reader's if_needed key; IX1, IF1, KY1; MU21–MU24 added). Live had 19 playoff
+-- games by then (one more than the first run; OT1 fingerprints whatever is
+-- there). No other active backend.
+-- Run 1: GREEN. BASELINE failures (0); 12 committed calls. 24/24 KILLED at
+--   their own tag, incl. MU21 → [IX1] (B7, B8, B11, C5, C8, D3 flipped),
+--   MU22 → [IF1] (at 1–1 Game 3 still read "if needed"), MU23 → [KY1] (the
+--   home_score key), MU24 → [P1]. prosrc md5 inside the batch = the repo
+--   file's, all fourteen: the thirteen above unchanged except
+--     get_league_schedule_by_token 93db2cf6a40749d38a057be0f1a0737f
+--   plus playoff_if_needed 25f7d7ee376edbed65a91d5d68862e20.
+--   Leak check after: new columns, helpers and fixtures 0; test link 0;
+--   playoffs 5, games 19; live reader still 0113's (ee9d9bb3…), live
+--   season_last_day still 0112's (da8e4785…).
 -- 0114 NOT APPLIED — held for the founder's go.
