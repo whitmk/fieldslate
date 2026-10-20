@@ -17,7 +17,11 @@ const MUTANTS: Mutant[] = [
     expect: "F1",
   },
   {
-    id: "LK3", what: "(0105) the public reader emits a field's lights", file: "supabase/migrations/0105_public_league_schedule.sql",
+    // Targets the LATEST migration that defines the reader: D1 reads only the
+    // latest body of each token function, so a mutant in a superseded file
+    // proves nothing (LK3 pointed at 0105 and survived once 0112 redefined
+    // the reader — found 2026-10-20). Move it with every new definition.
+    id: "LK3", what: "(0112) the public reader emits a field's lights", file: "supabase/migrations/0112_feed_cutoff_last_day.sql",
     find: "                     'status',              g.status,",
     replace: "                     'status',              g.status, 'has_lights', v.has_lights,",
     expect: "D1",
