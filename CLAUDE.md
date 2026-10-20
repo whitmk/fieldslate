@@ -4629,6 +4629,17 @@ Still open:
 
 ## Open items
 
+- **PLANNED FOLLOW-UP — pools for a round-robin Stage 1 (needed for soccer).**
+  Two-stage playoffs ("Round robin, then bracket", mockup
+  `docs/mockups/two-stage-playoffs.html`, 2026-10-19) ships with ONE pool.
+  The data model must leave room for pools so they need no rework: a nullable
+  `pool` text column on Stage 1's `playoff_games`, written NULL and read by
+  nothing in this build (NULL = no pools); the Stage 2 placeholder text comes
+  from ONE shared function that maps a seed to its label ("Seed 4" now,
+  "Pool A #1" later), so screen, print, public page and CSV gain pool wording
+  in one place. Not in the first build: per-pool round robins, per-pool
+  records, per-pool advancing counts.
+
 - **Remove `process_checkout_event`'s legacy no-purchase-id branch (0111) in a
   follow-up migration, NOT BEFORE 2026-10-20 21:00 UTC** — 24 hours after
   go-live (0111 applied 2026-10-19 19:34 UTC, the code deployed right after;

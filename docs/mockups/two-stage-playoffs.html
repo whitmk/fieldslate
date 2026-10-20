@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Two-stage playoffs — FieldSlate mockup</title>
+<style>
+:root{
+  --navy:#0C1F3F; --bg:#f4f5f0; --card:#fff; --ink:#0C1F3F; --muted:#5b6577; --faint:#8a93a3; --line:#e2e5dd; --soft:#f7f8f4;
+  --green:#22c55e; --green-dk:#16a34a; --green-bg:#ecfdf3; --away:#e6f4ea;
+  --amber-bg:#fffbeb; --amber-bd:#fcd34d; --amber-ink:#92400e;
+  --red-bg:#fef2f2; --red-bd:#fca5a5; --red-ink:#991b1b;
+  --ph:#374151;
+  box-sizing:border-box;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0a1830; --card:#10223f; --ink:#e8ecf3; --muted:#9aa6bb; --faint:#7d8aa3; --line:#22385c; --soft:#0d1d37; --away:#14341f; --green-bg:#0f2e1c;
+    --amber-bg:#3d2f06; --amber-bd:#6b5410; --amber-ink:#ffe08a; --red-bg:#3b1010; --red-bd:#7a2020; --red-ink:#ffc4c4; --ph:#cbd5e1;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1830; --card:#10223f; --ink:#e8ecf3; --muted:#9aa6bb; --faint:#7d8aa3; --line:#22385c; --soft:#0d1d37; --away:#14341f; --green-bg:#0f2e1c;
+  --amber-bg:#3d2f06; --amber-bd:#6b5410; --amber-ink:#ffe08a; --red-bg:#3b1010; --red-bd:#7a2020; --red-ink:#ffc4c4; --ph:#cbd5e1;
+}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.45}
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px 60px}
+.mock{background:var(--navy);color:#cfd8e8;font-size:13px;text-align:center;padding:7px 12px}
+.mock b{color:#fff}
+header{padding:26px 0 6px}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.4px}
+.lede{color:var(--muted);margin:0 0 8px;max-width:80ch}
+.toc{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;margin:10px 0 0;padding:0;list-style:none}
+.toc a{color:var(--green-dk);text-decoration:none}
+
+.screen{margin-top:40px}
+.screen > h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+.screen > h3{font-size:19px;margin:0 0 4px}
+.screen > .why{color:var(--muted);font-size:13.5px;margin:0 0 14px;max-width:85ch}
+.screen > .why b{color:var(--ink)}
+
+/* desktop + phone side by side */
+.pair{display:grid;grid-template-columns:minmax(0,1fr) 375px;gap:22px;align-items:start}
+.frame-label{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:0 0 6px}
+.frame{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:16px;overflow:hidden}
+.phone .frame{width:375px;padding:16px;border-radius:26px;border-width:6px;border-color:#1f2937}
+@media (max-width:1000px){
+  .pair{grid-template-columns:1fr}
+  .desk{display:none}
+  .phone .frame{width:100%;max-width:375px}
+}
+.app{container-type:inline-size}
+
+/* ── app vocabulary ── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.pad{padding:16px}
+.row-flex{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.h-page{font-size:22px;font-weight:800;margin:0}
+.sub{color:var(--muted);font-size:13px}
+.tiny{font-size:12px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--ink);white-space:nowrap;min-height:34px}
+.btn.primary{background:var(--green);border-color:var(--green);color:#fff}
+.btn.navy{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn[disabled]{opacity:.45}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:600;background:var(--soft);color:var(--muted);border:1px solid var(--line);white-space:nowrap}
+.pill.green{background:var(--green-bg);color:var(--green-dk);border-color:#bbf7d0}
+.pill.amber{background:var(--amber-bg);color:var(--amber-ink);border-color:var(--amber-bd)}
+.pill.navy{background:var(--navy);color:#fff;border-color:var(--navy)}
+.note{border:1px solid;border-radius:10px;padding:10px 12px;font-size:13px}
+.note.amber{background:var(--amber-bg);border-color:var(--amber-bd);color:var(--amber-ink)}
+.note.red{background:var(--red-bg);border-color:var(--red-bd);color:var(--red-ink)}
+.note.plain{background:var(--soft);border-color:var(--line);color:var(--muted)}
+.note b{font-weight:700}
+.note .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.sec-title{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin:0 0 6px}
+.stack{display:flex;flex-direction:column;gap:12px}
+
+/* wizard */
+.wiz-steps{display:flex;gap:6px;flex-wrap:wrap;font-size:11.5px;margin-bottom:12px}
+.wiz-steps span{padding:3px 9px;border-radius:999px;background:var(--soft);border:1px solid var(--line);color:var(--faint)}
+.wiz-steps span.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.wiz-steps span.done{color:var(--green-dk);border-color:#bbf7d0;background:var(--green-bg)}
+.wiz-foot{display:flex;justify-content:space-between;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:var(--soft)}
+.fmt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.fmt{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--card)}
+.fmt.sel{border:2px solid var(--green);padding:11px;background:var(--green-bg)}
+.fmt b{display:block;font-size:14px}
+.fmt span{font-size:12.5px;color:var(--muted)}
+.fmt .new{font-size:10.5px;font-weight:700;color:var(--green-dk);text-transform:uppercase;letter-spacing:.05em}
+.team-list{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card)}
+.trow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);min-height:44px}
+.trow:last-child{border-bottom:none}
+.trow .nm{flex:1;min-width:0;font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow.out{background:var(--soft)}
+.trow.out .nm{color:var(--faint);font-weight:500}
+.lnk{font-size:12.5px;font-weight:600;color:var(--muted);background:none;border:none;padding:8px 6px}
+.lnk.green{color:var(--green-dk)}
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card)}
+.stepper span{padding:6px 12px;font-weight:700;min-width:40px;text-align:center}
+.stepper button{border:none;background:var(--soft);width:36px;height:34px;font-size:16px;color:var(--ink)}
+.field{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.input{border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--card);color:var(--ink);min-height:36px}
+.days{display:flex;gap:4px;flex-wrap:wrap}
+.days span{width:34px;height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;border:1px solid var(--line);font-size:12px;font-weight:600;color:var(--faint);background:var(--card)}
+.days span.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.stage-panel{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--card)}
+.stage-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.stage-num{width:24px;height:24px;border-radius:999px;background:var(--navy);color:#fff;font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:6px 12px;font-size:13px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-weight:600}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px}
+.chk i{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--green);background:var(--green);display:inline-block;flex:none;position:relative}
+.chk i::after{content:"";position:absolute;left:4.5px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+
+/* playoffs page */
+.div-card .top{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;flex-wrap:wrap}
+.trophy{width:36px;height:36px;border-radius:9px;background:var(--soft);display:flex;align-items:center;justify-content:center;flex:none}
+.stage{border-top:1px solid var(--line)}
+.stage .shead{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--soft);flex-wrap:wrap}
+.stage .shead b{font-size:13.5px}
+.stage .sbody{padding:12px 16px}
+.progress{height:6px;border-radius:999px;background:var(--line);overflow:hidden;width:120px}
+.progress i{display:block;height:100%;background:var(--green)}
+.rr-round{font-size:11.5px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 4px}
+.rr-round:first-child{margin-top:0}
+.rr{display:grid;grid-template-columns:150px 1fr auto;gap:10px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.rr:last-child{border-bottom:none}
+.rr .when{color:var(--muted);font-size:12px}
+.rr .mu b{font-weight:700}
+.rr .mu .l{color:var(--muted)}
+.rr .res{font-size:12px}
+.rec{width:100%;border-collapse:collapse;font-size:13px}
+.rec th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);text-align:right;font-weight:700;padding:5px 8px;border-bottom:1px solid var(--line)}
+.rec th:first-child,.rec td:first-child{text-align:left}
+.rec td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.rec tr:last-child td{border-bottom:none}
+.rec-box{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card)}
+.admin-tag{font-size:10.5px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:0 5px;text-transform:uppercase;letter-spacing:.04em}
+
+/* bracket tree (desktop) */
+.tree{display:flex;gap:28px;overflow-x:auto;padding:4px 2px}
+.tcol{display:flex;flex-direction:column;justify-content:space-around;gap:16px;min-width:200px}
+.tcol h5{margin:0 0 2px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+.g{width:200px;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.g .w{padding:4px 9px;font-size:10.5px;color:var(--muted);border-bottom:1px solid var(--line);line-height:1.35}
+.g .s{display:flex;align-items:center;gap:6px;height:30px;padding:0 9px;font-size:12.5px}
+.g .s + .s{border-top:1px solid var(--line);background:var(--away)}
+.g .s .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.g .s .n.ph{font-weight:500;color:var(--ph);font-style:italic}
+.g .s .sd{font-size:10px;font-weight:700;color:var(--faint);width:14px}
+/* list view (phone) */
+.glist{display:none}
+.gl{border:1px solid var(--line);border-radius:9px;background:var(--card);margin-bottom:8px;overflow:hidden}
+.gl .w{font-size:11.5px;color:var(--muted);padding:5px 10px;border-bottom:1px solid var(--line)}
+.gl .s{padding:6px 10px;font-size:13px;display:flex;gap:6px}
+.gl .s + .s{border-top:1px solid var(--line);background:var(--away)}
+.gl .n{flex:1;font-weight:600}
+.gl .n.ph{font-weight:500;color:var(--ph);font-style:italic}
+
+/* seeding screen */
+.seed-row{display:grid;grid-template-columns:22px 26px minmax(0,1fr) 54px 40px 40px 72px;gap:8px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--line);min-height:46px;background:var(--card)}
+.seed-row .grip{color:var(--faint);font-size:15px;line-height:1;letter-spacing:-2px}
+.seed-row .sn{width:24px;height:24px;border-radius:999px;background:var(--navy);color:#fff;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.seed-row.out .sn{background:var(--line);color:var(--muted)}
+.seed-row .nm{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seed-row .num{text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
+.seed-row .mv{display:flex;gap:2px;justify-content:flex-end}
+.seed-row .mv button{width:32px;height:32px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--muted);font-size:13px}
+.seed-head{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);min-height:28px;background:var(--soft)}
+.seed-head .num{font-size:10.5px}
+.cutline{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--amber-bg);color:var(--amber-ink);font-size:12px;font-weight:700;border-bottom:1px solid var(--line)}
+.cutline::before,.cutline::after{content:"";flex:1;border-top:2px dashed var(--amber-bd)}
+.matchups{font-size:13px;margin:0;padding-left:18px}
+.matchups li{margin:3px 0}
+
+/* modal */
+.modal-wrap{background:rgba(12,31,63,.35);border-radius:12px;padding:18px;display:flex;justify-content:center}
+.modal{background:var(--card);border-radius:14px;max-width:440px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.2);overflow:hidden}
+.modal .mh{padding:14px 16px;border-bottom:1px solid var(--line);font-weight:800}
+.modal .mb{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.modal .mf{padding:12px 16px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px;background:var(--soft)}
+.score{display:grid;grid-template-columns:1fr 64px;gap:8px;align-items:center;font-size:13.5px}
+.score .input{text-align:center;font-weight:700}
+
+/* public page */
+.pub-row{display:grid;grid-template-columns:90px 1fr 170px;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;align-items:start}
+.pub-row:last-child{border-bottom:none}
+.pub-row .t{font-weight:700}
+.pub-row .t small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+.pub-row .lab{font-size:11.5px;color:var(--muted)}
+.pub-row .f{font-size:12.5px;color:var(--muted)}
+.pub-day{padding:7px 12px;background:var(--soft);font-weight:700;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--line)}
+.ph-t{color:var(--ph);font-style:italic}
+pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;overflow-x:auto;white-space:pre}
+
+/* decisions */
+.dec{counter-reset:d;list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px}
+.dec li{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px 12px 46px;position:relative;font-size:13.5px}
+.dec li::before{counter-increment:d;content:"D" counter(d);position:absolute;left:12px;top:12px;font-weight:800;font-size:12px;color:var(--green-dk)}
+.dec li b{display:block;margin-bottom:2px}
+.dec li .rec-line{color:var(--muted);font-size:12.5px;margin-top:4px}
+
+/* ── narrow (phone container) ── */
+@container (max-width:520px){
+  .fmt-grid,.grid2,.grid3{grid-template-columns:1fr}
+  .kv{grid-template-columns:1fr;gap:0 0}
+  .kv dd{margin-bottom:6px}
+  .tree{display:none}
+  .glist{display:block}
+  .rr{grid-template-columns:1fr auto}
+  .rr .when{grid-column:1 / -1}
+  .seed-row{grid-template-columns:22px 24px minmax(0,1fr) 44px 64px;gap:6px;padding:6px 8px}
+  .seed-row .rf,.seed-row .ra{display:none}
+  .seed-row .runs-m{display:block}
+  .pub-row{grid-template-columns:64px 1fr}
+  .pub-row .f{grid-column:2}
+  .h-page{font-size:20px}
+  .hide-narrow{display:none}
+  .wiz-foot .btn{flex:1}
+}
+.runs-m{display:none;font-size:11px;color:var(--muted);font-weight:500}
+@container (min-width:521px){ .show-narrow{display:none} }
+</style>
+</head>
+<body>
+<div class="mock"><b>Mockup</b> · two-stage playoffs (round robin, then bracket) · not built · approved 2026-10-19</div>
+<div class="wrap">
+<header>
+  <h1>Two-stage playoffs</h1>
+  <p class="lede">Stage 1 is one round robin. Stage 2 is a single-elimination bracket the admin seeds by hand once Stage 1 is done. FieldSlate shows each team's round-robin record as reference and never ranks them. Each screen is shown at desktop width (left) and on a 375px phone (right); the two are the same screen. Narrow your window below 1000px to see the phone frames only.</p>
+  <p class="lede"><b>Example used throughout:</b> Majors has 8 teams. The Cubs opted out, so 7 play the round robin (21 games). The top 6 advance to an 8-slot bracket, so seeds 1 and 2 get byes. Majors games are 120 minutes.</p>
+  <ul class="toc">
+    <li><a href="#s1">1 Format</a></li><li><a href="#s2">2 Teams</a></li><li><a href="#s3">3 Dates &amp; fields</a></li><li><a href="#s4">4 Review</a></li>
+    <li><a href="#s5">5 Stage 1 in progress</a></li><li><a href="#s6">6 Stage 1 done</a></li><li><a href="#s6b">6b Games never played</a></li><li><a href="#s7">7 Seed Stage 2</a></li><li><a href="#s8">8 Confirm seeds</a></li><li><a href="#s8b">8b Confirm, seeded anyway</a></li>
+    <li><a href="#s9">9 Stage 2 seeded</a></li><li><a href="#s10">10 Stage 1 changed</a></li><li><a href="#s11">11 Stage 2 started</a></li>
+    <li><a href="#s12">12 Public page</a></li><li><a href="#s13">13 Print &amp; CSV</a></li><li><a href="#dec">Decisions</a></li>
+  </ul>
+</header>
+
+<!-- ───────────── 1 FORMAT ───────────── -->
+<section class="screen" id="s1">
+  <h2>Wizard · step 2</h2>
+  <h3>Format: "Round robin, then bracket"</h3>
+  <p class="why">A fourth format card. Choosing it changes the next steps: Teams (no seed order yet), Dates &amp; fields with one panel per stage, and no Cross-division step (that step is saved today but never used by the generator).</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="card">
+        <div class="pad">
+          <div class="wiz-steps"><span class="done">Division</span><span class="on">Format</span><span>Teams</span><span>Dates &amp; fields</span><span>Review</span></div>
+          <p style="margin:0 0 4px;font-weight:800;font-size:16px">How should Majors' playoffs run?</p>
+          <p class="sub" style="margin:0 0 12px">You can change this later in Edit setup, until a result is entered.</p>
+          <div class="fmt-grid">
+            <div class="fmt"><b>Single elimination</b><span>Lose once and you're out.</span></div>
+            <div class="fmt"><b>Double elimination</b><span>Lose twice and you're out. 2, 4, 8, 16 or 32 teams.</span></div>
+            <div class="fmt"><b>Round robin</b><span>Every team plays every other team once.</span></div>
+            <div class="fmt sel"><span class="new">New</span><b>Round robin, then bracket</b><span>Everyone plays everyone once. Then you seed the teams that advance into a single-elimination bracket.</span></div>
+          </div>
+        </div>
+        <div class="wiz-foot"><button class="btn">Back</button><button class="btn primary">Next</button></div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 2 TEAMS ───────────── -->
+<section class="screen" id="s2">
+  <h2>Wizard · step 3</h2>
+  <h3>Teams, and how many advance</h3>
+  <p class="why">The same Remove / Add back list as today, but <b>no seed numbers and no dragging</b>: Stage 1 needs no order, and Stage 2 is seeded later from the results. The admin picks how many advance (2 up to every team in; default 4, or every team when there are fewer). The summary line comes from one pure function, like today's <code>bracketSummaryLine</code>.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="card">
+        <div class="pad stack">
+          <div class="wiz-steps" style="margin:0"><span class="done">Division</span><span class="done">Format</span><span class="on">Teams</span><span>Dates &amp; fields</span><span>Review</span></div>
+          <div>
+            <p style="margin:0 0 2px;font-weight:800;font-size:16px">Who's playing?</p>
+            <p class="sub" style="margin:0">Remove a team that isn't taking part. You'll seed the bracket after the round robin.</p>
+          </div>
+          <div class="team-list">
+            <div class="trow"><span class="nm">Bears</span><button class="lnk">✕ Remove</button></div>
+            <div class="trow"><span class="nm">Expos</span><button class="lnk">✕ Remove</button></div>
+            <div class="trow"><span class="nm">Giants</span><button class="lnk">✕ Remove</button></div>
+            <div class="trow"><span class="nm">Lions</span><button class="lnk">✕ Remove</button></div>
+            <div class="trow"><span class="nm">Mets</span><button class="lnk">✕ Remove</button></div>
+            <div class="trow"><span class="nm">Pirates</span><button class="lnk">✕ Remove</button></div>
+            <div class="trow"><span class="nm">Royals</span><button class="lnk">✕ Remove</button></div>
+          </div>
+          <div>
+            <p class="sec-title">Not in these playoffs</p>
+            <div class="team-list" style="border-style:dashed"><div class="trow out"><span class="nm">Cubs</span><button class="lnk green">+ Add back</button></div></div>
+            <p class="tiny" style="margin:5px 0 0">Removed teams keep their regular-season games.</p>
+          </div>
+          <div class="stage-panel">
+            <div class="row-flex">
+              <div class="grow"><b style="font-size:14px">Teams advancing to the bracket</b><div class="tiny">The rest finish after the round robin.</div></div>
+              <div class="stepper"><button aria-label="Fewer">−</button><span>6</span><button aria-label="More">+</button></div>
+            </div>
+          </div>
+          <p class="tiny" style="margin:0">7 teams · 21 round-robin games · top 6 advance → 5 bracket games, byes for seeds 1–2</p>
+        </div>
+        <div class="wiz-foot"><button class="btn">Back</button><button class="btn primary">Next</button></div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 3 DATES & FIELDS ───────────── -->
+<section class="screen" id="s3">
+  <h2>Wizard · step 4</h2>
+  <h3>Dates &amp; fields, one panel per stage</h3>
+  <p class="why">Each stage has its own date range, days, windows and fields — round robins often run on weeknights and brackets on a weekend. Days and windows start from the division's own (today's <code>playoffDefaultsFromDivision</code>). "Same fields as Stage 1" is on by default. Stage 2 must start after Stage 1's last date; the line under the panel says so as soon as the dates overlap.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="card">
+        <div class="pad stack">
+          <div class="wiz-steps" style="margin:0"><span class="done">Division</span><span class="done">Format</span><span class="done">Teams</span><span class="on">Dates &amp; fields</span><span>Review</span></div>
+          <div class="stage-panel">
+            <div class="stage-head"><span class="stage-num">1</span><b>Stage 1 · Round robin</b><span class="tiny">21 games</span></div>
+            <div class="grid2" style="margin-bottom:10px">
+              <label class="field">Starts<span class="input">Sat, Oct 24, 2026</span></label>
+              <label class="field">Ends<span class="input">Sun, Nov 8, 2026</span></label>
+            </div>
+            <div class="field" style="margin-bottom:10px">Days
+              <div class="days"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span class="on">Sa</span><span class="on">Su</span></div>
+            </div>
+            <div class="grid2" style="margin-bottom:10px">
+              <label class="field">Saturday<span class="input">9:00 AM – 5:00 PM</span></label>
+              <label class="field">Sunday<span class="input">10:00 AM – 6:00 PM</span></label>
+            </div>
+            <div class="field">Fields
+              <div class="row-flex" style="gap:6px"><span class="pill navy">Monroe Complex — Andrews</span><span class="pill navy">Monroe Complex — Perry</span><span class="pill">+ Add field</span></div>
+            </div>
+          </div>
+          <div class="stage-panel">
+            <div class="stage-head"><span class="stage-num">2</span><b>Stage 2 · Bracket</b><span class="tiny">5 games</span></div>
+            <div class="grid2" style="margin-bottom:10px">
+              <label class="field">Starts<span class="input">Sat, Nov 14, 2026</span></label>
+              <label class="field">Ends<span class="input">Sun, Nov 15, 2026</span></label>
+            </div>
+            <div class="field" style="margin-bottom:10px">Days
+              <div class="days"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span class="on">Sa</span><span class="on">Su</span></div>
+            </div>
+            <div class="grid2" style="margin-bottom:10px">
+              <label class="field">Saturday<span class="input">9:00 AM – 5:00 PM</span></label>
+              <label class="field">Sunday<span class="input">10:00 AM – 6:00 PM</span></label>
+            </div>
+            <div class="chk"><i></i>Same fields as Stage 1</div>
+          </div>
+        </div>
+        <div class="wiz-foot"><button class="btn">Back</button><button class="btn primary">Next</button></div>
+      </div>
+      <p class="tiny" style="margin:10px 2px 0"><b>If Stage 2 starts too early</b>, this line appears under the Stage 2 panel and Next stays enabled (Review refuses):</p>
+      <div class="note amber" style="margin-top:6px">Stage 2 starts Sat, Nov 7, but Stage 1 runs until Sun, Nov 8. The bracket can't start until the round robin is over.</div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 4 REVIEW ───────────── -->
+<section class="screen" id="s4">
+  <h2>Wizard · step 5</h2>
+  <h3>Review: both stages' pre-flight, before Generate</h3>
+  <p class="why">Both plans run with nothing written, and their warnings render verbatim (today's <code>planWarnings</code>), one list per stage. Generate creates both brackets and every game in <b>one database call</b>: Stage 2's games get dates, times and fields now, with seed placeholders instead of teams.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="card">
+        <div class="pad stack">
+          <div class="wiz-steps" style="margin:0"><span class="done">Division</span><span class="done">Format</span><span class="done">Teams</span><span class="done">Dates &amp; fields</span><span class="on">Review</span></div>
+          <p style="margin:0;font-weight:800;font-size:16px">Majors · Round robin, then bracket</p>
+          <dl class="kv" style="margin:0">
+            <dt>Teams</dt><dd>7 (Cubs left out)</dd>
+            <dt>Stage 1</dt><dd>21 games · Oct 24 – Nov 8 · Sat, Sun · Andrews, Perry</dd>
+            <dt>Advancing</dt><dd>Top 6 · byes for seeds 1–2</dd>
+            <dt>Stage 2</dt><dd>5 games · Nov 14 – 15 · Sat, Sun · Andrews, Perry</dd>
+          </dl>
+          <div class="note plain"><b>Stage 1:</b> all 21 games fit (28 slots).</div>
+          <div class="note amber"><b>Stage 2:</b> Sun, Nov 15: no games were placed — Monroe Complex — Perry is closed on Sundays. Open the field that day on the Venues page, or take Sundays out of the playoff days.</div>
+          <div class="note plain">Stage 2 is set up with dates and fields now. Its teams read "Seed 1", "Seed 4"… until you seed it after the round robin.</div>
+        </div>
+        <div class="wiz-foot"><button class="btn">Back</button><button class="btn primary">Generate both stages</button></div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 5 STAGE 1 IN PROGRESS ───────────── -->
+<section class="screen" id="s5">
+  <h2>Playoffs page</h2>
+  <h3>Stage 1 in progress, Stage 2 waiting</h3>
+  <p class="why">One division card holding both stages. Stage 1 shows its games by round with results, and a <b>Records</b> box (admin only, listed A–Z, never sorted by record). Stage 2 shows its tree with dates and seed placeholders; round 2 reads "Seed 1" where a bye team will sit. "Seed Stage 2" is shown but disabled, with the reason beside it. Round-robin games read "RR Game N" so they can't be confused with bracket games (see D1).</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="stack">
+        <div class="row-flex"><div class="grow"><p class="h-page">Playoffs</p><p class="sub" style="margin:2px 0 0">Fall 2026</p></div><button class="btn hide-narrow">+ Add bracket</button></div>
+        <div class="card div-card">
+          <div class="top">
+            <div class="trophy">🏆</div>
+            <div class="grow"><b style="font-size:15px">Majors</b><div class="tiny">Round robin, then bracket · 7 teams · top 6 advance</div></div>
+            <span class="pill green">Active</span>
+            <div class="row-flex" style="gap:6px"><button class="btn">Edit setup</button><button class="btn">Print</button><button class="btn ghost">Delete</button></div>
+          </div>
+
+          <div class="stage">
+            <div class="shead"><span class="stage-num">1</span><b>Round robin</b><span class="tiny">Oct 24 – Nov 8</span><span class="grow"></span><span class="tiny">12 of 21 played</span><span class="progress"><i style="width:57%"></i></span></div>
+            <div class="sbody stack">
+              <div>
+                <p class="rr-round">Round 4 · Sat, Oct 31</p>
+                <div class="rr"><span class="when">RR Game 10 · 9:00 AM · Andrews</span><span class="mu"><b>Expos 6</b> <span class="l">· Lions 4</span></span><button class="btn">Edit result</button></div>
+                <div class="rr"><span class="when">RR Game 11 · 9:00 AM · Perry</span><span class="mu"><b>Mets 8</b> <span class="l">· Giants 3</span></span><button class="btn">Edit result</button></div>
+                <div class="rr"><span class="when">RR Game 12 · 11:30 AM · Andrews</span><span class="mu"><b>Bears 5</b> <span class="l">· Pirates 2</span></span><button class="btn">Edit result</button></div>
+                <p class="rr-round">Round 5 · Sun, Nov 1 · Royals sit out</p>
+                <div class="rr"><span class="when">RR Game 13 · 10:00 AM · Andrews</span><span class="mu">Expos vs Mets</span><button class="btn navy">Enter result</button></div>
+                <div class="rr"><span class="when">RR Game 14 · 10:00 AM · Perry</span><span class="mu">Lions vs Pirates</span><button class="btn navy">Enter result</button></div>
+                <div class="rr"><span class="when">RR Game 15 · 12:30 PM · Andrews</span><span class="mu">Bears vs Giants</span><button class="btn navy">Enter result</button></div>
+                <p class="tiny" style="margin:6px 0 0">Rounds 1–3 and 6–7 collapsed · <a style="color:var(--green-dk)">Show all 21</a></p>
+              </div>
+              <div class="rec-box">
+                <div class="row-flex" style="margin-bottom:4px"><b style="font-size:13px">Records</b><span class="admin-tag">Admins only</span><span class="grow"></span><span class="tiny">A–Z · not a ranking</span></div>
+                <table class="rec">
+                  <thead><tr><th>Team</th><th>W-L</th><th>Runs for</th><th>Runs against</th></tr></thead>
+                  <tbody>
+                    <tr><td>Bears</td><td>3-1</td><td>22</td><td>15</td></tr>
+                    <tr><td>Expos</td><td>4-0</td><td>27</td><td>12</td></tr>
+                    <tr><td>Giants</td><td>0-3</td><td>9</td><td>20</td></tr>
+                    <tr><td>Lions</td><td>2-2</td><td>18</td><td>17</td></tr>
+                    <tr><td>Mets</td><td>2-1</td><td>19</td><td>11</td></tr>
+                    <tr><td>Pirates</td><td>0-4</td><td>10</td><td>23</td></tr>
+                    <tr><td>Royals</td><td>1-1</td><td>9</td><td>16</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage">
+            <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="tiny">Nov 14 – 15</span><span class="pill">Not seeded</span><span class="grow"></span><button class="btn primary" disabled>Seed Stage 2</button></div>
+            <div class="sbody">
+              <p class="tiny" style="margin:0 0 10px">You can seed Stage 2 once every round-robin game has a result, or once the only games left without one are rained out or already past. 9 of 21 still need one, and Game 13 onward is still to come.</p>
+              <div class="tree">
+                <div class="tcol"><h5>Round 1</h5>
+                  <div class="g"><div class="w">Game 2 · Sat 11/14 · 9:00 AM<br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Seed 4</span></div><div class="s"><span class="n ph">Seed 5</span></div></div>
+                  <div class="g"><div class="w">Game 4 · Sat 11/14 · 9:00 AM<br>Monroe Complex — Perry</div><div class="s"><span class="n ph">Seed 3</span></div><div class="s"><span class="n ph">Seed 6</span></div></div>
+                </div>
+                <div class="tcol"><h5>Semifinal</h5>
+                  <div class="g"><div class="w">Game 5 · Sat 11/14 · 11:30 AM<br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Seed 1</span></div><div class="s"><span class="n ph">Winner of Game 2</span></div></div>
+                  <div class="g"><div class="w">Game 6 · Sat 11/14 · 11:30 AM<br>Monroe Complex — Perry</div><div class="s"><span class="n ph">Seed 2</span></div><div class="s"><span class="n ph">Winner of Game 4</span></div></div>
+                </div>
+                <div class="tcol"><h5>Final</h5>
+                  <div class="g"><div class="w">Game 7 · Sat 11/14 · 2:00 PM<br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Winner of Game 5</span></div><div class="s"><span class="n ph">Winner of Game 6</span></div></div>
+                </div>
+              </div>
+              <div class="glist">
+                <div class="gl"><div class="w">Round 1 · Game 2 · Sat 11/14 · 9:00 AM · Andrews</div><div class="s"><span class="n ph">Seed 4</span></div><div class="s"><span class="n ph">Seed 5</span></div></div>
+                <div class="gl"><div class="w">Round 1 · Game 4 · Sat 11/14 · 9:00 AM · Perry</div><div class="s"><span class="n ph">Seed 3</span></div><div class="s"><span class="n ph">Seed 6</span></div></div>
+                <div class="gl"><div class="w">Semifinal · Game 5 · Sat 11/14 · 11:30 AM · Andrews</div><div class="s"><span class="n ph">Seed 1</span></div><div class="s"><span class="n ph">Winner of Game 2</span></div></div>
+                <div class="gl"><div class="w">Semifinal · Game 6 · Sat 11/14 · 11:30 AM · Perry</div><div class="s"><span class="n ph">Seed 2</span></div><div class="s"><span class="n ph">Winner of Game 4</span></div></div>
+                <div class="gl"><div class="w">Final · Game 7 · Sat 11/14 · 2:00 PM · Andrews</div><div class="s"><span class="n ph">Winner of Game 5</span></div><div class="s"><span class="n ph">Winner of Game 6</span></div></div>
+              </div>
+              <p class="tiny" style="margin:8px 0 0">Games 1 and 3 are byes for seeds 1 and 2, so they don't appear (today's numbering).</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 6 STAGE 1 DONE ───────────── -->
+<section class="screen" id="s6">
+  <h2>Playoffs page</h2>
+  <h3>Stage 1 done → "Seed Stage 2"</h3>
+  <p class="why">Every round-robin game has a result, so Stage 1 collapses to a one-line summary and the Stage 2 header turns the button on. The Records box stays on Stage 1, collapsed.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="card div-card">
+        <div class="top">
+          <div class="trophy">🏆</div>
+          <div class="grow"><b style="font-size:15px">Majors</b><div class="tiny">Round robin, then bracket · 7 teams · top 6 advance</div></div>
+          <span class="pill green">Active</span>
+        </div>
+        <div class="stage">
+          <div class="shead"><span class="stage-num">1</span><b>Round robin</b><span class="pill green">Done · 21 of 21</span><span class="grow"></span><button class="btn">Show games</button><button class="btn">Records</button></div>
+        </div>
+        <div class="stage">
+          <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="tiny">Nov 14 – 15</span><span class="pill amber">Ready to seed</span><span class="grow"></span><button class="btn primary">Seed Stage 2</button></div>
+          <div class="sbody"><p class="tiny" style="margin:0">The round robin is finished. Put the teams in seed order; the top 6 go into the bracket. Until then, families see "Seed 1", "Seed 4"… on the public schedule.</p></div>
+        </div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 6b NEVER PLAYED ───────────── -->
+<section class="screen" id="s6b">
+  <h2>Playoffs page</h2>
+  <h3>Stage 1 over, but 2 games were never played → "Seed anyway"</h3>
+  <p class="why">Two round-robin games were rained out and never made up. Nothing left is still to come, so the header offers <b>Seed anyway</b>. Offered only when every game without a result is rained out or dated before today in the league's timezone — never while a game is still to come. Records leave those games out and say so.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="card div-card">
+        <div class="top">
+          <div class="trophy">🏆</div>
+          <div class="grow"><b style="font-size:15px">Majors</b><div class="tiny">Round robin, then bracket · 7 teams · top 6 advance</div></div>
+          <span class="pill green">Active</span>
+        </div>
+        <div class="stage">
+          <div class="shead"><span class="stage-num">1</span><b>Round robin</b><span class="pill amber">19 of 21 played · 2 never played</span><span class="grow"></span><button class="btn">Show games</button><button class="btn">Records</button></div>
+          <div class="sbody"><p class="tiny" style="margin:0">Never played: RR Game 8 (Mets vs Giants, rained out Oct 25) and RR Game 17 (Lions vs Royals, Nov 7, no result). Enter a result if they were played; otherwise records leave them out.</p></div>
+        </div>
+        <div class="stage">
+          <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="tiny">Nov 14 – 15</span><span class="pill amber">Ready to seed</span><span class="grow"></span><button class="btn primary">Seed anyway</button></div>
+          <div class="sbody"><p class="tiny" style="margin:0">The round robin is over with 2 games never played. You can seed now; the confirm will say so and it goes in the activity log.</p></div>
+        </div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 7 SEED STAGE 2 ───────────── -->
+<section class="screen" id="s7">
+  <h2>Seed Stage 2</h2>
+  <h3>The admin orders the teams; FieldSlate only shows the records</h3>
+  <p class="why">Opens <b>A–Z</b> and says so — it is never pre-sorted by record, because tiebreak rules (head-to-head, runs allowed, coin flip) belong to the league. Rows drag on desktop; every row also has ▲ ▼ buttons, which is how it works on a phone. The dashed line moves with the advancing count: teams below it don't advance. Shown here part-way through: the admin has dragged Expos, Bears and Lions up.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="card">
+        <div class="pad stack">
+          <div>
+            <p style="margin:0 0 2px;font-weight:800;font-size:16px">Seed the Majors bracket</p>
+            <p class="sub" style="margin:0">Teams start in A–Z order. FieldSlate doesn't rank teams — order them by your league's rules. The top 6 go into the bracket.</p>
+          </div>
+          <div class="team-list">
+            <div class="seed-row seed-head"><span></span><span>#</span><span>Team</span><span class="num">W-L</span><span class="num rf">RF</span><span class="num ra">RA</span><span></span></div>
+            <div class="seed-row"><span class="grip">⋮⋮</span><span class="sn">1</span><span class="nm">Expos<span class="runs-m">41 for · 22 against</span></span><span class="num">5-1</span><span class="num rf">41</span><span class="num ra">22</span><span class="mv"><button aria-label="Move up">▲</button><button aria-label="Move down">▼</button></span></div>
+            <div class="seed-row"><span class="grip">⋮⋮</span><span class="sn">2</span><span class="nm">Bears<span class="runs-m">35 for · 27 against</span></span><span class="num">4-2</span><span class="num rf">35</span><span class="num ra">27</span><span class="mv"><button>▲</button><button>▼</button></span></div>
+            <div class="seed-row"><span class="grip">⋮⋮</span><span class="sn">3</span><span class="nm">Lions<span class="runs-m">33 for · 30 against</span></span><span class="num">4-2</span><span class="num rf">33</span><span class="num ra">30</span><span class="mv"><button>▲</button><button>▼</button></span></div>
+            <div class="seed-row"><span class="grip">⋮⋮</span><span class="sn">4</span><span class="nm">Giants<span class="runs-m">19 for · 31 against</span></span><span class="num">1-5</span><span class="num rf">19</span><span class="num ra">31</span><span class="mv"><button>▲</button><button>▼</button></span></div>
+            <div class="seed-row"><span class="grip">⋮⋮</span><span class="sn">5</span><span class="nm">Mets<span class="runs-m">29 for · 29 against</span></span><span class="num">3-3</span><span class="num rf">29</span><span class="num ra">29</span><span class="mv"><button>▲</button><button>▼</button></span></div>
+            <div class="seed-row"><span class="grip">⋮⋮</span><span class="sn">6</span><span class="nm">Pirates<span class="runs-m">27 for · 36 against</span></span><span class="num">2-4</span><span class="num rf">27</span><span class="num ra">36</span><span class="mv"><button>▲</button><button>▼</button></span></div>
+            <div class="cutline">↑ Top 6 advance · not advancing ↓</div>
+            <div class="seed-row out"><span class="grip">⋮⋮</span><span class="sn">7</span><span class="nm">Royals<span class="runs-m">24 for · 33 against</span></span><span class="num">2-4</span><span class="num rf">24</span><span class="num ra">33</span><span class="mv"><button>▲</button><button>▼</button></span></div>
+          </div>
+          <p class="tiny" style="margin:0">Records count the 21 round-robin games only. Regular-season games aren't included.</p>
+        </div>
+        <div class="wiz-foot"><button class="btn">Cancel</button><button class="btn primary">Review bracket</button></div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 8 CONFIRM ───────────── -->
+<section class="screen" id="s8">
+  <h2>Seed Stage 2 · confirm</h2>
+  <h3>What the seeds put where, before anything is saved</h3>
+  <p class="why">The confirm lists every round-1 matchup and both byes, from the same layout rule the bracket uses. Saving fills the team slots of the existing games in place — dates, times, fields and game numbers stay exactly as they were. The admin finished ordering: Mets moved up to 4, Giants dropped out.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="modal-wrap"><div class="modal">
+        <div class="mh">Seed the Majors bracket?</div>
+        <div class="mb">
+          <ol class="matchups">
+            <li><b>Expos</b> (1) — bye to Game 5</li>
+            <li><b>Bears</b> (2) — bye to Game 6</li>
+            <li>Game 2: <b>Mets</b> (4) vs <b>Pirates</b> (5) · Sat 11/14, 9:00 AM</li>
+            <li>Game 4: <b>Lions</b> (3) vs <b>Royals</b> (6) · Sat 11/14, 9:00 AM</li>
+          </ol>
+          <p class="tiny" style="margin:0">Not advancing: Giants.</p>
+          <div class="note plain">5 bracket games are on the public schedule. Families will see team names instead of seeds within a minute.</div>
+        </div>
+        <div class="mf"><button class="btn">Back</button><button class="btn primary">Seed bracket</button></div>
+      </div></div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 8b CONFIRM, SEEDED ANYWAY ───────────── -->
+<section class="screen" id="s8b">
+  <h2>Seed Stage 2 · confirm, with games never played</h2>
+  <h3>The confirm names the unplayed games and what it means for records</h3>
+  <p class="why">Same confirm as screen 8, plus an amber block naming every game with no result. The Seed screen's records note changes to "Records leave out 2 games that were never played." Saving logs the seed order and the unplayed games. A result entered later for one of them is a Stage 1 change, so it raises the re-check warning (screen 10).</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="modal-wrap"><div class="modal">
+        <div class="mh">Seed the Majors bracket?</div>
+        <div class="mb">
+          <div class="note amber"><b>2 round-robin games were never played</b> and have no result: RR Game 8 (Mets vs Giants) and RR Game 17 (Lions vs Royals). Mets, Giants, Lions and Royals played 5 games instead of 6; their records leave those games out.</div>
+          <ol class="matchups">
+            <li><b>Expos</b> (1) — bye to Game 5</li>
+            <li><b>Bears</b> (2) — bye to Game 6</li>
+            <li>Game 2: <b>Mets</b> (4) vs <b>Pirates</b> (5) · Sat 11/14, 9:00 AM</li>
+            <li>Game 4: <b>Lions</b> (3) vs <b>Royals</b> (6) · Sat 11/14, 9:00 AM</li>
+          </ol>
+          <p class="tiny" style="margin:0">Not advancing: Giants.</p>
+        </div>
+        <div class="mf"><button class="btn">Back</button><button class="btn primary">Seed anyway</button></div>
+      </div></div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 9 STAGE 2 SEEDED ───────────── -->
+<section class="screen" id="s9">
+  <h2>Playoffs page</h2>
+  <h3>Stage 2 after seeding</h3>
+  <p class="why">Real names in round 1 and in the bye slots; the small seed number stays beside each name. "Seeded Nov 9 by Jenn M." under the header. "Change seeds" stays available until a bracket game has a result (it reopens screen 7 in the saved order).</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="card div-card">
+        <div class="stage" style="border-top:none">
+          <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="tiny">Nov 14 – 15</span><span class="pill green">Seeded</span><span class="grow"></span><button class="btn">Change seeds</button></div>
+          <div class="sbody">
+            <p class="tiny" style="margin:0 0 10px">Seeded Nov 9 by Jenn M. · Not advancing: Giants</p>
+            <div class="tree">
+              <div class="tcol"><h5>Round 1</h5>
+                <div class="g"><div class="w">Game 2 · Sat 11/14 · 9:00 AM<br>Monroe Complex — Andrews</div><div class="s"><span class="sd">4</span><span class="n">Mets</span></div><div class="s"><span class="sd">5</span><span class="n">Pirates</span></div></div>
+                <div class="g"><div class="w">Game 4 · Sat 11/14 · 9:00 AM<br>Monroe Complex — Perry</div><div class="s"><span class="sd">3</span><span class="n">Lions</span></div><div class="s"><span class="sd">6</span><span class="n">Royals</span></div></div>
+              </div>
+              <div class="tcol"><h5>Semifinal</h5>
+                <div class="g"><div class="w">Game 5 · Sat 11/14 · 11:30 AM<br>Monroe Complex — Andrews</div><div class="s"><span class="sd">1</span><span class="n">Expos</span></div><div class="s"><span class="n ph">Winner of Game 2</span></div></div>
+                <div class="g"><div class="w">Game 6 · Sat 11/14 · 11:30 AM<br>Monroe Complex — Perry</div><div class="s"><span class="sd">2</span><span class="n">Bears</span></div><div class="s"><span class="n ph">Winner of Game 4</span></div></div>
+              </div>
+              <div class="tcol"><h5>Final</h5>
+                <div class="g"><div class="w">Game 7 · Sat 11/14 · 2:00 PM<br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Winner of Game 5</span></div><div class="s"><span class="n ph">Winner of Game 6</span></div></div>
+              </div>
+            </div>
+            <div class="glist">
+              <div class="gl"><div class="w">Round 1 · Game 2 · Sat 11/14 · 9:00 AM · Andrews</div><div class="s"><span class="n">4 · Mets</span></div><div class="s"><span class="n">5 · Pirates</span></div></div>
+              <div class="gl"><div class="w">Round 1 · Game 4 · Sat 11/14 · 9:00 AM · Perry</div><div class="s"><span class="n">3 · Lions</span></div><div class="s"><span class="n">6 · Royals</span></div></div>
+              <div class="gl"><div class="w">Semifinal · Game 5 · Sat 11/14 · 11:30 AM · Andrews</div><div class="s"><span class="n">1 · Expos</span></div><div class="s"><span class="n ph">Winner of Game 2</span></div></div>
+              <div class="gl"><div class="w">Semifinal · Game 6 · Sat 11/14 · 11:30 AM · Perry</div><div class="s"><span class="n">2 · Bears</span></div><div class="s"><span class="n ph">Winner of Game 4</span></div></div>
+              <div class="gl"><div class="w">Final · Game 7 · Sat 11/14 · 2:00 PM · Andrews</div><div class="s"><span class="n ph">Winner of Game 5</span></div><div class="s"><span class="n ph">Winner of Game 6</span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 10 STAGE 1 CHANGED ───────────── -->
+<section class="screen" id="s10">
+  <h2>Stage 1 result changed after seeding</h2>
+  <h3>A warning to re-check the seeds — never an automatic change</h3>
+  <p class="why">Left: editing a round-robin result after Stage 2 is seeded says up front that the seeds won't move. Right: once saved, the Stage 2 header shows an amber note naming the game, the old and new score, and whose record changed. "Change seeds" or "Seeds are still right" clears it (both logged). The note stays until one of those is clicked.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="stack">
+        <div class="modal-wrap"><div class="modal">
+          <div class="mh">RR Game 19 · Mets vs Royals</div>
+          <div class="mb">
+            <div class="note amber">Stage 2 is already seeded. Changing this result won't change the seeds — you'll be asked to re-check them.</div>
+            <div class="score"><span>Mets</span><span class="input">4</span></div>
+            <div class="score"><span>Royals</span><span class="input">6</span></div>
+            <p class="tiny" style="margin:0">Was Mets 5, Royals 3. Every game needs a winner — a tied score can't be saved.</p>
+          </div>
+          <div class="mf"><button class="btn ghost">Clear result</button><span class="grow"></span><button class="btn">Cancel</button><button class="btn primary">Save</button></div>
+        </div></div>
+        <div class="card div-card">
+          <div class="stage" style="border-top:none">
+            <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="pill amber">Re-check seeds</span><span class="grow"></span><button class="btn">Change seeds</button></div>
+            <div class="sbody">
+              <div class="note amber">
+                <b>A round-robin result changed after you seeded the bracket.</b> RR Game 19 is now Royals 6, Mets 4 (was Mets 5, Royals 3). Mets are now 2-4 (were 3-3); Royals are now 3-3 (were 2-4). Check the seeds still match your league's rules.
+                <div class="acts"><button class="btn primary">Change seeds</button><button class="btn">Seeds are still right</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 11 STAGE 2 STARTED ───────────── -->
+<section class="screen" id="s11">
+  <h2>Stage 2 has a result</h2>
+  <h3>Stage 1 results and the seeds are locked</h3>
+  <p class="why">Once any bracket game has a result, the database refuses to edit or clear a round-robin result, and refuses to re-seed. Round-robin rows lose their Edit result button and the Stage 1 header says why; a stale tab that tries anyway gets the same sentence in the modal. The way back is clearing the bracket's results (latest round first, as today).</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="stack">
+        <div class="card div-card">
+          <div class="stage" style="border-top:none">
+            <div class="shead"><span class="stage-num">1</span><b>Round robin</b><span class="pill">Locked</span><span class="grow"></span><button class="btn">Show games</button></div>
+            <div class="sbody"><p class="tiny" style="margin:0">The bracket has started (Game 2 has a result), so round-robin results can't be changed. To change one, clear the bracket's results first.</p></div>
+          </div>
+          <div class="stage">
+            <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="pill green">In progress</span><span class="grow"></span><button class="btn" disabled title="The bracket has started">Change seeds</button></div>
+          </div>
+        </div>
+        <div class="modal-wrap"><div class="modal">
+          <div class="mh">RR Game 19 · Mets vs Royals</div>
+          <div class="mb"><div class="note red">The bracket has started (Game 2 has a result), so round-robin results can't be changed. Clear the bracket's results first, then change this one.</div></div>
+          <div class="mf"><button class="btn">Close</button></div>
+        </div></div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 12 PUBLIC ───────────── -->
+<section class="screen" id="s12">
+  <h2>Public league schedule (/s/…)</h2>
+  <h3>Bracket games show with seeds before seeding, names after — no records</h3>
+  <p class="why">Same row as today; the playoff label gains the stage. Before seeding, round 1 reads "Seed 4 vs Seed 5" and round 2 "Seed 1 vs Winner of Game 2" — from the same shared placeholder function the admin screens use. The records never leave the admin pages.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="stack">
+        <p class="sec-title" style="margin:0">Before seeding</p>
+        <div class="card">
+          <div class="pub-day">Saturday, November 14</div>
+          <div class="pub-row"><span class="t">9:00 AM<small>Majors</small></span><span><b class="ph-t">Seed 4</b> vs <b class="ph-t">Seed 5</b><div class="lab">Playoffs · Bracket · Round 1 · Game 2</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
+          <div class="pub-row"><span class="t">11:30 AM<small>Majors</small></span><span><b class="ph-t">Seed 1</b> vs <b class="ph-t">Winner of Game 2</b><div class="lab">Playoffs · Bracket · Semifinal · Game 5</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
+        </div>
+        <p class="sec-title" style="margin:6px 0 0">After seeding</p>
+        <div class="card">
+          <div class="pub-day">Saturday, November 14</div>
+          <div class="pub-row"><span class="t">9:00 AM<small>Majors</small></span><span><b>Mets</b> vs <b>Pirates</b><div class="lab">Playoffs · Bracket · Round 1 · Game 2</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
+          <div class="pub-row"><span class="t">11:30 AM<small>Majors</small></span><span><b>Expos</b> vs <b class="ph-t">Winner of Game 2</b><div class="lab">Playoffs · Bracket · Semifinal · Game 5</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
+        </div>
+        <p class="sec-title" style="margin:6px 0 0">A round-robin game</p>
+        <div class="card">
+          <div class="pub-row"><span class="t">10:00 AM<small>Majors</small></span><span><b>Expos</b> vs <b>Mets</b><div class="lab">Playoffs · Round robin · RR Game 13</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
+        </div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 13 PRINT & CSV ───────────── -->
+<section class="screen" id="s13">
+  <h2>Print and export</h2>
+  <h3>Placeholders everywhere, records nowhere, and a real end time</h3>
+  <p class="why">The printed bracket is today's tree with the placeholder text in round 1 (and names after seeding); no records and no seed-number column. The round-robin print is today's column print. The export CSV uses the same placeholder text and now ends each game at start + the division's game length (120 here), not a hardcoded 90; a division with no length set gets a blank end time and the export says so.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="stack">
+<pre class="csv">Round,Game,Date,Start,End,Home,Away,Field
+Round robin,RR Game 13,11/01/2026,10:00 AM,12:00 PM,Expos,Mets,Monroe Complex — Andrews
+Round 1,Game 2,11/14/2026,9:00 AM,11:00 AM,Seed 4,Seed 5,Monroe Complex — Andrews
+Semifinal,Game 5,11/14/2026,11:30 AM,1:30 PM,Seed 1,Winner of Game 2,Monroe Complex — Andrews
+Final,Game 7,11/14/2026,2:00 PM,4:00 PM,Winner of Game 5,Winner of Game 6,Monroe Complex — Andrews</pre>
+        <p class="tiny" style="margin:0">Columns shown are illustrative; the build keeps the export's existing columns and only changes End and the empty-slot text.</p>
+        <div class="note amber">Majors has no game length set, so End is blank in this file. Set it on the division to fill it in.</div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── DECISIONS ───────────── -->
+<section class="screen" id="dec">
+  <h2>Before the build</h2>
+  <h3>Decisions — approved 2026-10-19 as recommended (D3 changed to "Seed anyway")</h3>
+  <p class="why">Approved by Whit on 2026-10-19 with one change (D3).</p>
+  <ol class="dec">
+    <li><b>Game numbers across the two stages.</b> Bracket games are numbered by bracket position starting at 1 (the advancement rule and its SQL copy depend on it), and round-robin games also start at 1. The mockup shows round-robin games as "RR Game 13" so "Game 2" and "Winner of Game 2" always mean the bracket. <div class="rec-line">Alternative: renumber the bracket after the round robin (Games 22–28) — touches the advancement rule in TypeScript and SQL. Recommend "RR Game N".</div></li>
+    <li><b>Bye games leave gaps.</b> With byes, the bracket has no Game 1 or Game 3 (today's single-elimination numbering). Families see Games 2, 4, 5, 6, 7. <div class="rec-line">Recommend leaving it — same as every bracket today.</div></li>
+    <li><b>A rained-out round-robin game that's never made up.</b> DECIDED 2026-10-19: "Seed anyway" (screens 6b, 8b). Offered once every game without a result is rained out or dated before today; the confirm names them, records leave them out, and it is logged.</li>
+    <li><b>Deleting.</b> The two stages are one setup: Delete on the card removes both, and the confirm counts both stages' games. Neither stage can be deleted alone. <div class="rec-line">Recommend both-or-nothing.</div></li>
+    <li><b>Edit setup after games exist.</b> Rebuild is refused today once any game has a result. With two stages: changing Stage 2's dates or fields stays allowed until Stage 2 has a result; changing the team list or the advancing count is refused once Stage 1 has a result. <div class="rec-line">Recommend as stated.</div></li>
+    <li><b>The advancing count after seeding.</b> Fixed at setup; Change seeds can reorder but not change how many advance (the bracket's shape and dates depend on it). <div class="rec-line">Recommend fixed; changing it means Edit setup, which rebuilds Stage 2 while it has no results.</div></li>
+    <li><b>Who seeded, and the "Seeds are still right" click.</b> Both go in the activity log with the seed order. <div class="rec-line">Recommend logging both.</div></li>
+  </ol>
+</section>
+
+</div>
+<script>
+// Each screen is written once (desktop); the phone frame gets a copy, and the
+// container queries in the CSS lay the copy out at 375px.
+document.querySelectorAll('[data-pair]').forEach(function (pair) {
+  var src = pair.querySelector('.desk .frame');
+  var dst = pair.querySelector('.phone .frame');
+  if (src && dst) dst.innerHTML = src.innerHTML;
+});
+</script>
+</body>
+</html>
