@@ -765,3 +765,6 @@ $h107$;
 --   BASELINE failures (0); 15/15 KILLED at their own tag; md5
 --   delete_playoff_bracket 585d1e3ef36b319624339e45d6e801c3,
 --   replace_playoff_games ed9dfa7180384bb21e5c111c376c5fe6 (0113's bodies).
+-- 2026-10-20 — re-run against 0113 with `stage1_changes` (two-stage gap 1):
+--   BASELINE failures (0); 15/15 KILLED at their own tag; md5 unchanged
+--   (585d1e3e… / ed9dfa71…). Leak check clean.

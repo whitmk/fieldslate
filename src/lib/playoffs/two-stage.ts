@@ -480,13 +480,109 @@ export function stage1ChangedNote(input: {
   before: TeamRecord[];
   after: TeamRecord[];
 }): string {
-  const head = `A round-robin result changed after you seeded the bracket. ${rrGameLabel(input.gameNumber)} is now ${input.now}${input.was ? ` (was ${input.was})` : ""}.`;
-  const prev = new Map(input.before.map((r) => [r.teamId, recordText(r)]));
-  const moved = input.after
+  return changedNote(
+    [`${rrGameLabel(input.gameNumber)} is now ${input.now}${input.was ? ` (was ${input.was})` : ""}`],
+    input.before,
+    input.after,
+  );
+}
+
+function changedNote(clauses: string[], before: TeamRecord[], after: TeamRecord[]): string {
+  const head =
+    clauses.length === 1
+      ? "A round-robin result changed after you seeded the bracket."
+      : "Round-robin results changed after you seeded the bracket.";
+  const prev = new Map(before.map((r) => [r.teamId, recordText(r)]));
+  const moved = after
     .filter((r) => prev.has(r.teamId) && prev.get(r.teamId) !== recordText(r))
     .map((r) => `${r.teamName} are now ${recordText(r)} (were ${prev.get(r.teamId)})`);
   const mid = moved.length ? ` ${moved.join("; ")}.` : "";
-  return `${head}${mid} Check the seeds still match your league's rules.`;
+  return `${head} ${clauses.join("; ")}.${mid} Check the seeds still match your league's rules.`;
+}
+
+/** One entry of `playoffs.stage1_changes` (0113): a round-robin game whose
+ *  result changed after seeding. `was_*` is its result when the bracket was
+ *  seeded (null = none), `now_*` its result now (null = cleared). A game
+ *  changed twice keeps one entry: its first "was", its latest "now". */
+export type Stage1Change = {
+  game_number: number;
+  home_team_id: string | null;
+  away_team_id: string | null;
+  was_home: number | null;
+  was_away: number | null;
+  now_home: number | null;
+  now_away: number | null;
+};
+
+/** Reads `stage1_changes`; anything that isn't a list of well-formed entries
+ *  is null (the card then shows the note without the scores). */
+export function parseStage1Changes(raw: unknown): Stage1Change[] | null {
+  if (!Array.isArray(raw)) return null;
+  const score = (v: unknown) => (v === null || v === undefined ? null : typeof v === "number" && Number.isInteger(v) ? v : NaN);
+  const id = (v: unknown) => (v === null || v === undefined ? null : typeof v === "string" ? v : undefined);
+  const out: Stage1Change[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== "object") return null;
+    const o = e as Record<string, unknown>;
+    const c = {
+      game_number: o.game_number as number,
+      home_team_id: id(o.home_team_id),
+      away_team_id: id(o.away_team_id),
+      was_home: score(o.was_home),
+      was_away: score(o.was_away),
+      now_home: score(o.now_home),
+      now_away: score(o.now_away),
+    };
+    if (!Number.isInteger(c.game_number) || c.home_team_id === undefined || c.away_team_id === undefined) return null;
+    if ([c.was_home, c.was_away, c.now_home, c.now_away].some((s) => Number.isNaN(s))) return null;
+    out.push(c as Stage1Change);
+  }
+  return out;
+}
+
+/** "Royals 6, Mets 4" — the winner first; a tie reads home first. */
+export function scoreLine(homeName: string, awayName: string, home: number, away: number): string {
+  return away > home ? `${awayName} ${away}, ${homeName} ${home}` : `${homeName} ${home}, ${awayName} ${away}`;
+}
+
+/**
+ * The amber re-check note, built from what changed (`stage1_changes`) and the
+ * games as they are now. Each changed game is named with its score before and
+ * after; the records before are the records now with each changed game put
+ * back to its "was" result. A game whose result ended where it started is not
+ * named. With nothing to name (or the changes unreadable), the note falls
+ * back to `stage1RecheckNote`.
+ */
+export function stage1ChangesNote(input: {
+  changes: Stage1Change[] | null;
+  games: Stage1Game[];
+  teams: SeededTeam[];
+  teamName: (id: string | null) => string;
+  changedOn: string | null;
+}): string {
+  const net = (input.changes ?? [])
+    .filter((c) => c.was_home !== c.now_home || c.was_away !== c.now_away)
+    .sort((a, b) => a.game_number - b.game_number);
+  if (net.length === 0) return stage1RecheckNote(input.changedOn);
+  const byNumber = new Map(net.map((c) => [c.game_number, c]));
+  const before = roundRobinRecords(
+    input.teams,
+    input.games.map((g) => {
+      const c = byNumber.get(g.game_number);
+      return c ? { ...g, home_score: c.was_home, away_score: c.was_away } : g;
+    }),
+  );
+  const after = roundRobinRecords(input.teams, input.games);
+  const clauses = net.map((c) => {
+    const home = input.teamName(c.home_team_id);
+    const away = input.teamName(c.away_team_id);
+    const rr = rrGameLabel(c.game_number);
+    const was = c.was_home !== null && c.was_away !== null ? scoreLine(home, away, c.was_home, c.was_away) : null;
+    const now = c.now_home !== null && c.now_away !== null ? scoreLine(home, away, c.now_home, c.now_away) : null;
+    if (now === null) return `${rr}'s result was cleared${was ? ` (was ${was})` : ""}`;
+    return `${rr} is now ${now}${was ? ` (was ${was})` : " (it had no result)"}`;
+  });
+  return changedNote(clauses, before, after);
 }
 
 /** A round-robin result can't change, and seeds can't change, once the
@@ -585,14 +681,13 @@ export function seededLine(seededOn: string, byName: string | null, notAdvancing
 }
 
 /**
- * The amber note on Stage 2 while a re-check is owed. The database keeps WHEN
- * a round-robin result changed after seeding (`stage1_changed_at`), not the
- * old score, so the note says what is known and points at the records, which
- * are always current.
+ * The re-check note when there is no changed game to name: the changes are
+ * unreadable, or every changed result ended where it started. Points at the
+ * records, which are always current. `stage1ChangesNote` is the usual note.
  */
-export function stage1RecheckNote(changedOn: string): string {
+export function stage1RecheckNote(changedOn: string | null): string {
   return (
-    `A round-robin result changed after you seeded the bracket (${monthDay(changedOn)}). ` +
+    `A round-robin result changed after you seeded the bracket${changedOn ? ` (${monthDay(changedOn)})` : ""}. ` +
     `The seeds didn't move. Check the records above and make sure the seeds still match your league's rules.`
   );
 }

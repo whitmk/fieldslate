@@ -79,12 +79,18 @@
 --        their reasons; the commit fills the slots IN PLACE (ids, dates,
 --        times, fields unchanged), stores the order, logs
 --   SD3  an order that isn't exactly Stage 1's teams is refused
---   SD4  re-seeding (Change seeds) rewrites the slots
---   CH1  a Stage 1 result entered or cleared after seeding flags Stage 2 and
---        logs; ties are still refused
---   AK1  "Seeds are still right" clears the flag and logs, once
+--   SD4  re-seeding (Change seeds) rewrites the slots and empties the
+--        recorded changes
+--   CH1  a Stage 1 result entered or cleared after seeding flags Stage 2,
+--        records the game with its score before and after (cleared → null
+--        "now"), and logs; ties are still refused
+--   CH2  a game changed twice keeps ONE entry: the first "was", the latest
+--        "now"; other games' entries stay
+--   AK1  "Seeds are still right" clears the flag AND the recorded changes,
+--        and logs, once
 --   RB2  a full rebuild is refused once Stage 1 has results; a Stage-2-only
---        rebuild moves the dates and re-applies the seeds, Stage 1 untouched
+--        rebuild moves the dates and re-applies the seeds (and keeps the
+--        recorded changes), Stage 1 untouched
 --   ST1  once Stage 2 has a result: Stage 1 enter and clear (preview and
 --        commit), seeding and rebuilding are all refused, nothing written
 --   DL1  deleting Stage 2 deletes both stages; the preview counts both
@@ -112,6 +118,11 @@
 --   MU16 clear: Stage 1 not frozen once Stage 2 has a result    → ST1
 --   MU17 delete: Stage 2 alone deleted                          → DL1
 --   MU18 EXECUTE left on PUBLIC (seed_playoff_stage)            → P1
+--   MU19 enter: a second change overwrites the first "was"      → CH2
+--   MU20 ack: the recorded changes are not emptied              → AK1
+--   MU21 seed: the recorded changes are not emptied             → SD4
+--   MU22 clear: the cleared game keeps its old score as "now"   → CH1
+--   MU23 Stage-2-only rebuild drops the recorded changes        → RB2
 --
 -- RUN LOG: see the bottom of this file after the run.
 
@@ -338,6 +349,18 @@ returns text language sql as $fn$
        from public.playoff_games g where g.playoff_id = p_playoff))
 $fn$;
 
+-- A recorded change, as text: "game:home>away was_home/was_away>now_home/now_away".
+create function pg_temp.h113_change(p_stage2 uuid, p_game integer)
+returns text language sql as $fn$
+  select format('%s:%s>%s %s/%s>%s/%s', e ->> 'game_number',
+                (select name from public.teams where id = (e ->> 'home_team_id')::uuid),
+                (select name from public.teams where id = (e ->> 'away_team_id')::uuid),
+                coalesce(e ->> 'was_home', '_'), coalesce(e ->> 'was_away', '_'),
+                coalesce(e ->> 'now_home', '_'), coalesce(e ->> 'now_away', '_'))
+    from public.playoffs p, jsonb_array_elements(p.stage1_changes) e
+   where p.id = p_stage2 and (e ->> 'game_number')::integer = p_game
+$fn$;
+
 create function pg_temp.h113_logs(p_event text)
 returns integer language sql as $fn$
   select count(*)::integer from public.activity_log a
@@ -352,9 +375,10 @@ returns integer language sql as $fn$
              select 1 from public.playoffs p
               where p.id = pr.id
                 and (to_jsonb(p) - array['stage', 'parent_playoff_id', 'advance_count', 'games_per_team_per_day',
-                                         'seeded_at', 'seeded_by', 'stage1_changed_at']) = pr.j
+                                         'seeded_at', 'seeded_by', 'stage1_changed_at', 'stage1_changes']) = pr.j
                 and p.stage = 1 and p.parent_playoff_id is null and p.advance_count is null
-                and p.games_per_team_per_day = 1 and p.seeded_at is null and p.stage1_changed_at is null))
+                and p.games_per_team_per_day = 1 and p.seeded_at is null and p.stage1_changed_at is null
+                and p.stage1_changes = '[]'::jsonb))
        + (select count(*)::integer from h113_pre pr
            where pr.kind = 'g' and not exists (
              select 1 from public.playoff_games g
@@ -397,6 +421,7 @@ declare
   v_bad     jsonb;
   v_g       jsonb;
   v_tmp     jsonb;
+  v_g21     text;
 begin
   select * into fx from h113_fx;
   v_all := array[fx.ps1, fx.ps2, fx.peq];
@@ -682,8 +707,13 @@ begin
     end if;
 
     -- ── SD4 ─────────────────────────────────────────────────────────────────
+    update public.playoffs set stage1_changed_at = now(), stage1_changes = '[{"game_number": 99}]'::jsonb where id = fx.ps2;
     v_order := pg_temp.h113_order(array['Expos', 'Bears', 'Mets', 'Lions', 'Pirates', 'Royals', 'Giants']);
     v_txt := pg_temp.h113_seed('authenticated', fx.org, fx.ps2, v_order, true);
+    if (select stage1_changes from public.playoffs where id = fx.ps2) <> '[]'::jsonb
+       or (select stage1_changed_at from public.playoffs where id = fx.ps2) is not null then
+      v_fails := array_append(v_fails, 'SD4: re-seeding did not empty the recorded changes and the flag');
+    end if;
     if pg_temp.h113_j(v_txt) ->> 'reseed' is distinct from 'true'
        or pg_temp.h113_slots(fx.ps2) is distinct from '2:Lions-Pirates 4:Mets-Royals 5:Expos-_ 6:Bears-_ 7:_-_'
        or pg_temp.h113_logs('playoff_stage_seeded') <> 2 then
@@ -702,12 +732,35 @@ begin
        or pg_temp.h113_logs('playoff_stage1_changed_after_seeding') <> 1 then
       v_fails := array_append(v_fails, 'CH1: a result entered after seeding did not flag Stage 2: ' || v_txt);
     end if;
+    v_g21 := pg_temp.h113_change(fx.ps2, 21);
+    if v_g21 is distinct from format('21:%s>%s _/_>6/2',
+         (select name from public.teams t join public.playoff_games g on g.home_team_id = t.id where g.id = pg_temp.h113_g(fx.ps1, 21)),
+         (select name from public.teams t join public.playoff_games g on g.away_team_id = t.id where g.id = pg_temp.h113_g(fx.ps1, 21)))
+       or (select jsonb_array_length(stage1_changes) from public.playoffs where id = fx.ps2) <> 1 then
+      v_fails := array_append(v_fails, 'CH1: the entered result was not recorded as no result → 6-2: ' || coalesce(v_g21, 'none'));
+    end if;
     update public.playoffs set stage1_changed_at = null where id = fx.ps2;
     v_txt := pg_temp.h113_clear(fx.org, pg_temp.h113_g(fx.ps1, 21), true);
     if pg_temp.h113_j(v_txt) ->> 'committed' is distinct from 'true'
        or (select stage1_changed_at from public.playoffs where id = fx.ps2) is null
        or pg_temp.h113_logs('playoff_stage1_changed_after_seeding') <> 2 then
       v_fails := array_append(v_fails, 'CH1: a result cleared after seeding did not flag Stage 2: ' || v_txt);
+    end if;
+    if right(coalesce(pg_temp.h113_change(fx.ps2, 21), ''), 8) <> ' _/_>_/_'  -- literal compare: in LIKE, _ is a wildcard
+       or (select jsonb_array_length(stage1_changes) from public.playoffs where id = fx.ps2) <> 1 then
+      v_fails := array_append(v_fails, 'CH1: the cleared result was not recorded with no "now": ' || coalesce(pg_temp.h113_change(fx.ps2, 21), 'none'));
+    end if;
+
+    -- ── CH2 ─────────────────────────────────────────────────────────────────
+    -- Game 1 was entered 5-3 by the fixture. Changed twice: one entry, the
+    -- first "was" (5/3), the latest "now" (1/4); game 21's entry stays.
+    v_txt := pg_temp.h113_enter(fx.org, pg_temp.h113_g(fx.ps1, 1), 2, 6);
+    v_txt := v_txt || ' ; ' || pg_temp.h113_enter(fx.org, pg_temp.h113_g(fx.ps1, 1), 1, 4);
+    if pg_temp.h113_change(fx.ps2, 1) not like '1:% 5/3>1/4'
+       or (select jsonb_array_length(stage1_changes) from public.playoffs where id = fx.ps2) <> 2
+       or pg_temp.h113_change(fx.ps2, 21) is null then
+      v_fails := array_append(v_fails, 'CH2: a twice-changed game is not one entry 5/3>1/4 beside game 21: ' ||
+        coalesce(pg_temp.h113_change(fx.ps2, 1), 'none') || ' / ' || v_txt);
     end if;
 
     -- ── AK1 ─────────────────────────────────────────────────────────────────
@@ -716,6 +769,9 @@ begin
        or (select stage1_changed_at from public.playoffs where id = fx.ps2) is not null
        or pg_temp.h113_logs('playoff_stage_seeds_kept') <> 1 then
       v_fails := array_append(v_fails, 'AK1: Seeds are still right did not clear the flag: ' || v_txt);
+    end if;
+    if (select stage1_changes from public.playoffs where id = fx.ps2) <> '[]'::jsonb then
+      v_fails := array_append(v_fails, 'AK1: Seeds are still right left the recorded changes');
     end if;
     v_txt := pg_temp.h113_ack('authenticated', fx.org, fx.ps2);
     if pg_temp.h113_j(v_txt) ->> 'cleared' is distinct from 'false' or pg_temp.h113_logs('playoff_stage_seeds_kept') <> 1 then
@@ -728,6 +784,7 @@ begin
     if pg_temp.h113_j(v_txt) -> 'reasons' ->> 0 is distinct from 'results_entered' or pg_temp.h113_snap(v_pair) <> v_snap1 then
       v_fails := array_append(v_fails, 'RB2: a full rebuild with Stage 1 results not refused: ' || v_txt);
     end if;
+    update public.playoffs set stage1_changed_at = now(), stage1_changes = '[{"game_number": 98}]'::jsonb where id = fx.ps2;
     v_snap1 := pg_temp.h113_snap(array[fx.ps1]);
     v_bad := (select jsonb_agg(jsonb_set(e, '{scheduled_date}', to_jsonb(((e ->> 'scheduled_date')::date + 1)))) from jsonb_array_elements(fx.g2) e);
     v_txt := pg_temp.h113_two('authenticated', fx.org, fx.ps1, null, null, fx.ps2,
@@ -737,6 +794,7 @@ begin
        or pg_temp.h113_slots(fx.ps2) is distinct from '2:Lions-Pirates 4:Mets-Royals 5:Expos-_ 6:Bears-_ 7:_-_'
        or (select scheduled_date from public.playoff_games where playoff_id = fx.ps2 and game_number = 2) <> fx.today + 6
        or (select seeded_at from public.playoffs where id = fx.ps2) is null
+       or (select stage1_changes from public.playoffs where id = fx.ps2) <> '[{"game_number": 98}]'::jsonb
        or pg_temp.h113_snap(array[fx.ps1]) <> v_snap1
        or pg_temp.h113_logs('playoff_stage2_rebuilt') <> 1 then
       v_fails := array_append(v_fails, 'RB2: a Stage-2-only rebuild did not keep the seeds or touched Stage 1: ' ||
@@ -800,9 +858,9 @@ begin
        or pg_temp.h113_logs('playoff_two_stage_rebuilt') <> 0
        or pg_temp.h113_logs('playoff_stage2_rebuilt') <> 1
        or pg_temp.h113_logs('playoff_stage_seeded') <> 2
-       or pg_temp.h113_logs('playoff_stage1_changed_after_seeding') <> 2
+       or pg_temp.h113_logs('playoff_stage1_changed_after_seeding') <> 4
        or pg_temp.h113_logs('playoff_stage_seeds_kept') <> 1
-       or pg_temp.h113_logs('playoff_result_entered') <> 2
+       or pg_temp.h113_logs('playoff_result_entered') <> 4
        or pg_temp.h113_logs('playoff_result_cleared') <> 1
        or pg_temp.h113_logs('playoff_bracket_generated') <> 1
        or pg_temp.h113_logs('playoff_bracket_deleted') <> 1 then
@@ -895,10 +953,11 @@ begin
         $a$     or (select count(distinct x) from unnest(p_order) x) <> cardinality(p_order)
 $a$, $a$$a$),
       ('MU12', 'enter: no re-check flag after seeding', 'CH1', v_enter,
-        $a$update public.playoffs set stage1_changed_at = now(), updated_at = now() where id = v_child.id;$a$,
-        $a$perform 1;$a$),
+        $a$       set stage1_changed_at = now(),
+           stage1_changes$a$,
+        $a$       set stage1_changes$a$),
       ('MU13', 'ack: the flag is not cleared', 'AK1', v_ack,
-        $a$     set stage1_changed_at = null, updated_at = now()$a$, $a$     set updated_at = now()$a$),
+        $a$     set stage1_changed_at = null, stage1_changes = '[]'::jsonb, updated_at = now()$a$, $a$     set updated_at = now()$a$),
       ('MU14', 'Stage-2-only rebuild drops the seeds', 'RB2', v_two,
         $a$  if v_keep_seeds then
     select array_agg$a$, $a$  if false then
@@ -910,7 +969,21 @@ $a$, $a$$a$),
       ('MU17', 'delete: Stage 2 alone deleted', 'DL1', v_del,
         $a$select coalesce(p.parent_playoff_id, p.id) into v_root$a$, $a$select p.id into v_root$a$),
       ('MU18', 'EXECUTE left on PUBLIC (seed_playoff_stage)', 'P1', null,
-        null, $a$grant execute on function public.seed_playoff_stage(uuid, uuid[], boolean) to public$a$)
+        null, $a$grant execute on function public.seed_playoff_stage(uuid, uuid[], boolean) to public$a$),
+      ('MU19', 'enter: a second change overwrites the first "was"', 'CH2', v_enter,
+        $a$'was_home', case when v_prev is null then to_jsonb(v_game.home_score) else v_prev -> 'was_home' end,$a$,
+        $a$'was_home', to_jsonb(v_game.home_score),$a$),
+      ('MU20', 'ack: the recorded changes are not emptied', 'AK1', v_ack,
+        $a$stage1_changed_at = null, stage1_changes = '[]'::jsonb, updated_at$a$, $a$stage1_changed_at = null, updated_at$a$),
+      ('MU21', 'seed: the recorded changes are not emptied', 'SD4', v_seed,
+        $a$         stage1_changes = '[]'::jsonb,
+$a$, $a$$a$),
+      ('MU22', 'clear: the cleared game keeps its old score as "now"', 'CH1', v_clear,
+        $a$'now_home', null, 'now_away', null$a$,
+        $a$'now_home', to_jsonb(v_game.home_score), 'now_away', to_jsonb(v_game.away_score)$a$),
+      ('MU23', 'Stage-2-only rebuild drops the recorded changes', 'RB2', v_two,
+        $a$stage1_changes    = case when v_keep_seeds then v_s2.stage1_changes else '[]'::jsonb end,$a$,
+        $a$stage1_changes    = '[]'::jsonb,$a$)
     ) as t(id, what, target, fn, find, repl)
   loop
     begin
@@ -1002,4 +1075,33 @@ $h113$;
 --   Leak check after both: fixtures, test functions and new functions 0; old
 --   key present; test link 0; test plan elite; playoffs 5, games 16; live
 --   enter/clear still a615f534… / e9e1908a… (0108's and 0112's).
+-- 0113 NOT APPLIED — held for the founder's go.
+-- 2026-10-20 — gap 1 (the re-check note names what changed): 0113 gains
+-- `playoffs.stage1_changes`; enter/clear record each changed game (first
+-- "was", latest "now"); seed, re-seed and acknowledge empty it; a
+-- Stage-2-only rebuild keeping the seeds keeps it. New assertions CH2 and the
+-- stage1_changes checks in SD4/CH1/AK1/RB2; mutants MU19–MU23.
+--   Run 1: BASELINE 0; 22/23 KILLED at their own tag; MU22 (clear records the
+--     old score as "now") SURVIVED — a HARNESS fault: CH1 tested the cleared
+--     entry with LIKE '21:% _/_>_/_', and in LIKE `_` is a wildcard, so the
+--     mutant's '_/_>6/2' matched. CH1 now compares the literal text.
+--   Run 2: BASELINE failures (0); 23/23 KILLED at their own tag; prosrc md5
+--     inside the batch: acknowledge_stage_seeds ae90374f…, clear_playoff_result
+--     d9babbf9…, delete_playoff_bracket 585d1e3e…, enter_playoff_result
+--     0602516b…, get_league_schedule_by_token ee9d9bb3…, playoff_apply_seeds
+--     8d85207c…, playoff_write_stage 554caf24…, replace_playoff_games
+--     ed9dfa71…, replace_two_stage_games a10e14cd…, seed_playoff_stage
+--     fc71eae5… — all equal to the repo file's bodies.
+--   Leak check after: new functions 0, new columns 0, old key 1, ZZ113
+--   fixtures 0, test link 0, test plan elite, live enter/clear a615f534… /
+--   e9e1908a…. Playoffs 6 / games 21 (was 5 / 16): the real league made a
+--   5-game single-elimination bracket through the product at 13:02 UTC that
+--   day — not this run; RL1 held in every pass.
+-- Regressions, same day, against the gap-1 bodies: 0107 BASELINE 0, 15/15
+-- KILLED at their own tag (md5 585d1e3e… / ed9dfa71…, unchanged); 0108
+-- BASELINE 0 (14 committed calls), 18/18 KILLED at their own tag (md5
+-- enter/clear 0602516b… / d9babbf9…, helpers 0c2020eb… / abae9070…). Both
+-- batches applied the 0113 schema plus the functions their harness exercises
+-- (0107: replace/delete; 0108: enter/clear), verbatim from the file. Leak
+-- check after both clean.
 -- 0113 NOT APPLIED — held for the founder's go.

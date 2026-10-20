@@ -92,6 +92,24 @@ const MUTANTS: Mutant[] = [
     replace: `        "",`,
     expect: "R2",
   },
+  {
+    id: "SX15", what: "the re-check note's \"before\" records are today's (nothing named as moved)", file: TS,
+    find: "      return c ? { ...g, home_score: c.was_home, away_score: c.was_away } : g;",
+    replace: "      return g;",
+    expect: "K5",
+  },
+  {
+    id: "SX16", what: "a result that changed back is still named", file: TS,
+    find: "    .filter((c) => c.was_home !== c.now_home || c.was_away !== c.now_away)",
+    replace: "    .filter(() => true)",
+    expect: "K5",
+  },
+  {
+    id: "SX17", what: "the card stops reading the stored changes", file: "src/components/playoffs/two-stage-card.tsx",
+    find: "stage1_changed_at, stage1_changes\")",
+    replace: "stage1_changed_at\")",
+    expect: "S2",
+  },
 ];
 
 runMutants({

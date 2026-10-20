@@ -37,7 +37,8 @@ import {
   seededLine,
   stage1HeaderPill,
   stage1LockedLine,
-  stage1RecheckNote,
+  parseStage1Changes,
+  stage1ChangesNote,
   stage1Status,
   STAGE1_EDIT_AFTER_SEEDING,
   stage2Button,
@@ -63,6 +64,7 @@ export type StageRow = {
   seeded_at: string | null;
   seeded_by: string | null;
   stage1_changed_at: string | null;
+  stage1_changes?: unknown;
   division: { id: string; name: string } | null;
 };
 
@@ -144,7 +146,7 @@ export function TwoStageCard({ stage1, stage2, counting, onEdit, onDelete, onExp
       supabase.from("playoffs").select("seeding, status, start_date, end_date").eq("id", stage1.id).maybeSingle(),
       supabase
         .from("playoffs")
-        .select("seeding, status, start_date, end_date, advance_count, seeded_at, seeded_by, stage1_changed_at")
+        .select("seeding, status, start_date, end_date, advance_count, seeded_at, seeded_by, stage1_changed_at, stage1_changes")
         .eq("id", stage2.id)
         .maybeSingle(),
     ]);
@@ -512,11 +514,17 @@ export function TwoStageCard({ stage1, stage2, counting, onEdit, onDelete, onExp
               {seeded && seededOn && (
                 <p className="text-xs text-gray-500">{seededLine(seededOn, seededByName, notAdvancing)}</p>
               )}
-              {recheck && !locked && changedOn && (
+              {recheck && !locked && (
                 <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
                   <p className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
-                    {stage1RecheckNote(changedOn)}
+                    {stage1ChangesNote({
+                      changes: parseStage1Changes(rows.stage2.stage1_changes),
+                      games: s1Games,
+                      teams,
+                      teamName,
+                      changedOn,
+                    })}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button

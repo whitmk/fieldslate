@@ -702,6 +702,7 @@ export type Database = {
           seeded_at: string | null
           seeded_by: string | null
           stage1_changed_at: string | null
+          stage1_changes: Json
         }
         Insert: {
           created_at?: string
@@ -726,6 +727,7 @@ export type Database = {
           seeded_at?: string | null
           seeded_by?: string | null
           stage1_changed_at?: string | null
+          stage1_changes?: Json
         }
         Update: {
           created_at?: string
@@ -750,6 +752,7 @@ export type Database = {
           seeded_at?: string | null
           seeded_by?: string | null
           stage1_changed_at?: string | null
+          stage1_changes?: Json
         }
         Relationships: [
           {

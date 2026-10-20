@@ -774,13 +774,19 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `(league_id, division_id)` unique key becomes `(league_id, division_id,
   stage)`; `playoffs` gains `stage` (1/2), `parent_playoff_id` (Stage 2 →
   Stage 1, cascade), `advance_count`, `games_per_team_per_day` (1/2),
-  `seeded_at`/`seeded_by`, `stage1_changed_at`; `playoff_games` gains
+  `seeded_at`/`seeded_by`, `stage1_changed_at`, `stage1_changes` (jsonb list,
+  CHECKed an array: one entry per round-robin game changed after seeding —
+  game number, both team ids, the score at seeding (`was_*`, kept from the
+  FIRST change) and now (`now_*`, null = cleared); emptied by seeding,
+  re-seeding and "Seeds are still right", kept by a Stage-2-only rebuild that
+  keeps the seeds); `playoff_games` gains
   `seed_home`/`seed_away` and an unused nullable `pool`. Re-creates
   `replace_playoff_games` (refuses a two-stage bracket — those go through
   `replace_two_stage_games`), `delete_playoff_bracket` (either stage deletes
   BOTH), `enter_`/`clear_playoff_result` (Stage 1 frozen once Stage 2 has a
   result → `blocked`/`next_stage_started`; a change after seeding sets
-  `stage1_changed_at` and logs `playoff_stage1_changed_after_seeding`), and
+  `stage1_changed_at`, records the game in `stage1_changes` and logs
+  `playoff_stage1_changed_after_seeding`), and
   the public reader (emits `stage`, `seed_home`, `seed_away`). New:
   `replace_two_stage_games` (a null Stage 1 payload rebuilds Stage 2 only and
   KEEPS the seeds), `seed_playoff_stage` (preview/commit; fills slots in place;
@@ -793,7 +799,20 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `two-stage-playoffs-build.ts`, which also re-targets the 0107 and 0108
   proofs at 0113). Run 2026-10-19: green on run 1, 18/18 mutants at their own
   tag, md5s matched, leak check clean; the 0107 proof (15/15) and the 0108
-  proof (18/18) both green against 0113. Read its RUN LOG.
+  proof (18/18) both green against 0113. Re-run 2026-10-20 with
+  `stage1_changes` (gap 1): 23/23 at their own tag on run 2 (run 1: MU22
+  survived a harness LIKE whose `_` is a wildcard), 0107 15/15, 0108 18/18,
+  leak checks clean. Expected md5(prosrc) after apply: `enter_playoff_result`
+  `0602516b4519f0c2eb53e432cf42ab52`, `clear_playoff_result`
+  `d9babbf9156d231dd5a57c15fdce95ea`, `replace_two_stage_games`
+  `a10e14cd0184986435ae48f9b2db9eee`, `seed_playoff_stage`
+  `fc71eae553832786f89d620e21f1bab5`, `acknowledge_stage_seeds`
+  `ae90374f0a00d1174f3450fa0980ff35`, `replace_playoff_games`
+  `ed9dfa7180384bb21e5c111c376c5fe6`, `delete_playoff_bracket`
+  `585d1e3ef36b319624339e45d6e801c3`, `get_league_schedule_by_token`
+  `ee9d9bb385487fc0191f32249f5395bf`, `playoff_write_stage`
+  `554caf24ab8c8f554e60995f98e62665`, `playoff_apply_seeds`
+  `8d85207ccbe3eb4f341170c4928da0b4`. Read its RUN LOG.
 - **Screens (steps 4–5, built 2026-10-20 on the branch; NOT pushed).** Wizard:
   a fourth Format card (`format: "round_robin"` + `two_stage: true`; Edit setup
   can't switch a setup between one bracket and a pair), then Teams
@@ -817,22 +836,27 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Bracket · Round 1 · Game 2" and "Playoffs · Round robin · RR Game 13" for a
   pair, "Seed 4" placeholders; ordinary brackets unchanged. Export: a pair's
   bracket print is Stage 2's tree, the schedule and CSV hold both stages.
-- **TWO KNOWN GAPS FROM THE MOCKUP, both because the database doesn't keep
-  the data:** (1) the re-check note can't name the changed game or its old
-  score (only `stage1_changed_at` is stored), so it says when, and points at
-  the records; (2) the seed confirm has no "N bracket games are on the public
-  schedule" line (seed_playoff_stage returns no public count). Either is a
-  small 0113 change if wanted — before it is applied.
+- **The re-check note names what changed (gap 1, closed 2026-10-20):**
+  `stage1ChangesNote` (two-stage.ts) builds it from `stage1_changes` and the
+  games as they are now — "RR Game 19 is now Royals 6, Mets 4 (was Mets 5,
+  Royals 3). Mets are now 1-2 (were 2-1); …", records before = today's games
+  with each changed game put back to its `was` result. A game that ended where
+  it started is not named; with nothing to name, or unreadable changes
+  (`parseStage1Changes` → null), it falls back to `stage1RecheckNote`.
+- **ONE KNOWN GAP FROM THE MOCKUP, kept by decision (2026-10-20, "skip gap
+  2"):** the seed confirm has no "N bracket games are on the public schedule"
+  line (seed_playoff_stage returns no public count).
 - **0113 is applied right before the step 4/5 push, same as 0111** (decided
   2026-10-20): the Playoffs page selects the new columns, so this code on
   `main` without 0113 breaks the page for every Elite league.
 - **Harness: `npm run sim:two-stage`** (145 checks × 3 zones, 8 counters; every
   expected value hand-written from the mockup) + `:mutants` (26, each killed
   at its own assertion; run 1 had 3 survivors, all harness/mutant faults — read
-  the RUN LOG). **`npm run sim:two-stage-screens`** (94 checks × 3 zones, 6
-  counters: export CSV and its end time, card pills/buttons/lines, payloads,
+  the RUN LOG). **`npm run sim:two-stage-screens`** (104 checks × 3 zones, 7
+  counters: export CSV and its end time, card pills/buttons/lines, the
+  re-check note from stored changes (K5), payloads,
   replies, the next-stage refusal, public labels, the pair delete confirm,
-  Review lines, wiring) + `:mutants` (14, each killed at its own assertion;
+  Review lines, wiring) + `:mutants` (17, each killed at its own assertion;
   run 1 had two killed at the wrong line — a harness ordering fault, read the
   RUN LOG). The screens were checked on a throwaway route with the REAL
   components and Supabase's REST answered in the browser by fixtures (0113
@@ -4776,11 +4800,6 @@ Still open:
   a hydration mismatch); move it to the next spring and re-run
   `npm run sim:practice-planner` (section K pins the field counts, which don't
   depend on the dates; W1/T1 pin Santa Rosa sentences and totals that do).
-
-- **The parked branch `fix/playoff-export-duration` (`b131bb4`) is superseded**
-  by the export fix on `feat/two-stage-playoffs` (2026-10-20: projected key,
-  blank end when unset, `sim:two-stage-screens` E1–E3 + mutants SX1–SX3).
-  Delete it once that branch is merged — with Whit's OK.
 
 - **0106's UTC-today mutant (MU3) is owed a run** between 00:00 and 10:00 UTC
   (5pm–3am Pacific) against the APPLIED function, rolled back. If it survives,

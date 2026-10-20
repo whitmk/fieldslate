@@ -8,7 +8,8 @@
 //   npm run sim:two-stage-screens:mutants    (mutation pass, real source)
 //
 // Section order is load-bearing (each mutant must die FIRST at its own tag):
-//   E export CSV → K card wording → Y payloads → V replies → B result
+//   E export CSV → K card wording (K5: the re-check note from 0113's
+//   stage1_changes) → Y payloads → V replies → B result
 //   refusals → PL public labels → D delete confirm → R review → S wiring
 // then ANTI-VACUITY COUNTERS — a zero counter fails the run.
 //
@@ -36,6 +37,8 @@ import {
   stage1FitLine,
   stage1HeaderPill,
   stage1LockedLine,
+  parseStage1Changes,
+  stage1ChangesNote,
   stage1RecheckNote,
   stage1SettingsPayload,
   stage1Status,
@@ -52,6 +55,7 @@ import {
   twoStageErrorMessage,
   twoStagePublicLine,
   twoStageReviewLines,
+  type Stage1Change,
   type Stage1Game,
   type Stage2Game,
 } from "../../src/lib/playoffs/two-stage";
@@ -85,7 +89,7 @@ function section(name: string, fn: () => void) {
     console.error(`  FAIL: [CRASH-${name}] ${msg}`);
   }
 }
-const counters = { csvRows: 0, blankEnds: 0, seedPlaceholders: 0, rrLabels: 0, blockedSentences: 0, pills: 0 };
+const counters = { changedGamesNamed: 0, csvRows: 0, blankEnds: 0, seedPlaceholders: 0, rrLabels: 0, blockedSentences: 0, pills: 0 };
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 // The mockup's Majors: Stage 2 for the top 6 on Sat/Sun Nov 14–22, two fields,
@@ -257,6 +261,51 @@ section("K4 lines", () => {
   ok(stageRange("2026-10-24", "2026-11-08") === "Oct 24 – Nov 8" && stageRange("2026-11-14", "2026-11-22") === "Nov 14 – 22" &&
     stageRange("2026-10-24", "2026-10-24") === "Oct 24" && stageRange(null, "2026-10-24") === null, "K4", "stage range");
   ok(twoStageCardLine(7, 6) === "Round robin, then bracket · 7 teams · top 6 advance", "K4", "card line");
+});
+
+section("K5 re-check note from the stored changes", () => {
+  const T = [
+    { team_id: "e", team_name: "Expos" }, { team_id: "g", team_name: "Giants" },
+    { team_id: "m", team_name: "Mets" }, { team_id: "r", team_name: "Royals" },
+  ];
+  const name = (id: string | null) => T.find((t) => t.team_id === id)?.team_name ?? "TBD";
+  const res = (n: number, h: string, a: string, hs: number | null, as: number | null) =>
+    rr(n, { home_team_id: h, away_team_id: a, home_score: hs, away_score: as, status: hs === null ? "scheduled" : "completed" });
+  const ch = (n: number, h: string, a: string, was: [number, number] | null, now: [number, number] | null): Stage1Change => ({
+    game_number: n, home_team_id: h, away_team_id: a,
+    was_home: was?.[0] ?? null, was_away: was?.[1] ?? null, now_home: now?.[0] ?? null, now_away: now?.[1] ?? null,
+  });
+  const note = (changes: Stage1Change[] | null, games: Stage1Game[], changedOn: string | null = "2026-11-10") => {
+    const n = stage1ChangesNote({ changes, games, teams: T, teamName: name, changedOn });
+    counters.changedGamesNamed += (n.match(/RR Game \d+/g) ?? []).length;
+    return n;
+  };
+  // By hand: RR1 Mets 2–6 Expos, RR2 Royals 1–4 Expos, RR3 Mets 5–0 Giants,
+  // RR19 Mets 4–6 Royals now (was Mets 5–3). Mets 1-2 now, 2-1 before;
+  // Royals 1-1 now, 0-2 before; Expos and Giants unchanged.
+  const base = [res(1, "m", "e", 2, 6), res(2, "r", "e", 1, 4), res(3, "m", "g", 5, 0), res(19, "m", "r", 4, 6)];
+  const one = note([ch(19, "m", "r", [5, 3], [4, 6])], base);
+  ok(one === "A round-robin result changed after you seeded the bracket. RR Game 19 is now Royals 6, Mets 4 (was Mets 5, Royals 3). Mets are now 1-2 (were 2-1); Royals are now 1-1 (were 0-2). Check the seeds still match your league's rules.",
+    "K5", "one changed game: its score before and after, and the records that moved", one);
+  // RR3 then cleared too: Mets 0-2 now (2-1 before), Giants 0-0 now (0-1 before).
+  const cleared = [res(1, "m", "e", 2, 6), res(2, "r", "e", 1, 4), res(3, "m", "g", null, null), res(19, "m", "r", 4, 6)];
+  const two = note([ch(19, "m", "r", [5, 3], [4, 6]), ch(3, "m", "g", [5, 0], null)], cleared);
+  ok(two === "Round-robin results changed after you seeded the bracket. RR Game 3's result was cleared (was Mets 5, Giants 0); RR Game 19 is now Royals 6, Mets 4 (was Mets 5, Royals 3). Giants are now 0-0 (were 0-1); Mets are now 0-2 (were 2-1); Royals are now 1-1 (were 0-2). Check the seeds still match your league's rules.",
+    "K5", "two games, in game order, a cleared one included", two);
+  const fresh = note([ch(20, "g", "e", null, [2, 7])], [res(20, "g", "e", 2, 7)]);
+  ok(fresh === "A round-robin result changed after you seeded the bracket. RR Game 20 is now Expos 7, Giants 2 (it had no result). Expos are now 1-0 (were 0-0); Giants are now 0-1 (were 0-0). Check the seeds still match your league's rules.",
+    "K5", "a game that had no result at seeding", fresh);
+  const back = note([ch(19, "m", "r", [5, 3], [5, 3])], [res(19, "m", "r", 5, 3)]);
+  ok(back === "A round-robin result changed after you seeded the bracket (Nov 10). The seeds didn't move. Check the records above and make sure the seeds still match your league's rules.",
+    "K5", "a result that ended where it started names no game (the plain note)", back);
+  ok(note(null, base, null) === "A round-robin result changed after you seeded the bracket. The seeds didn't move. Check the records above and make sure the seeds still match your league's rules.",
+    "K5", "unreadable changes and no date: the plain note without a date");
+  ok(JSON.stringify(parseStage1Changes([{ game_number: 19, home_team_id: "m", away_team_id: "r", was_home: 5, was_away: 3, now_home: null, now_away: null }])) ===
+    `[{"game_number":19,"home_team_id":"m","away_team_id":"r","was_home":5,"was_away":3,"now_home":null,"now_away":null}]`,
+    "K5", "the stored shape parses");
+  ok(parseStage1Changes("[]") === null && parseStage1Changes([{ game_number: "19" }]) === null &&
+    parseStage1Changes([{ game_number: 19, home_team_id: "m", away_team_id: "r", was_home: "5" }]) === null &&
+    JSON.stringify(parseStage1Changes([])) === "[]", "K5", "anything else is unreadable (null), never guessed");
 });
 
 // ── Y: what the wizard sends ──────────────────────────────────────────────────
@@ -431,6 +480,13 @@ section("S1 wiring", () => {
   ok(page.includes("<TwoStageCard") && page.includes("stage2ByParent.has(deleting.playoff.id)"), "S1", "the page renders pairs as one card and deletes them whole");
   const wizard = read("src/components/playoffs/playoff-wizard.tsx");
   ok(wizard.includes("<StepTwoStageReview") && wizard.includes("TWO_STAGE_STEPS"), "S1", "the wizard has the two-stage steps");
+});
+
+section("S2 re-check note wiring", () => {
+  const card = read("src/components/playoffs/two-stage-card.tsx");
+  ok(/\.select\("[^"]*stage1_changed_at, stage1_changes"\)/.test(card), "S2", "the card reads stage1_changes with Stage 2's row");
+  ok(card.includes("stage1ChangesNote({") && card.includes("changes: parseStage1Changes(rows.stage2.stage1_changes)") &&
+    !card.includes("stage1RecheckNote("), "S2", "the card renders the note from the stored changes, never the plain note directly");
 });
 
 // ── Counters ──────────────────────────────────────────────────────────────────

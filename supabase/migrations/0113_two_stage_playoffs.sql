@@ -13,7 +13,8 @@
 --      division PER STAGE; `stage` (1 or 2), `parent_playoff_id` (Stage 2 →
 --      its Stage 1; deleting Stage 1 deletes Stage 2), `advance_count`,
 --      `games_per_team_per_day` (1 or 2, default 1 — both stages, and the
---      plain round robin), `seeded_at`, `seeded_by`, `stage1_changed_at`.
+--      plain round robin), `seeded_at`, `seeded_by`, `stage1_changed_at`,
+--      `stage1_changes` (what changed, for the re-check note).
 --      playoff_games: `seed_home`, `seed_away`, and `pool` — NULL and read by
 --      nothing in this build (pools are a planned follow-up; NULL = no pools).
 --      Every existing bracket becomes stage 1 with no parent and is otherwise
@@ -25,8 +26,9 @@
 --   4. enter_playoff_result (0108) and clear_playoff_result (0112): a Stage 1
 --      result can be neither changed nor cleared once Stage 2 has a result
 --      (`blocked` / `next_stage_started`); a change after seeding flags Stage
---      2 for a re-check (`stage1_changed_at`) and logs it. Ties are still
---      refused.
+--      2 for a re-check (`stage1_changed_at`), records the game with its
+--      score before and after in `stage1_changes`, and logs it. Ties are
+--      still refused.
 --   5. get_league_schedule_by_token (0112) also emits each playoff game's
 --      `stage`, `seed_home` and `seed_away`, so the public page can say
 --      "Seed 4". Nothing else changes; no records exist in the database.
@@ -93,7 +95,13 @@ alter table public.playoffs
   -- Attribution only (the activity log names the event). No FK: one to
   -- profiles would take SHARE ROW EXCLUSIVE on profiles while applying.
   add column seeded_by              uuid,
-  add column stage1_changed_at      timestamptz;
+  add column stage1_changed_at      timestamptz,
+  -- Every round-robin game whose result changed since Stage 2 was seeded:
+  -- [{game_number, home_team_id, away_team_id, was_home, was_away, now_home,
+  --   now_away}], one entry per game — a second change keeps the FIRST "was"
+  -- and the latest "now"; a cleared result has null "now". Emptied by seeding
+  -- and by "Seeds are still right". The re-check note is built from it.
+  add column stage1_changes         jsonb       not null default '[]'::jsonb;
 
 alter table public.playoffs
   add constraint playoffs_stage_check
@@ -106,6 +114,8 @@ alter table public.playoffs
     check (advance_count is null or advance_count >= 2),
   add constraint playoffs_games_per_team_per_day_check
     check (games_per_team_per_day in (1, 2)),
+  add constraint playoffs_stage1_changes_check
+    check (jsonb_typeof(stage1_changes) = 'array'),
   add constraint playoffs_league_division_stage_key
     unique (league_id, division_id, stage);
 
@@ -566,6 +576,7 @@ declare
   v_child      public.playoffs%rowtype;
   v_has_child  boolean := false;
   v_started    integer;
+  v_prev       jsonb;
 begin
   if p_game_id is null or p_home_score is null or p_away_score is null then
     raise exception 'invalid_arguments' using errcode = 'P0001';
@@ -732,7 +743,21 @@ begin
   -- Two-stage (0113): a round-robin result entered or changed after Stage 2 was seeded
   -- flags Stage 2 so the admin re-checks the seeds. The seeds never move.
   if v_has_child and v_child.seeded_at is not null then
-    update public.playoffs set stage1_changed_at = now(), updated_at = now() where id = v_child.id;
+    -- One entry per game: an earlier entry's "was" is kept, "now" is this one.
+    select e into v_prev from jsonb_array_elements(v_child.stage1_changes) e
+     where (e ->> 'game_number')::integer = v_game.game_number limit 1;
+    update public.playoffs
+       set stage1_changed_at = now(),
+           stage1_changes = coalesce((select jsonb_agg(e) from jsonb_array_elements(v_child.stage1_changes) e
+                                       where (e ->> 'game_number')::integer <> v_game.game_number), '[]'::jsonb)
+                            || jsonb_build_array(jsonb_build_object(
+                                 'game_number', v_game.game_number,
+                                 'home_team_id', v_game.home_team_id, 'away_team_id', v_game.away_team_id,
+                                 'was_home', case when v_prev is null then to_jsonb(v_game.home_score) else v_prev -> 'was_home' end,
+                                 'was_away', case when v_prev is null then to_jsonb(v_game.away_score) else v_prev -> 'was_away' end,
+                                 'now_home', p_home_score, 'now_away', p_away_score)),
+           updated_at = now()
+     where id = v_child.id;
     insert into public.activity_log (league_id, division_id, event_type, message)
     values (v_po.league_id, v_po.division_id, 'playoff_stage1_changed_after_seeding',
             format('%s playoffs: RR Game %s result changed after Stage 2 was seeded — re-check the seeds',
@@ -790,6 +815,7 @@ declare
   v_child      public.playoffs%rowtype;
   v_has_child  boolean := false;
   v_started    integer;
+  v_prev       jsonb;
 begin
   if p_game_id is null or p_commit is null then
     raise exception 'invalid_arguments' using errcode = 'P0001';
@@ -953,7 +979,21 @@ begin
   -- Two-stage (0113): a round-robin result cleared after Stage 2 was seeded
   -- flags Stage 2 so the admin re-checks the seeds. The seeds never move.
   if p_commit and v_has_child and v_child.seeded_at is not null then
-    update public.playoffs set stage1_changed_at = now(), updated_at = now() where id = v_child.id;
+    -- One entry per game: an earlier entry's "was" is kept; "now" is cleared.
+    select e into v_prev from jsonb_array_elements(v_child.stage1_changes) e
+     where (e ->> 'game_number')::integer = v_game.game_number limit 1;
+    update public.playoffs
+       set stage1_changed_at = now(),
+           stage1_changes = coalesce((select jsonb_agg(e) from jsonb_array_elements(v_child.stage1_changes) e
+                                       where (e ->> 'game_number')::integer <> v_game.game_number), '[]'::jsonb)
+                            || jsonb_build_array(jsonb_build_object(
+                                 'game_number', v_game.game_number,
+                                 'home_team_id', v_game.home_team_id, 'away_team_id', v_game.away_team_id,
+                                 'was_home', case when v_prev is null then to_jsonb(v_game.home_score) else v_prev -> 'was_home' end,
+                                 'was_away', case when v_prev is null then to_jsonb(v_game.away_score) else v_prev -> 'was_away' end,
+                                 'now_home', null, 'now_away', null)),
+           updated_at = now()
+     where id = v_child.id;
     insert into public.activity_log (league_id, division_id, event_type, message)
     values (v_po.league_id, v_po.division_id, 'playoff_stage1_changed_after_seeding',
             format('%s playoffs: RR Game %s result cleared after Stage 2 was seeded — re-check the seeds',
@@ -1607,6 +1647,7 @@ begin
          seeded_at         = case when v_keep_seeds then v_s2.seeded_at else null end,
          seeded_by         = case when v_keep_seeds then v_s2.seeded_by else null end,
          stage1_changed_at = case when v_keep_seeds then v_s2.stage1_changed_at else null end,
+         stage1_changes    = case when v_keep_seeds then v_s2.stage1_changes else '[]'::jsonb end,
          updated_at        = now()
    where id = v_s2.id;
   if v_keep_seeds then
@@ -1795,6 +1836,7 @@ begin
          seeded_at = now(),
          seeded_by = auth.uid(),
          stage1_changed_at = null,
+         stage1_changes = '[]'::jsonb,
          updated_at = now()
    where id = v_s2.id
      and parent_playoff_id = v_s1.id;
@@ -1884,7 +1926,7 @@ begin
   end if;
 
   update public.playoffs
-     set stage1_changed_at = null, updated_at = now()
+     set stage1_changed_at = null, stage1_changes = '[]'::jsonb, updated_at = now()
    where id = v_s2.id and stage1_changed_at is not distinct from v_s2.stage1_changed_at;
   get diagnostics v_rows = row_count;
   if v_rows <> 1 then

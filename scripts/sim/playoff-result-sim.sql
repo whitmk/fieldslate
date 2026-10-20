@@ -929,3 +929,8 @@ $h108$;
 --   d988edc57a2420c93f2d03498cbc2a8c, clear_playoff_result
 --   b7c38f77dfd7c0361daa9af5d9a8b46b (0113's bodies); helpers unchanged.
 --   Leak check after: zero; live functions unchanged.
+-- 2026-10-20 — re-run against 0113 with `stage1_changes` (two-stage gap 1):
+--   BASELINE failures (0), 14 committed calls; 18/18 KILLED at their own tag;
+--   md5 enter/clear 0602516b4519f0c2eb53e432cf42ab52 /
+--   d9babbf9156d231dd5a57c15fdce95ea (0113's new bodies), helpers unchanged
+--   (0c2020eb… / abae9070…). Leak check clean.
