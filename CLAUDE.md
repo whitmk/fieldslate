@@ -5079,6 +5079,20 @@ Still open:
   pre-0111 code, which Stripe keeps payable for 24 hours; after that nothing
   can reach it. Same proof standard: rolled back, mutants, md5 after apply.
 
+- **Playoff series: large brackets with long series print small** (Safari
+  check passed 2026-10-20). One landscape page means a 16-team bracket with
+  best-of-5 or best-of-7 series prints at about 0.34 / 0.25 scale, and below
+  ~0.5 team names fall under 5pt (the scale table is under "Playoff series").
+  If a league needs it, a two-page print (split the tree, or one page per
+  half) is the lever — not built.
+
+- **Playoff series: hide the empty button row under played series games.**
+  On screen, a series game that has a result while a LATER game also has one
+  gets no buttons (Edit is offered only on the latest result,
+  `seriesGameActions`), so its card shows an empty `h-8` action row. Hide the
+  row when no action applies — and change `SCREEN_GROUP`'s estimate
+  (`groupCardHeight`) and sim [S7] with it, or the group heights drift.
+
 - **Bump the practice field calculator's example season dates before spring
   2028.** `EXAMPLE_LEAGUE` in `src/lib/practice-planner/example-league.ts` is
   fixed at Feb 22 – May 29, 2027 on purpose (a clock-derived default would be
