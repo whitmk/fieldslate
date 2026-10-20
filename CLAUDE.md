@@ -1505,6 +1505,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   all read files that "only change classes". `5f114a2` ("className changes
   only") broke two golden assertions and ran nothing.
 
+- **NEVER run another sim, the dev server or a build while a mutation pass
+  is running — wait for it to finish.** A `:mutants` pass REWRITES the real
+  source files (one mutant at a time, restored after each), so anything else
+  that reads `src` meanwhile reads a mutant. On 2026-10-20 a sim run alongside
+  the `sim:playoff-bracket:mutants` pass went red on a bye mutant that wasn't
+  part of the change under test. Run passes in the background if you like,
+  but touch nothing until they report.
+
 ## Harness standard — SQL-level exceptions
 
 - **SQL-level enforcement in this repo CANNOT be proven by the `npm run
