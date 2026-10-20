@@ -172,6 +172,10 @@ async function main() {
     check("P3", !p3.archive && p3.reason === "playoff_unfinished", `past playoff game with no result: ${JSON.stringify(p3)}`);
     const r1 = d({ playoffGames: [done("2026-10-18"), done("2026-10-22"), { ...open("2026-10-23"), winnerId: "t2" }] });
     check("R1", r1.archive, `results all in: ${JSON.stringify(r1)}`);
+    // 0114: a game its series never needed is never played — neither ahead
+    // (dated after today) nor unfinished (no result, or no date).
+    const n1 = d({ playoffGames: [done("2026-10-18"), { ...open("2026-11-01"), status: "not_needed" }, { ...open(null), status: "not_needed" }] });
+    check("N1", n1.archive, `not-needed playoff games must not block: ${JSON.stringify(n1)}`);
 
     for (const [what, p] of [
       ["today", { today: null }], ["games", { gameTimes: null }], ["playoffs", { playoffGames: null }],

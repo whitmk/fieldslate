@@ -35,8 +35,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "TM5", what: "the shared table says a later game doesn't count (TS and SQL disagree)", file: TABLE,
-    find: "  ('C', '2026-10-25', '{2026-10-17,2026-11-01}', '{}', '2026-11-01'),",
-    replace: "  ('C', '2026-10-25', '{2026-10-17,2026-11-01}', '{}', '2026-10-25'),",
+    find: "  ('C', '2026-10-25', '{2026-10-17,2026-11-01}', '{}', '{}', '2026-11-01'),",
+    replace: "  ('C', '2026-10-25', '{2026-10-17,2026-11-01}', '{}', '{}', '2026-10-25'),",
     expect: "LD-C",
   },
   {
@@ -50,6 +50,12 @@ const MUTANTS: Mutant[] = [
     find: "     or (v_end_date is not null and v_today > public.season_last_day(v_league_id) + 7)",
     replace: "     or (v_end_date is not null and v_today > v_end_date + 7)",
     expect: "M1",
+  },
+  {
+    id: "TM8", what: "not-needed playoff dates (0114) count toward the last day", file: DEC,
+    find: "  return games.filter((g) => g.status !== NOT_NEEDED).map((g) => g.date);",
+    replace: "  return games.map((g) => g.date);",
+    expect: "LD-K",
   },
 ];
 

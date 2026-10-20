@@ -37,6 +37,7 @@
 --   FM9 replace_playoff_games "after" back          → R2
 --   FM10 clear_playoff_result back                  → C1
 --   FM11 season_last_day granted to anon            → P1
+--   FM12 helper counts not-needed playoff games     → LD-K   (0114)
 --
 -- ── RUN LOG ─────────────────────────────────────────────────────────────────
 -- 2026-10-19 (dry run first): the fixtures and the case table alone, with only
@@ -61,18 +62,20 @@ select set_config('lock_timeout', '3s', true),
 create temp table h112_cases as
 select * from (values
 -- LASTDAY-TABLE-BEGIN
-  ('A', '2026-10-25', '{}', '{}', '2026-10-25'),
-  ('B', '2026-10-25', '{2026-10-17}', '{2026-10-18}', '2026-10-25'),
-  ('C', '2026-10-25', '{2026-10-17,2026-11-01}', '{}', '2026-11-01'),
-  ('D', '2026-10-25', '{2026-10-17}', '{2026-11-07,NULL}', '2026-11-07'),
-  ('E', '2026-10-25', '{2026-11-01}', '{2026-11-08}', '2026-11-08'),
-  ('F', '2026-10-25', '{2026-11-09}', '{2026-11-08}', '2026-11-09'),
-  ('G', NULL, '{2026-11-01}', '{2026-11-02}', NULL),
-  ('H', '2026-10-25', '{2026-10-25}', '{}', '2026-10-25'),
-  ('I', '2026-10-25', '{}', '{NULL}', '2026-10-25'),
-  ('J', '2026-12-31', '{2027-01-02}', '{}', '2027-01-02')
+  ('A', '2026-10-25', '{}', '{}', '{}', '2026-10-25'),
+  ('B', '2026-10-25', '{2026-10-17}', '{2026-10-18}', '{}', '2026-10-25'),
+  ('C', '2026-10-25', '{2026-10-17,2026-11-01}', '{}', '{}', '2026-11-01'),
+  ('D', '2026-10-25', '{2026-10-17}', '{2026-11-07,NULL}', '{}', '2026-11-07'),
+  ('E', '2026-10-25', '{2026-11-01}', '{2026-11-08}', '{}', '2026-11-08'),
+  ('F', '2026-10-25', '{2026-11-09}', '{2026-11-08}', '{}', '2026-11-09'),
+  ('G', NULL, '{2026-11-01}', '{2026-11-02}', '{}', NULL),
+  ('H', '2026-10-25', '{2026-10-25}', '{}', '{}', '2026-10-25'),
+  ('I', '2026-10-25', '{}', '{NULL}', '{}', '2026-10-25'),
+  ('J', '2026-12-31', '{2027-01-02}', '{}', '{}', '2027-01-02'),
+  ('K', '2026-10-25', '{2026-10-17}', '{2026-11-07}', '{2026-11-14}', '2026-11-07'),
+  ('L', '2026-10-25', '{}', '{}', '{2026-11-14,2026-11-21}', '2026-10-25')
 -- LASTDAY-TABLE-END
-) as t(case_id, end_date, game_dates, playoff_dates, expect_last_day);
+) as t(case_id, end_date, game_dates, playoff_dates, not_needed_dates, expect_last_day);
 
 create function pg_temp.h112_try(p_role text, p_uid uuid, p_sql text)
 returns text
@@ -246,6 +249,7 @@ declare
   v_t2     uuid;
   v_po     uuid;
   v_gn     int;
+  v_nn     uuid;
   v_d      text;
   v_tok    text;
   v_h0     text := '';
@@ -270,6 +274,7 @@ begin
 
   -- The case table: one league per row (end date, games, playoff games).
   create temp table h112_case_league (case_id text, league_id uuid);
+  create temp table h112_not_needed (id uuid);
   for c in select * from h112_cases order by case_id loop
     insert into public.leagues (name, sport, season, status, owner_id, start_date, end_date)
     values ('ZZ112 Case ' || c.case_id, 'baseball', 'Fall', 'active', v_owner, '2026-08-01', c.end_date::date)
@@ -290,6 +295,16 @@ begin
       v_gn := v_gn + 1;
       insert into public.playoff_games (playoff_id, league_id, division_id, round, game_number, home_team_id, away_team_id, scheduled_date)
       values (v_po, v_lg, v_div, 'RR1', v_gn, v_t1, v_t2, v_d::date);
+    end loop;
+    -- 0114: not-needed playoff games. Written 'scheduled' here (the setup runs
+    -- before the migration, whose status check allows 'not_needed') and set
+    -- not_needed right after the migration runs.
+    foreach v_d in array c.not_needed_dates::text[] loop
+      v_gn := v_gn + 1;
+      insert into public.playoff_games (playoff_id, league_id, division_id, round, game_number, home_team_id, away_team_id, scheduled_date)
+      values (v_po, v_lg, v_div, 'RR1', v_gn, v_t1, v_t2, v_d::date)
+      returning id into v_nn;
+      insert into h112_not_needed values (v_nn);
     end loop;
     insert into h112_case_league values (c.case_id, v_lg);
   end loop;
@@ -370,6 +385,7 @@ begin
   execute $mig112$
 -- @@MIGRATION_0112@@
   $mig112$;
+  update public.playoff_games set status = 'not_needed' where id in (select id from h112_not_needed);
 
   v_base := pg_temp.h112_assert(fx);
   v_out := format(E'H112 RESULTS\nH0 (before 0112): %s  [expected expired / false]\nBASELINE failures: %s\nBASELINE cases: %s\n',
@@ -380,7 +396,7 @@ begin
       ('FM1',  'helper ignores regular-season games', 'LD-C', 'public.season_last_day(uuid)',
          E'(select max((g.scheduled_at at time zone ''UTC'')::date)\n                from public.games g\n               where g.league_id = l.id),', 'null::date,', 1),
       ('FM2',  'helper ignores playoff games', 'LD-D', 'public.season_last_day(uuid)',
-         E'(select max(pg.scheduled_date)\n                from public.playoff_games pg\n               where pg.league_id = l.id))', 'null::date)', 1),
+         E'(select max(pg.scheduled_date)\n                from public.playoff_games pg\n               where pg.league_id = l.id\n                 and pg.status <> ''not_needed''))', 'null::date)', 1),
       ('FM3',  'helper drops the no-end-date guard', 'LD-G', 'public.season_last_day(uuid)',
          'when l.end_date is null then null', 'when false then null', 1),
       ('FM4',  'team feed back to end_date + 7', 'TC1', 'public.get_team_calendar_by_token(text)',
@@ -397,7 +413,9 @@ begin
          'public.season_last_day(v_league.id) + 7', 'v_league.end_date + 7', 2),
       ('FM10', 'clear_playoff_result back', 'C1', 'public.clear_playoff_result(uuid, boolean)',
          'public.season_last_day(v_league.id) + 7', 'v_league.end_date + 7', 1),
-      ('FM11', 'season_last_day granted to anon', 'P1', null, null, null, 0)
+      ('FM11', 'season_last_day granted to anon', 'P1', null, null, null, 0),
+      ('FM12', 'helper counts not-needed playoff games', 'LD-K', 'public.season_last_day(uuid)',
+         E'\n                 and pg.status <> ''not_needed''))', '))', 1)
     ) as t(id, what, target, fn, old_text, new_text, nth)
   loop
     begin
@@ -444,3 +462,11 @@ begin
   raise exception '%', v_out;
 end;
 $h112$;
+-- 2026-10-20 — 0114 (playoff series): the case table gains not_needed_dates
+-- (cases K and L) and FM12; re-run with 0114 in place of 0112
+-- (`playoff-series-build.ts 0112`): BASELINE failures none, 12 cases; 12/12
+-- KILLED at their own tag; md5s printed: season_last_day 48e6d550…,
+-- get_league_schedule_by_token 58de6c61…, delete_playoff_bracket 0c788c4b…,
+-- replace_playoff_games 2e621878…, clear_playoff_result f60c3532… (0114's),
+-- get_team_calendar_by_token 45f822d6… (unchanged). H0 read ok / true — 0112
+-- is live now, so "before 0112" no longer exists to observe. Leak check clean.

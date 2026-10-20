@@ -275,6 +275,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   role; PUBLIC, service_role and dashboard_readonly false); the 6 existing
   brackets and 21 games byte-identical apart from the new columns, all at
   their defaults; leak check clean. See "Two-stage playoffs".
+- **0114 (playoff series) is WRITTEN AND PROVEN, NOT APPLIED** (branch
+  `feat/playoff-series`, 2026-10-20) — held until the series screens are
+  built (one go-live). See "Playoff series" for its md5s and proof.
 - **`is_org_member` IS the admin gate, because every org member is an admin
   today.** If a non-admin member role (e.g. coach) is ever added,
   `set_org_timezone`, `regenerate_team_calendar_link` and
@@ -904,11 +907,47 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (2026-10-20) — every game of a series shares its position. Identical for
   single games.
 - **Steps (each held for Whit's go; one go-live):** 1 rules + planner (DONE on
-  the branch) → 2 migration 0114 (series_by_round, series_game, not_needed,
-  enter/clear series logic, season_last_day / auto-archive / public reader /
-  public counts ignore not_needed) written and proven, NOT applied → 3 admin
-  screens → 4 public page, feed, print, CSV, confirms, snack shack/conflicts/
-  daylight → 5 apply 0114, then ship.
+  the branch) → 2 migration 0114 (DONE on the branch: written and proven, NOT
+  applied) → 3 admin screens → 4 public page, feed, print, CSV, confirms, snack
+  shack/conflicts/daylight → 5 apply 0114, then ship.
+- **Migration 0114 (`0114_playoff_series.sql`) — WRITTEN AND PROVEN, NOT
+  APPLIED.** Schema: `playoffs.series_by_round` (jsonb object, `{}` = every
+  round 1 game), `playoff_games.series_game` (1..7, default 1), status
+  `not_needed`, unique `(playoff_id, round, game_number, series_game)`.
+  New helpers callable by NO role: `playoff_check_series` (the payload shape;
+  both writers call it), `playoff_series_place` (moves a series winner into,
+  or out of, EVERY game of the next series; once both teams are known, home
+  by true seed; a stranger in the slot raises `slot_occupied`, never guessed),
+  `playoff_round_title` / `playoff_round_in_sentence` / `playoff_game_title`
+  (the log's words). enter/clear gain blocks 5b/8b and refusals
+  `game_not_needed`, `series_order`, `series_later_result`; the single-game
+  path is untouched (`and not v_series_mode`), and every line the 0107/0108/
+  0113 mutants replace is byte-for-byte. **`not_needed` is excluded
+  everywhere a date or a public game is counted:** `season_last_day`, the
+  public reader, every public-count mirror (the 0107 rule's copies), and
+  auto-archive (`decideAutoArchive` drops not-needed playoff games first;
+  `countedPlayoffDates` is the TS twin's input — the case table gains
+  `not_needed_dates`, cases K and L). Expected md5(prosrc) after apply:
+  `clear_playoff_result` `f60c353245d685861b3f3d01456d61e9`,
+  `delete_playoff_bracket` `0c788c4b4996dc656655e5d9f1e26ead`,
+  `enter_playoff_result` `bf336bf9b03690df35fa12d025f84dae`,
+  `get_league_schedule_by_token` `58de6c61e0b3a29bd3392352b2408718`,
+  `playoff_check_series` `ad4168131434ce72dfe75b43c3c41a32`,
+  `playoff_game_title` `3c362c4ecafd99e7385e0f98d483b74d`,
+  `playoff_round_in_sentence` `4a0911e0564055cd621d901f85343a75`,
+  `playoff_round_title` `0f80e431da34b6767c3b501a41a498ae`,
+  `playoff_series_place` `874da41d419f49600b68f6122d9432e1`,
+  `playoff_write_stage` `d43764d1042f4e98bac7cb5fb277c56b`,
+  `replace_playoff_games` `2e62187822aa292d6b95c77ec27f293b`,
+  `replace_two_stage_games` `265add03389e1c1129297948157273bd`,
+  `season_last_day` `48e6d5504f19349a0bae92edc34c014d`. **Applying takes
+  ACCESS EXCLUSIVE on `playoffs` and `playoff_games`** (under a second).
+  Proof: `scripts/sim/playoff-series-sim.sql` (+ `playoff-series-build.ts`,
+  which also re-targets the 0107, 0108, 0112 and 0113 proofs at 0114). Run
+  2026-10-20: green on run 1, 20/20 mutants at their own tag, md5s matched;
+  regressions 0108 18/18, 0107 15/15, 0112 12/12 (FM12 new), 0113 23/23 (its
+  SC1/OT1 re-targeted because 0113 is live); leak checks clean. Read the RUN
+  LOGs.
 - **Deviations from the mockup, to confirm:** the Review's one-date-short
   warning names the undated game but not "needs 3 dates after …; 2 are in
   range" (that count depends on fields and the per-day limit); the two-stage
@@ -1012,10 +1051,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   NO game — never a stored position. The two-stage I/O reads Stage 2's game
   numbers only to word such a refusal (fail-soft).
 - **NOT YET: the activity log** (deferred by Whit, 2026-10-20 — see Open
-  items). `enter_playoff_result` and `clear_playoff_result` write "Game %s" /
-  "moved into Game %s" / "result cleared for Game %s" / "removed from Game
-  %s" with the STORED position. Nothing else in SQL prints a game number to a
-  person.
+  items). The LIVE `enter_playoff_result` and `clear_playoff_result` (0113)
+  write "Game %s" / "moved into Game %s" / "result cleared for Game %s" /
+  "removed from Game %s" with the STORED position. **0114 (written, not
+  applied) replaces these with the round and the teams** ("Majors playoffs:
+  Semifinals, game 2 of 3 — …"); once 0114 is applied, nothing in SQL prints a
+  game number to a person except round-robin "RR Game N".
 - **The approved two-stage mockup shows stored numbers** ("bye to Game 5",
   "Game 2: Mets…"); the app now shows 1..N. Decided 2026-10-20.
 - **Harness: `npm run sim:playoff-numbers`** (68 checks × 3 zones, 6 counters:
@@ -4892,9 +4933,16 @@ Still open:
   in one place. Not in the first build: per-pool round robins, per-pool
   records, per-pool advancing counts.
 
-- **Next time `enter_playoff_result` / `clear_playoff_result` change, make
-  their activity-log messages name the ROUND and the TEAMS instead of a game
-  number** (decided 2026-10-20). Today they log the stored bracket position
+- **The 0107 proof's RL1 is VACUOUS (found 2026-10-20).** It fingerprints the
+  real league's bracket `c903bbb7…` by id, and that bracket no longer exists,
+  so it compares two empty strings. Fingerprint every real-league bracket by
+  owner, as the 0108 and 0113 proofs do, the next time that harness is
+  touched.
+
+- **DONE IN 0114 (written, NOT applied) — next time `enter_playoff_result` /
+  `clear_playoff_result` change, make their activity-log messages name the
+  ROUND and the TEAMS instead of a game number** (decided 2026-10-20). Remove
+  this item once 0114 is applied. Today they log the stored bracket position
   ("Game 6", "moved into Game 7"), which with byes doesn't match the shown
   numbers (see "Playoff game numbers people see"). Round + teams needs no
   numbering in SQL. Deferred, not a migration of its own; same proof

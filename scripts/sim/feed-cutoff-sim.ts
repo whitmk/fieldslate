@@ -19,7 +19,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { addDays, feedsServeOn, seasonLastDay } from "@/lib/seasons/archive-decision";
+import { addDays, countedPlayoffDates, feedsServeOn, seasonLastDay } from "@/lib/seasons/archive-decision";
 import { END_DATE_NOTE } from "@/lib/seasons/end-date";
 
 const ROOT = join(__dirname, "../..");
@@ -34,7 +34,7 @@ function check(tag: string, ok: boolean, detail: string) {
     console.log(`FAIL: [${tag}] ${detail}`);
   }
 }
-const counters = { rows: 0, gameExtends: 0, playoffExtends: 0, nullEnd: 0 };
+const counters = { rows: 0, gameExtends: 0, playoffExtends: 0, nullEnd: 0, notNeededRows: 0 };
 
 // ── XC1 + LD: the shared table ──────────────────────────────────────────────
 const sql = read("scripts/sim/feed-cutoff-sim.sql");
@@ -45,7 +45,7 @@ check("XC1", begin === 1 && end === 1, `markers: BEGIN ×${begin}, END ×${end} 
 const from = lines.findIndex((l) => l.trim() === "-- LASTDAY-TABLE-BEGIN");
 const to = lines.findIndex((l) => l.trim() === "-- LASTDAY-TABLE-END");
 const block = from >= 0 && to > from ? lines.slice(from + 1, to) : [];
-const ROW = /^\s*\('([A-Z0-9]+)', (NULL|'\d{4}-\d{2}-\d{2}'), '\{([^}]*)\}', '\{([^}]*)\}', (NULL|'\d{4}-\d{2}-\d{2}')\),?\s*$/;
+const ROW = /^\s*\('([A-Z0-9]+)', (NULL|'\d{4}-\d{2}-\d{2}'), '\{([^}]*)\}', '\{([^}]*)\}', '\{([^}]*)\}', (NULL|'\d{4}-\d{2}-\d{2}')\),?\s*$/;
 const unq = (v: string) => (v === "NULL" ? null : v.slice(1, -1));
 const list = (v: string) => (v === "" ? [] : v.split(",").map((x) => (x === "NULL" ? null : x)));
 for (const line of block) {
@@ -53,10 +53,15 @@ for (const line of block) {
   const m = ROW.exec(line);
   check("XC1", !!m, `a table row didn't parse: ${line}`);
   if (!m) continue;
-  const [, id, endRaw, gamesRaw, playoffsRaw, expectRaw] = m;
+  const [, id, endRaw, gamesRaw, playoffsRaw, notNeededRaw, expectRaw] = m;
   const endDate = unq(endRaw);
   const games = list(gamesRaw).filter((d): d is string => d !== null).map((d) => `${d}T03:30:00+00:00`);
-  const playoffs = list(playoffsRaw);
+  // 0114: the not-needed column goes through the same rule the SQL helper states.
+  const playoffs = countedPlayoffDates([
+    ...list(playoffsRaw).map((date) => ({ date, status: "scheduled" })),
+    ...list(notNeededRaw).map((date) => ({ date, status: "not_needed" })),
+  ]);
+  if (list(notNeededRaw).length) counters.notNeededRows++;
   const expect = unq(expectRaw);
   const got = seasonLastDay(endDate, games, playoffs);
   counters.rows++;

@@ -368,23 +368,36 @@ returns integer language sql as $fn$
 $fn$;
 
 -- Existing brackets and games still byte-identical on their original columns.
+-- Re-targeted 2026-10-20 for the 0114 regression: 0113 is live now, so the
+-- snapshot may already hold 0113's columns (then the row must be unchanged
+-- apart from 0114's columns); before 0113 it holds none (the original check).
+-- Either way 0114's columns must sit at their defaults.
 create function pg_temp.h113_untouched()
 returns integer language sql as $fn$
   select (select count(*)::integer from h113_pre pr
            where pr.kind = 'p' and not exists (
              select 1 from public.playoffs p
               where p.id = pr.id
-                and (to_jsonb(p) - array['stage', 'parent_playoff_id', 'advance_count', 'games_per_team_per_day',
-                                         'seeded_at', 'seeded_by', 'stage1_changed_at', 'stage1_changes']) = pr.j
-                and p.stage = 1 and p.parent_playoff_id is null and p.advance_count is null
-                and p.games_per_team_per_day = 1 and p.seeded_at is null and p.stage1_changed_at is null
-                and p.stage1_changes = '[]'::jsonb))
+                and coalesce(to_jsonb(p) -> 'series_by_round' = '{}'::jsonb, true)
+                and case when pr.j ? 'stage'
+                      then (to_jsonb(p) - 'series_by_round') = (pr.j - 'series_by_round')
+                      else (to_jsonb(p) - array['stage', 'parent_playoff_id', 'advance_count', 'games_per_team_per_day',
+                                                'seeded_at', 'seeded_by', 'stage1_changed_at', 'stage1_changes',
+                                                'series_by_round']) = pr.j
+                           and p.stage = 1 and p.parent_playoff_id is null and p.advance_count is null
+                           and p.games_per_team_per_day = 1 and p.seeded_at is null and p.stage1_changed_at is null
+                           and p.stage1_changes = '[]'::jsonb
+                    end))
        + (select count(*)::integer from h113_pre pr
            where pr.kind = 'g' and not exists (
              select 1 from public.playoff_games g
               where g.id = pr.id
-                and (to_jsonb(g) - array['seed_home', 'seed_away', 'pool']) = pr.j
-                and g.seed_home is null and g.seed_away is null and g.pool is null))
+                and coalesce((to_jsonb(g) ->> 'series_game')::integer, 1) = 1
+                and case when pr.j ? 'seed_home'
+                      then (to_jsonb(g) - 'series_game') = (pr.j - 'series_game')
+                      else (to_jsonb(g) - array['seed_home', 'seed_away', 'pool', 'series_game']) = pr.j
+                           and g.seed_home is null and g.seed_away is null and g.pool is null
+                    end))
 $fn$;
 
 -- The assertions. Returns {fails, notes}. Never throws: a crash is recorded
@@ -1108,3 +1121,15 @@ $h113$;
 -- founder's go. Live md5(prosrc) equal to run 2's for all ten functions;
 -- privileges per role as stated; existing 6 brackets / 21 games unchanged
 -- apart from the new columns at their defaults; leak check clean.
+-- 2026-10-20 — re-run with 0114 (playoff series) in place of 0113
+-- (`playoff-series-build.ts 0113`). First h113_untouched (SC1/OT1) was
+-- re-targeted: it assumed the snapshot predates 0113, and 0113 is live now, so
+-- every existing row would have read as changed — harness drift, not a code
+-- fault. It now compares the whole row minus 0114's columns when the snapshot
+-- already has 0113's, keeps the original check otherwise, and requires 0114's
+-- defaults (series_by_round {}, series_game 1) either way.
+--   BASELINE failures (0); 23/23 KILLED at their own tag; md5 inside the batch:
+--   0114's bodies for the seven it re-creates (clear f60c3532…, delete
+--   0c788c4b…, enter bf336bf9…, reader 58de6c61…, write_stage d43764d1…,
+--   replace 2e621878…, two_stage 265add03…), 0113's for the three it leaves
+--   (acknowledge ae90374f…, apply 8d85207c…, seed fc71eae5…). Leak check clean.

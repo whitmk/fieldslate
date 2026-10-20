@@ -62,8 +62,13 @@ export function playoffGameFinished(g: PlayoffGameForArchive): boolean {
   return g.status === "completed" || g.winnerId !== null || g.homeScore !== null || g.awayScore !== null;
 }
 
+/** A playoff game its series never needed (0114) is never played: it is not
+ *  ahead, not unfinished, and its date doesn't extend the season. */
+export const NOT_NEEDED = "not_needed";
+
 export function decideAutoArchive(input: ArchiveInput): ArchiveDecision {
-  const { endDate, today, gameTimes, playoffGames } = input;
+  const { endDate, today, gameTimes } = input;
+  const playoffGames = input.playoffGames === null ? null : input.playoffGames.filter((g) => g.status !== NOT_NEEDED);
   if (today === null) return { archive: false, reason: "unreadable", detail: "the league's timezone couldn't be read" };
   if (endDate === null) return { archive: false, reason: "no_end_date", detail: "the season has no end date" };
   if (!endDatePassed(endDate, today)) {
@@ -119,6 +124,12 @@ export function seasonLastDay(
   }
   for (const d of playoffDates) if (d !== null && d > last) last = d;
   return last;
+}
+
+/** The playoff dates that count toward seasonLastDay: every dated game but a
+ *  not-needed one (0114; the SQL helper's `status <> 'not_needed'`). */
+export function countedPlayoffDates(games: { date: string | null; status: string | null }[]): (string | null)[] {
+  return games.filter((g) => g.status !== NOT_NEEDED).map((g) => g.date);
 }
 
 /** "YYYY-MM-DD" plus n days, by calendar arithmetic (UTC fields, no clock). */

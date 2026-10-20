@@ -934,3 +934,8 @@ $h108$;
 --   md5 enter/clear 0602516b4519f0c2eb53e432cf42ab52 /
 --   d9babbf9156d231dd5a57c15fdce95ea (0113's new bodies), helpers unchanged
 --   (0c2020eb… / abae9070…). Leak check clean.
+-- 2026-10-20 — re-run with 0114 (playoff series) in place of 0108
+-- (`playoff-series-build.ts 0108`), unchanged: BASELINE failures (0), 14
+-- committed calls; 18/18 KILLED at their own tag; md5 enter/clear
+-- bf336bf9b03690df35fa12d025f84dae / f60c353245d685861b3f3d01456d61e9
+-- (0114's bodies), helpers unchanged (0c2020eb… / abae9070…). Leak check clean.

@@ -768,3 +768,14 @@ $h107$;
 -- 2026-10-20 — re-run against 0113 with `stage1_changes` (two-stage gap 1):
 --   BASELINE failures (0); 15/15 KILLED at their own tag; md5 unchanged
 --   (585d1e3e… / ed9dfa71…). Leak check clean.
+-- 2026-10-20 — re-run with 0114 (playoff series) in place of 0107
+-- (`playoff-series-build.ts 0107`), unchanged: BASELINE failures (0); AT1
+-- refusal as before; 15/15 KILLED at their own tag; md5 delete/replace
+-- 0c788c4b4996dc656655e5d9f1e26ead / 2e62187822aa292d6b95c77ec27f293b
+-- (0114's bodies). Leak check clean.
+-- FOUND, NOT FIXED: RL1 is VACUOUS. It fingerprints bracket c903bbb7…, the
+-- real league's 50/70 bracket, which no longer exists (already gone before
+-- this run; how it went was not looked into), so both sides of the comparison
+-- are the md5 of an empty string. The other proofs' RL1 checks fingerprint by org and
+-- still bite. Fix: fingerprint every real-league bracket by owner, as 0108's
+-- and 0113's do.

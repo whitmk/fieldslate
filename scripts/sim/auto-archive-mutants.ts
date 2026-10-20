@@ -84,6 +84,12 @@ const MUTANTS: Mutant[] = [
     replace: "  if (false) {",
     expect: "ED1",
   },
+  {
+    id: "AA12", what: "not-needed playoff games (0114) still block archiving", file: "src/lib/seasons/archive-decision.ts",
+    find: "input.playoffGames.filter((g) => g.status !== NOT_NEEDED)",
+    replace: "input.playoffGames",
+    expect: "N1",
+  },
 ];
 
 runMutants({
