@@ -732,6 +732,41 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   size) + `:mutants` (11, each killed first at its own assertion; EX9–EX11 are
   source greps — weak by nature). No migration.
 
+## Two-stage playoffs — "Round robin, then bracket" (branch `feat/two-stage-playoffs`, IN PROGRESS)
+
+- **Approved mockup: `docs/mockups/two-stage-playoffs.html` (2026-10-19).**
+  Stage 1 = one round robin (no pools yet — see Open items); Stage 2 = single
+  elimination for the top N, created at setup with dates and SEED NUMBERS
+  instead of teams, seeded by the admin later. FieldSlate never ranks: records
+  are admin-only reference, the Seed screen opens A–Z.
+- **ALL rules and words: `src/lib/playoffs/two-stage.ts` (pure).** Advancing
+  count (2…teams in, default 4), byes, the Teams summary line, the stage-order
+  refusal (Stage 2 starts AFTER Stage 1's end date), `planStage2` (the REAL
+  `buildSingleElimination` fed `seed:k` placeholder ids, then mapped to
+  `seed_home`/`seed_away` — one layout rule, never a copy), records (A–Z,
+  never by record; games with no result left out; a tie counted, never
+  dropped), `stage1Status` (done → "Seed Stage 2"; every game without a result
+  rained out, UNDATED or dated before today in the league's timezone → "Seed
+  anyway"; else in progress), `seedWrites` (fill slots in place by seed
+  number), the confirm (byes, round-1 matchups, not advancing, every
+  never-played game with its reason), and every sentence.
+- **Per-team daily limit for BOTH stages** (approved 2026-10-19): Stage 1 via
+  the round robin's `gamesPerTeamPerDay`, Stage 2 via `planStage2`'s, each its
+  own setting, both default 1 (`DEFAULT_STAGE2_GAMES_PER_TEAM_PER_DAY`,
+  decided 1 by Whit). Rounds that don't fit stay undated with the TBD warning.
+  Plain single/double elimination: unchanged, no limit.
+- **The seed placeholder lives in the ONE label rule:** `emptySlotLabel`
+  (bracket-labels.ts) reads "Seed N" via `seedLabel` when the slot carries a
+  seed, before "Winner of Game N" / "TBD". Ordinary brackets carry no seeds,
+  so they read exactly as before. Pools later change `seedLabel` only.
+- **Not built yet:** the migration (stage columns, seed columns, unused
+  `pool`, the seeding/build functions, 0107/0108/reader changes) and the
+  screens. Nothing here is reachable from the app.
+- **Harness: `npm run sim:two-stage`** (145 checks × 3 zones, 8 counters; every
+  expected value hand-written from the mockup) + `:mutants` (26, each killed
+  at its own assertion; run 1 had 3 survivors, all harness/mutant faults — read
+  the RUN LOG).
+
 ## Printable playoff bracket + slot labels (2026-10-13)
 
 - **ONE RULE for where a winner goes: `singleElimTarget` (advancement.ts).**

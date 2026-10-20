@@ -78,6 +78,8 @@
     "sim:playoff-exclude:mutants": "npx tsx scripts/sim/playoff-exclude-mutants.ts",
     "sim:round-robin": "TZ=UTC npx tsx scripts/sim/round-robin-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/round-robin-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/round-robin-sim.ts",
     "sim:round-robin:mutants": "npx tsx scripts/sim/round-robin-mutants.ts",
+    "sim:two-stage": "TZ=UTC npx tsx scripts/sim/two-stage-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/two-stage-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/two-stage-sim.ts",
+    "sim:two-stage:mutants": "npx tsx scripts/sim/two-stage-mutants.ts",
     "sim:snack-shifts": "TZ=UTC npx tsx scripts/sim/snack-shifts-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/snack-shifts-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/snack-shifts-sim.ts",
     "sim:snack-shifts:mutants": "npx tsx scripts/sim/snack-shifts-mutants.ts",
     "sim:week-grid": "TZ=UTC npx tsx scripts/sim/week-grid-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/week-grid-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/week-grid-sim.ts",

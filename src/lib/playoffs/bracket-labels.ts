@@ -22,8 +22,21 @@ export function slotWon(winnerId: string | null | undefined, teamId: string | nu
   return winnerId != null && teamId != null && winnerId === teamId;
 }
 
-/** The label for an EMPTY slot: "Winner of Game N" or "TBD". */
-export function emptySlotLabel(game: GameRow, side: Side, allGames: GameRow[], format: string): string {
+/** A Stage 2 (two-stage playoffs) slot waiting for the admin's seeding carries
+ *  its seed number. Absent or null everywhere else. */
+export type SeedSlots = { seed_home?: number | null; seed_away?: number | null };
+
+/** How a seed number reads. ONE place, so pools can later say "Pool A #1"
+ *  for every surface at once (CLAUDE.md "PLANNED FOLLOW-UP — pools"). */
+export function seedLabel(seed: number): string {
+  return `Seed ${seed}`;
+}
+
+/** The label for an EMPTY slot: "Seed N" (an unseeded Stage 2 slot), else
+ *  "Winner of Game N", else "TBD". */
+export function emptySlotLabel(game: GameRow & SeedSlots, side: Side, allGames: GameRow[], format: string): string {
+  const seed = side === "home" ? game.seed_home : game.seed_away;
+  if (seed != null) return seedLabel(seed);
   if (format !== "single_elimination") return "TBD";
   const feeder = singleElimFeeder(game, FIELD[side], allGames);
   return feeder ? `Winner of Game ${feeder.game_number}` : "TBD";
@@ -32,7 +45,7 @@ export function emptySlotLabel(game: GameRow, side: Side, allGames: GameRow[], f
 /** A slot's text: the team's name, else the empty-slot label. */
 export function slotName(
   name: string | null | undefined,
-  game: GameRow,
+  game: GameRow & SeedSlots,
   side: Side,
   allGames: GameRow[],
   format: string,
