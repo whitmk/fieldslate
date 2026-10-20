@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Playoff series — FieldSlate mockup</title>
+<style>
+:root{
+  --navy:#0C1F3F; --bg:#f4f5f0; --card:#fff; --ink:#0C1F3F; --muted:#5b6577; --faint:#8a93a3; --line:#e2e5dd; --soft:#f7f8f4;
+  --green:#22c55e; --green-dk:#16a34a; --green-bg:#ecfdf3; --away:#e6f4ea;
+  --amber-bg:#fffbeb; --amber-bd:#fcd34d; --amber-ink:#92400e;
+  --red-bg:#fef2f2; --red-bd:#fca5a5; --red-ink:#991b1b;
+  --ph:#374151;
+  box-sizing:border-box;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0a1830; --card:#10223f; --ink:#e8ecf3; --muted:#9aa6bb; --faint:#7d8aa3; --line:#22385c; --soft:#0d1d37; --away:#14341f; --green-bg:#0f2e1c;
+    --amber-bg:#3d2f06; --amber-bd:#6b5410; --amber-ink:#ffe08a; --red-bg:#3b1010; --red-bd:#7a2020; --red-ink:#ffc4c4; --ph:#cbd5e1;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1830; --card:#10223f; --ink:#e8ecf3; --muted:#9aa6bb; --faint:#7d8aa3; --line:#22385c; --soft:#0d1d37; --away:#14341f; --green-bg:#0f2e1c;
+  --amber-bg:#3d2f06; --amber-bd:#6b5410; --amber-ink:#ffe08a; --red-bg:#3b1010; --red-bd:#7a2020; --red-ink:#ffc4c4; --ph:#cbd5e1;
+}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.45}
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px 60px}
+.mock{background:var(--navy);color:#cfd8e8;font-size:13px;text-align:center;padding:7px 12px}
+.mock b{color:#fff}
+header{padding:26px 0 6px}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.4px}
+.lede{color:var(--muted);margin:0 0 8px;max-width:80ch}
+.toc{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;margin:10px 0 0;padding:0;list-style:none}
+.toc a{color:var(--green-dk);text-decoration:none}
+
+.screen{margin-top:40px}
+.screen > h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+.screen > h3{font-size:19px;margin:0 0 4px}
+.screen > .why{color:var(--muted);font-size:13.5px;margin:0 0 14px;max-width:85ch}
+.screen > .why b{color:var(--ink)}
+
+/* desktop + phone side by side */
+.pair{display:grid;grid-template-columns:minmax(0,1fr) 375px;gap:22px;align-items:start}
+.frame-label{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:0 0 6px}
+.frame{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:16px;overflow:hidden}
+.phone .frame{width:375px;padding:16px;border-radius:26px;border-width:6px;border-color:#1f2937}
+@media (max-width:1000px){
+  .pair{grid-template-columns:1fr}
+  .desk{display:none}
+  .phone .frame{width:100%;max-width:375px}
+}
+.app{container-type:inline-size}
+
+/* ── app vocabulary ── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.pad{padding:16px}
+.row-flex{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.h-page{font-size:22px;font-weight:800;margin:0}
+.sub{color:var(--muted);font-size:13px}
+.tiny{font-size:12px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--ink);white-space:nowrap;min-height:34px}
+.btn.primary{background:var(--green);border-color:var(--green);color:#fff}
+.btn.navy{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn[disabled]{opacity:.45}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:600;background:var(--soft);color:var(--muted);border:1px solid var(--line);white-space:nowrap}
+.pill.green{background:var(--green-bg);color:var(--green-dk);border-color:#bbf7d0}
+.pill.amber{background:var(--amber-bg);color:var(--amber-ink);border-color:var(--amber-bd)}
+.pill.navy{background:var(--navy);color:#fff;border-color:var(--navy)}
+.note{border:1px solid;border-radius:10px;padding:10px 12px;font-size:13px}
+.note.amber{background:var(--amber-bg);border-color:var(--amber-bd);color:var(--amber-ink)}
+.note.red{background:var(--red-bg);border-color:var(--red-bd);color:var(--red-ink)}
+.note.plain{background:var(--soft);border-color:var(--line);color:var(--muted)}
+.note b{font-weight:700}
+.note .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.sec-title{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin:0 0 6px}
+.stack{display:flex;flex-direction:column;gap:12px}
+
+/* wizard */
+.wiz-steps{display:flex;gap:6px;flex-wrap:wrap;font-size:11.5px;margin-bottom:12px}
+.wiz-steps span{padding:3px 9px;border-radius:999px;background:var(--soft);border:1px solid var(--line);color:var(--faint)}
+.wiz-steps span.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.wiz-steps span.done{color:var(--green-dk);border-color:#bbf7d0;background:var(--green-bg)}
+.wiz-foot{display:flex;justify-content:space-between;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:var(--soft)}
+.fmt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.fmt{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--card)}
+.fmt.sel{border:2px solid var(--green);padding:11px;background:var(--green-bg)}
+.fmt b{display:block;font-size:14px}
+.fmt span{font-size:12.5px;color:var(--muted)}
+.fmt .new{font-size:10.5px;font-weight:700;color:var(--green-dk);text-transform:uppercase;letter-spacing:.05em}
+.team-list{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card)}
+.trow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);min-height:44px}
+.trow:last-child{border-bottom:none}
+.trow .nm{flex:1;min-width:0;font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow.out{background:var(--soft)}
+.trow.out .nm{color:var(--faint);font-weight:500}
+.lnk{font-size:12.5px;font-weight:600;color:var(--muted);background:none;border:none;padding:8px 6px}
+.lnk.green{color:var(--green-dk)}
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card)}
+.stepper span{padding:6px 12px;font-weight:700;min-width:40px;text-align:center}
+.stepper button{border:none;background:var(--soft);width:36px;height:34px;font-size:16px;color:var(--ink)}
+.field{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.input{border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--card);color:var(--ink);min-height:36px}
+.days{display:flex;gap:4px;flex-wrap:wrap}
+.days span{width:34px;height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;border:1px solid var(--line);font-size:12px;font-weight:600;color:var(--faint);background:var(--card)}
+.days span.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.stage-panel{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--card)}
+.stage-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.stage-num{width:24px;height:24px;border-radius:999px;background:var(--navy);color:#fff;font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:6px 12px;font-size:13px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-weight:600}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px}
+.chk i{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--green);background:var(--green);display:inline-block;flex:none;position:relative}
+.chk i::after{content:"";position:absolute;left:4.5px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+
+/* playoffs page */
+.div-card .top{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;flex-wrap:wrap}
+.trophy{width:36px;height:36px;border-radius:9px;background:var(--soft);display:flex;align-items:center;justify-content:center;flex:none}
+.stage{border-top:1px solid var(--line)}
+.stage .shead{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--soft);flex-wrap:wrap}
+.stage .shead b{font-size:13.5px}
+.stage .sbody{padding:12px 16px}
+.progress{height:6px;border-radius:999px;background:var(--line);overflow:hidden;width:120px}
+.progress i{display:block;height:100%;background:var(--green)}
+.rr-round{font-size:11.5px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 4px}
+.rr-round:first-child{margin-top:0}
+.rr{display:grid;grid-template-columns:150px 1fr auto;gap:10px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.rr:last-child{border-bottom:none}
+.rr .when{color:var(--muted);font-size:12px}
+.rr .mu b{font-weight:700}
+.rr .mu .l{color:var(--muted)}
+.rr .res{font-size:12px}
+.rec{width:100%;border-collapse:collapse;font-size:13px}
+.rec th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);text-align:right;font-weight:700;padding:5px 8px;border-bottom:1px solid var(--line)}
+.rec th:first-child,.rec td:first-child{text-align:left}
+.rec td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.rec tr:last-child td{border-bottom:none}
+.rec-box{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card)}
+.admin-tag{font-size:10.5px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:0 5px;text-transform:uppercase;letter-spacing:.04em}
+
+/* bracket tree (desktop) */
+.tree{display:flex;gap:28px;overflow-x:auto;padding:4px 2px}
+.tcol{display:flex;flex-direction:column;justify-content:space-around;gap:16px;min-width:200px}
+.tcol h5{margin:0 0 2px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+.g{width:200px;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.g .w{padding:4px 9px;font-size:10.5px;color:var(--muted);border-bottom:1px solid var(--line);line-height:1.35}
+.g .s{display:flex;align-items:center;gap:6px;height:30px;padding:0 9px;font-size:12.5px}
+.g .s + .s{border-top:1px solid var(--line);background:var(--away)}
+.g .s .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.g .s .n.ph{font-weight:500;color:var(--ph);font-style:italic}
+.g .s .sd{font-size:10px;font-weight:700;color:var(--faint);width:14px}
+/* list view (phone) */
+.glist{display:none}
+.gl{border:1px solid var(--line);border-radius:9px;background:var(--card);margin-bottom:8px;overflow:hidden}
+.gl .w{font-size:11.5px;color:var(--muted);padding:5px 10px;border-bottom:1px solid var(--line)}
+.gl .s{padding:6px 10px;font-size:13px;display:flex;gap:6px}
+.gl .s + .s{border-top:1px solid var(--line);background:var(--away)}
+.gl .n{flex:1;font-weight:600}
+.gl .n.ph{font-weight:500;color:var(--ph);font-style:italic}
+
+/* seeding screen */
+.seed-row{display:grid;grid-template-columns:22px 26px minmax(0,1fr) 54px 40px 40px 72px;gap:8px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--line);min-height:46px;background:var(--card)}
+.seed-row .grip{color:var(--faint);font-size:15px;line-height:1;letter-spacing:-2px}
+.seed-row .sn{width:24px;height:24px;border-radius:999px;background:var(--navy);color:#fff;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.seed-row.out .sn{background:var(--line);color:var(--muted)}
+.seed-row .nm{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seed-row .num{text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
+.seed-row .mv{display:flex;gap:2px;justify-content:flex-end}
+.seed-row .mv button{width:32px;height:32px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--muted);font-size:13px}
+.seed-head{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);min-height:28px;background:var(--soft)}
+.seed-head .num{font-size:10.5px}
+.cutline{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--amber-bg);color:var(--amber-ink);font-size:12px;font-weight:700;border-bottom:1px solid var(--line)}
+.cutline::before,.cutline::after{content:"";flex:1;border-top:2px dashed var(--amber-bd)}
+.matchups{font-size:13px;margin:0;padding-left:18px}
+.matchups li{margin:3px 0}
+
+/* modal */
+.modal-wrap{background:rgba(12,31,63,.35);border-radius:12px;padding:18px;display:flex;justify-content:center}
+.modal{background:var(--card);border-radius:14px;max-width:440px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.2);overflow:hidden}
+.modal .mh{padding:14px 16px;border-bottom:1px solid var(--line);font-weight:800}
+.modal .mb{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.modal .mf{padding:12px 16px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px;background:var(--soft)}
+.score{display:grid;grid-template-columns:1fr 64px;gap:8px;align-items:center;font-size:13.5px}
+.score .input{text-align:center;font-weight:700}
+
+/* public page */
+.pub-row{display:grid;grid-template-columns:90px 1fr 170px;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;align-items:start}
+.pub-row:last-child{border-bottom:none}
+.pub-row .t{font-weight:700}
+.pub-row .t small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+.pub-row .lab{font-size:11.5px;color:var(--muted)}
+.pub-row .f{font-size:12.5px;color:var(--muted)}
+.pub-day{padding:7px 12px;background:var(--soft);font-weight:700;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--line)}
+.ph-t{color:var(--ph);font-style:italic}
+pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;overflow-x:auto;white-space:pre}
+
+/* decisions */
+.dec{counter-reset:d;list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px}
+.dec li{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px 12px 46px;position:relative;font-size:13.5px}
+.dec li::before{counter-increment:d;content:"D" counter(d);position:absolute;left:12px;top:12px;font-weight:800;font-size:12px;color:var(--green-dk)}
+.dec li b{display:block;margin-bottom:2px}
+.dec li .rec-line{color:var(--muted);font-size:12.5px;margin-top:4px}
+
+/* ── narrow (phone container) ── */
+@container (max-width:520px){
+  .fmt-grid,.grid2,.grid3{grid-template-columns:1fr}
+  .kv{grid-template-columns:1fr;gap:0 0}
+  .kv dd{margin-bottom:6px}
+  .tree{display:none}
+  .glist{display:block}
+  .rr{grid-template-columns:1fr auto}
+  .rr .when{grid-column:1 / -1}
+  .seed-row{grid-template-columns:22px 24px minmax(0,1fr) 44px 64px;gap:6px;padding:6px 8px}
+  .seed-row .rf,.seed-row .ra{display:none}
+  .seed-row .runs-m{display:block}
+  .pub-row{grid-template-columns:64px 1fr}
+  .pub-row .f{grid-column:2}
+  .h-page{font-size:20px}
+  .hide-narrow{display:none}
+  .wiz-foot .btn{flex:1}
+}
+.runs-m{display:none;font-size:11px;color:var(--muted);font-weight:500}
+@container (min-width:521px){ .show-narrow{display:none} }
+
+/* ── series additions ── */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card)}
+.seg span{min-width:44px;height:34px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:var(--muted);border-left:1px solid var(--line);padding:0 8px}
+.seg span:first-child{border-left:none}
+.seg span.on{background:var(--navy);color:#fff}
+.srow{display:grid;grid-template-columns:130px auto minmax(0,1fr);gap:12px;align-items:center;padding:9px 0;border-bottom:1px dashed var(--line)}
+.srow:last-child{border-bottom:none}
+.srow b{font-size:13.5px}
+.srow .tiny{line-height:1.35}
+/* series card (tree) */
+.sc{width:228px;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.sc .hd{display:flex;align-items:center;gap:6px;padding:5px 9px;font-size:10.5px;color:var(--muted);border-bottom:1px solid var(--line)}
+.sc .hd b{color:var(--ink);font-size:11px}
+.sc .tm{display:flex;align-items:center;gap:6px;height:30px;padding:0 9px;font-size:12.5px}
+.sc .tm + .tm{border-top:1px solid var(--line);background:var(--away)}
+.sc .tm .sd{font-size:10px;font-weight:700;color:var(--faint);width:14px}
+.sc .tm .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.sc .tm .n.ph{font-weight:500;color:var(--ph);font-style:italic}
+.sc .tm .n.won{font-weight:800}
+.sc .tm .w{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;width:16px;text-align:right}
+.sc .tm .w.lo{color:var(--muted);font-weight:600}
+.sc .gms{border-top:1px solid var(--line);padding:4px 0;background:var(--card)}
+.gm{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:6px;align-items:center;padding:3px 9px;font-size:11.5px;line-height:1.3}
+.gm .k{font-weight:700;color:var(--faint)}
+.gm .d{color:var(--muted);min-width:0}
+.gm .r{font-weight:700;white-space:nowrap}
+.gm.ifn .d,.gm.ifn .k{font-style:italic}
+.gm.nn{opacity:.55}
+.gm.nn .d{text-decoration:line-through}
+.chip{display:inline-block;border-radius:5px;padding:0 5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border:1px solid var(--line);color:var(--muted);background:var(--soft);white-space:nowrap;font-style:normal}
+.chip.amber{background:var(--amber-bg);border-color:var(--amber-bd);color:var(--amber-ink)}
+.chip.green{background:var(--green-bg);border-color:#bbf7d0;color:var(--green-dk)}
+.sc .ft{display:flex;gap:6px;padding:6px 9px;border-top:1px solid var(--line);background:var(--soft)}
+.sc .ft .btn{min-height:28px;padding:4px 8px;font-size:11.5px}
+.champ{margin-top:6px;font-size:11.5px;font-weight:700;color:var(--green-dk)}
+.stree{display:flex;gap:16px;overflow-x:auto;padding:4px 2px}
+.stree .tcol{min-width:200px}
+/* list rows per game (phone) */
+.slist{display:none}
+.sl{border:1px solid var(--line);border-radius:9px;background:var(--card);margin-bottom:8px;overflow:hidden}
+.sl .w{font-size:11.5px;color:var(--muted);padding:5px 10px;border-bottom:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sl .w b{color:var(--ink)}
+.sl .s{padding:6px 10px;font-size:13px;display:flex;gap:6px}
+.sl .s + .s{border-top:1px solid var(--line);background:var(--away)}
+.sl .n{flex:1;font-weight:600}
+.sl .n.ph{font-weight:500;color:var(--ph);font-style:italic}
+.sl .sc-n{font-weight:800;font-variant-numeric:tabular-nums}
+.sl.nn{opacity:.55}
+.sl.nn .w span.t{text-decoration:line-through}
+.sl .acts{display:flex;gap:6px;padding:6px 10px;border-top:1px solid var(--line);background:var(--soft)}
+.sl .acts .btn{min-height:34px;flex:1}
+/* modal extras */
+.sstate{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--soft)}
+.sstate b{font-size:13px}
+.glist2{font-size:12px;margin:0;padding:0;list-style:none;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.glist2 li{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--card)}
+.glist2 li:last-child{border-bottom:none}
+.glist2 li.cur{background:var(--green-bg)}
+.glist2 .k{font-weight:700;color:var(--faint)}
+/* print page */
+.page{background:#fff;color:#111827;border:1px solid #d1d5db;border-radius:4px;padding:14px;box-shadow:0 2px 6px rgba(0,0,0,.08);overflow-x:auto}
+.page .ph1{display:flex;justify-content:space-between;border-bottom:2px solid #111827;padding-bottom:6px;margin-bottom:10px;font-size:11px}
+.page .ph1 b{font-size:13px}
+.page .stree{gap:16px}
+.page .sc{border-color:#9ca3af;box-shadow:none;background:#fff;color:#111827}
+.page .sc .hd,.page .gm .d,.page .gm .k{color:#374151}
+.page .sc .tm + .tm{background:#e6f4ea}
+.page .sc .gms,.page .sc .tm{background-clip:padding-box}
+.page .chip{background:#fff;color:#374151;border-color:#9ca3af}
+/* narrow */
+@container (max-width:520px){
+  .stree{display:none}
+  .slist{display:block}
+  .srow{grid-template-columns:1fr;gap:6px}
+  .page .stree{display:flex}
+}
+</style>
+</head>
+<body>
+<div class="mock"><b>Mockup</b> · playoff series (best of 3, 5 or 7) · not built · for approval</div>
+<div class="wrap">
+<header>
+  <h1>Playoff series</h1>
+  <p class="lede">Each round of a single-elimination bracket — including Stage 2 of a two-stage setup — can be 1 game, best of 3, best of 5 or best of 7. A team moves on when it wins the series. Games past the minimum are marked <b>if needed</b>; when a series is decided they are cancelled automatically, and clearing a result that un-decides it brings them back. The higher seed (from the seeding list) is home in games 1, 3, 5 and 7. Each screen is shown at desktop width (left) and on a 375px phone (right). Narrow your window below 1000px to see the phone frames only.</p>
+  <p class="lede"><b>Example used throughout:</b> Majors, 6 teams — 1 Expos, 2 Bears, 3 Lions, 4 Mets, 5 Pirates, 6 Royals. Round 1 is single games (seeds 1 and 2 have byes). The Semifinals and the Final are best of 3. Majors games are 120 minutes; 1 game per team per day; playing days Sat and Sun.</p>
+  <ul class="toc">
+    <li><a href="#s1">1 Series length (wizard)</a></li><li><a href="#s2">2 Review</a></li><li><a href="#s3">3 Bracket: series in progress</a></li>
+    <li><a href="#s4">4 Enter a series result</a></li><li><a href="#s5">5 Results go in order</a></li><li><a href="#s6">6 Clear a deciding result</a></li>
+    <li><a href="#s7">7 Public schedule</a></li><li><a href="#s8">8 Print</a></li><li><a href="#s9">9 Export CSV</a></li><li><a href="#s10">10 Confirms</a></li><li><a href="#dec">Decisions</a></li>
+  </ul>
+</header>
+
+<!-- ───────────── 1 WIZARD ───────────── -->
+<section class="screen" id="s1">
+  <h2>Set up a bracket · Dates &amp; fields</h2>
+  <h3>A series length for each round</h3>
+  <p class="why">Shown for single elimination only (double elimination and round robin keep 1 game). The rounds listed are the ones this bracket will have, so the list follows the team count. Every round starts at 1 game, which is how every bracket works today. In a two-stage setup the same control sits in the Stage 2 panel. <b>Every game, if-needed games included, gets a date and a field when the bracket is generated.</b></p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="card">
+        <div class="pad">
+          <div class="wiz-steps"><span class="done">Division</span><span class="done">Format</span><span class="done">Seeding</span><span class="on">Dates &amp; fields</span><span>Review</span></div>
+          <div class="stack">
+            <div>
+              <p class="sec-title">Games in each round</p>
+              <div class="srow"><b>Round 1</b><span class="seg"><span class="on">1</span><span>3</span><span>5</span><span>7</span></span><span class="tiny">1 game · 2 matchups</span></div>
+              <div class="srow"><b>Semifinals</b><span class="seg"><span>1</span><span class="on">3</span><span>5</span><span>7</span></span><span class="tiny">Best of 3 — first to 2 wins. Game 3 is played only if needed. · 2 series</span></div>
+              <div class="srow"><b>Final</b><span class="seg"><span>1</span><span class="on">3</span><span>5</span><span>7</span></span><span class="tiny">Best of 3 — first to 2 wins. Game 3 is played only if needed.</span></div>
+            </div>
+            <div class="note plain">Up to 11 games: 2 in Round 1, up to 6 in the Semifinals, up to 3 in the Final — 3 of them only if needed. The higher seed is home in games 1 and 3. If-needed games get a date and a field now and are cancelled automatically when a series is decided.</div>
+            <div class="row-flex"><span class="tiny" style="min-width:150px">Games per team per day</span><span class="seg"><span class="on">1</span><span>2</span></span><span class="tiny">With 1, each game of a series is on its own day.</span></div>
+          </div>
+        </div>
+        <div class="wiz-foot"><button class="btn">Back</button><button class="btn primary">Next: Review</button></div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 2 REVIEW ───────────── -->
+<section class="screen" id="s2">
+  <h2>Set up a bracket · Review</h2>
+  <h3>What fits — and what doesn't, named game by game</h3>
+  <p class="why">A later game of a series starts after the earlier game ends plus the buffer; a new round starts after the previous round's last game, including its if-needed games. Left: everything fits. Right: one date short — the game is still created, with no date, and the warning names it (the planner's existing rule; no game is ever squeezed onto a date that's full).</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="stack">
+        <div class="card"><div class="pad">
+          <p class="sec-title">Everything fits</p>
+          <dl class="kv">
+            <dt>Round 1</dt><dd>2 games · Sat 11/14</dd>
+            <dt>Semifinals</dt><dd>Best of 3 · Sun 11/15, Sat 11/21, Sun 11/22 (if needed)</dd>
+            <dt>Final</dt><dd>Best of 3 · Sat 11/28, Sun 11/29, Sat 12/5 (if needed)</dd>
+            <dt>Games</dt><dd>Up to 11 — all 11 have a date and a field</dd>
+          </dl>
+        </div></div>
+        <div class="card"><div class="pad">
+          <p class="sec-title">One date short (playoffs end Sun 11/29)</p>
+          <div class="note amber"><b>1 game has no date, time or field yet:</b> Final · Game 3 of 3 (if needed). The Final's 3 games need 3 dates after the Semifinals' last game (Sun 11/22); 2 are in range: Sat 11/28, Sun 11/29. It can be given one later with the calendar button on the game.</div>
+        </div></div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 3 BRACKET ───────────── -->
+<section class="screen" id="s3">
+  <h2>Playoffs page</h2>
+  <h3>One card per series: who leads, and every game</h3>
+  <p class="why"><b>Semifinal 1 — in progress:</b> Expos lead 1–0; Game 2 is next; Game 3 is marked if needed. <b>Semifinal 2 — decided:</b> Bears won 2–0; their Game 3 is not needed (struck through, no buttons) and Bears have moved into the Final. <b>Final — waiting:</b> one slot is "Winner of Semifinal 1" (the round feeding it is a series), while the Semifinals still read "Winner of Game 1" (Round 1 is single games). Single-game rounds keep today's card. The trophy and bold mark a series winner; the second row is the light-green row as today. On a phone the bracket is the list: one row per game.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="card div-card">
+        <div class="stage" style="border-top:none">
+          <div class="shead"><b>Majors</b><span class="tiny">Single elimination · 6 teams · Semifinals and Final best of 3</span><span class="grow"></span><span class="pill green">Active</span></div>
+          <div class="sbody">
+            <div class="stree">
+              <div class="tcol"><h5>Round 1</h5>
+                <div class="g"><div class="w">Game 1 · Sat 11/14 · 9:00 AM<br>Monroe Complex — Andrews</div><div class="s"><span class="sd">4</span><span class="n" style="font-weight:800">Mets 🏆</span><b>6</b></div><div class="s"><span class="sd">5</span><span class="n">Pirates</span><span class="tiny">3</span></div></div>
+                <div class="g"><div class="w">Game 2 · Sat 11/14 · 9:00 AM<br>Monroe Complex — Perry</div><div class="s"><span class="sd">3</span><span class="n">Lions</span><span class="tiny">2</span></div><div class="s"><span class="sd">6</span><span class="n" style="font-weight:800">Royals 🏆</span><b>4</b></div></div>
+              </div>
+              <div class="tcol"><h5>Semifinals · best of 3</h5>
+                <div class="sc">
+                  <div class="hd"><b>Semifinal 1</b><span class="grow"></span><span class="chip amber">Expos lead 1–0</span></div>
+                  <div class="tm"><span class="sd">1</span><span class="n">Expos</span><span class="w">1</span></div>
+                  <div class="tm"><span class="sd">4</span><span class="n">Mets</span><span class="w lo">0</span></div>
+                  <div class="gms">
+                    <div class="gm"><span class="k">G1</span><span class="d">Sun 11/15 · Andrews · Expos home</span><span class="r">Expos 5–2</span></div>
+                    <div class="gm"><span class="k">G2</span><span class="d">Sat 11/21 · 9:00 AM · Andrews · Mets home</span><span class="r"><span class="chip">Next</span></span></div>
+                    <div class="gm ifn"><span class="k">G3</span><span class="d">Sun 11/22 · 9:00 AM · Andrews · Expos home</span><span class="r"><span class="chip amber">If needed</span></span></div>
+                  </div>
+                  <div class="ft"><button class="btn">Result</button><button class="btn">Move</button></div>
+                </div>
+                <div class="sc">
+                  <div class="hd"><b>Semifinal 2</b><span class="grow"></span><span class="chip green">Bears win 2–0</span></div>
+                  <div class="tm"><span class="sd">2</span><span class="n won">Bears 🏆</span><span class="w">2</span></div>
+                  <div class="tm"><span class="sd">6</span><span class="n">Royals</span><span class="w lo">0</span></div>
+                  <div class="gms">
+                    <div class="gm"><span class="k">G1</span><span class="d">Sun 11/15 · Perry · Bears home</span><span class="r">Bears 4–1</span></div>
+                    <div class="gm"><span class="k">G2</span><span class="d">Sat 11/21 · Perry · Royals home</span><span class="r">Bears 3–2</span></div>
+                    <div class="gm nn"><span class="k">G3</span><span class="d">Sun 11/22 · Perry</span><span class="r"><span class="chip">Not needed</span></span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="tcol"><h5>Final · best of 3</h5>
+                <div class="sc">
+                  <div class="hd"><b>Final</b><span class="grow"></span><span class="chip">Not started</span></div>
+                  <div class="tm"><span class="n ph">Winner of Semifinal 1</span></div>
+                  <div class="tm"><span class="sd">2</span><span class="n">Bears</span></div>
+                  <div class="gms">
+                    <div class="gm"><span class="k">G1</span><span class="d">Sat 11/28 · 9:00 AM · Andrews · home set when both teams are known</span><span class="r"></span></div>
+                    <div class="gm"><span class="k">G2</span><span class="d">Sun 11/29 · 9:00 AM · Andrews</span><span class="r"></span></div>
+                    <div class="gm ifn"><span class="k">G3</span><span class="d">Sat 12/5 · 9:00 AM · Andrews</span><span class="r"><span class="chip amber">If needed</span></span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="slist">
+              <div class="sl"><div class="w"><b>Round 1 · Game 1</b><span>Sat 11/14 · 9:00 AM · Andrews</span></div><div class="s"><span class="n">4 · Mets 🏆</span><span class="sc-n">6</span></div><div class="s"><span class="n">5 · Pirates</span><span class="sc-n">3</span></div></div>
+              <div class="sl"><div class="w"><b>Semifinal 1 · Game 1 of 3</b><span>Sun 11/15 · Andrews</span><span class="chip amber">Expos lead 1–0</span></div><div class="s"><span class="n">1 · Expos 🏆</span><span class="sc-n">5</span></div><div class="s"><span class="n">4 · Mets</span><span class="sc-n">2</span></div></div>
+              <div class="sl"><div class="w"><b>Semifinal 1 · Game 2 of 3</b><span>Sat 11/21 · 9:00 AM · Andrews</span><span class="chip">Next</span></div><div class="s"><span class="n">4 · Mets</span></div><div class="s"><span class="n">1 · Expos</span></div><div class="acts"><button class="btn">Result</button><button class="btn">Move</button></div></div>
+              <div class="sl"><div class="w"><b>Semifinal 1 · Game 3 of 3</b><span>Sun 11/22 · 9:00 AM · Andrews</span><span class="chip amber">If needed</span></div><div class="s"><span class="n">1 · Expos</span></div><div class="s"><span class="n">4 · Mets</span></div></div>
+              <div class="sl"><div class="w"><b>Semifinal 2 · Game 2 of 3</b><span>Sat 11/21 · Perry</span><span class="chip green">Bears win 2–0</span></div><div class="s"><span class="n">6 · Royals</span><span class="sc-n">2</span></div><div class="s"><span class="n">2 · Bears 🏆</span><span class="sc-n">3</span></div></div>
+              <div class="sl nn"><div class="w"><b><span class="t">Semifinal 2 · Game 3 of 3</span></b><span class="t">Sun 11/22 · Perry</span><span class="chip">Not needed</span></div><div class="s"><span class="n">2 · Bears</span></div><div class="s"><span class="n">6 · Royals</span></div></div>
+              <div class="sl"><div class="w"><b>Final · Game 1 of 3</b><span>Sat 11/28 · 9:00 AM · Andrews</span></div><div class="s"><span class="n ph">Winner of Semifinal 1</span></div><div class="s"><span class="n">2 · Bears</span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 4 ENTER RESULT ───────────── -->
+<section class="screen" id="s4">
+  <h2>Enter a result</h2>
+  <h3>The modal shows the series, and says what saving will do</h3>
+  <p class="why">Game 2 of Semifinal 1; Mets are home (games 2 alternate). The series box shows where it stands and every game. Once both scores are in, the line under them says the consequence before Save: here, a 2–0 Expos win decides the series, cancels Game 3 and moves Expos into the Final. A tied score still can't be saved.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="modal-wrap"><div class="modal">
+        <div class="mh">Semifinal 1 · Game 2 of 3</div>
+        <div class="mb">
+          <div class="sstate"><span class="chip amber">Expos lead 1–0</span><span class="grow">Best of 3 — first to 2 wins</span></div>
+          <ul class="glist2">
+            <li><span class="k">Game 1</span><span>Sun 11/15 · Expos home</span><span><b>Expos 5–2</b></span></li>
+            <li class="cur"><span class="k">Game 2</span><span>Sat 11/21 · 9:00 AM · Mets home</span><span>this game</span></li>
+            <li><span class="k">Game 3</span><span>Sun 11/22 · if needed</span><span></span></li>
+          </ul>
+          <div class="score"><span>Mets <span class="tiny">(home)</span></span><span class="input">3</span></div>
+          <div class="score"><span>Expos</span><span class="input">6</span></div>
+          <div class="note plain"><b>Saving this decides the series:</b> Expos win 2–0. Game 3 (Sun 11/22) won't be played, and Expos move into the Final.</div>
+        </div>
+        <div class="mf"><span class="grow"></span><button class="btn">Cancel</button><button class="btn primary">Save</button></div>
+      </div></div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 5 IN ORDER ───────────── -->
+<section class="screen" id="s5">
+  <h2>Results go in order</h2>
+  <h3>Game 3 can't take a result until Game 2 has one</h3>
+  <p class="why">On the card, Result is offered only on the next game of an undecided series. A stale tab that opens a later game anyway gets the refusal in the modal (the database refuses too). A rained-out game is moved with Move — it stays the next game until it has a result.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="modal-wrap"><div class="modal">
+        <div class="mh">Semifinal 1 · Game 3 of 3</div>
+        <div class="mb">
+          <div class="sstate"><span class="chip amber">Expos lead 1–0</span><span class="grow">Best of 3 — first to 2 wins</span></div>
+          <div class="note red">Game 2 of this series needs a result first — results go in order. If Game 2 was rained out, move it with Move.</div>
+        </div>
+        <div class="mf"><span class="grow"></span><button class="btn">Close</button></div>
+      </div></div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 6 CLEAR ───────────── -->
+<section class="screen" id="s6">
+  <h2>Clear a result</h2>
+  <h3>Clearing the deciding game brings the if-needed game back</h3>
+  <p class="why">Left: the preview before anything changes — Bears' 2–0 goes back to 1–0, so Semifinal 2's Game 3 is scheduled again (same date and field) and Bears leave the Final. Right: once the Final has a result, the Semifinals can't be cleared (latest round first, as today). Clearing is always the last game with a result in a series.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="stack">
+        <div class="modal-wrap"><div class="modal">
+          <div class="mh">Clear this result?</div>
+          <div class="mb">
+            <p style="margin:0">Semifinal 2 · Game 2 of 3 — Royals 2, Bears 3 (Bears won).</p>
+            <p style="margin:0">The score and winner will be removed and the game goes back to scheduled.</p>
+            <p style="margin:0">The series goes back to <b>Bears lead 1–0</b>, so Game 3 (Sun 11/22, Perry) is scheduled again.</p>
+            <p style="margin:0">Bears will be removed from the Final until the series is decided again.</p>
+            <p class="tiny" style="margin:0">This is on your public schedule — the change shows there within a minute.</p>
+          </div>
+          <div class="mf"><span class="grow"></span><button class="btn">Cancel</button><button class="btn navy">Clear result</button></div>
+        </div></div>
+        <div class="modal-wrap"><div class="modal">
+          <div class="mh">Semifinal 2 · Game 2 of 3</div>
+          <div class="mb"><div class="note red">The Final already has a result (Game 1: Expos 3, Bears 2). Clear the Final's results first, then clear this one.</div></div>
+          <div class="mf"><span class="grow"></span><button class="btn">Close</button></div>
+        </div></div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 7 PUBLIC ───────────── -->
+<section class="screen" id="s7">
+  <h2>Public league schedule (/s/…) and its calendar feed</h2>
+  <h3>"Game 2 of 3", "If needed" — and no not-needed games at all</h3>
+  <p class="why">Same rows as today. Series games read "Semifinal 1 · Game 2 of 3"; an undecided series' extra games carry an <b>If needed</b> tag. Not-needed games are left out of the page and the all-games calendar feed (Semifinal 2's Game 3 doesn't appear). No scores, as today. The home team is listed first. A series whose teams aren't both known yet names no home team: its games read "Bears and Winner of Semifinal 1", with no Home tag, here, in the feed and in the CSV. Home for every game of a series is decided once both teams are set (by seeding or by a result) — the higher seed in games 1, 3, 5 and 7.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="card">
+        <div class="pub-day">Saturday, November 21</div>
+        <div class="pub-row"><span class="t">9:00 AM<small>Majors</small></span><span><b>Mets</b> vs <b>Expos</b><div class="lab">Playoffs · Semifinal 1 · Game 2 of 3</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
+        <div class="pub-row"><span class="t">9:00 AM<small>Majors</small></span><span><b>Royals</b> vs <b>Bears</b><div class="lab">Playoffs · Semifinal 2 · Game 2 of 3</div></span><span class="f">Monroe Complex — Perry<br><span class="tiny">Home</span></span></div>
+        <div class="pub-day">Sunday, November 22</div>
+        <div class="pub-row"><span class="t">9:00 AM<small>Majors</small></span><span><b>Expos</b> vs <b>Mets</b> <span class="chip amber">If needed</span><div class="lab">Playoffs · Semifinal 1 · Game 3 of 3</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
+        <div class="pub-day">Saturday, November 28</div>
+        <div class="pub-row"><span class="t">9:00 AM<small>Majors</small></span><span><b>Bears</b> and <b class="ph-t">Winner of Semifinal 1</b><div class="lab">Playoffs · Final · Game 1 of 3</div></span><span class="f">Monroe Complex — Andrews</span></div>
+      </div>
+      <p class="tiny" style="margin:8px 0 0">Calendar feed event titles: "Majors Playoffs — Semifinal 1, Game 3 of 3 (if needed): Expos vs Mets"; before the Final's teams are both known: "Majors Playoffs — Final, Game 1 of 3: Bears and Winner of Semifinal 1". When a series is decided, its not-needed games drop out of the feed on the next refresh.</p>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 8 PRINT ───────────── -->
+<section class="screen" id="s8">
+  <h2>Printed bracket</h2>
+  <h3>The same series cards, landscape</h3>
+  <p class="why">Today's printed tree with series cards in place of game cards for series rounds: the series score, then each game's date, time, field and result. Not-needed games print struck through; if-needed games say so. Single-game rounds print exactly as today. Fits US Letter landscape at the same sizes as today's 9–16-team print. On a phone this preview scrolls sideways — the printout is one landscape page.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="page">
+        <div class="ph1"><span><b>Santa Rosa American LL — Majors Playoffs</b><br>Single elimination · Semifinals and Final best of 3</span><span>Printed Nov 21, 2026</span></div>
+        <div class="stree">
+          <div class="tcol"><h5>Round 1</h5>
+            <div class="g"><div class="w"><b>Game 1 · Sat 11/14 · 9:00 AM</b><br>Monroe Complex — Andrews</div><div class="s"><span class="n" style="font-weight:800">Mets 🏆</span><b>6</b></div><div class="s"><span class="n">Pirates</span>3</div></div>
+            <div class="g"><div class="w"><b>Game 2 · Sat 11/14 · 9:00 AM</b><br>Monroe Complex — Perry</div><div class="s"><span class="n">Lions</span>2</div><div class="s"><span class="n" style="font-weight:800">Royals 🏆</span><b>4</b></div></div>
+          </div>
+          <div class="tcol"><h5>Semifinals · best of 3</h5>
+            <div class="sc">
+              <div class="hd"><b>Semifinal 1</b><span class="grow"></span><span>Expos lead 1–0</span></div>
+              <div class="tm"><span class="n">Expos</span><span class="w">1</span></div><div class="tm"><span class="n">Mets</span><span class="w lo">0</span></div>
+              <div class="gms">
+                <div class="gm"><span class="k">G1</span><span class="d">Sun 11/15 · Andrews</span><span class="r">Expos 5–2</span></div>
+                <div class="gm"><span class="k">G2</span><span class="d">Sat 11/21 · 9:00 AM · Andrews</span><span class="r"></span></div>
+                <div class="gm ifn"><span class="k">G3</span><span class="d">Sun 11/22 · 9:00 AM · Andrews</span><span class="r"><span class="chip">If needed</span></span></div>
+              </div>
+            </div>
+            <div class="sc">
+              <div class="hd"><b>Semifinal 2</b><span class="grow"></span><span>Bears win 2–0</span></div>
+              <div class="tm"><span class="n won">Bears 🏆</span><span class="w">2</span></div><div class="tm"><span class="n">Royals</span><span class="w lo">0</span></div>
+              <div class="gms">
+                <div class="gm"><span class="k">G1</span><span class="d">Sun 11/15 · Perry</span><span class="r">Bears 4–1</span></div>
+                <div class="gm"><span class="k">G2</span><span class="d">Sat 11/21 · Perry</span><span class="r">Bears 3–2</span></div>
+                <div class="gm nn"><span class="k">G3</span><span class="d">Sun 11/22 · Perry</span><span class="r"><span class="chip">Not needed</span></span></div>
+              </div>
+            </div>
+          </div>
+          <div class="tcol"><h5>Final · best of 3</h5>
+            <div class="sc">
+              <div class="hd"><b>Final</b></div>
+              <div class="tm"><span class="n ph">Winner of Semifinal 1</span></div><div class="tm"><span class="n">Bears</span></div>
+              <div class="gms">
+                <div class="gm"><span class="k">G1</span><span class="d">Sat 11/28 · 9:00 AM · Andrews</span><span class="r"></span></div>
+                <div class="gm"><span class="k">G2</span><span class="d">Sun 11/29 · 9:00 AM · Andrews</span><span class="r"></span></div>
+                <div class="gm ifn"><span class="k">G3</span><span class="d">Sat 12/5 · 9:00 AM · Andrews</span><span class="r"><span class="chip">If needed</span></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 9 CSV ───────────── -->
+<section class="screen" id="s9">
+  <h2>Export CSV</h2>
+  <h3>One row per game; if-needed games say so; not-needed games left out</h3>
+  <p class="why">The export's columns are unchanged. Each series game is its own row, titled with the series and the game. Not-needed games aren't exported. End is start + the division's game length, as today.</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+<pre class="csv">"Start_Date","Start_Time","End_Date","End_Time","Title","Location","Event_Type"
+"11/14/2026","09:00 AM","11/14/2026","11:00 AM","Majors Playoffs - Round 1 · Game 1: Mets vs Pirates","Monroe Complex — Andrews","Game"
+"11/21/2026","09:00 AM","11/21/2026","11:00 AM","Majors Playoffs - Semifinal 1 · Game 2 of 3: Mets vs Expos","Monroe Complex — Andrews","Game"
+"11/22/2026","09:00 AM","11/22/2026","11:00 AM","Majors Playoffs - Semifinal 1 · Game 3 of 3 (if needed): Expos vs Mets","Monroe Complex — Andrews","Game"
+"11/28/2026","09:00 AM","11/28/2026","11:00 AM","Majors Playoffs - Final · Game 1 of 3: Bears and Winner of Semifinal 1","Monroe Complex — Andrews","Game"</pre>
+      <p class="tiny" style="margin:8px 0 0">Not in the file: Semifinal 2 · Game 3 of 3 (not needed — Bears won 2–0).</p>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── 10 CONFIRMS ───────────── -->
+<section class="screen" id="s10">
+  <h2>Confirms</h2>
+  <h3>Delete counts every game; two-stage seeding fills whole series</h3>
+  <p class="why">Left: deleting the bracket counts every game of every series, not-needed ones included. Right: in a two-stage setup whose Stage 2 has series rounds, the seed confirm names series, and a seed fills every game of its series (home alternating).</p>
+  <div class="pair" data-pair>
+    <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
+      <div class="stack">
+        <div class="modal-wrap"><div class="modal">
+          <div class="mh">Delete the Majors bracket?</div>
+          <div class="mb">
+            <p style="margin:0">11 games — 2 single games and 3 best-of-3 series. 5 have results; 1 is not needed.</p>
+            <p style="margin:0">10 games are on your public schedule (not-needed games never are); they disappear from it within a minute.</p>
+            <p class="tiny" style="margin:0">Teams and regular-season games aren't touched.</p>
+          </div>
+          <div class="mf"><span class="grow"></span><button class="btn">Cancel</button><button class="btn navy">Delete bracket</button></div>
+        </div></div>
+        <div class="modal-wrap"><div class="modal">
+          <div class="mh">Seed the Majors bracket?</div>
+          <div class="mb">
+            <ul class="matchups">
+              <li>Expos (1) — bye to Semifinal 1</li>
+              <li>Bears (2) — bye to Semifinal 2</li>
+              <li>Round 1 · Game 1: Mets (4) vs Pirates (5) · Sat 11/14, 9:00 AM</li>
+              <li>Round 1 · Game 2: Lions (3) vs Royals (6) · Sat 11/14, 9:00 AM</li>
+            </ul>
+            <p class="tiny" style="margin:0">Semifinals and Final are best of 3; the higher seed is home in games 1 and 3.</p>
+            <p style="margin:0">All 6 teams advance.</p>
+          </div>
+          <div class="mf"><span class="grow"></span><button class="btn">Cancel</button><button class="btn primary">Seed Stage 2</button></div>
+        </div></div>
+      </div>
+    </div></div></div>
+    <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
+  </div>
+</section>
+
+<!-- ───────────── DECISIONS ───────────── -->
+<section class="screen" id="dec">
+  <h2>Before the build</h2>
+  <h3>Decided 2026-10-20, and the questions this mockup raises</h3>
+  <p class="why"><b>Decided:</b> series length per round (1, 3, 5, 7); strict alternation, higher true seed home in odd games, decided for the whole series once both teams are set (until then no home team is shown on the public page, feed or CSV); if-needed games dated at generation; results in order (rainouts are moved); one card per series in the tree and print; "Winner of Semifinal 1" only when the feeding round is a series; a new not-needed status; not-needed games hidden from the public page and feeds; the feed cut-off and auto-archive ignore them; no series in double elimination; built in steps with holds, one go-live.</p>
+  <ol class="dec">
+    <li><b>Game numbers for series games.</b> The mockup gives series games no "Game N" of their own — they read "Semifinal 1 · Game 2 of 3" — and "Game N" counts single games only, so single-game rounds keep 1, 2, 3… with no jumps (here Round 1 is Games 1–2). <div class="rec-line">Alternative: number every game in one sequence (the Semifinals would be Games 3–8) — longer labels, and a single-game Final after series would read "Game 9". Recommend single games only.</div></li>
+    <li><b>Names for series in early rounds.</b> Final, Semifinal 1–2, Quarterfinal 1–4 are shown. Rounds before the quarterfinals would read "Round 1 · Series 3". <div class="rec-line">Recommend as stated.</div></li>
+    <li><b>Series score on the public page.</b> Today the public page shows no scores, so the mockup doesn't show "Expos lead 1–0" there. <div class="rec-line">Recommend leaving scores admin-only for now.</div></li>
+    <li><b>If-needed games hold the field, the teams and the snack shack.</b> Until a series is decided, its if-needed games count as booked: the field is busy for other bookings, the teams count as playing that day, and the snack shack treats them like any playoff game. Once not needed, all three are released. <div class="rec-line">Recommend as stated.</div></li>
+    <li><b>The championship banner.</b> For a series Final: "Expos win the Final 2–1". <div class="rec-line">Recommend.</div></li>
+    <li><b>Changing series lengths later.</b> Edit setup can change a round's length only while the bracket has no results (today's rebuild rule). <div class="rec-line">Recommend as stated.</div></li>
+  </ol>
+</section>
+
+</div>
+<script>
+// Each screen is written once (desktop); the phone frame gets a copy, and the
+// container queries in the CSS lay the copy out at 375px.
+document.querySelectorAll('[data-pair]').forEach(function (pair) {
+  var src = pair.querySelector('.desk .frame');
+  var dst = pair.querySelector('.phone .frame');
+  if (src && dst) dst.innerHTML = src.innerHTML;
+});
+</script>
+</body>
+</html>
