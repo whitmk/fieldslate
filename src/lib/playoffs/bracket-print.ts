@@ -23,12 +23,18 @@
 // Safari). Row colour NEVER marks a winner; the winner is bold text + a
 // trophy.
 //
-// SERIES (0114, approved mockup 8): one card per series in place of a game
-// card — the series name and where it stands, the two teams with their wins,
-// then one line per game (date, field, result, "If needed", or "Not needed"
-// struck through). The card keeps the game card's top bands so the lines
-// leave and enter at the same offsets (printSeriesTree); a bracket with no
-// series prints exactly as before.
+// SERIES (0114, approved sketch 2026-10-20): each series is a GROUP — a light
+// dashed outline with a header line ("Semifinal 1 · best of 3" left, where the
+// series stands right) holding one full game card per game, stacked: the
+// single game's card with "Game 2 of 3 · date · time" over the field, both
+// team rows with the score, trophy + bold on the winner, the green second
+// row. If-needed games say so in their header; not-needed games are greyed
+// and struck through. A header never truncates: it wraps. Heights are
+// ESTIMATED from the text (groupHeight, conservative) to size the slots; each
+// group is placed by its true vertical middle (top: centre;
+// translateY(-50%)), which is where its connectors leave and enter, so a
+// header that wraps further than estimated can't misplace a line. Single-game
+// rounds keep their card; a bracket with no series prints exactly as before.
 //
 // ROUND ROBIN and DOUBLE ELIMINATION print as columns per round (cards in
 // normal flow, columns wrap onto further rows and pages). Double elimination
@@ -42,19 +48,17 @@ import {
   singleElimPosition,
   singleElimTarget,
 } from "@/lib/playoffs/advancement";
-import { gameWhen, shortDate, slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
+import { gameWhen, slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
 import { playoffRoundLabel } from "@/lib/playoffs/playoff-result";
 import {
   oneRowPerSeries,
   SERIES_TAG_TEXT,
-  seriesGameTag,
+  seriesGameHeader,
   seriesGamesOf,
-  seriesGameWhen,
+  seriesGroupTitle,
   seriesHeadline,
   seriesPrintLine,
-  seriesResultText,
   seriesRoundHeader,
-  seriesState,
 } from "@/lib/playoffs/series";
 import { isSeriesGame, seriesName } from "@/lib/playoffs/series-names";
 
@@ -88,6 +92,8 @@ export const PRINT_COLORS = {
   /** The AWAY (second) row's background — a two-tone card, nothing more. It
    *  never marks a winner: the winner is bold text + a trophy, in any row. */
   awayRowBg: "#e6f4ea",
+  /** A series game's "If needed" in its header (0114). */
+  ifNeeded: "#92400e",
 };
 
 /** Keeps a background in print without "Print backgrounds" (Safari). */
@@ -155,22 +161,26 @@ export function printHeader(
 
 // ─── One game card ────────────────────────────────────────────────────────────
 
-export function gameCardHtml(game: PrintGame, allGames: PrintGame[], format: string): string {
+/** One team row of a game card — the single card's and a series game card's.
+ *  `struck` (a not-needed series game) strikes the name through. */
+function teamRowHtml(game: PrintGame, side: Side, allGames: PrintGame[], format: string, struck = false): string {
   const done = game.status === "completed";
-  const row = (side: Side) => {
-    const teamId = side === "home" ? game.home_team_id : game.away_team_id;
-    const name = slotName(side === "home" ? game.home_team_name : game.away_team_name, game, side, allGames, format);
-    const score = side === "home" ? game.home_score : game.away_score;
-    const won = slotWon(game.winner_id, teamId);
-    const nameSt = !teamId
-      ? `color:${PRINT_COLORS.placeholder};font-style:italic`
-      : won ? `color:${PRINT_COLORS.winText};font-weight:700` : `color:${PRINT_COLORS.text}`;
-    const bg = side === "away" ? `background:${PRINT_COLORS.awayRowBg};${KEEP_BG}` : "background:white;";
-    return `<div data-row="${side}" style="height:${CARD.rowH}px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;gap:6px;${bg}">
+  const teamId = side === "home" ? game.home_team_id : game.away_team_id;
+  const name = slotName(side === "home" ? game.home_team_name : game.away_team_name, game, side, allGames, format);
+  const score = side === "home" ? game.home_score : game.away_score;
+  const won = slotWon(game.winner_id, teamId);
+  const nameSt = (!teamId
+    ? `color:${PRINT_COLORS.placeholder};font-style:italic`
+    : won ? `color:${PRINT_COLORS.winText};font-weight:700` : `color:${PRINT_COLORS.text}`) + (struck ? ";text-decoration:line-through" : "");
+  const bg = side === "away" ? `background:${PRINT_COLORS.awayRowBg};${KEEP_BG}` : "background:white;";
+  return `<div data-row="${side}" style="height:${CARD.rowH}px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;gap:6px;${bg}">
       <span style="font-size:10pt;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${nameSt}">${escapeHtml(name)}</span>
       <span style="display:flex;align-items:center;gap:4px;flex:none">${done && score != null ? `<span style="font-size:10pt;font-weight:700;color:${won ? PRINT_COLORS.winText : PRINT_COLORS.meta}">${score}</span>` : ""}${won ? TROPHY_SVG : ""}</span>
     </div>`;
-  };
+}
+
+export function gameCardHtml(game: PrintGame, allGames: PrintGame[], format: string): string {
+  const row = (side: Side) => teamRowHtml(game, side, allGames, format);
   const when = gameWhen(game, allGames, game.scheduled_date, game.start_time);
   const field = game.scheduled_date && game.venue_name ? game.venue_name : "";
   return `<div data-game="${game.game_number}" style="width:${CARD.width}px;height:${CARD_H}px;border:1px solid ${PRINT_COLORS.border};border-radius:5px;overflow:hidden;background:white">
@@ -184,62 +194,174 @@ export function gameCardHtml(game: PrintGame, allGames: PrintGame[], format: str
   </div>`;
 }
 
-// ─── One series card (0114) ───────────────────────────────────────────────────
+// ─── One series group (0114) ──────────────────────────────────────────────────
 
-/** One game line of the printed series card. */
-export const SERIES_PRINT_ROW_H = 15;
+/** One game of a series: the single game's card, with "Game 2 of 3 · date ·
+ *  time" (and "If needed") over the field — both lines WRAP, never truncate. */
+function seriesGameCardHtml(g: PrintGame, series: PrintGame[], allGames: PrintGame[]): string {
+  const h = seriesGameHeader(g, series);
+  const struck = h.notNeeded ? "text-decoration:line-through;" : "";
+  const field = g.scheduled_date && g.venue_name ? g.venue_name : "";
+  return `<div data-series-game="${g.series_game ?? 1}" data-tag="${h.tag}" style="border:1px solid ${PRINT_COLORS.border};border-radius:5px;overflow:hidden;background:white;${h.notNeeded ? "opacity:0.5;" : ""}">
+      <div style="min-height:${CARD.metaH}px;padding:1px 7px 2px;font-size:7.5pt;line-height:12px;color:${PRINT_COLORS.meta};border-bottom:1px solid ${PRINT_COLORS.border}">
+        <div style="font-weight:700;overflow-wrap:anywhere;${struck}">${escapeHtml(h.when)}${h.ifNeeded ? ` · <span data-if-needed style="color:${PRINT_COLORS.ifNeeded};white-space:nowrap">${escapeHtml(SERIES_TAG_TEXT.if_needed)}</span>` : ""}</div>
+        <div style="overflow-wrap:anywhere;${struck}">${escapeHtml(field)}</div>
+      </div>
+      ${teamRowHtml(g, "home", allGames, "single_elimination", h.notNeeded)}
+      <div style="height:1px;background:${PRINT_COLORS.border}"></div>
+      ${teamRowHtml(g, "away", allGames, "single_elimination", h.notNeeded)}
+    </div>`;
+}
 
-export function seriesCardHtml(first: PrintGame, allGames: PrintGame[]): string {
+/** A series group: the dashed outline, its header line, one card per game. */
+export function seriesGroupHtml(first: PrintGame, allGames: PrintGame[]): string {
   const games = seriesGamesOf(first, allGames);
+  const names = teamNames(allGames);
+  const head = seriesHeadline(games, (id) => names.get(id) ?? "TBD");
+  const cards = games.map((g, i) =>
+    `<div style="${i ? `margin-top:${PRINT_GROUP.cardGap}px` : ""}">${seriesGameCardHtml(g, games, allGames)}</div>`).join("");
+  return `<div data-series="${escapeHtml(seriesName(first, allGames))}" style="width:${CARD.width}px;border:${PRINT_GROUP.border}px dashed ${PRINT_COLORS.border};border-radius:7px;padding:${PRINT_GROUP.pad}px;background:white">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;column-gap:6px;font-size:7.5pt;line-height:${PRINT_GROUP.headerLineH}px;color:${PRINT_COLORS.meta};margin-bottom:${PRINT_GROUP.headerGap}px">
+      <span style="font-weight:700;color:${PRINT_COLORS.text}">${escapeHtml(seriesGroupTitle(first, allGames))}</span>
+      <span data-series-state>${escapeHtml(head.text)}</span>
+    </div>
+    ${cards}
+  </div>`;
+}
+
+function teamNames(games: PrintGame[]): Map<string, string> {
   const names = new Map<string, string>();
-  for (const g of allGames) {
+  for (const g of games) {
     if (g.home_team_id && g.home_team_name) names.set(g.home_team_id, g.home_team_name);
     if (g.away_team_id && g.away_team_name) names.set(g.away_team_id, g.away_team_name);
   }
-  const teamName = (id: string) => names.get(id) ?? "TBD";
-  const state = seriesState(games);
-  const head = seriesHeadline(games, teamName);
-  const g1 = games[0];
-  const row = (side: Side) => {
-    const teamId = side === "home" ? g1.home_team_id : g1.away_team_id;
-    const name = slotName(side === "home" ? g1.home_team_name : g1.away_team_name, g1, side, allGames, "single_elimination");
-    const won = slotWon(state.winnerId, teamId);
-    const nameSt = !teamId
-      ? `color:${PRINT_COLORS.placeholder};font-style:italic`
-      : won ? `color:${PRINT_COLORS.winText};font-weight:700` : `color:${PRINT_COLORS.text}`;
-    const bg = side === "away" ? `background:${PRINT_COLORS.awayRowBg};${KEEP_BG}` : "background:white;";
-    const wins = teamId && state.played > 0 ? String(state.wins.get(teamId) ?? 0) : "";
-    return `<div data-row="${side}" style="height:${CARD.rowH}px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;gap:6px;${bg}">
-      <span style="font-size:10pt;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${nameSt}">${escapeHtml(name)}</span>
-      <span style="display:flex;align-items:center;gap:4px;flex:none">${wins ? `<span data-wins style="font-size:10pt;font-weight:700;color:${won ? PRINT_COLORS.winText : PRINT_COLORS.meta}">${wins}</span>` : ""}${won ? TROPHY_SVG : ""}</span>
-    </div>`;
-  };
-  const lines = games.map((g) => {
-    const tag = seriesGameTag(g, games);
-    const struck = tag === "not_needed";
-    const right =
-      tag === "result" ? seriesResultText(g, teamName) ?? "" : tag === "upcoming" ? "" : SERIES_TAG_TEXT[tag];
-    // A played game's line drops the time (approved mockup 8): the field has
-    // the room it needs beside the result.
-    const date = tag === "result" && g.scheduled_date ? shortDate(g.scheduled_date) : seriesGameWhen(g);
-    const when = [date, ...(g.scheduled_date && g.venue_name ? [g.venue_name] : [])].join(" · ");
-    return `<div data-series-game="${g.series_game ?? 1}" data-tag="${tag}" style="height:${SERIES_PRINT_ROW_H}px;padding:0 7px;display:flex;align-items:center;gap:5px;font-size:7.5pt;line-height:1;color:${PRINT_COLORS.meta}">
-      <span style="font-weight:700;flex:none;width:14px">G${g.series_game ?? 1}</span>
-      <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${struck ? "text-decoration:line-through" : ""}">${escapeHtml(when)}</span>
-      <span style="flex:none;font-weight:700;${struck ? "" : `color:${PRINT_COLORS.text}`}">${escapeHtml(right)}</span>
-    </div>`;
-  }).join("");
-  return `<div data-series="${escapeHtml(seriesName(first, allGames))}" style="width:${CARD.width}px;height:${CARD_H + 1 + games.length * SERIES_PRINT_ROW_H}px;border:1px solid ${PRINT_COLORS.border};border-radius:5px;overflow:hidden;background:white">
-    <div style="height:${CARD.metaH}px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:7.5pt;color:${PRINT_COLORS.meta};border-bottom:1px solid ${PRINT_COLORS.border}">
-      <span style="font-weight:700;color:${PRINT_COLORS.text};white-space:nowrap">${escapeHtml(seriesName(first, allGames))}</span>
-      <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(head.text)}</span>
-    </div>
-    ${row("home")}
-    <div style="height:1px;background:${PRINT_COLORS.border}"></div>
-    ${row("away")}
-    <div style="height:1px;background:${PRINT_COLORS.border}"></div>
-    ${lines}
-  </div>`;
+  return names;
+}
+
+// ─── Series group geometry (print and screen) ─────────────────────────────────
+
+/** The numbers a series group is ESTIMATED with. Text width comes from
+ *  `textWidth` (Arial advance widths, bold widened) times `safety`; a line
+ *  wraps past `textW` (the card's text width) or `headerW` (the group's header
+ *  line). Over-estimating a wrap only adds room — the group is centred on its
+ *  true middle either way; under-estimating eats into GROUP_MARGIN. Measured
+ *  in Chrome against the real heights (sim log). */
+export type GroupDims = {
+  border: number;
+  pad: number;
+  headerLineH: number;
+  headerGap: number;
+  cardGap: number;
+  /** Font size (px) of a card's header text and of the group's header line. */
+  fontPx: number;
+  headerFontPx: number;
+  /** Text width (px) inside a card, and across the group's header line (its
+   *  right side's chip padding included in `headerExtra`). */
+  textW: number;
+  headerW: number;
+  headerExtra: number;
+  safety: number;
+  /** A game card: borders + header band (min, line height, padding) + rows. */
+  cardBorders: number;
+  metaMinH: number;
+  metaLineH: number;
+  metaPadY: number;
+  rowsH: number;
+  /** Screen only: the action row, the daylight chip below a card, the Final's banner. */
+  footH: number;
+  flagH: number;
+  bannerH: number;
+};
+
+/** The printed group (seriesGroupHtml). Cards are 210 − 2×6 = 198px wide. */
+export const PRINT_GROUP: GroupDims = {
+  border: 1, pad: 5, headerLineH: 11, headerGap: 4, cardGap: 6,
+  fontPx: 10, headerFontPx: 10, textW: 198 - 2 - 14, headerW: 198, headerExtra: 6, safety: 1.08,
+  cardBorders: 2, metaMinH: CARD.metaH, metaLineH: 12, metaPadY: 4, rowsH: 2 * CARD.rowH + 1,
+  footH: 0, flagH: 0, bannerH: 0,
+};
+
+/** The on-screen group (series-card.tsx SeriesGroup). Cards are 200 − 2×7 =
+ *  186px wide: header band min h-10 (16px lines, py-1 + border), rows h-8 +
+ *  h-px + h-8, action row h-8; a daylight chip below a card (mt-1 + chip); the
+ *  Final's banner (mt-1.5 + py-1). */
+export const SCREEN_GROUP: GroupDims = {
+  border: 1, pad: 6, headerLineH: 18, headerGap: 6, cardGap: 8,
+  fontPx: 10, headerFontPx: 11, textW: 186 - 2 - 20, headerW: 186, headerExtra: 8 + 12, safety: 1.15,
+  cardBorders: 2, metaMinH: 40, metaLineH: 16, metaPadY: 9, rowsH: 65,
+  footH: 32, flagH: 26, bannerH: 30,
+};
+
+// Arial advance widths in 1/1000 em (regular). Anything not listed counts as
+// a wide letter. Bold is taken as 1.08× regular.
+const ADVANCE: Record<string, number> = { " ": 278, "·": 278, ".": 278, ",": 278, ":": 278, "/": 278, "-": 333, "–": 556,
+  "—": 1000, "(": 333, ")": 333, "@": 1015, "&": 667, "'": 191, "#": 556, i: 222, j: 222, l: 222, f: 278, t: 278, r: 333,
+  I: 278, J: 500, m: 833, w: 722, M: 833, W: 944, c: 500, k: 500, s: 500, v: 500, x: 500, y: 500, z: 500 };
+const LOWER = 556;
+const UPPER = 722;
+
+/** A text's width in px at `fontPx` (an Arial estimate). */
+export function textWidth(text: string, fontPx: number, bold = false): number {
+  let units = 0;
+  for (const ch of text) {
+    units += ADVANCE[ch] ?? (/[a-z0-9]/.test(ch) ? LOWER : /[A-Z]/.test(ch) ? (ch === "T" || ch === "F" || ch === "L" ? 611 : UPPER) : UPPER);
+  }
+  return (units / 1000) * fontPx * (bold ? 1.08 : 1);
+}
+
+/** Lines a text takes in `widthPx` (at least one): its words laid out greedily. */
+export function lineCount(text: string, fontPx: number, widthPx: number, bold = false, safety = 1): number {
+  const space = textWidth(" ", fontPx, bold) * safety;
+  let lines = 1;
+  let used = 0;
+  for (const word of text.split(" ").filter(Boolean)) {
+    const w = textWidth(word, fontPx, bold) * safety;
+    if (used > 0 && used + space + w > widthPx) {
+      lines++;
+      used = 0;
+    }
+    if (w > widthPx) {
+      // A word longer than the line breaks anywhere (overflow-wrap: anywhere).
+      lines += Math.ceil(w / widthPx) - 1;
+      used = w % widthPx;
+    } else {
+      used += (used > 0 ? space : 0) + w;
+    }
+  }
+  return lines;
+}
+
+export type GroupCardText = { when: string; field: string; flagged?: boolean };
+
+/** One game card's estimated height. */
+export function groupCardHeight(D: GroupDims, c: GroupCardText): number {
+  const meta = Math.max(
+    D.metaMinH,
+    (lineCount(c.when, D.fontPx, D.textW, true, D.safety) + lineCount(c.field || " ", D.fontPx, D.textW, false, D.safety)) * D.metaLineH
+      + D.metaPadY,
+  );
+  return D.cardBorders + meta + D.rowsH + D.footH + (c.flagged ? D.flagH : 0);
+}
+
+/** A series group's estimated height: outline, padding, the header line (it
+ *  wraps when the name and the state don't fit), the cards and their gaps,
+ *  and the Final's banner on screen. */
+export function groupHeight(D: GroupDims, title: string, state: string, cards: GroupCardText[], banner = false): number {
+  const one = (textWidth(title, D.headerFontPx, true) + textWidth(state, D.headerFontPx - 1, true)) * D.safety + D.headerExtra <= D.headerW;
+  const header = (one ? 1 : lineCount(title, D.headerFontPx, D.headerW, true, D.safety) + 1) * D.headerLineH;
+  const body = cards.reduce((sum, c) => sum + groupCardHeight(D, c), 0) + Math.max(0, cards.length - 1) * D.cardGap;
+  return 2 * D.border + 2 * D.pad + header + D.headerGap + body + (banner ? D.bannerH : 0);
+}
+
+/** The texts of a series' cards, as both groups render them. */
+export function groupCardTexts<G extends PrintGame>(series: G[]): GroupCardText[] {
+  return series.map((g) => {
+    const h = seriesGameHeader(g, series);
+    return {
+      when: h.ifNeeded ? `${h.when} · ${SERIES_TAG_TEXT.if_needed}` : h.when,
+      field: g.scheduled_date && g.venue_name ? g.venue_name : "",
+    };
+  });
 }
 
 // ─── Single-elimination tree layout ───────────────────────────────────────────
@@ -270,10 +392,6 @@ export type TreeDims = {
   rowH: number;
   divider: number;
   sourceY: number;
-  /** How far above its slot's centre a card's top sits. Absent: cardH / 2
-   *  (every card centred). The series print sets it so cards of different
-   *  heights share one top-to-divider line. */
-  cardTop?: number;
 };
 
 export const PRINT_TREE: TreeDims = {
@@ -290,45 +408,81 @@ export const SCREEN_TREE: TreeDims = {
   rowTop: 41, rowH: 32, divider: 1, sourceY: 41 + 32 + 0.5,
 };
 
-/** One game row of the on-screen SERIES card (series-card.tsx): h-6. */
-export const SERIES_GAME_ROW_H = 24;
+/** Room kept between two series groups (or a group and a card) in a column. */
+export const GROUP_MARGIN = 10;
 
-/** The on-screen tree for a bracket with a series round (0114). A series card
- *  keeps the single card's top bands — 1px border, h-10 header, the two h-8
- *  team rows around the divider — so the lines leave and enter at the same
- *  offsets; below them it adds one h-6 row per game of its longest series.
- *  Every slot is that tall, so single-game cards sit at the top of theirs. */
-export function screenSeriesTree(longestSeries: number): TreeDims {
-  const cardH = SCREEN_TREE.cardH + longestSeries * SERIES_GAME_ROW_H;
-  return { ...SCREEN_TREE, cardH, slotH: cardH + (SCREEN_TREE.slotH - SCREEN_TREE.cardH) };
+export type PlacedItem<G extends PrintGame = PrintGame> = PlacedCard<G> & {
+  /** A series group (true) or a single game card. */
+  group: boolean;
+  /** Estimated height; a group's real height may differ — it is placed by its middle. */
+  h: number;
+  /** The slot's centre: a group's middle sits here, and its lines leave and enter here. */
+  centre: number;
+};
+
+/** The tree for a bracket with a series round: one item per series (a group)
+ *  or single game (a card). Every slot grows only as far as some round's
+ *  tallest item needs — round k has 2^k round-1 slots of room per item. A
+ *  group's lines leave and enter at its vertical middle; a single card's leave
+ *  at `D.sourceY` and enter at the team row it fills, as in every tree. */
+export function groupedTreeLayout<G extends PrintGame>(
+  games: G[],
+  D: TreeDims,
+  groupH: (first: G, series: G[]) => number,
+): TreeLayout<G> & { items: PlacedItem<G>[] } {
+  const rows = oneRowPerSeries(games);
+  const rounds = sortedRounds(rows);
+  const n = rounds.length;
+  const size = Math.pow(2, n);
+  const isGroup = (g: G) => isSeriesGame(g, games);
+  const heightOf = (g: G) => (isGroup(g) ? groupH(g, seriesGamesOf(g, games)) : D.cardH);
+  const tallest = rounds.map((r) => Math.max(...rows.filter((g) => g.round === r).map(heightOf)));
+  const slotH = Math.max(D.slotH, ...tallest.map((h, k) => (h + GROUP_MARGIN) / Math.pow(2, k)));
+  const width = n * D.cardW + Math.max(0, n - 1) * D.gap;
+  const height = D.roundHdr + (size / 2) * slotH;
+
+  const items: PlacedItem<G>[] = [];
+  const byId = new Map<string, PlacedItem<G>>();
+  rounds.forEach((round, k) => {
+    const inRound = rows.filter((g) => g.round === round).sort((a, b) => a.game_number - b.game_number);
+    for (const g of inRound) {
+      const pos = singleElimPosition(g, k, size, inRound);
+      const centre = D.roundHdr + (pos + 0.5) * slotH * Math.pow(2, k);
+      const h = heightOf(g);
+      const item = { game: g, round: k, pos, x: k * (D.cardW + D.gap), y: centre - h / 2, group: isGroup(g), h, centre };
+      items.push(item);
+      byId.set(g.id, item);
+    }
+  });
+
+  const entryY = (to: PlacedItem<G>, side: "home_team_id" | "away_team_id") =>
+    to.group ? to.centre : to.y + D.rowTop + (side === "home_team_id" ? D.rowH / 2 : D.rowH + D.divider + D.rowH / 2);
+
+  const connectors: Connector[] = [];
+  for (const c of items) {
+    const t = singleElimTarget(c.game, rows);
+    if (!t) continue;
+    const to = byId.get(t.target.id);
+    if (!to) continue;
+    const x1 = c.x + D.cardW;
+    const y1 = c.group ? c.centre : c.y + D.sourceY;
+    const xm = x1 + D.gap / 2;
+    const y2 = entryY(to, t.field);
+    connectors.push({ from: c.game.game_number, to: to.game.game_number, side: t.field, points: [[x1, y1], [xm, y1], [xm, y2], [to.x, y2]] });
+  }
+
+  return { rounds, cards: items, items, connectors, width, height, scale: pageScale(width, height) };
 }
 
-/** A printed card's height: a game card, or a series card of `length` games. */
-export function printCardHeight(length: number): number {
-  return length > 1 ? CARD_H + 1 + length * SERIES_PRINT_ROW_H : CARD_H;
+/** The printed tree's item heights: a group by groupHeight(PRINT_GROUP). */
+export function printGroupHeight<G extends PrintGame>(first: G, series: G[], bracket: G[]): number {
+  const names = teamNames(bracket);
+  return groupHeight(PRINT_GROUP, seriesGroupTitle(first, bracket), seriesHeadline(series, (id) => names.get(id) ?? "TBD").text, groupCardTexts(series));
 }
 
-/** Room kept below a card inside its round's space. */
-const CARD_MARGIN = 4;
-
-/** The printed tree for a bracket with a series round. Every card's top sits
- *  where a game card's does today (CARD_H / 2 above its slot's centre), so the
- *  two team rows — and the lines that leave from the divider between them and
- *  enter at a row — line up across single games and series. A series card
- *  hangs below; round k has 2^k round-1 slots of room per card, so the slot
- *  grows only when some round's tallest card needs more (a best of 3 in the
- *  second round does; a best of 7 Final barely uses its space). `tallest[k]`
- *  is round k's tallest card (printCardHeight). */
-export function printSeriesTree(tallest: number[]): TreeDims {
-  const top = CARD_H / 2;
-  const slotH = Math.max(SLOT_H, ...tallest.map((h, k) => (2 * (h - top + CARD_MARGIN)) / Math.pow(2, k)));
-  return {
-    ...PRINT_TREE,
-    slotH,
-    cardTop: top,
-    sourceY: 1 + CARD.metaH + CARD.rowH + 0.5,
-  };
-}
+/** The printed tree for a bracket with a series round. Single cards are the
+ *  print's own (CARD_H), their lines leaving at the divider between the rows. */
+export const PRINT_SERIES_TREE: TreeDims = { ...PRINT_TREE, sourceY: 1 + CARD.metaH + CARD.rowH + 0.5 };
 
 function sortedRounds(games: PrintGame[]): string[] {
   return [...new Set(games.map((g) => g.round))].sort((a, b) => getRoundOrder(a) - getRoundOrder(b));
@@ -350,7 +504,7 @@ export function singleElimLayout<G extends PrintGame>(games: G[], dims: TreeDims
     for (const g of inRound) {
       const pos = singleElimPosition(g, k, size, inRound);
       const centre = D.roundHdr + (pos + 0.5) * D.slotH * Math.pow(2, k);
-      const card = { game: g, round: k, pos, x: k * (D.cardW + D.gap), y: centre - (D.cardTop ?? D.cardH / 2) };
+      const card = { game: g, round: k, pos, x: k * (D.cardW + D.gap), y: centre - D.cardH / 2 };
       cards.push(card);
       byId.set(g.id, card);
     }
@@ -377,11 +531,16 @@ export function singleElimLayout<G extends PrintGame>(games: G[], dims: TreeDims
     });
   }
 
-  // Fit the page; a small bracket (under 60% of the page's height — 8 teams
-  // and fewer) is scaled UP to fill it, capped so 10pt team names stay ≤ 14pt.
+  return { rounds, cards, connectors, width, height, scale: pageScale(width, height) };
+}
+
+/** Fit the page; a small bracket (under 60% of the page's height — 8 teams
+ *  and fewer) is scaled UP to fill it, capped so 10pt team names stay ≤ 14pt.
+ *  One rule for every tree, with or without a series. */
+export function pageScale(width: number, height: number): number {
   const fit = Math.min(PAGE.width / width, CANVAS_H / height);
   const scale = height < SCALE_UP_BELOW * CANVAS_H ? Math.min(fit, MAX_SCALE) : Math.min(1, fit);
-  return { rounds, cards, connectors, width, height, scale };
+  return scale;
 }
 
 export function buildBracketPrintHtml(
@@ -396,18 +555,11 @@ export function buildBracketPrintHtml(
   if (!games.length) return `${header}<p>No games yet.</p>`;
   if (format !== "single_elimination") return header + columnsHtml(games, format);
 
-  // A bracket with a series lays out one row per series (every game of a
-  // series shares its round and position — what advancement keys on).
+  // A bracket with a series lays out one item per series — a group of stacked
+  // game cards, placed by its middle (groupedTreeLayout).
   const withSeries = seriesLine !== null;
   const L = withSeries
-    ? singleElimLayout(
-        oneRowPerSeries(games),
-        printSeriesTree(
-          sortedRounds(games).map((r) =>
-            printCardHeight(Math.max(...games.filter((g) => g.round === r).map((g) => g.series_game ?? 1))),
-          ),
-        ),
-      )
+    ? groupedTreeLayout(games, PRINT_SERIES_TREE, (first, series) => printGroupHeight(first, series, games))
     : singleElimLayout(games);
   const heads = L.rounds.map((r, k) =>
     `<div style="position:absolute;top:0;left:${k * (CARD.width + GAP)}px;width:${CARD.width}px;text-align:center;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:0.6pt;color:${PRINT_COLORS.heading}">${escapeHtml(withSeries ? seriesRoundHeader(r, games) : playoffRoundLabel(r))}</div>`,
@@ -416,7 +568,9 @@ export function buildBracketPrintHtml(
     `<polyline data-from="${c.from}" data-to="${c.to}" points="${c.points.map(([x, y]) => `${x},${y}`).join(" ")}" fill="none" stroke="${PRINT_COLORS.line}" stroke-width="1.5"/>`,
   ).join("");
   const cards = L.cards.map((c) =>
-    `<div style="position:absolute;left:${c.x}px;top:${c.y}px">${withSeries && isSeriesGame(c.game, games) ? seriesCardHtml(c.game, games) : gameCardHtml(c.game, games, format)}</div>`,
+    withSeries && isSeriesGame(c.game, games)
+      ? `<div style="position:absolute;left:${c.x}px;top:${(c as PlacedItem).centre}px;transform:translateY(-50%)">${seriesGroupHtml(c.game, games)}</div>`
+      : `<div style="position:absolute;left:${c.x}px;top:${c.y}px">${gameCardHtml(c.game, games, format)}</div>`,
   ).join("");
   return `${header}
 <div style="width:${Math.ceil(L.width * L.scale)}px;height:${Math.ceil(L.height * L.scale)}px;overflow:hidden">

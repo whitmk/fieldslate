@@ -199,30 +199,6 @@ const MUTANTS: Mutant[] = [
     expect: "S12",
   },
   {
-    id: "SM31", what: "the print draws a game card for a series", file: "src/lib/playoffs/bracket-print.ts",
-    find: "withSeries && isSeriesGame(c.game, games) ? seriesCardHtml",
-    replace: "false && isSeriesGame(c.game, games) ? seriesCardHtml",
-    expect: "S12",
-  },
-  {
-    id: "SM32", what: "the printed slot never grows for a tall series card", file: "src/lib/playoffs/bracket-print.ts",
-    find: "(2 * (h - top + CARD_MARGIN)) / Math.pow(2, k)",
-    replace: "SLOT_H + 0 * h * k",
-    expect: "S12",
-  },
-  {
-    id: "SM33", what: "printed lines leave a series tree's cards at their centre", file: "src/lib/playoffs/bracket-print.ts",
-    find: "    sourceY: 1 + CARD.metaH + CARD.rowH + 0.5,\n",
-    replace: "    sourceY: CARD_H / 2,\n",
-    expect: "S12",
-  },
-  {
-    id: "SM34", what: "a played game's printed line keeps its time", file: "src/lib/playoffs/bracket-print.ts",
-    find: 'tag === "result" && g.scheduled_date ? shortDate(g.scheduled_date) : seriesGameWhen(g)',
-    replace: "seriesGameWhen(g)",
-    expect: "S12",
-  },
-  {
     id: "SM35", what: "the delete confirm's series line ignores the preview's result count", file: "src/lib/playoffs/bracket-delete.ts",
     find: "  if (games.filter(gameHasResult).length !== counts.gamesWithResults) return null;\n",
     replace: "",
@@ -265,6 +241,49 @@ const MUTANTS: Mutant[] = [
     replace: "  ('B7', 3, 3, 'AB-', true),",
     expect: "IX",
   },
+  // ── Revised tree (2026-10-20): series groups of stacked game cards ──
+  {
+    id: "SM31", what: "the print draws a game card for a series instead of its group", file: "src/lib/playoffs/bracket-print.ts",
+    find: "    withSeries && isSeriesGame(c.game, games)\n",
+    replace: "    false && isSeriesGame(c.game, games)\n",
+    expect: "S12",
+  },
+  {
+    id: "SM32", what: "the slot never grows for a tall group", file: "src/lib/playoffs/bracket-print.ts",
+    find: "(h + GROUP_MARGIN) / Math.pow(2, k)",
+    replace: "D.slotH + 0 * h * k",
+    expect: "S12",
+  },
+  {
+    id: "SM33", what: "a group's line leaves at a card's divider, not the group's middle", file: "src/lib/playoffs/bracket-print.ts",
+    find: "const y1 = c.group ? c.centre : c.y + D.sourceY;",
+    replace: "const y1 = c.y + D.sourceY;",
+    expect: "S12",
+  },
+  {
+    id: "SM34", what: "a series card's header truncates instead of wrapping", file: "src/lib/playoffs/bracket-print.ts",
+    find: '<div style="font-weight:700;overflow-wrap:anywhere;${struck}">',
+    replace: '<div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${struck}">',
+    expect: "S12",
+  },
+  {
+    id: "SM42", what: "a line enters a group at a team row instead of its middle", file: "src/lib/playoffs/bracket-print.ts",
+    find: "    to.group ? to.centre : to.y + D.rowTop",
+    replace: "    to.y + D.rowTop",
+    expect: "S12",
+  },
+  {
+    id: "SM43", what: "the print places a group by its top, not its middle", file: "src/lib/playoffs/bracket-print.ts",
+    find: "px;transform:translateY(-50%)\">${seriesGroupHtml(c.game, games)}",
+    replace: "px\">${seriesGroupHtml(c.game, games)}",
+    expect: "S12",
+  },
+  {
+    id: "SM44", what: "the height estimate ignores a field name that wraps", file: "src/lib/playoffs/bracket-print.ts",
+    find: 'lineCount(c.field || " ", D.fontPx, D.textW, false, D.safety)',
+    replace: "1",
+    expect: "S12",
+  },
 ];
 
 runMutants({
@@ -302,3 +321,6 @@ runMutants({
 // 2026-10-20 (later) — the public flag comes from the reader (if_needed):
 // SM26 re-aimed at the page working it out by position; SM41 skews the shared
 // table from the SQL file (killed by IX, the TypeScript side of the pin).
+// 2026-10-20 (later) — revised tree (approved sketch: series groups of stacked
+// game cards): SM31–SM34 re-aimed at the group layout (the old one-card-per-
+// series targets are gone), SM42–SM44 added.

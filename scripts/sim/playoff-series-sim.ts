@@ -83,11 +83,17 @@ import type { PublicPlayoffGame, PublicScheduleOk, PublicSeason } from "../../sr
 import { buildPlayoffCsv, exportableGames, exportGameName, type ExportGame } from "../../src/lib/playoffs/playoff-export";
 import {
   buildBracketPrintHtml,
-  CARD,
-  printCardHeight,
-  printSeriesTree,
-  singleElimLayout,
+  GROUP_MARGIN,
+  PRINT_GROUP,
+  PRINT_SERIES_TREE,
+  SCREEN_GROUP,
+  SCREEN_TREE,
+  groupCardTexts,
+  groupHeight,
+  groupedTreeLayout,
+  printGroupHeight,
   type PrintGame,
+  type TreeDims,
 } from "../../src/lib/playoffs/bracket-print";
 import { deleteConfirm, type BracketCounts } from "../../src/lib/playoffs/bracket-delete";
 import {
@@ -934,46 +940,66 @@ section("S12 outside the app", () => {
   const plain = exportGames(withIds(planBracket({ ...mockupInput(undefined), gamesPerTeamPerDay: 1 }).games));
   eq(exportGameName(plain.find((g) => g.round === "SF")!, plain, null), "Semifinals", "S12", "CSV: no series → round name only, as before");
 
-  // ── Printed bracket ──
+  // ── Printed bracket (revised 2026-10-20: a group of stacked game cards) ──
   const html = buildBracketPrintHtml(seriesMockup(), "single_elimination", "L", "Majors", "Nov 21, 2026");
   ok(html.includes(">Single elimination · Semifinals and Final best of 3</div>"), "S12", "print: the series line under the title");
   for (const h of ["Round 1", "Semifinals · best of 3", "Final · best of 3"]) ok(html.includes(`>${h}</div>`), "S12", `print: round header "${h}"`);
-  eq((html.match(/data-series="/g) ?? []).length, 3, "S12", "print: one card per series (3)");
-  ok(/data-series-game="3" data-tag="not_needed"[^>]*>[\s\S]*?line-through/.test(html), "S12", "print: the not-needed game is struck through");
+  eq((html.match(/data-series="/g) ?? []).length, 3, "S12", "print: one group per series (3)");
+  eq((html.match(/data-series-game="/g) ?? []).length, 9, "S12", "print: one full card per game (9)");
+  eq((html.match(/transform:translateY\(-50%\)"><div data-series=/g) ?? []).length, 3, "S12", "print: each group is placed by its middle (top at the slot's centre, moved up half its height)");
+  ok(html.includes(">Semifinal 1 · best of 3</span>") && html.includes("<span data-series-state>Expos lead 1–0</span>")
+     && html.includes("<span data-series-state>Bears win 2–0</span>"), "S12", "print: each group's header line — name · best of 3, and where it stands");
+  ok(html.includes(">Game 1 of 3 · Sun 11/15 · 9:00 AM</div>") && html.includes(">Monroe Complex — Andrews</div>"),
+    "S12", "print: a game card's header — Game k of 3 · date · time — over the field");
+  ok(/data-series-game="3" data-tag="not_needed"[^>]*opacity:0\.5;[^>]*>[\s\S]*?text-decoration:line-through/.test(html), "S12", "print: the not-needed game is greyed and struck through");
   eq((html.match(/data-tag="if_needed"/g) ?? []).length, 2, "S12", "print: two if-needed games (Semifinal 1 and Final Game 3)");
-  ok(html.includes(">Expos lead 1–0<") && html.includes(">Bears win 2–0<"), "S12", "print: each series says where it stands");
-  ok(html.includes(">Sun 11/15 · Monroe Complex — Andrews<"), "S12", "print: a played game's line drops the time");
-  ok(html.includes(">Sat 11/21 · 9:00 AM · Monroe Complex — Andrews<"), "S12", "print: an unplayed game's line keeps it");
+  eq((html.match(/<span data-if-needed[^>]*>If needed<\/span>/g) ?? []).length, 2, "S12", "print: If needed is said in the card's header");
+  ok(!/>Next</.test(html), "S12", "print: no Next tag");
+  const groupsHtml = html.split("data-series=\"").slice(1).map((x) => x.slice(0, x.indexOf("data-series=") > 0 ? x.indexOf("data-series=") : x.length));
+  ok(groupsHtml.every((g) => !g.slice(0, g.indexOf("data-row=")).includes("text-overflow:ellipsis")), "S12", "print: a group's headers never truncate (they wrap)");
   ok(html.includes("Winner of Semifinal 1"), "S12", "print: the Final's empty slot names the series that feeds it");
+  // Home order follows the alternation: Semifinal 1 is Expos–Mets, Mets–Expos, Expos–Mets.
+  const rowsOf = (k: number) => {
+    const seg = html.slice(html.indexOf('data-series="Semifinal 1"'));
+    const card = seg.split('data-series-game="')[k];
+    return [...card.matchAll(/data-row="(home|away)"[^>]*>\s*<span[^>]*>([^<]*)</g)].map((m) => m[2]).join("/");
+  };
+  eq([1, 2, 3].map(rowsOf), ["Expos/Mets", "Mets/Expos", "Expos/Mets"], "S12", "print: each card's home row follows the alternation");
   eq(seriesPrintLine(withIds(planBracket({ ...mockupInput(undefined), gamesPerTeamPerDay: 1 }).games)), null, "S12", "print: no series → no series line");
   eq(seriesRoundHeader("SF", seriesMockup()), "Semifinals · best of 3", "S12", "print: header helper");
 
-  // Geometry: no two cards in a column overlap, every card is on the canvas,
-  // every line leaves at the divider and enters a row's centre.
-  for (const [name, games, minScale] of [["mockup", seriesMockup(), 1], ["16 teams, best of 7 Final", seriesSixteen(), 0.9]] as [string, PrintGame[], number][]) {
-    const rounds = [...new Set(games.map((g) => g.round))];
-    const tallest = ["R1", "R2", "R3", "QF", "SF", "F"].filter((r) => rounds.includes(r))
-      .map((r) => printCardHeight(Math.max(...games.filter((g) => g.round === r).map((g) => g.series_game ?? 1))));
-    const D = printSeriesTree(tallest);
-    const L = singleElimLayout(oneRowPerSeries(games), D);
-    const h = (c: (typeof L.cards)[number]) =>
-      printCardHeight(Math.max(...games.filter((g) => g.round === c.game.round && g.game_number === c.game.game_number).map((g) => g.series_game ?? 1)));
+  // Geometry (print and screen): no two items in a column overlap, every item
+  // is on the canvas, a group's lines leave and enter at its middle, a single
+  // card's leave at the divider and enter a row's centre.
+  const screenH = (series: PrintGame[], bracket: PrintGame[]) =>
+    groupHeight(SCREEN_GROUP, `${series[0].round}`, "Expos lead 1–0", groupCardTexts(series), false) + 0 * bracket.length;
+  for (const [name, games, minScale, D, groupH] of [
+    ["print, mockup", seriesMockup(), 1, PRINT_SERIES_TREE, (f: PrintGame, s2: PrintGame[]) => printGroupHeight(f, s2, seriesMockup())],
+    ["print, 16 teams to a best of 7", seriesSixteen(), 0.4, PRINT_SERIES_TREE, (f: PrintGame, s2: PrintGame[]) => printGroupHeight(f, s2, seriesSixteen())],
+    ["screen, mockup", seriesMockup(), 0, SCREEN_TREE, (_f: PrintGame, s2: PrintGame[]) => screenH(s2, seriesMockup())],
+  ] as [string, PrintGame[], number, TreeDims, (f: PrintGame, s: PrintGame[]) => number][]) {
+    const L = groupedTreeLayout(games, D, groupH);
     let overlap = false;
     for (let k = 0; k < L.rounds.length; k++) {
-      const col = L.cards.filter((c) => c.round === k).sort((a, b) => a.y - b.y);
-      for (let i = 1; i < col.length; i++) if (col[i].y < col[i - 1].y + h(col[i - 1]) + 4 - 1e-6) overlap = true;
+      const col = L.items.filter((c) => c.round === k).sort((a, b) => a.y - b.y);
+      for (let i = 1; i < col.length; i++) if (col[i].y < col[i - 1].y + col[i - 1].h + GROUP_MARGIN - 1e-6) overlap = true;
     }
-    ok(!overlap, "S12", `print geometry (${name}): no cards overlap in a column`);
-    ok(L.cards.every((c) => c.y >= D.roundHdr - 1e-6 && c.y + h(c) <= L.height + 1e-6), "S12", `print geometry (${name}): every card is on the canvas`);
-    const div = 1 + CARD.metaH + CARD.rowH + 0.5;
-    ok(L.connectors.every((cn) => {
-      const from = L.cards.find((c) => c.game.game_number === cn.from)!;
-      const to = L.cards.find((c) => c.game.game_number === cn.to)!;
-      const rowC = to.y + 1 + CARD.metaH + (cn.side === "home_team_id" ? CARD.rowH / 2 : CARD.rowH + 1 + CARD.rowH / 2);
-      return Math.abs(cn.points[0][1] - (from.y + div)) < 1e-6 && Math.abs(cn.points[3][1] - rowC) < 1e-6;
-    }), "S12", `print geometry (${name}): lines leave at the divider and enter a row's centre`);
-    ok(L.scale >= minScale, "S12", `print geometry (${name}): scale ≥ ${minScale}`, L.scale.toFixed(3));
+    ok(!overlap, "S12", `geometry (${name}): no items overlap in a column`);
+    ok(L.items.every((c) => c.y >= D.roundHdr - 1e-6 && c.y + c.h <= L.height + 1e-6), "S12", `geometry (${name}): every item is on the canvas`);
+    ok(L.items.filter((c) => c.group).every((c) => Math.abs(c.y + c.h / 2 - c.centre) < 1e-6), "S12", `geometry (${name}): a group is centred on its slot`);
+    ok(L.connectors.length > 0 && L.connectors.every((cn) => {
+      const from = L.items.find((c) => c.game.game_number === cn.from)!;
+      const to = L.items.find((c) => c.game.game_number === cn.to)!;
+      const fromY = from.group ? from.centre : from.y + D.sourceY;
+      const toY = to.group ? to.centre : to.y + D.rowTop + (cn.side === "home_team_id" ? D.rowH / 2 : D.rowH + D.divider + D.rowH / 2);
+      return Math.abs(cn.points[0][1] - fromY) < 1e-6 && Math.abs(cn.points[3][1] - toY) < 1e-6;
+    }), "S12", `geometry (${name}): a group's lines leave and enter at its middle; a card's leave at the divider, enter a row`);
+    if (minScale > 0) ok(L.scale >= minScale, "S12", `geometry (${name}): scale ≥ ${minScale}`, L.scale.toFixed(3));
   }
+  // The estimate grows with a header that wraps: a long field name adds a line.
+  const longField = groupCardTexts([{ ...seriesMockup()[2], venue_name: "Polley Field @ Ives Park (Sebastopol Little League)" }]);
+  ok(groupHeight(PRINT_GROUP, "x", "y", longField) > groupHeight(PRINT_GROUP, "x", "y", groupCardTexts([seriesMockup()[2]])),
+    "S12", "geometry: a field name that wraps makes the estimated group taller");
 
   // ── Delete confirm ──
   const C: BracketCounts = { games: 11, datedGames: 11, gamesWithResults: 5, publicGames: 10, notNeededGames: 1 };

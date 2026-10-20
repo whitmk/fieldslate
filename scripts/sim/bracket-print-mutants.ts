@@ -34,8 +34,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "BP5", what: "print card: winner by raw compare (null === null)", file: PRINT,
-    find: "    const won = slotWon(game.winner_id, teamId);",
-    replace: "    const won = game.winner_id === teamId;",
+    find: "  const won = slotWon(game.winner_id, teamId);",
+    replace: "  const won = game.winner_id === teamId;",
     expect: "T2",
   },
   {
@@ -46,14 +46,14 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "BP7", what: "layout by index in the round (the old print)", file: PRINT,
-    find: "      const pos = singleElimPosition(g, k, size, inRound);",
-    replace: "      const pos = inRound.indexOf(g);",
+    find: "      const pos = singleElimPosition(g, k, size, inRound);\n      const centre = D.roundHdr + (pos + 0.5) * D.slotH",
+    replace: "      const pos = inRound.indexOf(g);\n      const centre = D.roundHdr + (pos + 0.5) * D.slotH",
     expect: "P2",
   },
   {
     id: "BP8", what: "connectors only where round sizes double (the old print)", file: PRINT,
-    find: "    const to = byId.get(t.target.id);\n    if (!to) continue;",
-    replace: "    const to = byId.get(t.target.id);\n    if (!to) continue;\n    if (games.filter((x) => x.round === c.game.round).length !== 2 * games.filter((x) => x.round === t.target.round).length) continue;",
+    find: "    const to = byId.get(t.target.id);\n    if (!to) continue;\n    const x1 = c.x + D.cardW;\n    const y1 = c.y + D.sourceY;",
+    replace: "    const to = byId.get(t.target.id);\n    if (!to) continue;\n    if (games.filter((x) => x.round === c.game.round).length !== 2 * games.filter((x) => x.round === t.target.round).length) continue;\n    const x1 = c.x + D.cardW;\n    const y1 = c.y + D.sourceY;",
     expect: "P3",
   },
   {
@@ -100,8 +100,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "BP16", what: "the winner's row gets a colour again", file: PRINT,
-    find: "    const bg = side === \"away\" ?",
-    replace: "    const bg = won ? \"background:#ecfdf5;\" : side === \"away\" ?",
+    find: "  const bg = side === \"away\" ?",
+    replace: "  const bg = won ? \"background:#ecfdf5;\" : side === \"away\" ?",
     expect: "G2",
   },
   {
@@ -130,14 +130,28 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "BP21", what: "the on-screen tree laid out with the PRINT dimensions", file: "src/components/playoffs/bracket-view.tsx",
-    find: "  const L = singleElimLayout(games, SCREEN_TREE);",
-    replace: "  const L = singleElimLayout(games);",
+    find: "    : singleElimLayout(games, SCREEN_TREE);",
+    replace: "    : singleElimLayout(games);",
     expect: "S7",
   },
   {
     id: "BP22", what: "a team row loses its fixed height", file: "src/components/playoffs/bracket-view.tsx",
     find: "flex h-8 flex-none items-center gap-2 px-2.5",
     replace: "flex flex-none items-center gap-2 px-2.5 py-2",
+    expect: "S7",
+  },
+  {
+    id: "BP23", what: "the screen tree places a series group by its top, not its middle",
+    file: "src/components/playoffs/bracket-view.tsx",
+    find: 'top: (c as PlacedItem<GameWithTeams>).centre, transform: "translateY(-50%)"',
+    replace: "top: c.y",
+    expect: "S7",
+  },
+  {
+    id: "BP24", what: "the screen group truncates a card's field line",
+    file: "src/components/playoffs/series-card.tsx",
+    find: "<p className={`break-words text-gray-500 ${struck}`}>{field}</p>",
+    replace: "<p className={`truncate text-gray-500 ${struck}`}>{field}</p>",
     expect: "S7",
   },
 ];
@@ -179,3 +193,15 @@ runMutants({
 // 2026-10-20 (feat/playoff-series): BP2's find string re-pointed — the feeder
 // now matches its target by round + position (series share a position). Same
 // mutant (side ignored); 22/22 killed at their own tag.
+// 2026-10-20 — revised series tree (groups of stacked game cards): BP21's find
+// follows the view's new line; BP23 (a group placed by its top) and BP24 (a
+// group card's field truncated) added, both aimed at [S7].
+// Same day: the first pass found BP5, BP7, BP8, BP9, BP14, BP15 and BP16 STALE
+// (target not found exactly once — the runner refuses rather than run a
+// mutant that changes nothing): the row code moved into teamRowHtml (new
+// indent) and groupedTreeLayout repeated the layout and page-fit lines. The
+// page fit is now ONE function (pageScale) for both layouts; BP7/BP8 finds are
+// anchored to singleElimLayout's own lines.
+// Second pass: baseline green (715 checks × 3 zones). 24/24 KILLED at their own
+// assertion (BP23 → [S7], BP24 → [S7]; the rest as before). Source restored
+// and re-verified green.

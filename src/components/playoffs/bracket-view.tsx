@@ -7,16 +7,25 @@ import { EnterResultModal } from "@/components/playoffs/enter-result-modal";
 import { EditPlayoffGameModal } from "@/components/playoffs/edit-playoff-game-modal";
 import { playoffRoundLabel, resultButtonShown } from "@/lib/playoffs/playoff-result";
 import { gameLabel, gameNumbering, slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
-import { SCREEN_TREE, screenSeriesTree, singleElimLayout } from "@/lib/playoffs/bracket-print";
-import { SeriesCard, TONE_CHIP } from "@/components/playoffs/series-card";
+import {
+  SCREEN_GROUP,
+  SCREEN_TREE,
+  groupCardTexts,
+  groupHeight,
+  groupedTreeLayout,
+  singleElimLayout,
+  type PlacedItem,
+} from "@/lib/playoffs/bracket-print";
+import { SeriesGroup, TONE_CHIP } from "@/components/playoffs/series-card";
 import {
   NOT_NEEDED,
   SERIES_TAG_TEXT,
   gameHasResult,
-  oneRowPerSeries,
   seriesGameActions,
   seriesGameTag,
+  seriesChampionLine,
   seriesGamesOf,
+  seriesGroupTitle,
   seriesHeadline,
 } from "@/lib/playoffs/series";
 import { isSeriesGame, isSeriesRound, roundTitle, seriesLengthOf } from "@/lib/playoffs/series-names";
@@ -220,13 +229,16 @@ function GameCard({
 // NEVER marks a winner — the winner is bold text + the trophy.
 const AWAY_ROW_BG = "bg-[#e6f4ea]";
 
-function TeamRow({
+// Exported for the series group's stacked game cards (series-card.tsx), which
+// are this card's rows; `struck` is a not-needed series game.
+export function TeamRow({
   name,
   won,
   tbd,
   score,
   isDone,
   away,
+  struck = false,
 }: {
   name: string;
   won: boolean;
@@ -234,13 +246,14 @@ function TeamRow({
   score: number | null;
   isDone: boolean;
   away: boolean;
+  struck?: boolean;
 }) {
   return (
     <div className={`flex h-8 flex-none items-center gap-2 px-2.5 ${away ? AWAY_ROW_BG : "bg-white"}`}>
       <span
         className={`flex-1 truncate text-xs ${
           tbd ? "italic text-gray-600" : won ? "font-bold text-[#0C1F3F]" : "text-gray-800"
-        }`}
+        }${struck ? " line-through" : ""}`}
       >
         {name}
       </span>
@@ -422,20 +435,26 @@ function BracketTree({
   // The print's layout with the screen's dimensions: cards by bracket
   // position (round 1 beside the slot it feeds, byes leave gaps), one line per
   // advancing game into the exact row it fills (singleElimTarget). With a
-  // series round (0114) the tree lays out ONE row per series and every slot
-  // is as tall as the longest series card (screenSeriesTree).
+  // series round (0114) each series is a GROUP of stacked game cards
+  // (series-card.tsx), its height estimated by groupHeight(SCREEN_GROUP) and
+  // placed by its middle, where its lines leave and enter (groupedTreeLayout).
   const withSeries = games.some((g) => (g.series_game ?? 1) >= 2);
-  const rows = withSeries ? oneRowPerSeries(games) : games;
-  const longest = withSeries ? Math.max(...games.map((g) => g.series_game ?? 1)) : 0;
-  const dims = withSeries ? screenSeriesTree(longest) : SCREEN_TREE;
-  const L = singleElimLayout(rows, dims);
+  const L = withSeries
+    ? groupedTreeLayout(games, SCREEN_TREE, (first, series) =>
+        groupHeight(
+          SCREEN_GROUP,
+          seriesGroupTitle(first, games),
+          seriesHeadline(series, teamName).text,
+          groupCardTexts(series).map((t, i) => ({ ...t, flagged: !!flagOf(series[i]) })),
+          first.round === championshipRound && seriesChampionLine(series, teamName) !== null,
+        ))
+    : singleElimLayout(games, SCREEN_TREE);
   const header = (round: string) => {
     if (!withSeries) return roundLabel(round);
     const title = roundTitle(round, games);
     const row = games.find((g) => g.round === round);
     return row && isSeriesRound(round, games) ? `${title} · best of ${seriesLengthOf(row, games)}` : title;
   };
-
   return (
     <div style={{ position: "relative", height: L.height, width: L.width, minWidth: L.width }}>
       <svg
@@ -467,13 +486,15 @@ function BracketTree({
       ))}
 
       {/* Game cards */}
-      {L.cards.map((c) => isSeriesGame(c.game, games) ? (
-        <div key={c.game.id} style={{ position: "absolute", left: c.x, top: c.y }}>
-          <SeriesCard
+      {L.cards.map((c) => withSeries && isSeriesGame(c.game, games) ? (
+        <div
+          key={c.game.id}
+          style={{ position: "absolute", left: c.x, top: (c as PlacedItem<GameWithTeams>).centre, transform: "translateY(-50%)" }}
+        >
+          <SeriesGroup
             games={seriesGamesOf(c.game, games)}
             bracket={games}
-            width={dims.cardW}
-            height={dims.cardH}
+            width={SCREEN_TREE.cardW}
             isFinal={c.game.round === championshipRound}
             labelOf={labelOf}
             teamName={teamName}

@@ -832,6 +832,31 @@ export function outboundMatchup(
   return !opts.homeIsTeam && opts.awayIsTeam ? `${away} and ${home}` : `${home} and ${away}`;
 }
 
+// ─── The tree's series group (screen and print) ───────────────────────────────
+
+/** A series group's header line, left: "Semifinal 1 · best of 3". */
+export function seriesGroupTitle(first: SeriesRow, bracket: ReadonlyArray<SeriesRow>): string {
+  return `${seriesName(first, bracket)} · best of ${seriesLengthOf(first, bracket)}`;
+}
+
+/** One game card's header in a series group: "Game 2 of 3 · Sat 11/21 ·
+ *  9:00 AM" (or "· Date TBD"), whether it is if needed (said in the header)
+ *  or not needed (greyed and struck through). No "Next" — the card's buttons
+ *  say what can be done. */
+export function seriesGameHeader(
+  g: SeriesGame,
+  series: ReadonlyArray<SeriesGame>,
+): { when: string; tag: SeriesGameTag; ifNeeded: boolean; notNeeded: boolean } {
+  const length = Math.max(1, ...series.map((x) => x.series_game ?? 1));
+  const tag = seriesGameTag(g, series);
+  return {
+    when: `Game ${g.series_game ?? 1} of ${length} · ${seriesGameWhen(g)}`,
+    tag,
+    ifNeeded: tag === "if_needed",
+    notNeeded: tag === "not_needed",
+  };
+}
+
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
 export function joinList(items: string[]): string {

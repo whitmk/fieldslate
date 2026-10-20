@@ -949,18 +949,44 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     block in `scripts/sim/playoff-series-sim.sql` (26 rows) — the SQL proof
     runs it through the helper (IX1), `sim:playoff-series` parses the SAME
     block and runs it through `seriesGameTag` (IX). Never a second copy.
-  - **Print** (`bracket-print.ts`): one series card per series (header +
-    standing, two team rows with wins, one 15px line per game; a played game's
-    line drops the time; not-needed struck; If needed / Next tags), round
-    headers "Semifinals · best of 3", and "Single elimination · Semifinals and
-    Final best of 3" above "Printed …". `printSeriesTree(tallest per round)`:
-    every card's top sits where a game card's does, lines leave at the row
-    divider, and the slot grows only when some round's tallest card needs
-    more than its 2^k slots — a 16-team bracket with a best-of-7 Final prints
-    at 94% (a uniform tallest-card slot gave 57%). **A bracket with no series
-    prints byte-identically** (all eight `bracket-print-render.ts` documents
-    compared before/after). Render fixtures `series-majors-6` and `series-16`
-    are for the Safari check.
+  - **Print + screen tree — SERIES GROUPS OF STACKED GAME CARDS (revised
+    2026-10-20, approved sketch; replaces one card per series):** each series
+    is a group — a light dashed outline, header line "Semifinal 1 · best of
+    3" left and where the series stands right (`seriesGroupTitle`,
+    `seriesHeadline`) — holding one FULL game card per game: the single
+    card's bands with "Game 2 of 3 · date · time" (`seriesGameHeader`) over
+    the field, both team rows (screen: bracket-view's exported `TeamRow`),
+    score, trophy + bold on the winner, the green second row, the game's own
+    buttons on screen (`seriesGameActions`). If needed is said in the card's
+    header; not-needed cards are greyed (opacity .5) and struck through; NO
+    "Next" tag. Headers WRAP (`overflow-wrap:anywhere`), never truncate. Home
+    order per card is the stored alternation; before both teams are known each
+    team sits in its bracket slot. Round headers "Semifinals · best of 3";
+    "Single elimination · Semifinals and Final best of 3" above "Printed …".
+  - **The layout: `groupedTreeLayout(games, dims, groupH)`** (bracket-print.ts,
+    used by the print with `PRINT_SERIES_TREE` and the screen with
+    `SCREEN_TREE`): one item per series (a group) or single game; a group's
+    height is ESTIMATED by `groupHeight(PRINT_GROUP | SCREEN_GROUP, …)` from
+    its text (`textWidth`: Arial advance widths, bold ×1.08, × a safety
+    factor; greedy word wrap), slots grow only as far as some round's tallest
+    item needs ((h + GROUP_MARGIN) / 2^k), and a group is placed by its TRUE
+    middle (`top: centre; translateY(-50%)`) — its lines leave and enter
+    there, so a header that wraps further than estimated can't misplace a
+    line; single cards keep theirs (leave at the divider, enter a row).
+    Measured 2026-10-20 in headless Chrome: every estimate ≥ the real group
+    height (slack 0–48px print; screen 540/540/522 vs 508/492/490). The group
+    numbers ARE series-card.tsx's classes (sim [S7] pins them). Non-series
+    print documents are byte-identical to before the group layout (all eight
+    render fixtures compared 2026-10-20).
+  - **Print scale, every round after Round 1 at the same length** (one
+    landscape page, real field names): 6 and 8 teams — best of 3 1.0, best of
+    5 0.68 / 0.66, best of 7 0.49; 16 teams — best of 3 0.53, best of 5 0.34,
+    best of 7 0.245. A group must fit beside the 2^k round-1 slots it spans,
+    so long early series shrink the page fast; below ~0.5 team names print
+    under 5pt. The render fixtures `series-majors-6` (Semifinals + Final best
+    of 3: 1.0) and `series-16` (QF 3 / SF 5 / F 7: 0.53) are for the Safari
+    check. **A bracket with no series prints byte-identically** (all eight
+    other `bracket-print-render.ts` documents compared before/after).
   - **CSV + schedule print** (`playoff-export.ts`): in a bracket with a series
     EVERY game is named ("Round 1 · Game 1", "Semifinal 1 · Game 2 of 3",
     "(if needed)" from the results); a bracket without one exports exactly as
@@ -987,9 +1013,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `stage2`; payloads send only rounds the planned games have
   (`seriesByRoundPayload`) and `series_game` per game. Review: `SeriesReview`
   (per-round dates, the games line, every undated game named). Page:
-  `series-card.tsx` — the tree lays out ONE row per series
-  (`oneRowPerSeries`) in taller slots (`screenSeriesTree`: the single card's
-  top bands, so the lines land on the same rows, + one h-6 row per game); the
+  `series-card.tsx` — the tree's series GROUP (see "Print + screen tree"
+  below; the step-3 one-card-per-series layout was replaced 2026-10-20); the
   list names series games and offers Result only on the next game, Edit only
   on the last result, Move on every needed game without a result
   (`seriesGameActions` / `seriesCardActions`). The result modal shows the
@@ -1049,11 +1074,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   range" (that count depends on fields and the per-day limit); the two-stage
   seed confirm keeps today's "Game 1: Mets (4) vs …" for single games (the
   mockup showed "Round 1 · Game 1:").
-- **Harness: `npm run sim:playoff-series`** (3,363 checks × 3 zones, 12
+- **Harness: `npm run sim:playoff-series`** (3,375 checks × 3 zones, 12
   counters; S0 nothing changes without series … S10 confirms, S11 screens,
   S12 outside the app, IX the shared if-needed table, then 300 seeded
   playthroughs through the TypeScript twin, incl. clear round trips) +
-  `:mutants` (42, each killed at its own assertion — read the RUN LOG).
+  `:mutants` (45, each killed at its own assertion — read the RUN LOG).
 
 ## Printable playoff bracket + slot labels (2026-10-13)
 
@@ -1116,10 +1141,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   output; the 11-team one is the live Majors SHAPE with placeholder names).
   Open one in Safari and print to check WebKit; Chromium PDFs come from
   headless Chrome `--print-to-pdf`.
-- **Harness: `npm run sim:bracket-print`** (713 checks × 3 zones, 8 counters:
+- **Harness: `npm run sim:bracket-print`** (715 checks × 3 zones, 8 counters:
   feeders vs advancement, labels, trophy, two-tone and winner styling, date
   line, print and on-screen layout, page fit, contrast, wiring) + `:mutants`
-  (22, each killed at its own assertion).
+  (24, each killed at its own assertion). The page fit is ONE function,
+  `pageScale`, shared by both tree layouts.
 
 ## Playoff game numbers people see — shown, not stored (2026-10-20)
 

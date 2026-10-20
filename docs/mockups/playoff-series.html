@@ -236,7 +236,26 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
 .srow:last-child{border-bottom:none}
 .srow b{font-size:13.5px}
 .srow .tiny{line-height:1.35}
-/* series card (tree) */
+/* series group (tree + print, approved sketch 2026-10-20): a dashed outline
+   holding one full game card per game, stacked */
+.sg{width:228px;border:1px dashed #cbd5e1;border-radius:11px;padding:6px;background:var(--soft)}
+.stree .tcol:has(> .sg){min-width:236px;flex:none}
+.sg .gh{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;column-gap:6px;font-size:11px;margin-bottom:6px;color:var(--muted)}
+.sg .gh b{color:var(--ink)}
+.sg .g{width:auto}
+.sg .g + .g{margin-top:8px}
+.sg .g .w{overflow-wrap:anywhere}
+.sg .g .w .ifn{color:var(--amber-ink);font-weight:700;white-space:nowrap}
+.sg .g.nn{opacity:.5}
+.sg .g.nn .w,.sg .g.nn .s .n{text-decoration:line-through}
+.sg .g .s .sc-n{font-weight:800;font-variant-numeric:tabular-nums}
+.sg .g .ft{display:flex;gap:6px;padding:5px 9px;border-top:1px solid var(--line);background:var(--soft)}
+.sg .g .ft .btn{min-height:26px;padding:3px 8px;font-size:11px}
+.page .sg{border-color:#6b7280;background:#fff}
+.page .sg .g{box-shadow:none;border-color:#9ca3af}
+.page .sg .g .w{color:#374151}
+.page .sg .g .s + .s{background:#e6f4ea}
+/* series card (tree, superseded by .sg) */
 .sc{width:228px;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.04)}
 .sc .hd{display:flex;align-items:center;gap:6px;padding:5px 9px;font-size:10.5px;color:var(--muted);border-bottom:1px solid var(--line)}
 .sc .hd b{color:var(--ink);font-size:11px}
@@ -377,8 +396,8 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
 <!-- ───────────── 3 BRACKET ───────────── -->
 <section class="screen" id="s3">
   <h2>Playoffs page</h2>
-  <h3>One card per series: who leads, and every game</h3>
-  <p class="why"><b>Semifinal 1 — in progress:</b> Expos lead 1–0; Game 2 is next; Game 3 is marked if needed. <b>Semifinal 2 — decided:</b> Bears won 2–0; their Game 3 is not needed (struck through, no buttons) and Bears have moved into the Final. <b>Final — waiting:</b> one slot is "Winner of Semifinal 1" (the round feeding it is a series), while the Semifinals still read "Winner of Game 1" (Round 1 is single games). Single-game rounds keep today's card. The trophy and bold mark a series winner; the second row is the light-green row as today. On a phone the bracket is the list: one row per game.</p>
+  <h3>One group per series: every game is its own card</h3>
+  <p class="why"><b>Revised 2026-10-20 (approved sketch):</b> each series is a group — a light dashed outline with "Semifinal 1 · best of 3" and where the series stands — holding one full game card per game, stacked: today's card with "Game 2 of 3 · date · time" over the field, both team rows with seed and score, trophy + bold on the winner, the light-green second row, and the game's own buttons. If-needed games say so in their header; not-needed games are greyed and struck through. No "Next" tag. Field names never truncate (the header wraps). Home order follows the alternation; before both teams are known each team sits in its bracket slot. The line into the next round leaves from the group's middle. <b>Semifinal 1 — in progress:</b> Expos lead 1–0; Game 3 is marked if needed. <b>Semifinal 2 — decided:</b> Bears won 2–0; their Game 3 is not needed (struck through, no buttons) and Bears have moved into the Final. <b>Final — waiting:</b> one slot is "Winner of Semifinal 1" (the round feeding it is a series), while the Semifinals still read "Winner of Game 1" (Round 1 is single games). Single-game rounds keep today's card. The trophy and bold mark a series winner; the second row is the light-green row as today. On a phone the bracket is the list: one row per game.</p>
   <div class="pair" data-pair>
     <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
       <div class="card div-card">
@@ -391,39 +410,11 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
                 <div class="g"><div class="w">Game 2 · Sat 11/14 · 9:00 AM<br>Monroe Complex — Perry</div><div class="s"><span class="sd">3</span><span class="n">Lions</span><span class="tiny">2</span></div><div class="s"><span class="sd">6</span><span class="n" style="font-weight:800">Royals 🏆</span><b>4</b></div></div>
               </div>
               <div class="tcol"><h5>Semifinals · best of 3</h5>
-                <div class="sc">
-                  <div class="hd"><b>Semifinal 1</b><span class="grow"></span><span class="chip amber">Expos lead 1–0</span></div>
-                  <div class="tm"><span class="sd">1</span><span class="n">Expos</span><span class="w">1</span></div>
-                  <div class="tm"><span class="sd">4</span><span class="n">Mets</span><span class="w lo">0</span></div>
-                  <div class="gms">
-                    <div class="gm"><span class="k">G1</span><span class="d">Sun 11/15 · Andrews · Expos home</span><span class="r">Expos 5–2</span></div>
-                    <div class="gm"><span class="k">G2</span><span class="d">Sat 11/21 · 9:00 AM · Andrews · Mets home</span><span class="r"><span class="chip">Next</span></span></div>
-                    <div class="gm ifn"><span class="k">G3</span><span class="d">Sun 11/22 · 9:00 AM · Andrews · Expos home</span><span class="r"><span class="chip amber">If needed</span></span></div>
-                  </div>
-                  <div class="ft"><button class="btn">Result</button><button class="btn">Move</button></div>
-                </div>
-                <div class="sc">
-                  <div class="hd"><b>Semifinal 2</b><span class="grow"></span><span class="chip green">Bears win 2–0</span></div>
-                  <div class="tm"><span class="sd">2</span><span class="n won">Bears 🏆</span><span class="w">2</span></div>
-                  <div class="tm"><span class="sd">6</span><span class="n">Royals</span><span class="w lo">0</span></div>
-                  <div class="gms">
-                    <div class="gm"><span class="k">G1</span><span class="d">Sun 11/15 · Perry · Bears home</span><span class="r">Bears 4–1</span></div>
-                    <div class="gm"><span class="k">G2</span><span class="d">Sat 11/21 · Perry · Royals home</span><span class="r">Bears 3–2</span></div>
-                    <div class="gm nn"><span class="k">G3</span><span class="d">Sun 11/22 · Perry</span><span class="r"><span class="chip">Not needed</span></span></div>
-                  </div>
-                </div>
+                <div class="sg"><div class="gh"><b>Semifinal 1 · best of 3</b><span class="chip amber">Expos lead 1–0</span></div><div class="g"><div class="w"><b>Game 1 of 3 · Sun 11/15 · 9:00 AM</b><br>Monroe Complex — Andrews</div><div class="s"><span class="sd">1</span><span class="n" style="font-weight:800">Expos 🏆</span><span class="sc-n">5</span></div><div class="s"><span class="sd">4</span><span class="n">Mets</span><span class="sc-n">2</span></div><div class="ft"><button class="btn">Edit result</button></div></div><div class="g"><div class="w"><b>Game 2 of 3 · Sat 11/21 · 9:00 AM</b><br>Monroe Complex — Andrews</div><div class="s"><span class="sd">4</span><span class="n">Mets</span></div><div class="s"><span class="sd">1</span><span class="n">Expos</span></div><div class="ft"><button class="btn">Enter result</button><button class="btn">Move</button></div></div><div class="g"><div class="w"><b>Game 3 of 3 · Sun 11/22 · 9:00 AM · <span class="ifn">If needed</span></b><br>Monroe Complex — Andrews</div><div class="s"><span class="sd">1</span><span class="n">Expos</span></div><div class="s"><span class="sd">4</span><span class="n">Mets</span></div><div class="ft"><button class="btn">Move</button></div></div></div>
+                <div class="sg"><div class="gh"><b>Semifinal 2 · best of 3</b><span class="chip green">Bears win 2–0</span></div><div class="g"><div class="w"><b>Game 1 of 3 · Sun 11/15 · 9:00 AM</b><br>Monroe Complex — Perry</div><div class="s"><span class="sd">2</span><span class="n" style="font-weight:800">Bears 🏆</span><span class="sc-n">4</span></div><div class="s"><span class="sd">6</span><span class="n">Royals</span><span class="sc-n">1</span></div></div><div class="g"><div class="w"><b>Game 2 of 3 · Sat 11/21 · 9:00 AM</b><br>Monroe Complex — Perry</div><div class="s"><span class="sd">6</span><span class="n">Royals</span><span class="sc-n">2</span></div><div class="s"><span class="sd">2</span><span class="n" style="font-weight:800">Bears 🏆</span><span class="sc-n">3</span></div><div class="ft"><button class="btn">Edit result</button></div></div><div class="g nn"><div class="w"><b>Game 3 of 3 · Sun 11/22 · 9:00 AM</b><br>Monroe Complex — Perry</div><div class="s"><span class="sd">2</span><span class="n">Bears</span></div><div class="s"><span class="sd">6</span><span class="n">Royals</span></div></div></div>
               </div>
               <div class="tcol"><h5>Final · best of 3</h5>
-                <div class="sc">
-                  <div class="hd"><b>Final</b><span class="grow"></span><span class="chip">Not started</span></div>
-                  <div class="tm"><span class="n ph">Winner of Semifinal 1</span></div>
-                  <div class="tm"><span class="sd">2</span><span class="n">Bears</span></div>
-                  <div class="gms">
-                    <div class="gm"><span class="k">G1</span><span class="d">Sat 11/28 · 9:00 AM · Andrews · home set when both teams are known</span><span class="r"></span></div>
-                    <div class="gm"><span class="k">G2</span><span class="d">Sun 11/29 · 9:00 AM · Andrews</span><span class="r"></span></div>
-                    <div class="gm ifn"><span class="k">G3</span><span class="d">Sat 12/5 · 9:00 AM · Andrews</span><span class="r"><span class="chip amber">If needed</span></span></div>
-                  </div>
-                </div>
+                <div class="sg"><div class="gh"><b>Final · best of 3</b><span class="chip ">Not started</span></div><div class="g"><div class="w"><b>Game 1 of 3 · Sat 11/28 · 9:00 AM</b><br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Winner of Semifinal 1</span></div><div class="s"><span class="sd">2</span><span class="n">Bears</span></div><div class="ft"><button class="btn">Move</button></div></div><div class="g"><div class="w"><b>Game 2 of 3 · Sun 11/29 · 9:00 AM</b><br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Winner of Semifinal 1</span></div><div class="s"><span class="sd">2</span><span class="n">Bears</span></div><div class="ft"><button class="btn">Move</button></div></div><div class="g"><div class="w"><b>Game 3 of 3 · Sat 12/5 · 9:00 AM · <span class="ifn">If needed</span></b><br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Winner of Semifinal 1</span></div><div class="s"><span class="sd">2</span><span class="n">Bears</span></div><div class="ft"><button class="btn">Move</button></div></div></div>
               </div>
             </div>
             <div class="slist">
@@ -545,8 +536,8 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
 <!-- ───────────── 8 PRINT ───────────── -->
 <section class="screen" id="s8">
   <h2>Printed bracket</h2>
-  <h3>The same series cards, landscape</h3>
-  <p class="why">Today's printed tree with series cards in place of game cards for series rounds: the series score, then each game's date, time, field and result. Not-needed games print struck through; if-needed games say so. Single-game rounds print exactly as today. Fits US Letter landscape at the same sizes as today's 9–16-team print. On a phone this preview scrolls sideways — the printout is one landscape page.</p>
+  <h3>The same series groups, landscape</h3>
+  <p class="why">Revised 2026-10-20: the screen's groups — one full game card per game, stacked in a dashed outline with the series name and where it stands. Not-needed games print greyed and struck through; if-needed games say so in their header. Single-game rounds print exactly as today. Still one US Letter landscape page, scaled down as the groups need (a 16-team bracket with best of 3/5/7 prints at about half size). On a phone this preview scrolls sideways — the printout is one landscape page.</p>
   <div class="pair" data-pair>
     <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
       <div class="page">
@@ -557,36 +548,12 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
             <div class="g"><div class="w"><b>Game 2 · Sat 11/14 · 9:00 AM</b><br>Monroe Complex — Perry</div><div class="s"><span class="n">Lions</span>2</div><div class="s"><span class="n" style="font-weight:800">Royals 🏆</span><b>4</b></div></div>
           </div>
           <div class="tcol"><h5>Semifinals · best of 3</h5>
-            <div class="sc">
-              <div class="hd"><b>Semifinal 1</b><span class="grow"></span><span>Expos lead 1–0</span></div>
-              <div class="tm"><span class="n">Expos</span><span class="w">1</span></div><div class="tm"><span class="n">Mets</span><span class="w lo">0</span></div>
-              <div class="gms">
-                <div class="gm"><span class="k">G1</span><span class="d">Sun 11/15 · Andrews</span><span class="r">Expos 5–2</span></div>
-                <div class="gm"><span class="k">G2</span><span class="d">Sat 11/21 · 9:00 AM · Andrews</span><span class="r"></span></div>
-                <div class="gm ifn"><span class="k">G3</span><span class="d">Sun 11/22 · 9:00 AM · Andrews</span><span class="r"><span class="chip">If needed</span></span></div>
+                <div class="sg"><div class="gh"><b>Semifinal 1 · best of 3</b><span>Expos lead 1–0</span></div><div class="g"><div class="w"><b>Game 1 of 3 · Sun 11/15 · 9:00 AM</b><br>Monroe Complex — Andrews</div><div class="s"><span class="n" style="font-weight:800">Expos 🏆</span><span class="sc-n">5</span></div><div class="s"><span class="n">Mets</span><span class="sc-n">2</span></div></div><div class="g"><div class="w"><b>Game 2 of 3 · Sat 11/21 · 9:00 AM</b><br>Monroe Complex — Andrews</div><div class="s"><span class="n">Mets</span></div><div class="s"><span class="n">Expos</span></div></div><div class="g"><div class="w"><b>Game 3 of 3 · Sun 11/22 · 9:00 AM · <span class="ifn">If needed</span></b><br>Monroe Complex — Andrews</div><div class="s"><span class="n">Expos</span></div><div class="s"><span class="n">Mets</span></div></div></div>
+                <div class="sg"><div class="gh"><b>Semifinal 2 · best of 3</b><span>Bears win 2–0</span></div><div class="g"><div class="w"><b>Game 1 of 3 · Sun 11/15 · 9:00 AM</b><br>Monroe Complex — Perry</div><div class="s"><span class="n" style="font-weight:800">Bears 🏆</span><span class="sc-n">4</span></div><div class="s"><span class="n">Royals</span><span class="sc-n">1</span></div></div><div class="g"><div class="w"><b>Game 2 of 3 · Sat 11/21 · 9:00 AM</b><br>Monroe Complex — Perry</div><div class="s"><span class="n">Royals</span><span class="sc-n">2</span></div><div class="s"><span class="n" style="font-weight:800">Bears 🏆</span><span class="sc-n">3</span></div></div><div class="g nn"><div class="w"><b>Game 3 of 3 · Sun 11/22 · 9:00 AM</b><br>Monroe Complex — Perry</div><div class="s"><span class="n">Bears</span></div><div class="s"><span class="n">Royals</span></div></div></div>
               </div>
-            </div>
-            <div class="sc">
-              <div class="hd"><b>Semifinal 2</b><span class="grow"></span><span>Bears win 2–0</span></div>
-              <div class="tm"><span class="n won">Bears 🏆</span><span class="w">2</span></div><div class="tm"><span class="n">Royals</span><span class="w lo">0</span></div>
-              <div class="gms">
-                <div class="gm"><span class="k">G1</span><span class="d">Sun 11/15 · Perry</span><span class="r">Bears 4–1</span></div>
-                <div class="gm"><span class="k">G2</span><span class="d">Sat 11/21 · Perry</span><span class="r">Bears 3–2</span></div>
-                <div class="gm nn"><span class="k">G3</span><span class="d">Sun 11/22 · Perry</span><span class="r"><span class="chip">Not needed</span></span></div>
+              <div class="tcol"><h5>Final · best of 3</h5>
+                <div class="sg"><div class="gh"><b>Final · best of 3</b><span>Not started</span></div><div class="g"><div class="w"><b>Game 1 of 3 · Sat 11/28 · 9:00 AM</b><br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Winner of Semifinal 1</span></div><div class="s"><span class="n">Bears</span></div></div><div class="g"><div class="w"><b>Game 2 of 3 · Sun 11/29 · 9:00 AM</b><br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Winner of Semifinal 1</span></div><div class="s"><span class="n">Bears</span></div></div><div class="g"><div class="w"><b>Game 3 of 3 · Sat 12/5 · 9:00 AM · <span class="ifn">If needed</span></b><br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Winner of Semifinal 1</span></div><div class="s"><span class="n">Bears</span></div></div></div>
               </div>
-            </div>
-          </div>
-          <div class="tcol"><h5>Final · best of 3</h5>
-            <div class="sc">
-              <div class="hd"><b>Final</b></div>
-              <div class="tm"><span class="n ph">Winner of Semifinal 1</span></div><div class="tm"><span class="n">Bears</span></div>
-              <div class="gms">
-                <div class="gm"><span class="k">G1</span><span class="d">Sat 11/28 · 9:00 AM · Andrews</span><span class="r"></span></div>
-                <div class="gm"><span class="k">G2</span><span class="d">Sun 11/29 · 9:00 AM · Andrews</span><span class="r"></span></div>
-                <div class="gm ifn"><span class="k">G3</span><span class="d">Sat 12/5 · 9:00 AM · Andrews</span><span class="r"><span class="chip">If needed</span></span></div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div></div></div>
