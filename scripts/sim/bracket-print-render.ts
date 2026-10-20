@@ -8,7 +8,7 @@
 // It only reads the fixtures and writes files. It never connects to anything.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { buildBracketPrintHtml, printDocument } from "../../src/lib/playoffs/bracket-print";
-import { doubleElim, playedFour, roundRobin, singleElim } from "./bracket-print-fixtures";
+import { doubleElim, playedFour, roundRobin, seriesMockup, seriesSixteen, singleElim } from "./bracket-print-fixtures";
 
 const out = process.argv[2];
 if (!out) {
@@ -37,6 +37,10 @@ const cases: [string, ReturnType<typeof singleElim>, string][] = [
   ["32-team", singleElim(32, 8), "single_elimination"],
   ["round-robin-6", roundRobin(6), "round_robin"],
   ["double-elim-8", doubleElim(8), "double_elimination"],
+  // Playoff series (0114): the approved mockup's bracket, and the tallest
+  // card (best of 7) in a 16-team tree.
+  ["series-majors-6", seriesMockup(), "single_elimination"],
+  ["series-16", seriesSixteen(), "single_elimination"],
 ];
 for (const [name, games, format] of cases) {
   const body = buildBracketPrintHtml(games, format, "Santa Rosa Example League", "Majors", "October 13, 2026");

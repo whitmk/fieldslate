@@ -909,9 +909,59 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Steps (each held for Whit's go; one go-live):** 1 rules + planner (DONE on
   the branch) → 2 migration 0114 (DONE on the branch: written and proven, NOT
   applied) → 3 admin screens (DONE on the branch) → 4 public page, feed,
-  print, CSV, confirms, snack shack/conflicts/daylight → 5 apply 0114, then
-  ship. **The Playoffs page selects `series_by_round` (and the wizard writes
-  it), so this branch must not reach `main` before 0114 is applied.**
+  print, CSV, confirms, snack shack/conflicts/daylight (DONE on the branch;
+  Safari print check is Whit's) → 5 apply 0114, then ship. **The Playoffs
+  page selects `series_by_round` (and the wizard writes it), so this branch
+  must not reach `main` before 0114 is applied.**
+- **Outside the app (step 4, 2026-10-20).** Shared words in series.ts:
+  `seriesGameName` ("Semifinal 1 · Game 2 of 3"), `outboundMatchup` (home team
+  first once both teams are known; before that "Bears and Winner of Semifinal
+  1" — the known team first, no home named; a single game always "vs"),
+  `ifNeededByPosition`, `seriesPrintLine`, `seriesRoundHeader`.
+  - **Public page + all-games feed** (`view.ts`, `league-ics.ts`): series rows
+    read "Playoffs · Semifinal 1 · Game 2 of 3" ("Playoffs · Bracket · …" for
+    Stage 2) with an amber **If needed** tag; the LENGTH comes from the
+    reader's `series_length` (the reader leaves not-needed games out, so the
+    rows can't count it). `buildRows` drops a not-needed row again (second
+    lock). Feed titles for series games only: "Majors Playoffs — Semifinal 1,
+    Game 3 of 3 (if needed): Expos vs Mets"; a single playoff game keeps its
+    matchup title. No scores or standings leave the page (sim checks the text
+    and the type).
+  - **The public "If needed" is BY POSITION, not by result** — the reader
+    carries no results, so a best of 3 tied 1–1 still tags Game 3 "If needed"
+    there (the admin screens, print and CSV use `seriesGameTag` and drop it).
+    Recorded deviation; the fix would be an `if_needed` key from the reader
+    (a 0114 change + re-proof).
+  - **Print** (`bracket-print.ts`): one series card per series (header +
+    standing, two team rows with wins, one 15px line per game; a played game's
+    line drops the time; not-needed struck; If needed / Next tags), round
+    headers "Semifinals · best of 3", and "Single elimination · Semifinals and
+    Final best of 3" above "Printed …". `printSeriesTree(tallest per round)`:
+    every card's top sits where a game card's does, lines leave at the row
+    divider, and the slot grows only when some round's tallest card needs
+    more than its 2^k slots — a 16-team bracket with a best-of-7 Final prints
+    at 94% (a uniform tallest-card slot gave 57%). **A bracket with no series
+    prints byte-identically** (all eight `bracket-print-render.ts` documents
+    compared before/after). Render fixtures `series-majors-6` and `series-16`
+    are for the Safari check.
+  - **CSV + schedule print** (`playoff-export.ts`): in a bracket with a series
+    EVERY game is named ("Round 1 · Game 1", "Semifinal 1 · Game 2 of 3",
+    "(if needed)" from the results); a bracket without one exports exactly as
+    before; not-needed games are left out (`exportableGames`).
+  - **Delete confirm:** the 0114 reply's `not_needed_games` is parsed
+    (`notNeededGames`, absent = 0); the public line adds "(not-needed games
+    never are)". A series bracket's first line is `seriesDeleteLine`, from a
+    fail-soft games read (`bracketGamesForConfirm`) shown ONLY when it agrees
+    with the preview on games, results and not-needed counts — the preview
+    stays the authority. Kept the existing public sentence rather than the
+    mockup's shorter one. **Seed confirm** now renders its `seriesLine` (it
+    was computed but not shown).
+  - **A not-needed game frees, an if-needed one holds:** the snack shack's
+    assignment index skips `not_needed`; Edit playoff game's two playoff
+    occupancy reads add `.neq("status", NOT_NEEDED)`; the season page's
+    last-game read skips it (season_last_day's rule). Daylight never flagged
+    one (FLAGGABLE_STATUSES). `delete_venue_if_unreferenced` still counts a
+    not-needed game as referencing its field — left alone (the row exists).
 - **Admin screens (step 3, 2026-10-20).** Wizard: `SeriesLengthsControl`
   (`steps/series-lengths-control.tsx`) — a 1/3/5/7 choice per round from
   `wizardRounds`, in the plain Dates step for single elimination and in the
@@ -977,10 +1027,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   range" (that count depends on fields and the per-day limit); the two-stage
   seed confirm keeps today's "Game 1: Mets (4) vs …" for single games (the
   mockup showed "Round 1 · Game 1:").
-- **Harness: `npm run sim:playoff-series`** (3,186 checks × 3 zones, 8
-  counters; S0 nothing changes without series … S10 confirms, then 300 seeded
-  playthroughs through the TypeScript twin, incl. clear round trips) +
-  `:mutants` (18, each killed at its own assertion — read the RUN LOG).
+- **Harness: `npm run sim:playoff-series`** (3,282 checks × 3 zones, 11
+  counters; S0 nothing changes without series … S10 confirms, S11 screens,
+  S12 outside the app, then 300 seeded playthroughs through the TypeScript
+  twin, incl. clear round trips) + `:mutants` (41, each killed at its own
+  assertion — read the RUN LOG).
 
 ## Printable playoff bracket + slot labels (2026-10-13)
 

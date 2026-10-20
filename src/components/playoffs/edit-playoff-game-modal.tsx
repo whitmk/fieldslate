@@ -29,6 +29,7 @@ import {
 import type { GameWithTeams } from "@/components/playoffs/bracket-view";
 import { useDaylight } from "@/components/daylight/use-daylight";
 import { DaylightPickNotice } from "@/components/daylight/daylight-pieces";
+import { NOT_NEEDED } from "@/lib/playoffs/series";
 
 type VenueRow = {
   id: string;
@@ -248,7 +249,9 @@ export function EditPlayoffGameModal({
         .eq("venue_id", venueId)
         .eq("scheduled_date", validDate)
         .neq("id", game.id)
-        .neq("status", "cancelled"),
+        .neq("status", "cancelled")
+        // A not-needed series game (0114) frees its field; an if-needed one holds it.
+        .neq("status", NOT_NEEDED),
       // Team occupancy, both tables. A TBD game has no teams: nothing to read.
       teamIds.length
         ? supabase
@@ -267,6 +270,7 @@ export function EditPlayoffGameModal({
             .eq("scheduled_date", validDate)
             .neq("id", game.id)
             .neq("status", "cancelled")
+            .neq("status", NOT_NEEDED)
         : Promise.resolve({ data: [], error: null }),
     ]).then(([vq, pq, tq, tpq]) => {
       if (stale) return;

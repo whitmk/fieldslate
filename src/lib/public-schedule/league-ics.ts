@@ -15,6 +15,10 @@
 // (see team-calendar-ics.ts). DTSTAMP is the moment the feed was generated —
 // the reader carries no per-game change time — passed in so this stays pure.
 //
+// A SERIES (0114): not-needed games are not in the rows (the reader leaves
+// them out; buildRows drops them again), so a decided series' extra games
+// leave phones on the next refresh. Titles name the series.
+//
 // NOTHING ELSE is emitted: no admin note, score, official or contact detail;
 // the rows never carry one.
 
@@ -30,7 +34,7 @@ import {
 import { findOrgTimezone } from "@/lib/calendar/timezones";
 import { SITE_TAG } from "./classify";
 import type { PublicScheduleOk, PublicPlayoffGame } from "./types";
-import { buildRows } from "./view";
+import { buildRows, type ScheduleRow } from "./view";
 
 export const LEAGUE_UID_DOMAIN = "thefieldslate.com";
 
@@ -53,6 +57,15 @@ function hostFirstTitle(
     }
   }
   return fallback;
+}
+
+/** A playoff event's title. A game of a series names its series, as the
+ *  approved mockup (7) does: "Majors Playoffs — Semifinal 1, Game 3 of 3 (if
+ *  needed): Expos vs Mets". A single playoff game is the matchup, as before. */
+export function playoffEventTitle(r: ScheduleRow): string {
+  if (!r.series) return r.matchup;
+  const { name, k, length } = r.series;
+  return `${r.divisionName} Playoffs — ${name}, Game ${k} of ${length}${r.ifNeeded ? " (if needed)" : ""}: ${r.matchup}`;
 }
 
 export function leagueCalendarName(data: PublicScheduleOk): string {
@@ -89,7 +102,7 @@ export function buildLeagueCalendarIcs(data: PublicScheduleOk, generatedAt: stri
       const startIso = `${r.date}T${r.time}:00+00:00`;
       const duration = r.divisionId ? durations.get(r.divisionId) ?? null : null;
       const playoff = playoffById.get(r.key);
-      const title = playoff ? r.matchup : hostFirstTitle(season, r.key, r.matchup);
+      const title = playoff ? playoffEventTitle(r) : hostFirstTitle(season, r.key, r.matchup);
       const uid = playoff ? `playoff-${playoff.id}@${LEAGUE_UID_DOMAIN}` : `game-${r.key.slice(2)}@${LEAGUE_UID_DOMAIN}`;
       const place = r.fieldLabel + (r.address ? `, ${r.address}` : "");
       const description = [

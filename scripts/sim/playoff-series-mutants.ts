@@ -155,6 +155,109 @@ const MUTANTS: Mutant[] = [
     replace: "  if (p.removed) {",
     expect: "S11",
   },
+  // ── Step 4: outside the app — every one aimed at S12 ──
+  {
+    id: "SM24", what: "the public view lets a not-needed game through (no second lock)", file: "src/lib/public-schedule/view.ts",
+    find: "    if (p.status === NOT_NEEDED) continue;\n",
+    replace: "",
+    expect: "S12",
+  },
+  {
+    id: "SM25", what: "the public series length is counted from the rows (not-needed games missing)", file: "src/lib/public-schedule/view.ts",
+    find: "length: p.series_length ?? seriesLengthOf(row, rows)",
+    replace: "length: seriesLengthOf(row, rows)",
+    expect: "S12",
+  },
+  {
+    id: "SM26", what: "If needed starts one game early on the public page", file: SERIES,
+    find: "  return length > 1 && k > winsNeeded(length);",
+    replace: "  return length > 1 && k >= winsNeeded(length);",
+    expect: "S12",
+  },
+  {
+    id: "SM27", what: "a series game with a team unknown names a home team (vs)", file: SERIES,
+    find: "  if (!opts.seriesGame || (opts.homeIsTeam && opts.awayIsTeam)) return `${home} vs ${away}`;",
+    replace: "  if (!opts.seriesGame || (opts.homeIsTeam || opts.awayIsTeam)) return `${home} vs ${away}`;",
+    expect: "S12",
+  },
+  {
+    id: "SM28", what: "the feed title drops (if needed)", file: "src/lib/public-schedule/league-ics.ts",
+    find: '${r.ifNeeded ? " (if needed)" : ""}',
+    replace: "",
+    expect: "S12",
+  },
+  {
+    id: "SM29", what: "the CSV exports not-needed games", file: "src/lib/playoffs/playoff-export.ts",
+    find: "  const rows = exportableGames(games)",
+    replace: "  const rows = games",
+    expect: "S12",
+  },
+  {
+    id: "SM30", what: "the CSV marks if-needed by position, ignoring the results", file: "src/lib/playoffs/playoff-export.ts",
+    find: 'seriesGameTag(g, seriesGamesOf(g, own)) === "if_needed"',
+    replace: "(g.series_game ?? 1) > Math.ceil(seriesGamesOf(g, own).length / 2)",
+    expect: "S12",
+  },
+  {
+    id: "SM31", what: "the print draws a game card for a series", file: "src/lib/playoffs/bracket-print.ts",
+    find: "withSeries && isSeriesGame(c.game, games) ? seriesCardHtml",
+    replace: "false && isSeriesGame(c.game, games) ? seriesCardHtml",
+    expect: "S12",
+  },
+  {
+    id: "SM32", what: "the printed slot never grows for a tall series card", file: "src/lib/playoffs/bracket-print.ts",
+    find: "(2 * (h - top + CARD_MARGIN)) / Math.pow(2, k)",
+    replace: "SLOT_H + 0 * h * k",
+    expect: "S12",
+  },
+  {
+    id: "SM33", what: "printed lines leave a series tree's cards at their centre", file: "src/lib/playoffs/bracket-print.ts",
+    find: "    sourceY: 1 + CARD.metaH + CARD.rowH + 0.5,\n",
+    replace: "    sourceY: CARD_H / 2,\n",
+    expect: "S12",
+  },
+  {
+    id: "SM34", what: "a played game's printed line keeps its time", file: "src/lib/playoffs/bracket-print.ts",
+    find: 'tag === "result" && g.scheduled_date ? shortDate(g.scheduled_date) : seriesGameWhen(g)',
+    replace: "seriesGameWhen(g)",
+    expect: "S12",
+  },
+  {
+    id: "SM35", what: "the delete confirm's series line ignores the preview's result count", file: "src/lib/playoffs/bracket-delete.ts",
+    find: "  if (games.filter(gameHasResult).length !== counts.gamesWithResults) return null;\n",
+    replace: "",
+    expect: "S12",
+  },
+  {
+    id: "SM36", what: "the delete confirm's public line drops (not-needed games never are)", file: "src/lib/playoffs/bracket-delete.ts",
+    find: 'notNeededGames > 0 ? " (not-needed games never are)" : ""',
+    replace: '""',
+    expect: "S12",
+  },
+  {
+    id: "SM37", what: "a not-needed game keeps its teams busy for the snack shack", file: "src/lib/snack-shack/derive-shifts.ts",
+    find: 'if (g.status === "cancelled" || g.status === NOT_NEEDED) continue;',
+    replace: 'if (g.status === "cancelled" || g.status === "x" + NOT_NEEDED) continue;',
+    expect: "S12",
+  },
+  {
+    id: "SM38", what: "Edit game's field occupancy counts not-needed games", file: "src/components/playoffs/edit-playoff-game-modal.tsx",
+    find: "        .neq(\"status\", \"cancelled\")\n        // A not-needed series game (0114) frees its field; an if-needed one holds it.\n        .neq(\"status\", NOT_NEEDED),",
+    replace: "        .neq(\"status\", \"cancelled\"),",
+    expect: "S12",
+  },
+  {
+    id: "SM39", what: "the season page's last-game read counts not-needed games", file: "src/app/(dashboard)/dashboard/leagues/[id]/page.tsx",
+    find: '      .neq("status", "not_needed")\n',
+    replace: "",
+    expect: "S12",
+  },
+  {
+    id: "SM40", what: "a public slot fed by a series reads Winner of Game N", file: "src/lib/public-schedule/view.ts",
+    find: "    series_game: g.series_game ?? 1,\n  });",
+    replace: "  });",
+    expect: "S12",
+  },
 ];
 
 runMutants({
@@ -182,3 +285,10 @@ runMutants({
 //   rule changed nothing. S11 gained the case that needs it (home known, away
 //   unknown).
 //   Run 2: 24/24 KILLED at their own tag; source restored and verified.
+// 2026-10-20 — step 4 (outside the app): S12 added (public page + feed, CSV,
+// printed series cards and their geometry, delete confirm, snack shack /
+// Edit game / season page skipping not-needed games, no score on the public
+// page); SM24–SM40 added, aimed at S12. One fixture fault found BEFORE the
+// pass, while writing S12: a "home known, away unknown" Final put Bears
+// (Semifinal 2's team) in the slot Semifinal 1 feeds; corrected to Expos.
+//   Run 1: 41/41 KILLED at their own tag; source restored and verified.

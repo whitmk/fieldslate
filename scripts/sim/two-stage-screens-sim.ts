@@ -445,7 +445,7 @@ section("PL1 labels and placeholders", () => {
 
 // ── D: deleting a pair ────────────────────────────────────────────────────────
 section("D1 the confirm names both stages", () => {
-  const counts = { games: 26, datedGames: 26, gamesWithResults: 3, publicGames: 0 };
+  const counts = { games: 26, datedGames: 26, gamesWithResults: 3, publicGames: 0, notNeededGames: 0 };
   const pair = deleteConfirm("Majors", counts, true);
   ok(pair.title === "Delete the Majors playoffs (round robin and bracket)?", "D1", "title", pair.title);
   ok(pair.lines[0] === "This deletes both stages and all 26 of their games (all have dates).", "D1", "first line", pair.lines[0]);

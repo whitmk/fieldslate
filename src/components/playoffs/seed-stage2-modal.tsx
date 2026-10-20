@@ -202,6 +202,7 @@ export function SeedStage2Modal({
                   <li key={i}>{l}</li>
                 ))}
               </ol>
+              {confirm.seriesLine && <p className="text-xs text-gray-500">{confirm.seriesLine}</p>}
               {confirm.notAdvancing && <p className="text-xs text-gray-500">{confirm.notAdvancing}</p>}
               <p className="text-xs text-gray-500">
                 Saving fills the bracket&apos;s team slots. Dates, times, fields and game numbers stay as they are.

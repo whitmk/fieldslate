@@ -7,9 +7,10 @@ import type { PlayoffGame } from "@/types/database";
 import { buildBracketPrintHtml, escapeHtml, printDocument, printHeader } from "@/lib/playoffs/bracket-print";
 import {
   buildPlayoffCsv,
+  exportableGames,
   exportDuration,
-  exportRound,
-  exportSlot,
+  exportGameName,
+  exportMatchup,
   noDurationNote,
   type ExportPair,
 } from "@/lib/playoffs/playoff-export";
@@ -80,7 +81,7 @@ function buildScheduleHtml(
   pair: ExportPair,
   format: string,
 ): string {
-  const sorted = [...games].sort((a, b) => {
+  const sorted = exportableGames(games).sort((a, b) => {
     if ((a.scheduled_date ?? "") !== (b.scheduled_date ?? ""))
       return (a.scheduled_date ?? "").localeCompare(b.scheduled_date ?? "");
     return (a.start_time ?? "").localeCompare(b.start_time ?? "");
@@ -91,13 +92,13 @@ function buildScheduleHtml(
     const bg = i % 2 === 1 ? "background:#f7f7f7" : "";
     // Every slot reads what the bracket shows: the team, else "Seed N",
     // "Winner of Game N" or "TBD" (playoff-export.ts).
-    const matchup = `${exportSlot(g, "home", games, pair, format)} vs ${exportSlot(g, "away", games, pair, format)}`;
+    const matchup = exportMatchup(g, games, pair, format);
     const result =
       g.status === "completed" && g.home_score != null
         ? `${g.home_score} – ${g.away_score}`
         : "—";
     rows += `<tr style="${bg}">
-      <td style="border:1pt solid #ccc;padding:3pt 8pt">${escapeHtml(exportRound(g, pair))}</td>
+      <td style="border:1pt solid #ccc;padding:3pt 8pt">${escapeHtml(exportGameName(g, games, pair))}</td>
       <td style="border:1pt solid #ccc;padding:3pt 8pt">${fmtDate(g.scheduled_date)}</td>
       <td style="border:1pt solid #ccc;padding:3pt 8pt;white-space:nowrap">${fmtTime(g.start_time)}</td>
       <td style="border:1pt solid #ccc;padding:3pt 8pt">${escapeHtml(matchup)}</td>

@@ -23,6 +23,13 @@
 // Safari). Row colour NEVER marks a winner; the winner is bold text + a
 // trophy.
 //
+// SERIES (0114, approved mockup 8): one card per series in place of a game
+// card — the series name and where it stands, the two teams with their wins,
+// then one line per game (date, field, result, "If needed", or "Not needed"
+// struck through). The card keeps the game card's top bands so the lines
+// leave and enter at the same offsets (printSeriesTree); a bracket with no
+// series prints exactly as before.
+//
 // ROUND ROBIN and DOUBLE ELIMINATION print as columns per round (cards in
 // normal flow, columns wrap onto further rows and pages). Double elimination
 // has no tree drawing — reported, not redesigned (2026-10-13).
@@ -35,8 +42,21 @@ import {
   singleElimPosition,
   singleElimTarget,
 } from "@/lib/playoffs/advancement";
-import { gameWhen, slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
+import { gameWhen, shortDate, slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
 import { playoffRoundLabel } from "@/lib/playoffs/playoff-result";
+import {
+  oneRowPerSeries,
+  SERIES_TAG_TEXT,
+  seriesGameTag,
+  seriesGamesOf,
+  seriesGameWhen,
+  seriesHeadline,
+  seriesPrintLine,
+  seriesResultText,
+  seriesRoundHeader,
+  seriesState,
+} from "@/lib/playoffs/series";
+import { isSeriesGame, seriesName } from "@/lib/playoffs/series-names";
 
 export interface PrintGame {
   id: string;
@@ -53,6 +73,8 @@ export interface PrintGame {
   home_team_name: string | null;
   away_team_name: string | null;
   venue_name: string | null;
+  /** 0114: which game of its series (1..length); absent or 1 for a single game. */
+  series_game?: number;
 }
 
 export const PRINT_COLORS = {
@@ -112,14 +134,22 @@ export function printDocument(body: string, title: string, orientation: "landsca
 </html>`;
 }
 
-export function printHeader(leagueName: string, divisionName: string, subtitle: string, printedOn: string): string {
+export function printHeader(
+  leagueName: string,
+  divisionName: string,
+  subtitle: string,
+  printedOn: string,
+  note: string | null = null,
+): string {
   return `
 <div style="height:${HEADER_H - 12}px;padding-bottom:6px;border-bottom:2px solid #000;margin-bottom:12px;display:flex;align-items:flex-end;justify-content:space-between">
   <div>
     <div style="font-size:16pt;font-weight:800;color:#0c1f3f;letter-spacing:-0.3pt;line-height:1">Field<span style="color:#15803d">Slate</span></div>
     <div style="font-size:12pt;font-weight:700;color:#000;margin-top:6px">${escapeHtml(leagueName)} — ${escapeHtml(divisionName)} ${escapeHtml(subtitle)}</div>
   </div>
-  <div style="font-size:9pt;color:${PRINT_COLORS.meta}">Printed ${escapeHtml(printedOn)}</div>
+  ${note
+    ? `<div style="font-size:9pt;color:${PRINT_COLORS.meta};text-align:right"><div data-series-line style="font-weight:700;margin-bottom:4px">${escapeHtml(note)}</div>Printed ${escapeHtml(printedOn)}</div>`
+    : `<div style="font-size:9pt;color:${PRINT_COLORS.meta}">Printed ${escapeHtml(printedOn)}</div>`}
 </div>`;
 }
 
@@ -154,6 +184,64 @@ export function gameCardHtml(game: PrintGame, allGames: PrintGame[], format: str
   </div>`;
 }
 
+// ─── One series card (0114) ───────────────────────────────────────────────────
+
+/** One game line of the printed series card. */
+export const SERIES_PRINT_ROW_H = 15;
+
+export function seriesCardHtml(first: PrintGame, allGames: PrintGame[]): string {
+  const games = seriesGamesOf(first, allGames);
+  const names = new Map<string, string>();
+  for (const g of allGames) {
+    if (g.home_team_id && g.home_team_name) names.set(g.home_team_id, g.home_team_name);
+    if (g.away_team_id && g.away_team_name) names.set(g.away_team_id, g.away_team_name);
+  }
+  const teamName = (id: string) => names.get(id) ?? "TBD";
+  const state = seriesState(games);
+  const head = seriesHeadline(games, teamName);
+  const g1 = games[0];
+  const row = (side: Side) => {
+    const teamId = side === "home" ? g1.home_team_id : g1.away_team_id;
+    const name = slotName(side === "home" ? g1.home_team_name : g1.away_team_name, g1, side, allGames, "single_elimination");
+    const won = slotWon(state.winnerId, teamId);
+    const nameSt = !teamId
+      ? `color:${PRINT_COLORS.placeholder};font-style:italic`
+      : won ? `color:${PRINT_COLORS.winText};font-weight:700` : `color:${PRINT_COLORS.text}`;
+    const bg = side === "away" ? `background:${PRINT_COLORS.awayRowBg};${KEEP_BG}` : "background:white;";
+    const wins = teamId && state.played > 0 ? String(state.wins.get(teamId) ?? 0) : "";
+    return `<div data-row="${side}" style="height:${CARD.rowH}px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;gap:6px;${bg}">
+      <span style="font-size:10pt;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${nameSt}">${escapeHtml(name)}</span>
+      <span style="display:flex;align-items:center;gap:4px;flex:none">${wins ? `<span data-wins style="font-size:10pt;font-weight:700;color:${won ? PRINT_COLORS.winText : PRINT_COLORS.meta}">${wins}</span>` : ""}${won ? TROPHY_SVG : ""}</span>
+    </div>`;
+  };
+  const lines = games.map((g) => {
+    const tag = seriesGameTag(g, games);
+    const struck = tag === "not_needed";
+    const right =
+      tag === "result" ? seriesResultText(g, teamName) ?? "" : tag === "upcoming" ? "" : SERIES_TAG_TEXT[tag];
+    // A played game's line drops the time (approved mockup 8): the field has
+    // the room it needs beside the result.
+    const date = tag === "result" && g.scheduled_date ? shortDate(g.scheduled_date) : seriesGameWhen(g);
+    const when = [date, ...(g.scheduled_date && g.venue_name ? [g.venue_name] : [])].join(" · ");
+    return `<div data-series-game="${g.series_game ?? 1}" data-tag="${tag}" style="height:${SERIES_PRINT_ROW_H}px;padding:0 7px;display:flex;align-items:center;gap:5px;font-size:7.5pt;line-height:1;color:${PRINT_COLORS.meta}">
+      <span style="font-weight:700;flex:none;width:14px">G${g.series_game ?? 1}</span>
+      <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${struck ? "text-decoration:line-through" : ""}">${escapeHtml(when)}</span>
+      <span style="flex:none;font-weight:700;${struck ? "" : `color:${PRINT_COLORS.text}`}">${escapeHtml(right)}</span>
+    </div>`;
+  }).join("");
+  return `<div data-series="${escapeHtml(seriesName(first, allGames))}" style="width:${CARD.width}px;height:${CARD_H + 1 + games.length * SERIES_PRINT_ROW_H}px;border:1px solid ${PRINT_COLORS.border};border-radius:5px;overflow:hidden;background:white">
+    <div style="height:${CARD.metaH}px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:7.5pt;color:${PRINT_COLORS.meta};border-bottom:1px solid ${PRINT_COLORS.border}">
+      <span style="font-weight:700;color:${PRINT_COLORS.text};white-space:nowrap">${escapeHtml(seriesName(first, allGames))}</span>
+      <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(head.text)}</span>
+    </div>
+    ${row("home")}
+    <div style="height:1px;background:${PRINT_COLORS.border}"></div>
+    ${row("away")}
+    <div style="height:1px;background:${PRINT_COLORS.border}"></div>
+    ${lines}
+  </div>`;
+}
+
 // ─── Single-elimination tree layout ───────────────────────────────────────────
 
 export type PlacedCard<G extends PrintGame = PrintGame> = { game: G; round: number; pos: number; x: number; y: number };
@@ -182,6 +270,10 @@ export type TreeDims = {
   rowH: number;
   divider: number;
   sourceY: number;
+  /** How far above its slot's centre a card's top sits. Absent: cardH / 2
+   *  (every card centred). The series print sets it so cards of different
+   *  heights share one top-to-divider line. */
+  cardTop?: number;
 };
 
 export const PRINT_TREE: TreeDims = {
@@ -211,6 +303,33 @@ export function screenSeriesTree(longestSeries: number): TreeDims {
   return { ...SCREEN_TREE, cardH, slotH: cardH + (SCREEN_TREE.slotH - SCREEN_TREE.cardH) };
 }
 
+/** A printed card's height: a game card, or a series card of `length` games. */
+export function printCardHeight(length: number): number {
+  return length > 1 ? CARD_H + 1 + length * SERIES_PRINT_ROW_H : CARD_H;
+}
+
+/** Room kept below a card inside its round's space. */
+const CARD_MARGIN = 4;
+
+/** The printed tree for a bracket with a series round. Every card's top sits
+ *  where a game card's does today (CARD_H / 2 above its slot's centre), so the
+ *  two team rows — and the lines that leave from the divider between them and
+ *  enter at a row — line up across single games and series. A series card
+ *  hangs below; round k has 2^k round-1 slots of room per card, so the slot
+ *  grows only when some round's tallest card needs more (a best of 3 in the
+ *  second round does; a best of 7 Final barely uses its space). `tallest[k]`
+ *  is round k's tallest card (printCardHeight). */
+export function printSeriesTree(tallest: number[]): TreeDims {
+  const top = CARD_H / 2;
+  const slotH = Math.max(SLOT_H, ...tallest.map((h, k) => (2 * (h - top + CARD_MARGIN)) / Math.pow(2, k)));
+  return {
+    ...PRINT_TREE,
+    slotH,
+    cardTop: top,
+    sourceY: 1 + CARD.metaH + CARD.rowH + 0.5,
+  };
+}
+
 function sortedRounds(games: PrintGame[]): string[] {
   return [...new Set(games.map((g) => g.round))].sort((a, b) => getRoundOrder(a) - getRoundOrder(b));
 }
@@ -231,7 +350,7 @@ export function singleElimLayout<G extends PrintGame>(games: G[], dims: TreeDims
     for (const g of inRound) {
       const pos = singleElimPosition(g, k, size, inRound);
       const centre = D.roundHdr + (pos + 0.5) * D.slotH * Math.pow(2, k);
-      const card = { game: g, round: k, pos, x: k * (D.cardW + D.gap), y: centre - D.cardH / 2 };
+      const card = { game: g, round: k, pos, x: k * (D.cardW + D.gap), y: centre - (D.cardTop ?? D.cardH / 2) };
       cards.push(card);
       byId.set(g.id, card);
     }
@@ -272,19 +391,32 @@ export function buildBracketPrintHtml(
   divisionName: string,
   printedOn: string,
 ): string {
-  const header = printHeader(leagueName, divisionName, "Playoff Bracket", printedOn);
+  const seriesLine = format === "single_elimination" ? seriesPrintLine(games) : null;
+  const header = printHeader(leagueName, divisionName, "Playoff Bracket", printedOn, seriesLine);
   if (!games.length) return `${header}<p>No games yet.</p>`;
   if (format !== "single_elimination") return header + columnsHtml(games, format);
 
-  const L = singleElimLayout(games);
+  // A bracket with a series lays out one row per series (every game of a
+  // series shares its round and position — what advancement keys on).
+  const withSeries = seriesLine !== null;
+  const L = withSeries
+    ? singleElimLayout(
+        oneRowPerSeries(games),
+        printSeriesTree(
+          sortedRounds(games).map((r) =>
+            printCardHeight(Math.max(...games.filter((g) => g.round === r).map((g) => g.series_game ?? 1))),
+          ),
+        ),
+      )
+    : singleElimLayout(games);
   const heads = L.rounds.map((r, k) =>
-    `<div style="position:absolute;top:0;left:${k * (CARD.width + GAP)}px;width:${CARD.width}px;text-align:center;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:0.6pt;color:${PRINT_COLORS.heading}">${escapeHtml(playoffRoundLabel(r))}</div>`,
+    `<div style="position:absolute;top:0;left:${k * (CARD.width + GAP)}px;width:${CARD.width}px;text-align:center;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:0.6pt;color:${PRINT_COLORS.heading}">${escapeHtml(withSeries ? seriesRoundHeader(r, games) : playoffRoundLabel(r))}</div>`,
   ).join("");
   const lines = L.connectors.map((c) =>
     `<polyline data-from="${c.from}" data-to="${c.to}" points="${c.points.map(([x, y]) => `${x},${y}`).join(" ")}" fill="none" stroke="${PRINT_COLORS.line}" stroke-width="1.5"/>`,
   ).join("");
   const cards = L.cards.map((c) =>
-    `<div style="position:absolute;left:${c.x}px;top:${c.y}px">${gameCardHtml(c.game, games, format)}</div>`,
+    `<div style="position:absolute;left:${c.x}px;top:${c.y}px">${withSeries && isSeriesGame(c.game, games) ? seriesCardHtml(c.game, games) : gameCardHtml(c.game, games, format)}</div>`,
   ).join("");
   return `${header}
 <div style="width:${Math.ceil(L.width * L.scale)}px;height:${Math.ceil(L.height * L.scale)}px;overflow:hidden">

@@ -21,6 +21,7 @@ import { CalendarPlus, ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { SITE_URL } from "@/lib/site";
 import { findOrgTimezone } from "@/lib/calendar/timezones";
 import { SITE_TAG, type Site } from "@/lib/public-schedule/classify";
+import { SERIES_TAG_TEXT } from "@/lib/playoffs/series";
 import { publicScheduleFeedUrls, publicScheduleUrl } from "@/lib/public-schedule/links";
 import type { PublicScheduleOk, PublicScheduleResponse } from "@/lib/public-schedule/types";
 import {
@@ -406,11 +407,13 @@ function SiteTag({ site }: { site: Site }) {
   );
 }
 
-function PlainTag({ children, tone = "grey" }: { children: React.ReactNode; tone?: "grey" | "navy" | "struck" }) {
+function PlainTag({ children, tone = "grey" }: { children: React.ReactNode; tone?: "grey" | "navy" | "struck" | "amber" }) {
   const cls =
     tone === "navy"
       ? "border-[#0C1F3F] bg-[#0C1F3F] text-white"
-      : tone === "struck"
+      : tone === "amber"
+        ? "border-amber-300 bg-amber-50 text-amber-800"
+        : tone === "struck"
         ? "border-gray-300 bg-gray-100 text-gray-600 uppercase tracking-wide font-bold text-[10.5px]"
         : "border-gray-300 bg-white text-[#0C1F3F]";
   return (
@@ -424,6 +427,7 @@ function Tags({ row }: { row: ScheduleRow }) {
   return (
     <>
       {row.playoffLabel && <PlainTag tone="navy">{row.playoffLabel}</PlainTag>}
+      {row.ifNeeded && !row.struck && <PlainTag tone="amber">{SERIES_TAG_TEXT.if_needed}</PlainTag>}
       {row.interleague && !row.struck && <PlainTag>Interleague</PlainTag>}
       {row.statusLabel && row.statusIsNote && <PlainTag>{row.statusLabel}</PlainTag>}
       {row.struck ? <PlainTag tone="struck">{row.statusLabel}</PlainTag> : <SiteTag site={row.site} />}

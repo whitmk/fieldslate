@@ -9,7 +9,8 @@ import { TwoStageCard } from "@/components/playoffs/two-stage-card";
 import { BracketView } from "@/components/playoffs/bracket-view";
 import { PlayoffExportModal } from "@/components/playoffs/playoff-export-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { deleteBracket, previewBracketDelete } from "@/lib/playoffs/delete-bracket";
+import { bracketGamesForConfirm, deleteBracket, previewBracketDelete } from "@/lib/playoffs/delete-bracket";
+import type { SeriesGame } from "@/lib/playoffs/series";
 import { deleteConfirm, deletedLine, type BracketCounts } from "@/lib/playoffs/bracket-delete";
 import { parseSeriesByRound } from "@/lib/playoffs/series-lengths";
 import {
@@ -137,7 +138,11 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
   // its counts (null = couldn't count, never zero) and stays open on a
   // refusal, showing why.
   const [counting, setCounting] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<{ playoff: PlayoffRow; counts: BracketCounts | null } | null>(null);
+  const [deleting, setDeleting] = useState<{
+    playoff: PlayoffRow;
+    counts: BracketCounts | null;
+    games: SeriesGame[] | null;
+  } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -227,9 +232,9 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
     setNotice(null);
     setDeleteError(null);
     setCounting(playoff.id);
-    const counts = await previewBracketDelete(playoff.id);
+    const [counts, games] = await Promise.all([previewBracketDelete(playoff.id), bracketGamesForConfirm(playoff.id)]);
     setCounting(null);
-    setDeleting({ playoff, counts });
+    setDeleting({ playoff, counts, games });
   }
 
   async function confirmDelete() {
@@ -500,6 +505,7 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
           deleting.playoff.division?.name ?? "division",
           deleting.counts,
           stage2ByParent.has(deleting.playoff.id),
+          deleting.games,
         );
         return (
           <ConfirmDialog

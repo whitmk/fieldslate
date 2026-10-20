@@ -45,6 +45,7 @@
 import { countsAsScheduledGame } from "@/lib/venues/game-days";
 import { dayKeyFromIsoDate, type DayKey } from "@/lib/venues/availability";
 import { planSettingsFromDivision } from "@/lib/playoffs/bracket-plan";
+import { NOT_NEEDED } from "@/lib/playoffs/series";
 
 export const GAP_SPLIT_MIN = 60;
 export const ABSORB_OFFER_UNDER_MIN = 60;
@@ -513,7 +514,9 @@ export function assignmentIndexFromGames(games: AssignmentGame[], homeVenueIds: 
   const home = new Set(homeVenueIds);
   const byTeamDate = new Map<string, TeamGameSpan[]>();
   for (const g of games) {
-    if (g.status === "cancelled") continue;
+    // A rained-out game frees the team; so does a series game that turned out
+    // not to be needed (0114) — until then an if-needed game holds it.
+    if (g.status === "cancelled" || g.status === NOT_NEEDED) continue;
     const startMin = hhmmToMin(g.start);
     const span: TeamGameSpan = { startMin, endMin: startMin + g.durationMin, atShackVenue: !!g.venue_id && home.has(g.venue_id), kind: g.kind };
     for (const teamId of [g.home_team_id, g.away_team_id]) {

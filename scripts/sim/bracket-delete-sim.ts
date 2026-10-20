@@ -131,38 +131,38 @@ section("Z", () => {
 
 // ── D ─────────────────────────────────────────────────────────────────────────
 section("D", () => {
-  const d = deleteConfirm("50/70", { games: 5, datedGames: 2, gamesWithResults: 0, publicGames: 0 });
+  const d = deleteConfirm("50/70", { games: 5, datedGames: 2, gamesWithResults: 0, publicGames: 0, notNeededGames: 0 });
   ok(d.title === "Delete the 50/70 playoff bracket?", "[D1]", d.title);
   ok(JSON.stringify(d.lines) === JSON.stringify([
     "This deletes the bracket and all 5 of its games (2 with a date).",
     "This can't be undone.",
   ]), "[D1]", JSON.stringify(d.lines));
-  const r = deleteConfirm("T-Ball", { games: 7, datedGames: 7, gamesWithResults: 2, publicGames: 7 });
+  const r = deleteConfirm("T-Ball", { games: 7, datedGames: 7, gamesWithResults: 2, publicGames: 7, notNeededGames: 0 });
   ok(JSON.stringify(r.lines) === JSON.stringify([
     "This deletes the bracket and all 7 of its games (all have dates).",
     "2 games have a result entered. Those results are deleted too.",
     "This can't be undone.",
   ]), "[D2]", JSON.stringify(r.lines));
   if (r.lines.some((l) => l.includes("result entered"))) counters.confirmWithResults++;
-  const one = deleteConfirm("AA", { games: 1, datedGames: 0, gamesWithResults: 1, publicGames: 0 });
+  const one = deleteConfirm("AA", { games: 1, datedGames: 0, gamesWithResults: 1, publicGames: 0, notNeededGames: 0 });
   ok(JSON.stringify(one.lines) === JSON.stringify([
     "This deletes the bracket and its 1 game (none have dates yet).",
     "1 game has a result entered. That result is deleted too.",
     "This can't be undone.",
   ]), "[D3]", JSON.stringify(one.lines));
-  const empty = deleteConfirm("Rookies", { games: 0, datedGames: 0, gamesWithResults: 0, publicGames: 0 });
+  const empty = deleteConfirm("Rookies", { games: 0, datedGames: 0, gamesWithResults: 0, publicGames: 0, notNeededGames: 0 });
   ok(JSON.stringify(empty.lines) === JSON.stringify([
     "This deletes the bracket's setup. It has no games yet.",
     "This can't be undone.",
   ]), "[D4]", JSON.stringify(empty.lines));
-  ok(deletedLine("50/70", { games: 5, datedGames: 2, gamesWithResults: 0, publicGames: 2 }) ===
+  ok(deletedLine("50/70", { games: 5, datedGames: 2, gamesWithResults: 0, publicGames: 2, notNeededGames: 0 }) ===
     "The 50/70 playoff bracket and its 5 games were deleted.", "[D5]");
   ok(deletedLine("50/70", null) === "The 50/70 playoff bracket was deleted.", "[D5]", "uncounted success line");
 });
 
 // ── U ─────────────────────────────────────────────────────────────────────────
 section("U", () => {
-  const w = deleteConfirm("T-Ball", { games: 7, datedGames: 7, gamesWithResults: 0, publicGames: 7 }).publicWarning;
+  const w = deleteConfirm("T-Ball", { games: 7, datedGames: 7, gamesWithResults: 0, publicGames: 7, notNeededGames: 0 }).publicWarning;
   ok(w === "7 of these games are on your public schedule right now. Families will stop seeing them there within a minute. They drop off subscribed calendars when those calendars next refresh, which can take several hours.", "[U1]", String(w));
   if (w) counters.publicWarningShown++;
   ok(publicDeleteWarning(1) === "1 of these games is on your public schedule right now. Families will stop seeing it there within a minute. It drops off subscribed calendars when those calendars next refresh, which can take several hours.", "[U1]", "singular");

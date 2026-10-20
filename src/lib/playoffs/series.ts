@@ -761,24 +761,83 @@ export function seriesDeleteLine(games: ReadonlyArray<SeriesGame>): string {
   return `${total} ${total === 1 ? "game" : "games"} — ${joinList(parts)}. ${second}.`;
 }
 
-/** The seed confirm's series line, or null when every round is 1 game.
- *  "Semifinals and Final are best of 3; the higher seed is home in games 1
- *  and 3." */
-export function seriesSeedLine(games: ReadonlyArray<{ round: string; game_number: number; series_game?: number }>): string | null {
+/** The series rounds grouped by length, shortest first: [[3, ["Semifinals",
+ *  "Final"]]]. Rounds in round order. Empty when every round is 1 game. */
+function seriesLengthGroups(
+  games: ReadonlyArray<{ round: string; game_number: number; series_game?: number | null }>,
+): [number, string[]][] {
   const rounds = [...new Set(games.map((g) => g.round))].filter((r) => isSeriesRound(r, games));
-  if (!rounds.length) return null;
   const byLength = new Map<number, string[]>();
   for (const r of rounds) {
     const l = Math.max(...games.filter((g) => g.round === r).map((g) => g.series_game ?? 1));
     if (!byLength.has(l)) byLength.set(l, []);
     byLength.get(l)!.push(roundTitle(r, games));
   }
-  const groups = [...byLength.entries()].sort((a, b) => a[0] - b[0]);
+  return [...byLength.entries()].sort((a, b) => a[0] - b[0]);
+}
+
+/** The printed bracket's line under its title (approved mockup, 8):
+ *  "Single elimination · Semifinals and Final best of 3". Null when every
+ *  round is 1 game — that print is unchanged. */
+export function seriesPrintLine(
+  games: ReadonlyArray<{ round: string; game_number: number; series_game?: number | null }>,
+): string | null {
+  const groups = seriesLengthGroups(games);
+  if (!groups.length) return null;
+  return `Single elimination · ${groups.map(([l, titles]) => `${joinList(titles)} best of ${l}`).join(", ")}`;
+}
+
+/** A printed round header: "Semifinals · best of 3", or the round's title for
+ *  a single-game round of a bracket that has a series. */
+export function seriesRoundHeader(
+  round: string,
+  games: ReadonlyArray<{ round: string; game_number: number; series_game?: number | null }>,
+): string {
+  const title = roundTitle(round, games);
+  if (!isSeriesRound(round, games)) return title;
+  return `${title} · best of ${Math.max(...games.filter((g) => g.round === round).map((g) => g.series_game ?? 1))}`;
+}
+
+/** The seed confirm's series line, or null when every round is 1 game.
+ *  "Semifinals and Final are best of 3; the higher seed is home in games 1
+ *  and 3." */
+export function seriesSeedLine(games: ReadonlyArray<{ round: string; game_number: number; series_game?: number }>): string | null {
+  const groups = seriesLengthGroups(games);
+  if (!groups.length) return null;
   const verb = (titles: string[]) => (titles.length === 1 && !titles[0].endsWith("s") ? "is" : "are");
   const text = groups
     .map(([l, titles], i) => `${joinList(titles)} ${i === 0 ? `${verb(titles)} ` : ""}best of ${l}`)
     .join(", ");
   return `${text}; the higher seed is home in ${oddGamesText(Math.max(...groups.map(([l]) => l)))}.`;
+}
+
+// ─── Outside the app: public page, feed, print, CSV ───────────────────────────
+
+/** "Semifinal 1 · Game 2 of 3". `length` is passed in because a reader that
+ *  leaves out not-needed games (the public one) can't count it from its rows. */
+export function seriesGameName(name: string, k: number, length: number): string {
+  return `${name} · Game ${k} of ${length}`;
+}
+
+/** The PUBLIC page's and feed's "If needed": game k of a best-of-L series is
+ *  past the minimum. Static on purpose — the public reader carries no results,
+ *  so a series tied 1–1 still marks its Game 3 "If needed" there. The admin
+ *  screens, print and CSV know the results and use seriesGameTag instead. */
+export function ifNeededByPosition(k: number, length: number): boolean {
+  return length > 1 && k > winsNeeded(length);
+}
+
+/** The matchup outside the app: "Expos vs Mets", home team first — or, for a
+ *  series game whose two teams aren't both known, "Bears and Winner of
+ *  Semifinal 1": the known team first, no team named as home (approved
+ *  mockup, 7). A single game keeps "vs" whatever its slots hold. */
+export function outboundMatchup(
+  home: string,
+  away: string,
+  opts: { seriesGame: boolean; homeIsTeam: boolean; awayIsTeam: boolean },
+): string {
+  if (!opts.seriesGame || (opts.homeIsTeam && opts.awayIsTeam)) return `${home} vs ${away}`;
+  return !opts.homeIsTeam && opts.awayIsTeam ? `${away} and ${home}` : `${home} and ${away}`;
 }
 
 // ─── Small helpers ────────────────────────────────────────────────────────────

@@ -12,6 +12,8 @@
 import type { GameRow } from "@/lib/playoffs/advancement";
 import { emptySlotLabel, shownGameNumber, type SeedSlots } from "@/lib/playoffs/bracket-labels";
 import { rrGameLabel } from "@/lib/playoffs/two-stage";
+import { ifNeededByPosition, NOT_NEEDED, outboundMatchup, seriesGameName } from "@/lib/playoffs/series";
+import { isSeriesGame, seriesLengthOf, seriesName } from "@/lib/playoffs/series-names";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   gameStatusDisplay,
@@ -39,8 +41,14 @@ export type ScheduleRow = {
   fieldLabel: string;
   address: string | null;
   interleague: boolean;
-  /** "Playoffs · Semifinal · Game 3", playoff rows only. */
+  /** "Playoffs · Semifinal · Game 3" or "Playoffs · Semifinal 1 · Game 2 of
+   *  3", playoff rows only. */
   playoffLabel: string | null;
+  /** A series game past the minimum ("If needed" tag) — by position only
+   *  (ifNeededByPosition: the public reader carries no results). */
+  ifNeeded: boolean;
+  /** The series a playoff row belongs to (0114), else null. */
+  series: { name: string; k: number; length: number } | null;
   struck: boolean;
   /** Replaces the site tag on a struck row ("Rained out"), or a note beside
    *  it ("Time may change"). */
@@ -139,7 +147,7 @@ export function openSlotLabel(
   side: "home" | "away",
   bracket: PublicPlayoffGame[],
 ): string {
-  const asRow = (g: PublicPlayoffGame): GameRow & SeedSlots => ({
+  const asRow = (g: PublicPlayoffGame): GameRow & SeedSlots & { series_game?: number } => ({
     id: g.id,
     round: g.round,
     game_number: g.game_number,
@@ -148,8 +156,15 @@ export function openSlotLabel(
     winner_id: null,
     seed_home: g.seed_home ?? null,
     seed_away: g.seed_away ?? null,
+    // So a slot fed by a series reads "Winner of Semifinal 1".
+    series_game: g.series_game ?? 1,
   });
   return emptySlotLabel(asRow(game), side, bracket.map(asRow), game.format);
+}
+
+/** The public rows as the series rules read them (series_game defaulted). */
+function seriesRows(bracket: PublicPlayoffGame[]): { round: string; game_number: number; series_game: number }[] {
+  return bracket.map((g) => ({ round: g.round, game_number: g.game_number, series_game: g.series_game ?? 1 }));
 }
 
 /** Every row the season can show: regular games + DATED playoff games, sorted
@@ -186,6 +201,8 @@ export function buildRows(season: PublicSeason): ScheduleRow[] {
       address: field.address,
       interleague: g.interleague,
       playoffLabel: null,
+      ifNeeded: false,
+      series: null,
       struck: status.struck,
       statusLabel: status.label,
       statusIsNote: status.note,
@@ -206,17 +223,30 @@ export function buildRows(season: PublicSeason): ScheduleRow[] {
   // "Game N" is the SHOWN number within the game's own bracket (bracket-labels
   // `gameNumbering`) — the reader returns every game of the bracket, dated or
   // not, so the numbering is the same one the admin sees.
-  const shown = (p: PublicPlayoffGame) => shownGameNumber(p, brackets.get(p.playoff_id) ?? [p]);
+  const shown = (p: PublicPlayoffGame) => shownGameNumber(p, seriesRows(brackets.get(p.playoff_id) ?? [p]));
+  // A game of a series (0114): "Semifinal 1 · Game 2 of 3", its length from
+  // the reader (not-needed games are not in the rows to count).
+  const seriesOf = (p: PublicPlayoffGame): { name: string; k: number; length: number } | null => {
+    const rows = seriesRows(brackets.get(p.playoff_id) ?? [p]);
+    const row = { round: p.round, game_number: p.game_number, series_game: p.series_game ?? 1 };
+    if (!isSeriesGame(row, rows)) return null;
+    return { name: seriesName(row, rows), k: row.series_game, length: p.series_length ?? seriesLengthOf(row, rows) };
+  };
   const playoffLabelOf = (p: PublicPlayoffGame): string => {
-    if (p.stage === 2) return `Playoffs · Bracket · ${playoffRoundName(p.round)} · Game ${shown(p)}`;
+    const series = seriesOf(p);
+    const game = series ? seriesGameName(series.name, series.k, series.length) : `${playoffRoundName(p.round)} · Game ${shown(p)}`;
+    if (p.stage === 2) return `Playoffs · Bracket · ${game}`;
     if (twoStageDivisions.has(p.division_id)) return `Playoffs · Round robin · ${rrGameLabel(p.game_number)}`;
-    return `Playoffs · ${playoffRoundName(p.round)} · Game ${shown(p)}`;
+    return `Playoffs · ${game}`;
   };
   for (const p of season.playoff_games) {
     if (!p.scheduled_date || !p.start_time) continue;
+    // The reader already leaves these out; this is the second lock (0114).
+    if (p.status === NOT_NEEDED) continue;
     const bracket = brackets.get(p.playoff_id) ?? [];
     const div = divisions.get(p.division_id);
     const duration = usableDuration(div?.game_duration);
+    const series = seriesOf(p);
     const home = p.home_team?.name ?? openSlotLabel(p, "home", bracket);
     const away = p.away_team?.name ?? openSlotLabel(p, "away", bracket);
     const field = fieldOf(p.venue, null);
@@ -230,12 +260,18 @@ export function buildRows(season: PublicSeason): ScheduleRow[] {
       divisionId: p.division_id,
       divisionName: div?.name ?? "",
       teamIds: [p.home_team?.id, p.away_team?.id].filter((x): x is string => !!x),
-      matchup: `${home} vs ${away}`,
+      matchup: outboundMatchup(home, away, {
+        seriesGame: series !== null,
+        homeIsTeam: !!p.home_team,
+        awayIsTeam: !!p.away_team,
+      }),
       site: siteOf(p.venue, false),
       fieldLabel: field.label,
       address: field.address,
       interleague: false,
       playoffLabel: playoffLabelOf(p),
+      ifNeeded: series !== null && ifNeededByPosition(series.k, series.length),
+      series,
       struck: status.struck,
       statusLabel: status.label,
       statusIsNote: status.note,

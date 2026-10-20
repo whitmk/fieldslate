@@ -18,7 +18,8 @@
 
 import type { GameInsert } from "@/lib/playoffs/bracket-plan";
 import type { PlayoffWizardData } from "@/components/playoffs/playoff-wizard-types";
-import { seriesByRoundPayload } from "@/lib/playoffs/series";
+import { seriesByRoundPayload, seriesDeleteLine, gameHasResult, NOT_NEEDED, type SeriesGame } from "@/lib/playoffs/series";
+import { isSeriesGame } from "@/lib/playoffs/series-names";
 
 // ─── The RPC replies ──────────────────────────────────────────────────────────
 
@@ -29,6 +30,9 @@ export type BracketCounts = {
   datedGames: number;
   gamesWithResults: number;
   publicGames: number;
+  /** 0114: the bracket's not-needed series games (never on the public
+   *  schedule). 0 when the reply doesn't carry it. */
+  notNeededGames: number;
 };
 
 export type RebuildCounts = BracketCounts & {
@@ -52,7 +56,10 @@ export function parseDeleteCounts(raw: unknown): BracketCounts | null {
   const gamesWithResults = count(r.games_with_results);
   const publicGames = count(r.public_games);
   if (games === null || datedGames === null || gamesWithResults === null || publicGames === null) return null;
-  return { games, datedGames, gamesWithResults, publicGames };
+  // Only delete_playoff_bracket (0114) carries it; absent means none.
+  const notNeededGames = r.not_needed_games === undefined ? 0 : count(r.not_needed_games);
+  if (notNeededGames === null) return null;
+  return { games, datedGames, gamesWithResults, publicGames, notNeededGames };
 }
 
 /** replace_playoff_games's reply → counts, or null if anything is unreadable. */
@@ -95,7 +102,12 @@ export const COULDNT_COUNT =
  * call's reply, or null when it failed — which renders "couldn't count",
  * never zero.
  */
-export function deleteConfirm(divisionName: string, counts: BracketCounts | null, twoStage = false): DeleteConfirm {
+export function deleteConfirm(
+  divisionName: string,
+  counts: BracketCounts | null,
+  twoStage = false,
+  bracketGames: ReadonlyArray<SeriesGame> | null = null,
+): DeleteConfirm {
   // A two-stage setup is deleted whole (0113, decided 2026-10-19, D4): the
   // counts already cover both stages; the title says so.
   const title = twoStage
@@ -106,6 +118,11 @@ export function deleteConfirm(divisionName: string, counts: BracketCounts | null
     return { title, lines: [COULDNT_COUNT, last], publicWarning: null };
   }
   const lines: string[] = [];
+  const series = seriesLineFor(counts, bracketGames);
+  if (series) {
+    lines.push(series, last);
+    return { title, lines, publicWarning: publicDeleteWarning(counts.publicGames, counts.notNeededGames) };
+  }
   if (counts.games === 0) {
     lines.push("This deletes the bracket's setup. It has no games yet.");
   } else {
@@ -127,12 +144,26 @@ export function deleteConfirm(divisionName: string, counts: BracketCounts | null
     );
   }
   lines.push(last);
-  return { title, lines, publicWarning: publicDeleteWarning(counts.publicGames) };
+  return { title, lines, publicWarning: publicDeleteWarning(counts.publicGames, counts.notNeededGames) };
 }
 
-export function publicDeleteWarning(publicGames: number): string | null {
+/** A bracket with a series gets the series line in place of the games and
+ *  results lines (approved mockup 10): "11 games — 2 single games and 3
+ *  best-of-3 series. 5 have results; 1 is not needed." Only when the games
+ *  read for it agree with the preview's counts on all three numbers — the
+ *  preview is the authority, and a line that disagrees with it is not shown. */
+function seriesLineFor(counts: BracketCounts, games: ReadonlyArray<SeriesGame> | null): string | null {
+  if (!games || !games.some((g) => isSeriesGame(g, games))) return null;
+  if (games.length !== counts.games) return null;
+  if (games.filter(gameHasResult).length !== counts.gamesWithResults) return null;
+  if (games.filter((g) => g.status === NOT_NEEDED).length !== counts.notNeededGames) return null;
+  return seriesDeleteLine(games);
+}
+
+export function publicDeleteWarning(publicGames: number, notNeededGames = 0): string | null {
   if (publicGames <= 0) return null;
-  return `${n(publicGames, "of these games is", "of these games are")} on your public schedule right now. Families will stop seeing ${publicGames === 1 ? "it" : "them"} there within a minute. ${publicGames === 1 ? "It drops" : "They drop"} off subscribed calendars when those calendars next refresh, which can take several hours.`;
+  const never = notNeededGames > 0 ? " (not-needed games never are)" : "";
+  return `${n(publicGames, "of these games is", "of these games are")} on your public schedule right now${never}. Families will stop seeing ${publicGames === 1 ? "it" : "them"} there within a minute. ${publicGames === 1 ? "It drops" : "They drop"} off subscribed calendars when those calendars next refresh, which can take several hours.`;
 }
 
 /** What the page says after a confirmed delete — from the COMMIT's own reply,

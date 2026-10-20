@@ -11,11 +11,21 @@
 // EMPTY SLOTS: every slot reads what the bracket shows (slotName): the team,
 // else "Seed N" (an unseeded two-stage Stage 2), "Winner of Game N" or "TBD".
 // A dated game is exported even before its teams are known.
+//
+// SERIES (0114, approved mockup 9): in a bracket with a series round every
+// game is titled by name — "Round 1 · Game 1", "Semifinal 1 · Game 2 of 3",
+// "(if needed)" from the results (seriesGameTag) — and a series game whose
+// teams aren't both known names no home team ("Bears and Winner of Semifinal
+// 1"). NOT-NEEDED games are not exported (exportableGames). A bracket with no
+// series exports exactly as before.
 
 import { slotName, type Side } from "@/lib/playoffs/bracket-labels";
 import { planSettingsFromDivision } from "@/lib/playoffs/bracket-plan";
 import { playoffRoundLabel } from "@/lib/playoffs/playoff-result";
 import { rrGameLabel } from "@/lib/playoffs/two-stage";
+import { gameLabel } from "@/lib/playoffs/bracket-labels";
+import { NOT_NEEDED, outboundMatchup, seriesGameTag, seriesGamesOf } from "@/lib/playoffs/series";
+import { isSeriesGame, isSeriesRound, roundTitle } from "@/lib/playoffs/series-names";
 
 export type ExportGame = {
   id: string;
@@ -33,6 +43,8 @@ export type ExportGame = {
   seed_home?: number | null;
   seed_away?: number | null;
   venue_name: string | null;
+  /** 0114: which game of its series; absent or 1 for a single game. */
+  series_game?: number;
 };
 
 /** A two-stage pair's ids; null for an ordinary bracket. */
@@ -56,6 +68,44 @@ export function exportRound(g: Pick<ExportGame, "playoff_id" | "round" | "game_n
   if (pair && g.playoff_id === pair.stage1Id) return `Round robin · ${rrGameLabel(g.game_number)}`;
   if (pair && g.playoff_id === pair.stage2Id) return `Bracket · ${playoffRoundLabel(g.round)}`;
   return playoffRoundLabel(g.round);
+}
+
+/** The games an export or schedule print lists: every one but a NOT-NEEDED
+ *  series game (0114). */
+export function exportableGames<G extends Pick<ExportGame, "status">>(games: G[]): G[] {
+  return games.filter((g) => g.status !== NOT_NEEDED);
+}
+
+function ownBracket(g: Pick<ExportGame, "playoff_id">, all: ExportGame[]): ExportGame[] {
+  return all.filter((x) => x.playoff_id === g.playoff_id);
+}
+
+function bracketHasSeries(own: ExportGame[]): boolean {
+  return [...new Set(own.map((x) => x.round))].some((r) => isSeriesRound(r, own));
+}
+
+/** The round-and-game part of a title. A bracket with a series names every
+ *  game ("Round 1 · Game 1", "Semifinal 1 · Game 2 of 3 (if needed)");
+ *  otherwise it is exportRound, unchanged. `all` must still hold the
+ *  not-needed games — they decide the series' length and its tags. */
+export function exportGameName(g: ExportGame, all: ExportGame[], pair: ExportPair): string {
+  const own = ownBracket(g, all);
+  if ((pair && g.playoff_id === pair.stage1Id) || !bracketHasSeries(own)) return exportRound(g, pair);
+  const prefix = pair && g.playoff_id === pair.stage2Id ? "Bracket · " : "";
+  if (!isSeriesGame(g, own)) return `${prefix}${roundTitle(g.round, own)} · ${gameLabel(g, own)}`;
+  const ifNeeded = seriesGameTag(g, seriesGamesOf(g, own)) === "if_needed" ? " (if needed)" : "";
+  return `${prefix}${gameLabel(g, own)}${ifNeeded}`;
+}
+
+/** The matchup part: "Mets vs Expos", or "Bears and Winner of Semifinal 1"
+ *  for a series game whose teams aren't both known (no home team named). */
+export function exportMatchup(g: ExportGame, all: ExportGame[], pair: ExportPair, format: string): string {
+  const own = ownBracket(g, all);
+  return outboundMatchup(exportSlot(g, "home", all, pair, format), exportSlot(g, "away", all, pair, format), {
+    seriesGame: isSeriesGame(g, own),
+    homeIsTeam: !!g.home_team_id,
+    awayIsTeam: !!g.away_team_id,
+  });
 }
 
 /** The format a game's own bracket uses (for its empty-slot labels). */
@@ -108,7 +158,7 @@ export function buildPlayoffCsv(
   const header = ["Start_Date", "Start_Time", "End_Date", "End_Time", "Title", "Location", "Event_Type"]
     .map(csvEscape)
     .join(",");
-  const rows = games
+  const rows = exportableGames(games)
     .filter((g) => g.scheduled_date)
     .sort(
       (a, b) =>
@@ -121,8 +171,8 @@ export function buildPlayoffCsv(
       const start = g.start_time ? csvTime(g.start_time) : "";
       const end = g.start_time && opts.durationMin !== null ? csvTimePlus(g.start_time, opts.durationMin) : "";
       const title =
-        `${opts.divisionName} Playoffs - ${exportRound(g, opts.pair)}: ` +
-        `${exportSlot(g, "home", games, opts.pair, opts.format)} vs ${exportSlot(g, "away", games, opts.pair, opts.format)}`;
+        `${opts.divisionName} Playoffs - ${exportGameName(g, games, opts.pair)}: ` +
+        exportMatchup(g, games, opts.pair, opts.format);
       return [date, start, date, end, title, g.venue_name ?? "", "Game"].map(csvEscape).join(",");
     });
   return [header, ...rows].join("\r\n");

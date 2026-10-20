@@ -73,6 +73,29 @@ import {
 } from "../../src/lib/playoffs/series";
 import { blockedMessage, clearConfirm, type ClearPreview, type ResultNumbering } from "../../src/lib/playoffs/playoff-result";
 import type { SeededTeam } from "../../src/components/playoffs/playoff-wizard-types";
+import { readFileSync } from "node:fs";
+import { buildRows } from "../../src/lib/public-schedule/view";
+import { buildLeagueCalendarIcs, playoffEventTitle } from "../../src/lib/public-schedule/league-ics";
+import type { PublicPlayoffGame, PublicScheduleOk, PublicSeason } from "../../src/lib/public-schedule/types";
+import { buildPlayoffCsv, exportableGames, exportGameName, type ExportGame } from "../../src/lib/playoffs/playoff-export";
+import {
+  buildBracketPrintHtml,
+  CARD,
+  printCardHeight,
+  printSeriesTree,
+  singleElimLayout,
+  type PrintGame,
+} from "../../src/lib/playoffs/bracket-print";
+import { deleteConfirm, type BracketCounts } from "../../src/lib/playoffs/bracket-delete";
+import {
+  assignmentGamesFromPlayoffRows,
+  assignmentIndexFromGames,
+  teamGamesOn,
+} from "../../src/lib/snack-shack/derive-shifts";
+import { daylightFlag } from "../../src/lib/daylight/flags";
+import { cityById } from "../../src/lib/sun/us-cities";
+import { ifNeededByPosition, outboundMatchup, seriesPrintLine, seriesRoundHeader } from "../../src/lib/playoffs/series";
+import { seriesMockup, seriesSixteen } from "./bracket-print-fixtures";
 
 const failures: string[] = [];
 let checks = 0;
@@ -108,6 +131,9 @@ const counters = {
   bothKnownAtGeneration: 0,
   clearRoundTrips: 0,
   orderRefusals: 0,
+  publicNotNeededDropped: 0,
+  publicPlaceholderMatchups: 0,
+  csvIfNeededFromResults: 0,
 };
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -760,6 +786,216 @@ section("S11 screens", () => {
     "Royals will be removed from Semifinal 2 until this game has a result again.",
     "S11", "a single game feeding a series names the series",
   );
+});
+
+// ─── S12: outside the app (step 4) ────────────────────────────────────────────
+// The public page and its feed, the CSV and schedule print, the printed
+// bracket, the delete confirm, and what a not-needed game frees. Every
+// expected value is written out from the approved mockup (7–10).
+
+/** A planned row with its id and result fields (mockupState's rows). */
+type Planned = SeriesGame & Omit<GameInsert, "status">;
+
+const VENUE_NAME: Record<string, string> = { andrews: "Andrews", perry: "Perry" };
+
+/** What get_league_schedule_by_token (0114) returns for the mockup state:
+ *  not-needed games left out, series_game and series_length emitted. */
+function publicGames(rows: SeriesGame[], keepNotNeeded = false): PublicPlayoffGame[] {
+  const all = rows as Planned[];
+  return all
+    .filter((g) => keepNotNeeded || g.status !== NOT_NEEDED)
+    .map((g) => ({
+      id: g.id,
+      playoff_id: "p1",
+      format: "single_elimination",
+      division_id: "d1",
+      round: g.round,
+      game_number: g.game_number,
+      scheduled_date: g.scheduled_date ?? null,
+      start_time: g.start_time ? g.start_time.substring(0, 5) : null,
+      status: g.status ?? "scheduled",
+      home_team: g.home_team_id ? { id: g.home_team_id, name: teamName(g.home_team_id) } : null,
+      away_team: g.away_team_id ? { id: g.away_team_id, name: teamName(g.away_team_id) } : null,
+      venue: g.venue_id
+        ? { name: VENUE_NAME[g.venue_id] ?? g.venue_id, location: { name: "Monroe Complex" }, address: null, home_park: true }
+        : null,
+      series_game: g.series_game ?? 1,
+      series_length: Math.max(
+        ...all.filter((x) => x.round === g.round && x.game_number === g.game_number).map((x) => x.series_game ?? 1),
+      ),
+    }));
+}
+function publicSeason(playoff: PublicPlayoffGame[]): PublicSeason {
+  return {
+    id: "l1", name: "Fall 2026", start_date: "2026-08-01", end_date: "2026-12-06",
+    divisions: [{ id: "d1", name: "Majors", game_duration: 120 }],
+    teams: [], games: [], playoff_games: playoff,
+  } as unknown as PublicSeason;
+}
+function exportGames(rows: SeriesGame[]): ExportGame[] {
+  return (rows as Planned[]).map((g) => ({
+    id: g.id,
+    playoff_id: "p1",
+    round: g.round,
+    game_number: g.game_number,
+    series_game: g.series_game ?? 1,
+    scheduled_date: g.scheduled_date ?? null,
+    start_time: g.start_time ?? null,
+    status: g.status ?? "scheduled",
+    home_team_id: g.home_team_id,
+    away_team_id: g.away_team_id,
+    home_team_name: g.home_team_id ? teamName(g.home_team_id) : null,
+    away_team_name: g.away_team_id ? teamName(g.away_team_id) : null,
+    winner_id: g.winner_id,
+    venue_name: g.venue_id ? `Monroe Complex — ${VENUE_NAME[g.venue_id]}` : null,
+  }));
+}
+
+section("S12 outside the app", () => {
+  const rows = mockupState();
+  ok(rows.every((g) => !!g.scheduled_date), "S12", "fixture: every game of the mockup bracket is dated");
+
+  // ── Public page ──
+  const pub = buildRows(publicSeason(publicGames(rows)));
+  const byKey = new Map(pub.map((r) => [r.key, r]));
+  const row = (id: string) => byKey.get(`p-${id}`);
+  const label = (id: string) => row(id)?.playoffLabel ?? "(missing)";
+  eq(label("R1-2-1"), "Playoffs · Round 1 · Game 1", "S12", "public: a single game in a series bracket keeps Game N (singles only)");
+  eq(label("R1-4-1"), "Playoffs · Round 1 · Game 2", "S12", "public: Round 1's second game is Game 2");
+  eq(label("SF-5-2"), "Playoffs · Semifinal 1 · Game 2 of 3", "S12", "public: a series game names its series");
+  eq(label("SF-6-1"), "Playoffs · Semifinal 2 · Game 1 of 3", "S12", "public: a decided series still reads of 3 (length from the reader, not the rows)");
+  eq(row("SF-6-3"), undefined, "S12", "public: a not-needed game is not on the page");
+  eq(row("SF-5-2")?.matchup, "Mets vs Expos", "S12", "public: both teams known → home team first");
+  eq([row("SF-5-1")?.ifNeeded, row("SF-5-2")?.ifNeeded, row("SF-5-3")?.ifNeeded], [false, false, true], "S12", "public: only Game 3 of a best of 3 is If needed");
+  eq(row("F-7-1")?.matchup, "Bears and Winner of Semifinal 1", "S12", "public: a series game with a team unknown names no home team");
+  eq([row("F-7-1")?.ifNeeded, row("F-7-3")?.ifNeeded], [false, true], "S12", "public: the Final's Game 3 is If needed");
+  eq(row("R1-2-1")?.ifNeeded, false, "S12", "public: a single game is never If needed");
+  if (row("F-7-1")?.matchup.includes(" and ")) counters.publicPlaceholderMatchups++;
+
+  // No scores on the public page (mockup decision): no standing, no winner.
+  const pubText = JSON.stringify(pub);
+  ok(!/ lead |\bwin\b|Tied|\d–\d/.test(pubText), "S12", "public: no series score or standing leaves the page", pubText.match(/ lead |\bwin\b|Tied|\d–\d/)?.[0] ?? "");
+  const pubType = readFileSync("src/lib/public-schedule/types.ts", "utf8");
+  const ppg = pubType.slice(pubType.indexOf("export type PublicPlayoffGame"), pubType.indexOf("export type PublicDivision"));
+  ok(ppg.length > 0 && !/score|winner/.test(ppg.replace(/\/\*[\s\S]*?\*\//g, "")), "S12", "public: the playoff game type carries no score or winner key");
+
+  // Second lock: a not-needed row that reaches buildRows is dropped there too.
+  const leaked = buildRows(publicSeason(publicGames(rows, true)));
+  ok(!leaked.some((r) => r.key === "p-SF-6-3"), "S12", "public: buildRows drops a not-needed game even if the reader sent it");
+  if (!leaked.some((r) => r.key === "p-SF-6-3")) counters.publicNotNeededDropped++;
+
+  // The home team known, the other not (one slot filled): still no "vs".
+  // (Expos, Semifinal 1's leader, in the home slot Semifinal 1 feeds.)
+  const half = rows.map((g) => (g.id === "F-7-1" ? { ...g, home_team_id: "t1", away_team_id: null } : g));
+  eq(buildRows(publicSeason(publicGames(half))).find((r) => r.key === "p-F-7-1")?.matchup,
+    "Expos and Winner of Semifinal 2", "S12", "public: home slot known, away not → still no home team named");
+  eq(outboundMatchup("Expos", "Mets", { seriesGame: false, homeIsTeam: true, awayIsTeam: false }), "Expos vs Mets", "S12", "a single game always reads vs");
+  eq([1, 2, 3, 4, 5, 6, 7].map((k) => ifNeededByPosition(k, 7)), [false, false, false, false, true, true, true], "S12", "public: best of 7 → games 5–7 if needed");
+
+  // ── Feed ──
+  eq(playoffEventTitle(row("SF-5-3")!), "Majors Playoffs — Semifinal 1, Game 3 of 3 (if needed): Expos vs Mets", "S12", "feed: an if-needed game's title");
+  eq(playoffEventTitle(row("F-7-1")!), "Majors Playoffs — Final, Game 1 of 3: Bears and Winner of Semifinal 1", "S12", "feed: before both teams are known");
+  eq(playoffEventTitle(row("R1-2-1")!), "Mets vs Pirates", "S12", "feed: a single playoff game keeps its matchup title");
+  const data = { status: "ok", org: { name: "SRALL", timezone: "America/Los_Angeles" }, today: "2026-11-01", seasons: [publicSeason(publicGames(rows))] } as PublicScheduleOk;
+  const ics = buildLeagueCalendarIcs(data, "2026-11-01T12:00:00Z");
+  ok(ics.ok && !ics.ics.includes("playoff-SF-6-3@") && ics.ics.includes("playoff-SF-5-3@"), "S12", "feed: the not-needed game has no event; the if-needed one does");
+  ok(ics.ok && ics.eventCount === 10, "S12", "feed: 10 events (11 games, 1 not needed)", ics.ok ? String(ics.eventCount) : ics.error);
+
+  // ── CSV and schedule print ──
+  const ex = exportGames(rows);
+  const titles = buildPlayoffCsv(ex, { divisionName: "Majors", durationMin: 120, pair: null, format: "single_elimination" })
+    .split("\r\n").slice(1).map((l) => l.split('","')[4]);
+  for (const t of [
+    "Majors Playoffs - Round 1 · Game 1: Mets vs Pirates",
+    "Majors Playoffs - Semifinal 1 · Game 2 of 3: Mets vs Expos",
+    "Majors Playoffs - Semifinal 1 · Game 3 of 3 (if needed): Expos vs Mets",
+    "Majors Playoffs - Final · Game 1 of 3: Bears and Winner of Semifinal 1",
+  ]) ok(titles.includes(t), "S12", `CSV: "${t}"`, titles.join(" | "));
+  eq(titles.length, 10, "S12", "CSV: 10 rows — the not-needed game is not exported");
+  ok(!titles.some((t) => t.startsWith("Majors Playoffs - Semifinal 2 · Game 3")), "S12", "CSV: Semifinal 2's Game 3 is left out");
+  eq(exportableGames(ex).length, 10, "S12", "schedule print: lists the same 10 games");
+  // At 1–1 the CSV knows Game 3 will be played; the public page (no results) still says If needed.
+  const tied = mockupState();
+  result(tied, "SF-5-2", 5, 3); // Mets (home) win → 1–1
+  eq(exportGameName(exportGames(tied).find((g) => g.id === "SF-5-3")!, exportGames(tied), null), "Semifinal 1 · Game 3 of 3", "S12", "CSV: at 1–1 Game 3 is not marked if needed (results known)");
+  eq(buildRows(publicSeason(publicGames(tied))).find((r) => r.key === "p-SF-5-3")?.ifNeeded, true, "S12", "public: at 1–1 Game 3 still reads If needed (static, no results on the page — recorded)");
+  if (!exportGameName(exportGames(tied).find((g) => g.id === "SF-5-3")!, exportGames(tied), null).includes("if needed")) counters.csvIfNeededFromResults++;
+  // A bracket with no series exports exactly as before.
+  const plain = exportGames(withIds(planBracket({ ...mockupInput(undefined), gamesPerTeamPerDay: 1 }).games));
+  eq(exportGameName(plain.find((g) => g.round === "SF")!, plain, null), "Semifinals", "S12", "CSV: no series → round name only, as before");
+
+  // ── Printed bracket ──
+  const html = buildBracketPrintHtml(seriesMockup(), "single_elimination", "L", "Majors", "Nov 21, 2026");
+  ok(html.includes(">Single elimination · Semifinals and Final best of 3</div>"), "S12", "print: the series line under the title");
+  for (const h of ["Round 1", "Semifinals · best of 3", "Final · best of 3"]) ok(html.includes(`>${h}</div>`), "S12", `print: round header "${h}"`);
+  eq((html.match(/data-series="/g) ?? []).length, 3, "S12", "print: one card per series (3)");
+  ok(/data-series-game="3" data-tag="not_needed"[^>]*>[\s\S]*?line-through/.test(html), "S12", "print: the not-needed game is struck through");
+  eq((html.match(/data-tag="if_needed"/g) ?? []).length, 2, "S12", "print: two if-needed games (Semifinal 1 and Final Game 3)");
+  ok(html.includes(">Expos lead 1–0<") && html.includes(">Bears win 2–0<"), "S12", "print: each series says where it stands");
+  ok(html.includes(">Sun 11/15 · Monroe Complex — Andrews<"), "S12", "print: a played game's line drops the time");
+  ok(html.includes(">Sat 11/21 · 9:00 AM · Monroe Complex — Andrews<"), "S12", "print: an unplayed game's line keeps it");
+  ok(html.includes("Winner of Semifinal 1"), "S12", "print: the Final's empty slot names the series that feeds it");
+  eq(seriesPrintLine(withIds(planBracket({ ...mockupInput(undefined), gamesPerTeamPerDay: 1 }).games)), null, "S12", "print: no series → no series line");
+  eq(seriesRoundHeader("SF", seriesMockup()), "Semifinals · best of 3", "S12", "print: header helper");
+
+  // Geometry: no two cards in a column overlap, every card is on the canvas,
+  // every line leaves at the divider and enters a row's centre.
+  for (const [name, games, minScale] of [["mockup", seriesMockup(), 1], ["16 teams, best of 7 Final", seriesSixteen(), 0.9]] as [string, PrintGame[], number][]) {
+    const rounds = [...new Set(games.map((g) => g.round))];
+    const tallest = ["R1", "R2", "R3", "QF", "SF", "F"].filter((r) => rounds.includes(r))
+      .map((r) => printCardHeight(Math.max(...games.filter((g) => g.round === r).map((g) => g.series_game ?? 1))));
+    const D = printSeriesTree(tallest);
+    const L = singleElimLayout(oneRowPerSeries(games), D);
+    const h = (c: (typeof L.cards)[number]) =>
+      printCardHeight(Math.max(...games.filter((g) => g.round === c.game.round && g.game_number === c.game.game_number).map((g) => g.series_game ?? 1)));
+    let overlap = false;
+    for (let k = 0; k < L.rounds.length; k++) {
+      const col = L.cards.filter((c) => c.round === k).sort((a, b) => a.y - b.y);
+      for (let i = 1; i < col.length; i++) if (col[i].y < col[i - 1].y + h(col[i - 1]) + 4 - 1e-6) overlap = true;
+    }
+    ok(!overlap, "S12", `print geometry (${name}): no cards overlap in a column`);
+    ok(L.cards.every((c) => c.y >= D.roundHdr - 1e-6 && c.y + h(c) <= L.height + 1e-6), "S12", `print geometry (${name}): every card is on the canvas`);
+    const div = 1 + CARD.metaH + CARD.rowH + 0.5;
+    ok(L.connectors.every((cn) => {
+      const from = L.cards.find((c) => c.game.game_number === cn.from)!;
+      const to = L.cards.find((c) => c.game.game_number === cn.to)!;
+      const rowC = to.y + 1 + CARD.metaH + (cn.side === "home_team_id" ? CARD.rowH / 2 : CARD.rowH + 1 + CARD.rowH / 2);
+      return Math.abs(cn.points[0][1] - (from.y + div)) < 1e-6 && Math.abs(cn.points[3][1] - rowC) < 1e-6;
+    }), "S12", `print geometry (${name}): lines leave at the divider and enter a row's centre`);
+    ok(L.scale >= minScale, "S12", `print geometry (${name}): scale ≥ ${minScale}`, L.scale.toFixed(3));
+  }
+
+  // ── Delete confirm ──
+  const C: BracketCounts = { games: 11, datedGames: 11, gamesWithResults: 5, publicGames: 10, notNeededGames: 1 };
+  const d = deleteConfirm("Majors", C, false, rows);
+  eq(d.lines, ["11 games — 2 single games and 3 best-of-3 series. 5 have results; 1 is not needed.", "This can't be undone."], "S12", "delete: the series line replaces the games and results lines");
+  ok(!!d.publicWarning?.startsWith("10 of these games are on your public schedule right now (not-needed games never are)."), "S12", "delete: the public line says not-needed games never are", d.publicWarning ?? "");
+  const off = deleteConfirm("Majors", { ...C, gamesWithResults: 4 }, false, rows);
+  eq(off.lines[0], "This deletes the bracket and all 11 of its games (all have dates).", "S12", "delete: games that disagree with the preview → the preview's own lines");
+  ok(!deleteConfirm("Majors", { ...C, notNeededGames: 0 }, false, null).publicWarning?.includes("not-needed"), "S12", "delete: no not-needed games → no parenthetical");
+
+  // ── What a not-needed game frees ──
+  const snackRows = (rows as Planned[]).map((g) => ({
+    home_team_id: g.home_team_id, away_team_id: g.away_team_id, venue_id: g.venue_id ?? null,
+    scheduled_date: g.scheduled_date ?? null, start_time: g.start_time ?? null, status: g.status ?? "scheduled", durationMin: 120,
+  }));
+  const index = assignmentIndexFromGames(assignmentGamesFromPlayoffRows(snackRows), ["andrews", "perry"]);
+  const nn = rows.find((g) => g.id === "SF-6-3")! as Planned;
+  const ifn = rows.find((g) => g.id === "SF-5-3")! as Planned;
+  eq(teamGamesOn(index, "t6", nn.scheduled_date!).length, 0, "S12", "snack shack: a not-needed game leaves its teams free");
+  eq(teamGamesOn(index, "t4", ifn.scheduled_date!).length, 1, "S12", "snack shack: an if-needed game holds its teams");
+  const dl = { date: "2026-11-22", startTime: "16:30", rawDuration: 120, venue: { has_lights: false }, isAway: false };
+  const sr = { kind: "on" as const, city: cityById("ca-santa-rosa") };
+  ok(daylightFlag({ ...dl, status: "scheduled" }, sr, "2026-11-01") !== null && daylightFlag({ ...dl, status: NOT_NEEDED }, sr, "2026-11-01") === null,
+    "S12", "daylight: an if-needed game ending after sunset is flagged; a not-needed one never is");
+
+  // Reads that must leave not-needed games out (source checks — weak by nature).
+  const modal = readFileSync("src/components/playoffs/edit-playoff-game-modal.tsx", "utf8");
+  eq((modal.match(/\.neq\("status", NOT_NEEDED\)/g) ?? []).length, 2, "S12", "Edit game: both playoff occupancy reads skip not-needed games");
+  ok(readFileSync("src/app/(dashboard)/dashboard/leagues/[id]/page.tsx", "utf8").includes('.neq("status", "not_needed")'), "S12", "season page: the last-game read skips not-needed games");
+  ok(readFileSync("src/components/public-schedule/public-schedule-client.tsx", "utf8").includes("{row.ifNeeded && !row.struck && <PlainTag tone=\"amber\">{SERIES_TAG_TEXT.if_needed}</PlainTag>}"),
+    "S12", "public page: renders the If needed tag");
+  ok(readFileSync("src/components/playoffs/seed-stage2-modal.tsx", "utf8").includes("{confirm.seriesLine && <p"), "S12", "seed confirm: shows the series line");
 });
 
 // ─── PT: playthroughs (the TypeScript twin, end to end) ───────────────────────

@@ -50,6 +50,12 @@ export type PublicPlayoffGame = {
   stage?: number;
   seed_home?: number | null;
   seed_away?: number | null;
+  /** 0114, playoff series: which game of its series (1..length) and how many
+   *  games the series is. The reader leaves NOT-NEEDED games out, so the
+   *  length can't be counted from the rows. Absent from an older reader (and
+   *  1 for a single game). */
+  series_game?: number;
+  series_length?: number;
 };
 
 export type PublicDivision = { id: string; name: string; game_duration: unknown };

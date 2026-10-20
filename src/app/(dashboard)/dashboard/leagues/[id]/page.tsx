@@ -78,6 +78,8 @@ export default async function LeaguePage({ params }: { params: { id: string } })
       .select("scheduled_date")
       .eq("league_id", league.id)
       .not("scheduled_date", "is", null)
+      // season_last_day's rule (0114): a not-needed series game never counts.
+      .neq("status", "not_needed")
       .order("scheduled_date", { ascending: false })
       .limit(1),
   ]);

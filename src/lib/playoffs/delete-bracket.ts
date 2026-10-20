@@ -8,6 +8,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { commitOutcome, parseDeleteCounts, type BracketCounts } from "@/lib/playoffs/bracket-delete";
+import type { SeriesGame } from "@/lib/playoffs/series";
 
 /** The confirm's counts. Null means they could not be read — the confirm
  *  says "couldn't count", never zero. */
@@ -19,6 +20,19 @@ export async function previewBracketDelete(playoffId: string): Promise<BracketCo
   } as never);
   if (error) return null;
   return parseDeleteCounts(data);
+}
+
+/** The bracket's games, for the confirm's series line (0114). Fail-soft: null
+ *  when unreadable, and the confirm keeps its plain lines — the counts it
+ *  states always come from the preview above. */
+export async function bracketGamesForConfirm(playoffId: string): Promise<SeriesGame[] | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("playoff_games")
+    .select("id, round, game_number, series_game, status, home_team_id, away_team_id, winner_id, home_score, away_score")
+    .eq("playoff_id", playoffId);
+  if (error || !data) return null;
+  return data as unknown as SeriesGame[];
 }
 
 export async function deleteBracket(
