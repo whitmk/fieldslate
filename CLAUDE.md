@@ -691,6 +691,16 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   counters; parts A–H + S) and `npm run sim:playoff-bracket:mutants` (13
   mutants applied to the real source, each required to die FIRST at its own
   assertion). Read the sim's header before touching any of this.
+- **Round robin has its own harness: `npm run sim:round-robin`** (233 checks
+  × 3 zones, 8 counters; 2–16 teams: game count, RR labels, every pair once,
+  no team twice a round, odd-count sit-outs, numbering, round timing, field and
+  team overlap, TBD on too few dates, labels, the tie refusal) + `:mutants`
+  (12, each killed at its own assertion, 2026-10-19). **Two KNOWN defects are
+  pinned, not fixed ([K1], [K2]):** the first team in the list is home in
+  EVERY game it plays (7 teams: 6 of 6; others 2–3), and nothing limits games
+  per team per day — with enough fields every round lands on one Saturday (6
+  teams on 4 fields: all 15 games, 5 per team, one day). Fixing either flips
+  its K check on purpose.
 
 ## Removing a team from a bracket (branch `feat/playoff-exclude-team`, 2026-10-19)
 
