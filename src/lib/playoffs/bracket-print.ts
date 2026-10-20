@@ -141,7 +141,7 @@ export function gameCardHtml(game: PrintGame, allGames: PrintGame[], format: str
       <span style="display:flex;align-items:center;gap:4px;flex:none">${done && score != null ? `<span style="font-size:10pt;font-weight:700;color:${won ? PRINT_COLORS.winText : PRINT_COLORS.meta}">${score}</span>` : ""}${won ? TROPHY_SVG : ""}</span>
     </div>`;
   };
-  const when = gameWhen(game.game_number, game.scheduled_date, game.start_time);
+  const when = gameWhen(game, allGames, game.scheduled_date, game.start_time);
   const field = game.scheduled_date && game.venue_name ? game.venue_name : "";
   return `<div data-game="${game.game_number}" style="width:${CARD.width}px;height:${CARD_H}px;border:1px solid ${PRINT_COLORS.border};border-radius:5px;overflow:hidden;background:white">
     <div style="height:${CARD.metaH}px;padding:1px 7px 0;font-size:7.5pt;line-height:12px;color:${PRINT_COLORS.meta};border-bottom:1px solid ${PRINT_COLORS.border}">

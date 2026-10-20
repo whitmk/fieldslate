@@ -6,7 +6,7 @@ import {
   type GameRow,
   type SlotWrite,
 } from "@/lib/playoffs/advancement";
-import { DOUBLE_ELIM_EDIT_BLOCKED, enterOutcome, resultPath } from "@/lib/playoffs/playoff-result";
+import { DOUBLE_ELIM_EDIT_BLOCKED, enterOutcome, resultPath, type ResultNumbering } from "@/lib/playoffs/playoff-result";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +37,7 @@ export async function enterGameResult(
   payload: EnterResultPayload,
   allGames: GameRow[],
   format: string,
+  numbering: ResultNumbering,
 ): Promise<EnterResultOutcome> {
   if (resultPath(format) === "database") {
     const supabase = createClient();
@@ -45,7 +46,7 @@ export async function enterGameResult(
       p_home_score: payload.homeScore,
       p_away_score: payload.awayScore,
     } as never);
-    const outcome = enterOutcome(data, error, payload.gameId);
+    const outcome = enterOutcome(data, error, payload.gameId, numbering);
     return outcome.ok ? { success: true } : { success: false, error: outcome.message };
   }
   return enterDoubleElimResultInBrowser(payload, allGames);

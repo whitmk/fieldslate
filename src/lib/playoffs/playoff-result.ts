@@ -9,6 +9,7 @@
 // back committed FOR THE GAME THAT WAS ASKED ABOUT; anything else says nothing
 // was saved.
 
+import type { GameNumbering } from "@/lib/playoffs/bracket-labels";
 import { stage2StartedRefusal } from "@/lib/playoffs/two-stage";
 
 export const NOTHING = "Nothing was saved.";
@@ -44,9 +45,17 @@ export function playoffRoundLabel(round: string): string {
   return round;
 }
 
+/** "Game 3 (Semifinal)". `gameNumber` is the SHOWN number — every reply's
+ *  stored position is mapped through a ResultNumbering when it is parsed. */
 export function gameLabel(gameNumber: number, round: string): string {
   return `Game ${gameNumber} (${playoffRoundLabel(round)})`;
 }
+
+/** The numberings a result reply needs: the game's own bracket, and — for a
+ *  round-robin game of a two-stage setup — the bracket that follows. Null
+ *  when that bracket's games aren't known: the sentence then names no game,
+ *  never a stored position. */
+export type ResultNumbering = { own: GameNumbering; nextStage: GameNumbering | null };
 
 // ─── Refusals ─────────────────────────────────────────────────────────────────
 
@@ -98,13 +107,13 @@ export type NextGame = {
   awayScore: number | null;
 };
 
-function parseNextGame(raw: unknown): NextGame | null {
+function parseNextGame(raw: unknown, own: GameNumbering): NextGame | null {
   const n = (raw ?? null) as Record<string, unknown> | null;
   if (!n || typeof n.game_number !== "number" || typeof n.round !== "string") return null;
   const str = (v: unknown) => (typeof v === "string" ? v : null);
   const num = (v: unknown) => (typeof v === "number" ? v : null);
   return {
-    gameNumber: n.game_number, round: n.round,
+    gameNumber: own(n.game_number), round: n.round,
     homeName: str(n.home_name), awayName: str(n.away_name),
     homeScore: num(n.home_score), awayScore: num(n.away_score),
   };
@@ -126,14 +135,14 @@ export function nextGameBlockedMessage(next: NextGame | null, action: "clear" | 
  * a result (0108), or — for a round-robin game of a two-stage setup — the
  * bracket that follows has a result (0113, `next_stage_started`).
  */
-export function blockedMessage(r: Record<string, unknown>, action: "clear" | "edit"): string {
+export function blockedMessage(r: Record<string, unknown>, action: "clear" | "edit", numbering: ResultNumbering): string {
   if (r.reason === "next_stage_started") {
     const n = typeof r.stage2_game_number === "number" ? r.stage2_game_number : null;
-    return n !== null
-      ? stage2StartedRefusal(n)
+    return n !== null && numbering.nextStage
+      ? stage2StartedRefusal(numbering.nextStage(n))
       : "The bracket has started, so round-robin results can't be changed. Clear the bracket's results first, then change this one.";
   }
-  return nextGameBlockedMessage(parseNextGame(r.next_game), action);
+  return nextGameBlockedMessage(parseNextGame(r.next_game, numbering.own), action);
 }
 
 /** The browser path's (double elimination) blocked edit: clearing isn't
@@ -150,11 +159,12 @@ export function enterOutcome(
   data: unknown,
   error: { message: string } | null,
   gameId: string,
+  numbering: ResultNumbering,
 ): ResultOutcome {
   if (error) return { ok: false, message: resultErrorMessage(error.message) };
   const r = (data ?? null) as Record<string, unknown> | null;
   if (r && r.blocked === true) {
-    return { ok: false, message: blockedMessage(r, "edit") };
+    return { ok: false, message: blockedMessage(r, "edit", numbering) };
   }
   if (!r || r.committed !== true || r.game_id !== gameId) return { ok: false, message: UNCONFIRMED };
   return { ok: true };
@@ -177,7 +187,7 @@ export type ClearPreview = {
 
 /** A clear reply (preview or commit) → its fields, or null when it can't be
  *  read. A reply that isn't for the asked-about game is unreadable. */
-export function parseClearReply(raw: unknown, gameId: string): ClearPreview | null {
+export function parseClearReply(raw: unknown, gameId: string, own: GameNumbering): ClearPreview | null {
   const r = (raw ?? null) as Record<string, unknown> | null;
   if (!r || r.game_id !== gameId) return null;
   if (typeof r.game_number !== "number" || typeof r.round !== "string") return null;
@@ -188,10 +198,10 @@ export function parseClearReply(raw: unknown, gameId: string): ClearPreview | nu
   if (r.removed !== null && r.removed !== undefined) {
     const m = r.removed as Record<string, unknown>;
     if (typeof m.game_number !== "number" || typeof m.round !== "string") return null;
-    removed = { gameNumber: m.game_number, round: m.round, teamName: str(m.team_name) };
+    removed = { gameNumber: own(m.game_number), round: m.round, teamName: str(m.team_name) };
   }
   return {
-    gameId, gameNumber: r.game_number, round: r.round,
+    gameId, gameNumber: own(r.game_number), round: r.round,
     homeName: str(r.home_name), awayName: str(r.away_name),
     homeScore: num(r.home_score), awayScore: num(r.away_score),
     winnerName: str(r.winner_name),
@@ -209,13 +219,14 @@ export function clearPreviewOutcome(
   data: unknown,
   error: { message: string } | null,
   gameId: string,
+  numbering: ResultNumbering,
 ): ClearPreviewOutcome {
   if (error) return { ok: false, message: resultErrorMessage(error.message) };
   const r = (data ?? null) as Record<string, unknown> | null;
   if (r && r.blocked === true) {
-    return { ok: false, message: blockedMessage(r, "clear") };
+    return { ok: false, message: blockedMessage(r, "clear", numbering) };
   }
-  const preview = parseClearReply(data, gameId);
+  const preview = parseClearReply(data, gameId, numbering.own);
   if (!r || r.committed !== false || !preview) {
     return { ok: false, message: "Couldn't check what clearing this result would change. Nothing was changed. Try again." };
   }
@@ -227,13 +238,14 @@ export function clearCommitOutcome(
   data: unknown,
   error: { message: string } | null,
   gameId: string,
+  numbering: ResultNumbering,
 ): ResultOutcome {
   if (error) return { ok: false, message: resultErrorMessage(error.message) };
   const r = (data ?? null) as Record<string, unknown> | null;
   if (r && r.blocked === true) {
-    return { ok: false, message: blockedMessage(r, "clear") };
+    return { ok: false, message: blockedMessage(r, "clear", numbering) };
   }
-  if (!r || r.committed !== true || !parseClearReply(data, gameId)) return { ok: false, message: UNCONFIRMED };
+  if (!r || r.committed !== true || !parseClearReply(data, gameId, numbering.own)) return { ok: false, message: UNCONFIRMED };
   return { ok: true };
 }
 

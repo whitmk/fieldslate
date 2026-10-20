@@ -22,7 +22,7 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "BP3", what: "label drifts: every empty slot reads TBD", file: LABELS,
-    find: "  return feeder ? `Winner of Game ${feeder.game_number}` : \"TBD\";",
+    find: "  return feeder ? `Winner of Game ${shownGameNumber(feeder, allGames)}` : \"TBD\";",
     replace: "  return feeder ? \"TBD\" : \"TBD\";",
     expect: "L1",
   },

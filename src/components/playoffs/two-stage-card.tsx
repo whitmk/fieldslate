@@ -23,7 +23,7 @@ import { BracketView, type GameWithTeams } from "@/components/playoffs/bracket-v
 import { EnterResultModal } from "@/components/playoffs/enter-result-modal";
 import { EditPlayoffGameModal } from "@/components/playoffs/edit-playoff-game-modal";
 import { SeedStage2Modal } from "@/components/playoffs/seed-stage2-modal";
-import { slotWon, shortTime, shortDate } from "@/lib/playoffs/bracket-labels";
+import { gameNumbering, slotWon, shortTime, shortDate } from "@/lib/playoffs/bracket-labels";
 import { playoffRoundLabel } from "@/lib/playoffs/playoff-result";
 import { acknowledgeSeeds } from "@/lib/playoffs/two-stage-io";
 import {
@@ -351,7 +351,7 @@ export function TwoStageCard({ stage1, stage2, counting, onEdit, onDelete, onExp
             </div>
 
             <div className="flex flex-col gap-3 px-4 pb-4">
-              {locked && firstResult !== null && <p className="text-xs text-gray-500">{stage1LockedLine(firstResult)}</p>}
+              {locked && firstResult !== null && <p className="text-xs text-gray-500">{stage1LockedLine(gameNumbering(s2Games)(firstResult))}</p>}
               {!locked && status?.kind === "seed_anyway" && (
                 <p className="text-xs text-gray-500">{neverPlayedLine(status.neverPlayed, teamName)}</p>
               )}
@@ -565,6 +565,7 @@ export function TwoStageCard({ stage1, stage2, counting, onEdit, onDelete, onExp
           game={resultGame}
           allGames={s1Games}
           format="round_robin"
+          nextStageGames={s2Games}
           title={`${rrGameLabel(resultGame.game_number)} · ${teamName(resultGame.home_team_id)} vs ${teamName(resultGame.away_team_id)}`}
           notice={seeded ? STAGE1_EDIT_AFTER_SEEDING : null}
           onClose={() => setResultGame(null)}

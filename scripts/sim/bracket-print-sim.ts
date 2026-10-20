@@ -133,10 +133,12 @@ section("L", () => {
   const m = singleElim(11, 0);
   const lab = (n: number, side: "home" | "away") => emptySlotLabel(byNum(m, n), side, m, "single_elimination");
   ok(JSON.stringify(m.filter((g) => g.round === "R1").map((g) => g.game_number)) === "[2,6,8]", "[L1]", "the Majors shape: round-1 games 2, 6, 8");
-  ok(lab(9, "away") === "Winner of Game 2" && lab(11, "away") === "Winner of Game 6" && lab(12, "away") === "Winner of Game 8", "[L1]",
+  // Labels SHOW numbers (bracket-labels gameNumbering, 2026-10-20): the 10
+  // games that exist — stored 2, 6, 8, 9…15 — read Games 1–10.
+  ok(lab(9, "away") === "Winner of Game 1" && lab(11, "away") === "Winner of Game 2" && lab(12, "away") === "Winner of Game 3", "[L1]",
     `round 2: ${lab(9, "away")} / ${lab(11, "away")} / ${lab(12, "away")}`);
-  ok(lab(13, "home") === "Winner of Game 9" && lab(13, "away") === "Winner of Game 10" && lab(14, "home") === "Winner of Game 11"
-     && lab(14, "away") === "Winner of Game 12" && lab(15, "home") === "Winner of Game 13" && lab(15, "away") === "Winner of Game 14", "[L1]",
+  ok(lab(13, "home") === "Winner of Game 4" && lab(13, "away") === "Winner of Game 5" && lab(14, "home") === "Winner of Game 6"
+     && lab(14, "away") === "Winner of Game 7" && lab(15, "home") === "Winner of Game 8" && lab(15, "away") === "Winner of Game 9", "[L1]",
     "semifinals and final");
   ok(byNum(m, 10).home_team_id !== null && byNum(m, 10).away_team_id !== null, "[L1]", "game 10's two teams both arrived by bye");
   ok(lab(2, "home") === "TBD", "[L2]", "a round-1 slot has no feeder: TBD");
@@ -197,15 +199,20 @@ section("G", () => {
 // ─── D: the date line ────────────────────────────────────────────────────────
 
 section("D", () => {
-  ok(gameWhen(9, "2026-10-29", "17:15:00") === "Game 9 · Thu 10/29 · 5:15 PM", "[D1]", gameWhen(9, "2026-10-29", "17:15:00"));
-  ok(gameWhenLine(4, "2026-11-07", "10:45", "Andrews") === "Game 4 · Sat 11/7 · 10:45 AM · Andrews", "[D1]", "Whit's example");
-  ok(gameWhen(11, null, null) === "Game 11 · Date TBD" && gameWhenLine(11, null, null, "Andrews") === "Game 11 · Date TBD", "[D1]", "undated");
-  ok(gameWhen(3, "2026-11-01", null) === "Game 3 · Sun 11/1", "[D1]", "date without time");
+  // A full (gapless) bracket of 12: shown numbers equal stored ones here; the
+  // gap case is sim:playoff-numbers.
+  const G = (n: number) => ({ game_number: n });
+  const FULL = Array.from({ length: 12 }, (_, i) => G(i + 1));
+  ok(gameWhen(G(9), FULL, "2026-10-29", "17:15:00") === "Game 9 · Thu 10/29 · 5:15 PM", "[D1]", gameWhen(G(9), FULL, "2026-10-29", "17:15:00"));
+  ok(gameWhenLine(G(4), FULL, "2026-11-07", "10:45", "Andrews") === "Game 4 · Sat 11/7 · 10:45 AM · Andrews", "[D1]", "Whit's example");
+  ok(gameWhen(G(11), FULL, null, null) === "Game 11 · Date TBD" && gameWhenLine(G(11), FULL, null, null, "Andrews") === "Game 11 · Date TBD", "[D1]", "undated");
+  ok(gameWhen(G(3), FULL, "2026-11-01", null) === "Game 3 · Sun 11/1", "[D1]", "date without time");
   const m = singleElim(11, 5);
   const card = gameCardHtml(byNum(m, 9), m, "single_elimination");
-  ok(card.includes("Game 9 · Thu 10/29 · 5:15 PM") && card.includes("Polley Field @ Ives Park (SLL)"), "[D2]", "the printed card carries the date, time and field");
+  // Stored 9 is the 4th game that exists; stored 11 the 6th.
+  ok(card.includes("Game 4 · Thu 10/29 · 5:15 PM") && card.includes("Polley Field @ Ives Park (SLL)"), "[D2]", "the printed card carries the date, time and field");
   const undated = gameCardHtml(byNum(m, 11), m, "single_elimination");
-  ok(undated.includes("Game 11 · Date TBD"), "[D2]", "an undated card says Date TBD");
+  ok(undated.includes("Game 6 · Date TBD"), "[D2]", "an undated card says Date TBD");
 });
 
 // ─── P: the tree layout ──────────────────────────────────────────────────────

@@ -10,7 +10,7 @@
 // substring, never parsed as an instant (house rule, game-time.ts).
 
 import type { GameRow } from "@/lib/playoffs/advancement";
-import { emptySlotLabel, type SeedSlots } from "@/lib/playoffs/bracket-labels";
+import { emptySlotLabel, shownGameNumber, type SeedSlots } from "@/lib/playoffs/bracket-labels";
 import { rrGameLabel } from "@/lib/playoffs/two-stage";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
@@ -198,17 +198,20 @@ export function buildRows(season: PublicSeason): ScheduleRow[] {
   const twoStageDivisions = new Set(
     season.playoff_games.filter((p) => p.stage === 2).map((p) => p.division_id),
   );
-  const playoffLabelOf = (p: PublicPlayoffGame): string => {
-    if (p.stage === 2) return `Playoffs · Bracket · ${playoffRoundName(p.round)} · Game ${p.game_number}`;
-    if (twoStageDivisions.has(p.division_id)) return `Playoffs · Round robin · ${rrGameLabel(p.game_number)}`;
-    return `Playoffs · ${playoffRoundName(p.round)} · Game ${p.game_number}`;
-  };
-
   const brackets = new Map<string, PublicPlayoffGame[]>();
   for (const p of season.playoff_games) {
     if (!brackets.has(p.playoff_id)) brackets.set(p.playoff_id, []);
     brackets.get(p.playoff_id)!.push(p);
   }
+  // "Game N" is the SHOWN number within the game's own bracket (bracket-labels
+  // `gameNumbering`) — the reader returns every game of the bracket, dated or
+  // not, so the numbering is the same one the admin sees.
+  const shown = (p: PublicPlayoffGame) => shownGameNumber(p, brackets.get(p.playoff_id) ?? [p]);
+  const playoffLabelOf = (p: PublicPlayoffGame): string => {
+    if (p.stage === 2) return `Playoffs · Bracket · ${playoffRoundName(p.round)} · Game ${shown(p)}`;
+    if (twoStageDivisions.has(p.division_id)) return `Playoffs · Round robin · ${rrGameLabel(p.game_number)}`;
+    return `Playoffs · ${playoffRoundName(p.round)} · Game ${shown(p)}`;
+  };
   for (const p of season.playoff_games) {
     if (!p.scheduled_date || !p.start_time) continue;
     const bracket = brackets.get(p.playoff_id) ?? [];

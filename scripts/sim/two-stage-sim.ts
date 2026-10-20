@@ -193,10 +193,10 @@ section("P4 placeholder labels", () => {
   const rows = games.map((g) => ({ ...g, id: `g${g.game_number}`, winner_id: null })) as (GameRow & Stage2Game)[];
   const byNum = (n: number) => rows.find((r) => r.game_number === n)!;
   ok(emptySlotLabel(byNum(2), "home", rows, "single_elimination") === "Seed 4" && emptySlotLabel(byNum(2), "away", rows, "single_elimination") === "Seed 5",
-    "P4", "Game 2 reads Seed 4 vs Seed 5");
-  ok(emptySlotLabel(byNum(5), "home", rows, "single_elimination") === "Seed 1" && emptySlotLabel(byNum(5), "away", rows, "single_elimination") === "Winner of Game 2",
-    "P4", "Game 5 reads Seed 1 vs Winner of Game 2");
-  ok(emptySlotLabel(byNum(7), "home", rows, "single_elimination") === "Winner of Game 5", "P4", "the final reads Winner of Game 5");
+    "P4", "stored Game 2 (shown Game 1) reads Seed 4 vs Seed 5");
+  ok(emptySlotLabel(byNum(5), "home", rows, "single_elimination") === "Seed 1" && emptySlotLabel(byNum(5), "away", rows, "single_elimination") === "Winner of Game 1",
+    "P4", "stored Game 5 reads Seed 1 vs Winner of Game 1 (stored 2 shows as 1, 2026-10-20)");
+  ok(emptySlotLabel(byNum(7), "home", rows, "single_elimination") === "Winner of Game 3", "P4", "the final reads Winner of Game 3 (stored 5)");
   ok(slotName("Mets", byNum(2), "home", rows, "single_elimination") === "Mets", "P4", "a team's name wins over its seed");
   const plain: GameRow = { id: "x", round: "R1", game_number: 1, home_team_id: null, away_team_id: null, winner_id: null };
   ok(emptySlotLabel(plain, "home", [plain], "single_elimination") === "TBD", "P4", "an ordinary bracket's round-1 slot still reads TBD");
@@ -374,11 +374,11 @@ section("C1 confirm", () => {
   const c = seedConfirm({ divisionName: "Majors", stage2Games: stage2(6).games, order: SEEDED, advance: 6, status, teamName: nameOf });
   ok(c.title === "Seed the Majors bracket?", "C1", "title");
   ok(eq(c.lines, [
-    "Expos (1) — bye to Game 5",
-    "Bears (2) — bye to Game 6",
-    "Game 2: Mets (4) vs Pirates (5) · Sat 11/14, 9:00 AM",
-    "Game 4: Lions (3) vs Royals (6) · Sat 11/14, 9:00 AM",
-  ]), "C1", "the mockup's lines, word for word", c.lines.join(" | "));
+    "Expos (1) — bye to Game 3",
+    "Bears (2) — bye to Game 4",
+    "Game 1: Mets (4) vs Pirates (5) · Sat 11/14, 9:00 AM",
+    "Game 2: Lions (3) vs Royals (6) · Sat 11/14, 9:00 AM",
+  ]), "C1", "the mockup's lines, with shown game numbers (stored 2, 4, 5, 6 show as 1–4; 2026-10-20)", c.lines.join(" | "));
   ok(c.notAdvancing === "Not advancing: Giants." && c.unplayed === null && c.button === "Seed Stage 2", "C1", "who doesn't advance; no unplayed block");
 });
 

@@ -76,7 +76,7 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "SX12", what: "the public page stops naming the bracket stage", file: "src/lib/public-schedule/view.ts",
-    find: "    if (p.stage === 2) return `Playoffs · Bracket · ${playoffRoundName(p.round)} · Game ${p.game_number}`;\n",
+    find: "    if (p.stage === 2) return `Playoffs · Bracket · ${playoffRoundName(p.round)} · Game ${shown(p)}`;\n",
     replace: "",
     expect: "PL1",
   },

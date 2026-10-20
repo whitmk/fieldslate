@@ -59,7 +59,8 @@ import {
   type Stage1Game,
   type Stage2Game,
 } from "../../src/lib/playoffs/two-stage";
-import { blockedMessage, clearPreviewOutcome, enterOutcome } from "../../src/lib/playoffs/playoff-result";
+import { blockedMessage, clearPreviewOutcome, enterOutcome, type ResultNumbering } from "../../src/lib/playoffs/playoff-result";
+import { gameNumbering } from "../../src/lib/playoffs/bracket-labels";
 import { deleteConfirm } from "../../src/lib/playoffs/bracket-delete";
 import { buildRows } from "../../src/lib/public-schedule/view";
 import type { PublicPlayoffGame, PublicSeason } from "../../src/lib/public-schedule/types";
@@ -169,11 +170,11 @@ section("E3 placeholders, not dropped rows", () => {
   ok(lines.length === 6, "E3", "all 5 dated bracket games are exported before seeding", String(lines.length - 1));
   ok(lines[1] === `"11/14/2026","09:00 AM","11/14/2026","11:00 AM","Majors Playoffs - Bracket · Round 1: Seed 4 vs Seed 5","Monroe Complex — Andrews","Game"`,
     "E3", "round 1 reads Seed 4 vs Seed 5", lines[1]);
-  ok(lines[3] === `"11/15/2026","10:00 AM","11/15/2026","12:00 PM","Majors Playoffs - Bracket · Semifinals: Seed 1 vs Winner of Game 2","Monroe Complex — Andrews","Game"`,
-    "E3", "a bye seed waits in the semifinal", lines[3]);
+  ok(lines[3] === `"11/15/2026","10:00 AM","11/15/2026","12:00 PM","Majors Playoffs - Bracket · Semifinals: Seed 1 vs Winner of Game 1","Monroe Complex — Andrews","Game"`,
+    "E3", "a bye seed waits in the semifinal (stored 5, 2 show as Games 3, 1)", lines[3]);
   counters.seedPlaceholders += lines.filter((l) => l.includes("Seed ")).length;
-  ok(lines[5] === `"11/21/2026","09:00 AM","11/21/2026","11:00 AM","Majors Playoffs - Bracket · Final: Winner of Game 5 vs Winner of Game 6","Monroe Complex — Andrews","Game"`,
-    "E3", "the final reads Winner of Game 5 vs Winner of Game 6", lines[5]);
+  ok(lines[5] === `"11/21/2026","09:00 AM","11/21/2026","11:00 AM","Majors Playoffs - Bracket · Final: Winner of Game 3 vs Winner of Game 4","Monroe Complex — Andrews","Game"`,
+    "E3", "the final reads Winner of Game 3 vs Winner of Game 4 (stored 5, 6)", lines[5]);
   const seeded = s2Export.map((g) => (g.game_number === 2 ? { ...g, home_team_id: "t1", home_team_name: "Mets", away_team_id: "t2", away_team_name: "Pirates" } : g));
   const after = buildPlayoffCsv(seeded, { divisionName: "Majors", durationMin: 120, pair: PAIR, format: "round_robin" }).split("\r\n")[1];
   ok(after.includes("Round 1: Mets vs Pirates"), "E3", "after seeding the names replace the seeds", after);
@@ -190,7 +191,7 @@ section("E4 round names", () => {
   const plainAll = s2Export.map((g) => ({ ...g, playoff_id: "x", seed_home: null, seed_away: null })).map((g) => (g.game_number === 5 ? plain : g));
   const line = buildPlayoffCsv(plainAll, { divisionName: "Majors", durationMin: 120, pair: null, format: "single_elimination" })
     .split("\r\n").find((l) => l.includes("Semifinals")) ?? "";
-  ok(line.includes("Majors Playoffs - Semifinals: Expos vs Winner of Game 2"), "E4", "an ordinary bracket's empty slot reads Winner of Game N", line);
+  ok(line.includes("Majors Playoffs - Semifinals: Expos vs Winner of Game 1"), "E4", "an ordinary bracket's empty slot reads Winner of Game N (stored 2 shows as 1)", line);
 });
 
 // ── K: the card's pills, buttons and lines ────────────────────────────────────
@@ -355,11 +356,16 @@ section("V1 counts", () => {
   ok(parseTwoStageCounts(missing) === null && parseTwoStageCounts({ ...good, stage2_games: -1 }) === null, "V1", "a missing or negative count is unreadable, never zero");
 });
 
+// Full (gapless) brackets: shown numbers equal stored ones here; the gap
+// case is sim:playoff-numbers.
+const FULL7 = gameNumbering(Array.from({ length: 7 }, (_, i) => ({ game_number: i + 1 })));
+const FULL_R: ResultNumbering = { own: FULL7, nextStage: FULL7 };
+
 section("V2 blocked rebuilds", () => {
-  ok(twoStageBlockedMessage({ blocked: true, reasons: ["stage2_started"], stage2_game_number: 2 }) ===
+  ok(twoStageBlockedMessage({ blocked: true, reasons: ["stage2_started"], stage2_game_number: 2 }, FULL7) ===
     "Nothing was saved. The bracket has started (Game 2 has a result), so neither stage can be rebuilt. Clear the bracket's results first.",
     "V2", "the bracket started");
-  ok(twoStageBlockedMessage({ blocked: true, reasons: ["results_entered"], games_with_results: 3 }) ===
+  ok(twoStageBlockedMessage({ blocked: true, reasons: ["results_entered"], games_with_results: 3 }, FULL7) ===
     "Nothing was saved. The round robin has 3 results entered, so only Stage 2's dates, days and fields can change now.",
     "V2", "round-robin results");
   counters.blockedSentences += 2;
@@ -373,16 +379,16 @@ section("V3 refusals", () => {
 
 section("V4 seeding replies", () => {
   const reply = { committed: false, blocked: false, stage2_id: "s2", advance_count: 6, reseed: false, never_played: [] };
-  const pre = seedOutcome(reply, null, "s2", false, fallback);
+  const pre = seedOutcome(reply, null, "s2", false, fallback, FULL7);
   ok(pre.ok, "V4", "a preview for this Stage 2 is accepted");
-  ok(!seedOutcome(reply, null, "s2", true, fallback).ok, "V4", "a preview never counts as a save");
-  ok(!seedOutcome({ ...reply, committed: true }, null, "s2", false, fallback).ok, "V4", "a committed reply to a preview is refused");
-  ok(!seedOutcome({ ...reply, stage2_id: "other" }, null, "s2", false, fallback).ok, "V4", "a reply for another bracket is refused");
-  ok(!seedOutcome({ ...reply, never_played: [{ game_number: 8, reason: "weather" }] }, null, "s2", false, fallback).ok, "V4", "an unknown reason is unreadable");
-  const started = seedOutcome({ committed: false, blocked: true, reason: "bracket_started", stage2_game_number: 2 }, null, "s2", true, fallback);
+  ok(!seedOutcome(reply, null, "s2", true, fallback, FULL7).ok, "V4", "a preview never counts as a save");
+  ok(!seedOutcome({ ...reply, committed: true }, null, "s2", false, fallback, FULL7).ok, "V4", "a committed reply to a preview is refused");
+  ok(!seedOutcome({ ...reply, stage2_id: "other" }, null, "s2", false, fallback, FULL7).ok, "V4", "a reply for another bracket is refused");
+  ok(!seedOutcome({ ...reply, never_played: [{ game_number: 8, reason: "weather" }] }, null, "s2", false, fallback, FULL7).ok, "V4", "an unknown reason is unreadable");
+  const started = seedOutcome({ committed: false, blocked: true, reason: "bracket_started", stage2_game_number: 2 }, null, "s2", true, fallback, FULL7);
   ok(!started.ok && started.message === "Nothing was saved. The bracket has started (Game 2 has a result), so the seeds can't be changed. Clear the bracket's results first.",
     "V4", "bracket started", started.ok ? "" : started.message);
-  const early = seedOutcome({ committed: false, blocked: true, reason: "stage1_in_progress", upcoming: 3 }, null, "s2", false, fallback);
+  const early = seedOutcome({ committed: false, blocked: true, reason: "stage1_in_progress", upcoming: 3 }, null, "s2", false, fallback, FULL7);
   ok(!early.ok && early.message === "Nothing was saved. The round robin isn't over yet: 3 games are still to come. Seed Stage 2 once every game has a result, or once the only ones left are rained out, undated or past.",
     "V4", "round robin not over", early.ok ? "" : early.message);
   counters.blockedSentences += 2;
@@ -392,12 +398,12 @@ section("V4 seeding replies", () => {
 section("B1 the bracket has started", () => {
   const want = "The bracket has started (Game 2 has a result), so round-robin results can't be changed. Clear the bracket's results first, then change this one.";
   const r = { committed: false, blocked: true, reason: "next_stage_started", stage2_game_number: 2 };
-  ok(blockedMessage(r, "edit") === want, "B1", "the sentence");
-  const e = enterOutcome(r, null, "g");
+  ok(blockedMessage(r, "edit", FULL_R) === want, "B1", "the sentence");
+  const e = enterOutcome(r, null, "g", FULL_R);
   ok(!e.ok && e.message === want, "B1", "enter refuses with it");
-  const c = clearPreviewOutcome(r, null, "g");
+  const c = clearPreviewOutcome(r, null, "g", FULL_R);
   ok(!c.ok && c.message === want, "B1", "clear refuses with it");
-  ok(blockedMessage({ blocked: true, reason: "next_game_has_result", next_game: { game_number: 5, round: "SF", home_name: "A", away_name: "B", home_score: 3, away_score: 1 } }, "clear") ===
+  ok(blockedMessage({ blocked: true, reason: "next_game_has_result", next_game: { game_number: 5, round: "SF", home_name: "A", away_name: "B", home_score: 3, away_score: 1 } }, "clear", FULL_R) ===
     "Game 5 (Semifinals) already has a result (A 3, B 1). Clear that game's result first, then clear this one.", "B1", "the 0108 refusal is unchanged");
   counters.blockedSentences += 2;
 });
@@ -427,9 +433,9 @@ const PUBLIC: PublicSeason = {
 section("PL1 labels and placeholders", () => {
   const rows = buildRows(PUBLIC);
   const row = (k: string) => rows.find((r) => r.key === k);
-  ok(row("p-p2")?.matchup === "Seed 4 vs Seed 5" && row("p-p2")?.playoffLabel === "Playoffs · Bracket · Round 1 · Game 2",
+  ok(row("p-p2")?.matchup === "Seed 4 vs Seed 5" && row("p-p2")?.playoffLabel === "Playoffs · Bracket · Round 1 · Game 1",
     "PL1", "Stage 2 round 1 before seeding", `${row("p-p2")?.matchup} / ${row("p-p2")?.playoffLabel}`);
-  ok(row("p-p5")?.matchup === "Seed 1 vs Winner of Game 2" && row("p-p5")?.playoffLabel === "Playoffs · Bracket · Semifinal · Game 5",
+  ok(row("p-p5")?.matchup === "Seed 1 vs Winner of Game 1" && row("p-p5")?.playoffLabel === "Playoffs · Bracket · Semifinal · Game 3",
     "PL1", "a bye seed in the semifinal", `${row("p-p5")?.matchup} / ${row("p-p5")?.playoffLabel}`);
   ok(row("p-p13")?.playoffLabel === "Playoffs · Round robin · RR Game 13" && row("p-p13")?.matchup === "Expos vs Mets",
     "PL1", "a round-robin game of a two-stage setup", String(row("p-p13")?.playoffLabel));

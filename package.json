@@ -82,6 +82,8 @@
     "sim:two-stage:mutants": "npx tsx scripts/sim/two-stage-mutants.ts",
     "sim:two-stage-screens": "TZ=UTC npx tsx scripts/sim/two-stage-screens-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/two-stage-screens-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/two-stage-screens-sim.ts",
     "sim:two-stage-screens:mutants": "npx tsx scripts/sim/two-stage-screens-mutants.ts",
+    "sim:playoff-numbers": "TZ=UTC npx tsx scripts/sim/playoff-numbers-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/playoff-numbers-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/playoff-numbers-sim.ts",
+    "sim:playoff-numbers:mutants": "npx tsx scripts/sim/playoff-numbers-mutants.ts",
     "sim:snack-shifts": "TZ=UTC npx tsx scripts/sim/snack-shifts-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/snack-shifts-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/snack-shifts-sim.ts",
     "sim:snack-shifts:mutants": "npx tsx scripts/sim/snack-shifts-mutants.ts",
     "sim:week-grid": "TZ=UTC npx tsx scripts/sim/week-grid-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/week-grid-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/week-grid-sim.ts",

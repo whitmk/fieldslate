@@ -933,6 +933,47 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   line, print and on-screen layout, page fit, contrast, wiring) + `:mutants`
   (22, each killed at its own assertion).
 
+## Playoff game numbers people see — shown, not stored (2026-10-20)
+
+- **`game_number` is the BRACKET POSITION and is never renumbered** —
+  advancement (`singleElimTarget`, its SQL port `playoff_single_elim_target`)
+  resolves targets by it. With byes it has gaps: 6 teams store Games 2, 4, 5,
+  6, 7. **Nobody sees it.** Every "Game N" and "Winner of Game N" shows the
+  game's number among the games that EXIST in its bracket, 1..N in round
+  order then position: `gameNumbering` / `shownGameNumber`
+  (`src/lib/playoffs/bracket-labels.ts`). Stored numbers already ascend that
+  way, so the rule is the stored number's rank in its bracket; full brackets,
+  round robins and double elimination (gapless) read exactly as stored. A
+  two-stage pair is TWO brackets — Stage 2 is numbered on its own.
+- **Where it applies:** the bracket tree card and list (`numberOf`), the
+  printed card (`gameWhen(game, bracket, …)`), every empty slot
+  (`emptySlotLabel`), the public schedule's "Game N", the export CSV (via the
+  slot labels), the seed confirm ("bye to Game 3", "Game 1: …"), the
+  Edit-result / Clear confirm and every refusal that names a game. Round-robin
+  games of a two-stage setup keep "RR Game N" (stored; no gaps).
+- **Database replies carry STORED positions** (`next_game.game_number`,
+  `removed.game_number`, `game_number`, `stage2_game_number`). They are mapped
+  at the parse boundary: `enterOutcome` / `clearPreviewOutcome` /
+  `clearCommitOutcome` / `blockedMessage` take a `ResultNumbering` ({own,
+  nextStage}); `twoStageBlockedMessage` / `seedBlockedMessage` / `seedOutcome`
+  take Stage 2's `GameNumbering`. A numbering that isn't known (null) names
+  NO game — never a stored position. The two-stage I/O reads Stage 2's game
+  numbers only to word such a refusal (fail-soft).
+- **NOT YET: the activity log.** `enter_playoff_result` and
+  `clear_playoff_result` write "Game %s" / "moved into Game %s" / "result
+  cleared for Game %s" / "removed from Game %s" with the STORED position.
+  Fixing it is a migration (rank the game among its bracket's games in SQL) —
+  held for Whit's decision, not written. Nothing else in SQL prints a game
+  number to a person.
+- **The approved two-stage mockup shows stored numbers** ("bye to Game 5",
+  "Game 2: Mets…"); the app now shows 1..N. Decided 2026-10-20.
+- **Harness: `npm run sim:playoff-numbers`** (68 checks × 3 zones, 6 counters:
+  6-team Games 1–5 with "Winner of Game 1/2" in the semis; 4/8/16 unchanged;
+  2–32 teams numbered by round then position; print, public, CSV, seed
+  confirm, every reply; a source LEAK SCAN that fails on any `Game ${…
+  game_number}` outside rrGameLabel / data-game) + `:mutants` (14, one per
+  rule, each killed at its own assertion).
+
 ## Playoff bracket delete and rebuild (0107, applied 2026-10-08)
 
 - **Two SECURITY DEFINER functions, each its own preview (`p_commit=false`

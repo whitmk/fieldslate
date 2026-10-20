@@ -33,7 +33,7 @@ import {
   type PlanSettings,
   type SlotGridInput,
 } from "@/lib/playoffs/bracket-plan";
-import { seedLabel, shortDate, shortTime } from "@/lib/playoffs/bracket-labels";
+import { gameNumbering, seedLabel, shortDate, shortTime, type GameNumbering } from "@/lib/playoffs/bracket-labels";
 import type {
   DayWindowMap,
   PlayingDay,
@@ -421,11 +421,12 @@ export function seedConfirm(input: {
   teamName: (id: string | null) => string;
 }): SeedConfirm {
   const name = (seed: number) => input.order[seed - 1]?.team_name ?? seedLabel(seed);
+  const shown = gameNumbering(input.stage2Games);
   const firstRound = input.stage2Games.filter((g) => g.round === "R1");
   const byes: { seed: number; gameNumber: number }[] = [];
   for (const g of input.stage2Games.filter((x) => x.round !== "R1")) {
     for (const seed of [g.seed_home, g.seed_away]) {
-      if (seed !== null) byes.push({ seed, gameNumber: g.game_number });
+      if (seed !== null) byes.push({ seed, gameNumber: shown(g.game_number) });
     }
   }
   byes.sort((a, b) => a.seed - b.seed);
@@ -434,7 +435,7 @@ export function seedConfirm(input: {
     const when = g.scheduled_date
       ? ` · ${shortDate(g.scheduled_date)}${g.start_time ? `, ${shortTime(g.start_time)}` : ""}`
       : " · Date TBD";
-    lines.push(`Game ${g.game_number}: ${name(g.seed_home!)} (${g.seed_home}) vs ${name(g.seed_away!)} (${g.seed_away})${when}`);
+    lines.push(`Game ${shown(g.game_number)}: ${name(g.seed_home!)} (${g.seed_home}) vs ${name(g.seed_away!)} (${g.seed_away})${when}`);
   }
   const out = input.order.slice(input.advance).map((t) => t.team_name);
   let unplayed: string | null = null;
@@ -587,6 +588,7 @@ export function stage1ChangesNote(input: {
 
 /** A round-robin result can't change, and seeds can't change, once the
  *  bracket has a result (decided 2026-10-19). */
+/** `firstResultGameNumber` is the SHOWN number (bracket-labels `gameNumbering`). */
 export function stage2StartedRefusal(firstResultGameNumber: number): string {
   return `The bracket has started (Game ${firstResultGameNumber} has a result), so round-robin results can't be changed. Clear the bracket's results first, then change this one.`;
 }
@@ -643,6 +645,7 @@ export function stage2Button(s: Stage2State): { label: string; disabledReason: s
 }
 
 /** The line under Stage 1's header once the bracket has a result. */
+/** `firstResultGame` is the SHOWN number (bracket-labels `gameNumbering`). */
 export function stage1LockedLine(firstResultGame: number): string {
   return `The bracket has started (Game ${firstResultGame} has a result), so round-robin results can't be changed. To change one, clear the bracket's results first.`;
 }
@@ -840,12 +843,14 @@ export function parseTwoStageCounts(raw: unknown): TwoStageCounts | null {
 
 const NOTHING_SAVED = "Nothing was saved.";
 
-/** A blocked two-stage reply → its sentence. */
-export function twoStageBlockedMessage(raw: unknown): string {
+/** A blocked two-stage reply → its sentence. `stage2` maps the reply's stored
+ *  Stage 2 position to the shown number; null (unknown) names no game. */
+export function twoStageBlockedMessage(raw: unknown, stage2: GameNumbering | null): string {
   const r = (raw ?? {}) as Record<string, unknown>;
   const reasons = Array.isArray(r.reasons) ? r.reasons : [];
   if (reasons.includes("stage2_started")) {
-    const n = nonNeg(r.stage2_game_number);
+    const stored = nonNeg(r.stage2_game_number);
+    const n = stored !== null && stage2 ? stage2(stored) : null;
     return `${NOTHING_SAVED} The bracket has started${n !== null ? ` (Game ${n} has a result)` : ""}, so neither stage can be rebuilt. Clear the bracket's results first.`;
   }
   if (reasons.includes("results_entered")) {
@@ -923,11 +928,12 @@ export function parseSeedReply(raw: unknown, stage2Id: string): SeedReply | null
   return { reseed: r.reseed, advanceCount: adv, neverPlayed: never };
 }
 
-/** A blocked seed reply → its sentence. */
-export function seedBlockedMessage(raw: unknown): string {
+/** A blocked seed reply → its sentence (`stage2` as twoStageBlockedMessage). */
+export function seedBlockedMessage(raw: unknown, stage2: GameNumbering | null): string {
   const r = (raw ?? {}) as Record<string, unknown>;
   if (r.reason === "bracket_started") {
-    const n = nonNeg(r.stage2_game_number);
+    const stored = nonNeg(r.stage2_game_number);
+    const n = stored !== null && stage2 ? stage2(stored) : null;
     return `${NOTHING_SAVED} The bracket has started${n !== null ? ` (Game ${n} has a result)` : ""}, so the seeds can't be changed. Clear the bracket's results first.`;
   }
   if (r.reason === "stage1_in_progress") {
@@ -947,10 +953,11 @@ export function seedOutcome(
   stage2Id: string,
   commit: boolean,
   errorMessage: (raw: string) => string,
+  stage2: GameNumbering | null,
 ): SeedOutcome {
   if (error) return { ok: false, message: errorMessage(error.message) };
   const r = (data ?? null) as Record<string, unknown> | null;
-  if (r && r.blocked === true) return { ok: false, message: seedBlockedMessage(r) };
+  if (r && r.blocked === true) return { ok: false, message: seedBlockedMessage(r, stage2) };
   const reply = parseSeedReply(data, stage2Id);
   if (!r || r.committed !== commit || !reply) {
     return {

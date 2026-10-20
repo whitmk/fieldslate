@@ -11,23 +11,24 @@ import {
   clearCommitOutcome,
   clearPreviewOutcome,
   type ClearPreviewOutcome,
+  type ResultNumbering,
   type ResultOutcome,
 } from "@/lib/playoffs/playoff-result";
 
-export async function previewClearResult(gameId: string): Promise<ClearPreviewOutcome> {
+export async function previewClearResult(gameId: string, numbering: ResultNumbering): Promise<ClearPreviewOutcome> {
   const supabase = createClient();
   const { data, error } = await supabase.rpc("clear_playoff_result" as never, {
     p_game_id: gameId,
     p_commit: false,
   } as never);
-  return clearPreviewOutcome(data, error, gameId);
+  return clearPreviewOutcome(data, error, gameId, numbering);
 }
 
-export async function clearResult(gameId: string): Promise<ResultOutcome> {
+export async function clearResult(gameId: string, numbering: ResultNumbering): Promise<ResultOutcome> {
   const supabase = createClient();
   const { data, error } = await supabase.rpc("clear_playoff_result" as never, {
     p_game_id: gameId,
     p_commit: true,
   } as never);
-  return clearCommitOutcome(data, error, gameId);
+  return clearCommitOutcome(data, error, gameId, numbering);
 }

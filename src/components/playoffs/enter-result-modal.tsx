@@ -4,9 +4,9 @@ import { useState } from "react";
 import { X, Trophy, Eraser } from "lucide-react";
 import { enterGameResult } from "@/lib/playoffs/enter-result";
 import { clearResult, previewClearResult } from "@/lib/playoffs/clear-result";
-import { clearConfirm, clearOffered, saveBlockedReason, type ClearPreview } from "@/lib/playoffs/playoff-result";
+import { clearConfirm, clearOffered, saveBlockedReason, type ClearPreview, type ResultNumbering } from "@/lib/playoffs/playoff-result";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { slotName } from "@/lib/playoffs/bracket-labels";
+import { gameNumbering, slotName } from "@/lib/playoffs/bracket-labels";
 import type { GameWithTeams } from "@/components/playoffs/bracket-view";
 
 const CHAMPIONSHIP_ROUNDS = new Set(["F", "GF"]);
@@ -21,9 +21,12 @@ interface Props {
   title?: string;
   /** An amber note above the scores (two-stage: Stage 2 is already seeded). */
   notice?: string | null;
+  /** A two-stage round-robin game: the bracket that follows, so a refusal
+   *  naming its first played game shows that game's shown number. */
+  nextStageGames?: { game_number: number }[];
 }
 
-export function EnterResultModal({ game, allGames, format, onClose, onSaved, title, notice }: Props) {
+export function EnterResultModal({ game, allGames, format, onClose, onSaved, title, notice, nextStageGames }: Props) {
   const [homeScore, setHomeScore] = useState(
     game.home_score != null ? String(game.home_score) : "",
   );
@@ -38,6 +41,10 @@ export function EnterResultModal({ game, allGames, format, onClose, onSaved, tit
   const saveBlocked = saveBlockedReason(game.home_team_id, game.away_team_id);
   const homeLabel = slotName(game.home_team_name, game, "home", allGames, format);
   const awayLabel = slotName(game.away_team_name, game, "away", allGames, format);
+  const numbering: ResultNumbering = {
+    own: gameNumbering(allGames),
+    nextStage: nextStageGames ? gameNumbering(nextStageGames) : null,
+  };
 
   // Clear result: preview first (clear_playoff_result writes nothing), then
   // the shared confirm. A refusal or failure keeps the confirm open with the
@@ -50,7 +57,7 @@ export function EnterResultModal({ game, allGames, format, onClose, onSaved, tit
   async function handleClearClick() {
     setCheckingClear(true);
     setError(null);
-    const outcome = await previewClearResult(game.id);
+    const outcome = await previewClearResult(game.id, numbering);
     setCheckingClear(false);
     if (!outcome.ok) { setError(outcome.message); return; }
     setClearError(null);
@@ -60,7 +67,7 @@ export function EnterResultModal({ game, allGames, format, onClose, onSaved, tit
   async function handleClearConfirm() {
     setClearing(true);
     setClearError(null);
-    const outcome = await clearResult(game.id);
+    const outcome = await clearResult(game.id, numbering);
     setClearing(false);
     if (!outcome.ok) { setClearError(outcome.message); return; }
     setClearPreview(null);
@@ -82,7 +89,7 @@ export function EnterResultModal({ game, allGames, format, onClose, onSaved, tit
     }
     setSaving(true);
     setError(null);
-    const result = await enterGameResult({ gameId: game.id, homeScore: h, awayScore: a }, allGames, format);
+    const result = await enterGameResult({ gameId: game.id, homeScore: h, awayScore: a }, allGames, format, numbering);
     setSaving(false);
     if (!result.success) { setError(result.error); return; }
     onSaved();

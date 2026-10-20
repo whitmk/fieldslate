@@ -56,7 +56,9 @@ import {
   resultErrorMessage,
   resultPath,
   saveBlockedReason,
+  type ResultNumbering,
 } from "../../src/lib/playoffs/playoff-result";
+import { gameNumbering } from "../../src/lib/playoffs/bracket-labels";
 
 const ROOT = join(__dirname, "../..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -200,40 +202,44 @@ const PREVIEW = {
   removed: { game_id: "g5", game_number: 5, round: "F", field: "home_team_id", team_name: "Expos" },
 };
 
+// A full (gapless) bracket: shown numbers equal stored ones, so these
+// sentences read exactly as before (the gap case is sim:playoff-numbers).
+const FULL: ResultNumbering = { own: gameNumbering(Array.from({ length: 8 }, (_, i) => ({ game_number: i + 1 }))), nextStage: null };
+
 section("O", () => {
-  ok(enterOutcome({ committed: true, game_id: "g1" }, null, "g1").ok, "[O1]", "a committed reply for this game is success");
-  const other = enterOutcome({ committed: true, game_id: "g9" }, null, "g1");
+  ok(enterOutcome({ committed: true, game_id: "g1" }, null, "g1", FULL).ok, "[O1]", "a committed reply for this game is success");
+  const other = enterOutcome({ committed: true, game_id: "g9" }, null, "g1", FULL);
   ok(!other.ok, "[O1]", "a committed reply for ANOTHER game is not success");
   if (!other.ok) counters.otherGameRefused++;
-  ok(!enterOutcome({ committed: false, game_id: "g1" }, null, "g1").ok && !enterOutcome(null, null, "g1").ok, "[O1]", "an uncommitted or empty reply is not success");
-  const err = enterOutcome(null, { message: "P0001: plan_required" }, "g1");
+  ok(!enterOutcome({ committed: false, game_id: "g1" }, null, "g1", FULL).ok && !enterOutcome(null, null, "g1", FULL).ok, "[O1]", "an uncommitted or empty reply is not success");
+  const err = enterOutcome(null, { message: "P0001: plan_required" }, "g1", FULL);
   ok(!err.ok && err.message === "Nothing was saved. Playoff brackets are part of the Elite plan.", "[O1]", JSON.stringify(err));
 
-  const blocked = enterOutcome({ committed: false, blocked: true, reason: "next_game_has_result", game_id: "g1", next_game: NEXT }, null, "g1");
+  const blocked = enterOutcome({ committed: false, blocked: true, reason: "next_game_has_result", game_id: "g1", next_game: NEXT }, null, "g1", FULL);
   ok(!blocked.ok && blocked.message === "Game 5 (Final) already has a result (Expos 5, Mets 3). Clear that game's result first, then change this one.", "[O2]", JSON.stringify(blocked));
   if (!blocked.ok) counters.blockedRendered++;
-  const blockedClear = clearCommitOutcome({ committed: false, blocked: true, game_id: "g1", next_game: NEXT }, null, "g1");
+  const blockedClear = clearCommitOutcome({ committed: false, blocked: true, game_id: "g1", next_game: NEXT }, null, "g1", FULL);
   ok(!blockedClear.ok && blockedClear.message === "Game 5 (Final) already has a result (Expos 5, Mets 3). Clear that game's result first, then clear this one.", "[O2]", JSON.stringify(blockedClear));
   ok(nextGameBlockedMessage(null, "clear") === "A later game already has a result. Clear that game's result first, then clear this one.", "[O2]", "an unreadable next game still says what to do");
 
-  const pv = clearPreviewOutcome(PREVIEW, null, "g2");
+  const pv = clearPreviewOutcome(PREVIEW, null, "g2", FULL);
   ok(pv.ok && pv.preview.removed?.gameNumber === 5 && pv.preview.onPublicSchedule, "[O3]", JSON.stringify(pv));
-  ok(!clearPreviewOutcome({ ...PREVIEW, committed: true }, null, "g2").ok, "[O3]", "a preview that came back committed is not a preview");
-  ok(!clearPreviewOutcome(PREVIEW, null, "g3").ok, "[O3]", "a preview for another game is refused");
-  ok(!clearPreviewOutcome({ ...PREVIEW, removed: { team_name: "x" } }, null, "g2").ok, "[O3]", "an unreadable removal is refused, never dropped");
-  ok(!clearPreviewOutcome({ ...PREVIEW, on_public_schedule: undefined }, null, "g2").ok, "[O3]", "an unreadable public flag is refused");
+  ok(!clearPreviewOutcome({ ...PREVIEW, committed: true }, null, "g2", FULL).ok, "[O3]", "a preview that came back committed is not a preview");
+  ok(!clearPreviewOutcome(PREVIEW, null, "g3", FULL).ok, "[O3]", "a preview for another game is refused");
+  ok(!clearPreviewOutcome({ ...PREVIEW, removed: { team_name: "x" } }, null, "g2", FULL).ok, "[O3]", "an unreadable removal is refused, never dropped");
+  ok(!clearPreviewOutcome({ ...PREVIEW, on_public_schedule: undefined }, null, "g2", FULL).ok, "[O3]", "an unreadable public flag is refused");
 
-  ok(clearCommitOutcome({ ...PREVIEW, committed: true }, null, "g2").ok, "[O4]", "a committed clear for this game is success");
-  ok(!clearCommitOutcome({ ...PREVIEW, committed: true, game_id: "g9" }, null, "g2").ok, "[O4]", "a committed clear for another game is not success");
-  ok(!clearCommitOutcome(PREVIEW, null, "g2").ok, "[O4]", "an uncommitted reply to a commit is not success");
-  const zr = clearCommitOutcome(null, { message: "nothing_saved" }, "g2");
+  ok(clearCommitOutcome({ ...PREVIEW, committed: true }, null, "g2", FULL).ok, "[O4]", "a committed clear for this game is success");
+  ok(!clearCommitOutcome({ ...PREVIEW, committed: true, game_id: "g9" }, null, "g2", FULL).ok, "[O4]", "a committed clear for another game is not success");
+  ok(!clearCommitOutcome(PREVIEW, null, "g2", FULL).ok, "[O4]", "an uncommitted reply to a commit is not success");
+  const zr = clearCommitOutcome(null, { message: "nothing_saved" }, "g2", FULL);
   ok(!zr.ok && zr.message === "Nothing was saved. The game changed while you were looking at it. Refresh the page and try again.", "[O4]", JSON.stringify(zr));
 });
 
 // ─── C: the confirm ──────────────────────────────────────────────────────────
 
 section("C", () => {
-  const pv = clearPreviewOutcome(PREVIEW, null, "g2");
+  const pv = clearPreviewOutcome(PREVIEW, null, "g2", FULL);
   if (!pv.ok) { ok(false, "[C1]", "fixture preview unreadable"); return; }
   const c = clearConfirm(pv.preview);
   ok(c.title === "Clear this result?", "[C1]", c.title);
@@ -256,15 +262,15 @@ section("S", () => {
   const enter = read("src/lib/playoffs/enter-result.ts");
   const [dbPart, browserPart] = enter.split("async function enterDoubleElimResultInBrowser(");
   ok(dbPart.includes('  if (resultPath(format) === "database") {\n    const supabase = createClient();\n    const { data, error } = await supabase.rpc("enter_playoff_result"')
-     && dbPart.includes("enterOutcome(data, error, payload.gameId)")
+     && dbPart.includes("enterOutcome(data, error, payload.gameId, numbering)")
      && !dbPart.includes('.from("playoff_games")'), "[S1]", "single / round robin call the function and write nothing directly");
   ok(!!browserPart && browserPart.includes("computeDoubleElimAdvancement") && !browserPart.includes("computeSingleElimAdvancement"),
     "[S1]", "the browser path is double elimination only");
   const clear = read("src/lib/playoffs/clear-result.ts");
   ok(clear.includes('rpc("clear_playoff_result"') && clear.includes("p_commit: false") && clear.includes("p_commit: true")
-     && clear.includes("clearCommitOutcome(data, error, gameId)"), "[S2]", "clear previews, then commits, and reads the outcome");
+     && clear.includes("clearCommitOutcome(data, error, gameId, numbering)"), "[S2]", "clear previews, then commits, and reads the outcome");
   const modal = read("src/components/playoffs/enter-result-modal.tsx");
-  ok(modal.includes("previewClearResult(game.id)") && modal.includes("clearResult(game.id)")
+  ok(modal.includes("previewClearResult(game.id, numbering)") && modal.includes("clearResult(game.id, numbering)")
      && modal.includes("clearConfirm(clearPreview)") && modal.includes("<ConfirmDialog")
      && modal.includes("isDone && clearOffered(format)"), "[S3]", "the modal previews, confirms with the shared dialog, and offers clear only where allowed");
   ok(modal.indexOf("<ConfirmDialog") > modal.lastIndexOf('onClick={onClose}>'), "[S3]", "the confirm renders outside the modal backdrop");

@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { EnterResultModal } from "@/components/playoffs/enter-result-modal";
 import { EditPlayoffGameModal } from "@/components/playoffs/edit-playoff-game-modal";
 import { playoffRoundLabel, resultButtonShown } from "@/lib/playoffs/playoff-result";
-import { slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
+import { gameNumbering, slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
 import { SCREEN_TREE, singleElimLayout } from "@/lib/playoffs/bracket-print";
 import { useDaylight } from "@/components/daylight/use-daylight";
 import { DaylightChip, DaylightStatusLine } from "@/components/daylight/daylight-pieces";
@@ -17,6 +17,8 @@ type FlagOf = (game: GameWithTeams) => DaylightFlag | null;
 
 /** A slot's text: the team, else "Winner of Game N" / "TBD" (bracket-labels). */
 type LabelOf = (game: GameWithTeams, side: Side) => string;
+/** The game's SHOWN number (bracket-labels `gameNumbering`), never game_number. */
+type NumberOf = (game: GameWithTeams) => number;
 import type { PlayoffGame } from "@/types/database";
 
 export interface GameWithTeams extends PlayoffGame {
@@ -96,6 +98,7 @@ function GameCard({
   game,
   isChampionship,
   labelOf,
+  numberOf,
   flagOf,
   onEnterResult,
   onEdit,
@@ -103,6 +106,7 @@ function GameCard({
   game: GameWithTeams;
   isChampionship: boolean;
   labelOf: LabelOf;
+  numberOf: NumberOf;
   flagOf: FlagOf;
   onEnterResult: () => void;
   onEdit: () => void;
@@ -124,11 +128,11 @@ function GameCard({
         <div className="h-10 flex-none border-b border-gray-100 px-2.5 py-1 text-[10px] leading-4">
           {game.scheduled_date ? (
             <p className="truncate text-gray-500">
-              Game {game.game_number} · {fmtDate(game.scheduled_date)}
+              Game {numberOf(game)} · {fmtDate(game.scheduled_date)}
               {game.start_time ? ` · ${fmtTime(game.start_time)}` : ""}
             </p>
           ) : (
-            <p className="truncate italic text-amber-600">Game {game.game_number} · No date yet</p>
+            <p className="truncate italic text-amber-600">Game {numberOf(game)} · No date yet</p>
           )}
           <p className="truncate text-gray-500">{game.venue_name ?? ""}</p>
         </div>
@@ -242,17 +246,17 @@ function TeamRow({
 
 function ListGameRow({
   game,
-  idx,
   isChampionship,
   labelOf,
+  numberOf,
   flagOf,
   onEnterResult,
   onEdit,
 }: {
   game: GameWithTeams;
-  idx: number;
   isChampionship: boolean;
   labelOf: LabelOf;
+  numberOf: NumberOf;
   flagOf: FlagOf;
   onEnterResult: () => void;
   onEdit: () => void;
@@ -265,7 +269,7 @@ function ListGameRow({
 
   return (
     <div className="flex items-center gap-3 border-b border-gray-50 px-4 py-3 last:border-0">
-      <span className="w-5 text-center text-xs font-semibold text-gray-300">{idx + 1}</span>
+      <span className="w-5 text-center text-xs font-semibold text-gray-300">{numberOf(game)}</span>
 
       <div className="min-w-0 flex-1">
         {isDone ? (
@@ -367,6 +371,7 @@ function BracketTree({
   games,
   championshipRound,
   labelOf,
+  numberOf,
   flagOf,
   onEnterResult,
   onEdit,
@@ -374,6 +379,7 @@ function BracketTree({
   games: GameWithTeams[];
   championshipRound: string | null;
   labelOf: LabelOf;
+  numberOf: NumberOf;
   flagOf: FlagOf;
   onEnterResult: (game: GameWithTeams) => void;
   onEdit: (game: GameWithTeams) => void;
@@ -422,6 +428,7 @@ function BracketTree({
             game={c.game}
             isChampionship={c.game.round === championshipRound}
             labelOf={labelOf}
+            numberOf={numberOf}
             flagOf={flagOf}
             onEnterResult={() => onEnterResult(c.game)}
             onEdit={() => onEdit(c.game)}
@@ -438,6 +445,7 @@ function ColumnView({
   rounds,
   championshipRound,
   labelOf,
+  numberOf,
   flagOf,
   onEnterResult,
   onEdit,
@@ -445,6 +453,7 @@ function ColumnView({
   rounds: [string, GameWithTeams[]][];
   championshipRound: string | null;
   labelOf: LabelOf;
+  numberOf: NumberOf;
   flagOf: FlagOf;
   onEnterResult: (game: GameWithTeams) => void;
   onEdit: (game: GameWithTeams) => void;
@@ -463,6 +472,7 @@ function ColumnView({
                 game={g}
                 isChampionship={g.round === championshipRound}
                 labelOf={labelOf}
+                numberOf={numberOf}
                 flagOf={flagOf}
                 onEnterResult={() => onEnterResult(g)}
                 onEdit={() => onEdit(g)}
@@ -534,6 +544,9 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
           status: g.status,
         })
       : null;
+
+  const numbering = gameNumbering(games);
+  const numberOf: NumberOf = (g) => numbering(g.game_number);
 
   const labelOf: LabelOf = (g, side) => {
     // Two-stage Stage 2: a seeded team reads "4 · Mets".
@@ -613,13 +626,13 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
 
       {view === "list" ? (
         <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-          {games.map((g, i) => (
+          {games.map((g) => (
             <ListGameRow
               key={g.id}
               game={g}
-              idx={i}
               isChampionship={g.round === championshipRound}
               labelOf={labelOf}
+              numberOf={numberOf}
               flagOf={flagOf}
               onEnterResult={() => setActiveGame(g)}
               onEdit={() => setEditingGame(g)}
@@ -633,6 +646,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
               games={games}
               championshipRound={championshipRound}
               labelOf={labelOf}
+              numberOf={numberOf}
               flagOf={flagOf}
               onEnterResult={setActiveGame}
               onEdit={setEditingGame}
@@ -642,6 +656,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
               rounds={rounds}
               championshipRound={championshipRound}
               labelOf={labelOf}
+              numberOf={numberOf}
               flagOf={flagOf}
               onEnterResult={setActiveGame}
               onEdit={setEditingGame}

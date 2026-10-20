@@ -62,7 +62,7 @@ export function SeedStage2Modal({
   async function review() {
     setBusy(true);
     setError(null);
-    const res = await seedStage(stage2Id, order.map((t) => t.team_id), false);
+    const res = await seedStage(stage2Id, order.map((t) => t.team_id), false, stage2Games);
     setBusy(false);
     if (!res.ok) {
       setError(res.message);
@@ -74,7 +74,7 @@ export function SeedStage2Modal({
   async function save() {
     setBusy(true);
     setError(null);
-    const res = await seedStage(stage2Id, order.map((t) => t.team_id), true);
+    const res = await seedStage(stage2Id, order.map((t) => t.team_id), true, stage2Games);
     setBusy(false);
     if (!res.ok) {
       setError(res.message);

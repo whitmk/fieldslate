@@ -13,6 +13,7 @@ import { planSeeds } from "@/lib/playoffs/seeding";
 import { planSettingsFromDivision } from "@/lib/playoffs/bracket-plan";
 import { loadPlanVenues } from "@/lib/playoffs/generate-bracket";
 import { bracketErrorMessage, gamesPayload } from "@/lib/playoffs/bracket-delete";
+import { gameNumbering, type GameNumbering } from "@/lib/playoffs/bracket-labels";
 import {
   parseTwoStageCounts,
   planTwoStage,
@@ -135,6 +136,17 @@ function rpcArgs(
   };
 }
 
+/** Stage 2's numbering, read only to word a refusal that names one of its
+ *  games. A failed read names no game — never a stored position. */
+async function stage2Numbering(
+  supabase: ReturnType<typeof createClient>,
+  stage2Id: string,
+): Promise<GameNumbering | null> {
+  const { data, error } = await supabase.from("playoff_games").select("game_number").eq("playoff_id", stage2Id);
+  if (error || !data) return null;
+  return gameNumbering(data as { game_number: number }[]);
+}
+
 export type TwoStagePreview =
   | { kind: "ok"; counts: TwoStageCounts }
   | { kind: "blocked"; reasons: string[]; message: string }
@@ -159,7 +171,7 @@ export async function previewTwoStage(
     return {
       kind: "blocked",
       reasons: Array.isArray(r.reasons) ? (r.reasons as string[]) : [],
-      message: twoStageBlockedMessage(r),
+      message: twoStageBlockedMessage(r, await stage2Numbering(supabase, stage2Id)),
     };
   }
   const counts = parseTwoStageCounts(reply);
@@ -242,7 +254,7 @@ export async function generateTwoStage(input: {
   const message = error
     ? errorText(error.message)
     : r && r.blocked === true
-      ? twoStageBlockedMessage(r)
+      ? twoStageBlockedMessage(r, await stage2Numbering(supabase, ids.stage2Id))
       : !r || r.committed !== true || !counts
         ? "Nothing was saved. The save didn't confirm. Refresh the page to see what's there."
         : null;
@@ -258,14 +270,19 @@ export async function generateTwoStage(input: {
 // ─── Seeding ──────────────────────────────────────────────────────────────────
 
 /** seed_playoff_stage: `commit` false is the preview (writes nothing). */
-export async function seedStage(stage2Id: string, orderIds: string[], commit: boolean): Promise<SeedOutcome> {
+export async function seedStage(
+  stage2Id: string,
+  orderIds: string[],
+  commit: boolean,
+  stage2Games: { game_number: number }[],
+): Promise<SeedOutcome> {
   const supabase = createClient();
   const { data, error } = await supabase.rpc("seed_playoff_stage" as never, {
     p_stage2_id: stage2Id,
     p_order: orderIds,
     p_commit: commit,
   } as never);
-  return seedOutcome(data, error, stage2Id, commit, errorText);
+  return seedOutcome(data, error, stage2Id, commit, errorText, gameNumbering(stage2Games));
 }
 
 /** "Seeds are still right": clears the re-check flag and logs it. */
