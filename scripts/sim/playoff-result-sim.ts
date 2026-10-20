@@ -128,7 +128,7 @@ section("XC", () => {
     const built = buildSingleElimination(
       seeds,
       { playoffId: "p", leagueId: "l", divisionId: "d" },
-      { pick: () => null, skippedForOrder: () => 0 },
+      { pick: () => null, skippedForOrder: () => 0, skippedForDayLimit: () => 0 },
     );
     const seedOf = (id: string | null) => (id ? Number(id.slice(1)) : null);
     const layout = built

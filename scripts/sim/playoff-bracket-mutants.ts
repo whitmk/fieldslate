@@ -69,8 +69,10 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "PM9", what: "wraparound restored — when slots run out, reuse them from the start", file: PLAN,
-    find: "    const slot = slots[cursor] ?? null;\n    if (!slot) return null;\n    cursor++;",
-    replace: "    const slot = slots.length ? slots[cursor % slots.length] : null;\n    if (!slot) return null;\n    cursor++;",
+    // Re-keyed 2026-10-19: the daily-limit bookkeeping now sits between the
+    // null check and cursor++, so the target is the first two lines only.
+    find: "    const slot = slots[cursor] ?? null;\n    if (!slot) return null;\n",
+    replace: "    const slot = slots.length ? slots[cursor % slots.length] : null;\n    if (!slot) return null;\n",
     expect: "E1",
   },
   {

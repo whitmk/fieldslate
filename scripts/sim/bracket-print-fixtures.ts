@@ -15,7 +15,7 @@ import {
 import type { PrintGame } from "../../src/lib/playoffs/bracket-print";
 
 const IDS = { playoffId: "p", leagueId: "l", divisionId: "d" };
-const NO_SLOTS = { pick: () => null, skippedForOrder: () => 0 };
+const NO_SLOTS = { pick: () => null, skippedForOrder: () => 0, skippedForDayLimit: () => 0 };
 
 export function teamName(seed: number): string {
   const towns = ["EMLL", "SLL", "SRALL", "WSLL", "RVLL", "RPCR"];

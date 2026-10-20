@@ -29,7 +29,7 @@ const MUTANTS: Mutant[] = [
   {
     id: "RM4", what: "the second game of a round reuses the first game's home team", file: PLAN,
     find: PUSH,
-    replace: `      games.push(gameFromSlot(ids, label, gameNumber++, round.length > 1 && homeId === round[1][0] ? round[0][0] : homeId, awayId, picker.pick(label)));`,
+    replace: `      games.push(gameFromSlot(ids, label, gameNumber++, round.length > 1 && a === round[1][0] ? round[0][0] : homeId, awayId, picker.pick(label)));`,
     expect: "R3",
   },
   {
@@ -80,6 +80,42 @@ const MUTANTS: Mutant[] = [
     replace: `  return out.size >= 0 ? [...seeding, ...excluded] : [];`,
     expect: "X1",
   },
+  {
+    id: "RM13", what: "home is always the first team of the pair (the old behaviour)", file: PLAN,
+    find: `  return d >= 1 && d <= (n - 1) / 2;`,
+    replace: `  return d >= 0;`,
+    expect: "H1",
+  },
+  {
+    id: "RM14", what: "even counts: the last team is home in every game", file: PLAN,
+    find: `    if (ia === last) return ib % 2 === 0;\n    if (ib === last) return ia % 2 === 1;`,
+    replace: `    if (ia === last) return true;\n    if (ib === last) return false;`,
+    expect: "H2",
+  },
+  {
+    id: "RM15", what: "the daily limit is never applied", file: PLAN,
+    find: `        (roundsOnDate.get(slots[cursor].date) ?? 0) >= maxRoundsPerDate`,
+    replace: `        (roundsOnDate.get(slots[cursor].date) ?? 0) >= maxRoundsPerDate + 99`,
+    expect: "D1",
+  },
+  {
+    id: "RM16", what: "no limit given means 2 a day", file: PLAN,
+    find: `export const DEFAULT_GAMES_PER_TEAM_PER_DAY = 1;`,
+    replace: `export const DEFAULT_GAMES_PER_TEAM_PER_DAY = 2;`,
+    expect: "D0",
+  },
+  {
+    id: "RM17", what: "the warning doesn't say the daily limit left slots unused", file: PLAN,
+    find: "${why}${dayWhy} ${",
+    replace: "${why} ${",
+    expect: "D3",
+  },
+  {
+    id: "RM18", what: "the daily limit is applied to elimination brackets too", file: PLAN,
+    find: `    input.format === "round_robin" ? (input.gamesPerTeamPerDay ?? DEFAULT_GAMES_PER_TEAM_PER_DAY) : undefined;`,
+    replace: `    input.format !== "double_elimination" ? (input.gamesPerTeamPerDay ?? DEFAULT_GAMES_PER_TEAM_PER_DAY) : undefined;`,
+    expect: "D4",
+  },
 ];
 
 runMutants({
@@ -89,10 +125,18 @@ runMutants({
 });
 
 // ── RUN LOG ─────────────────────────────────────────────────────────────────
-// 2026-10-19 — first run: baseline green (233 checks × 3 zones), 12/12 KILLED
-// at their own assertion:
-//   RM1 → [R0]  RM2 → [N2]  RM3 → [R2]  RM4 → [R3]  RM5 → [R1]  RM6 → [N1]
-//   RM7 → [T1]  RM8 → [T2]  RM9 → [L1]  RM10 → [L3]  RM11 → [L4]  RM12 → [X1]
-// Source restored and re-verified green after the pass. K1/K2 pin KNOWN
-// behaviour (first team always home; no per-team daily limit) and have no
-// mutant on purpose — fixing either is a decided change that flips them.
+// 2026-10-19 — run 1 (before the fixes): baseline green (233 checks × 3
+// zones), 12/12 KILLED at their own assertion. K1/K2 then pinned the first team
+// home in every game and no per-team daily limit.
+// 2026-10-19 — run 2 (home/away balance + daily limit approved and built; K1/K2
+// replaced by H1/H2 and D0–D4; RM4 re-keyed to the pair's first team because
+// homeId is now decided by roundRobinHomeFirst): see below.
+//   Run 2a: 17/18 at their own tag; RM18 SURVIVED. Harness fault: D4 compared
+//   a plan without the option with a plan with it — under the mutant both got
+//   the limit and still agreed — and its fallback "a team plays twice a day"
+//   counted EMPTY bracket slots (null) as a team. Fixed: mostGamesInADay skips
+//   empty slots, and D4 checks fixed date counts (single elimination 1
+//   Saturday, double elimination 2, measured without a limit).
+//   Run 2b: baseline green (259 checks × 3 zones), 18/18 KILLED at their own
+//   assertion: RM1–RM12 as run 1, RM13 → [H1] RM14 → [H2] RM15 → [D1]
+//   RM16 → [D0] RM17 → [D3] RM18 → [D4]. Source restored, green after.

@@ -289,6 +289,9 @@ export type SlotPicker = {
   /** Slots passed over because they fell before an earlier round's games had
    *  ended. Reported, so "not enough slots" can say why a free slot went unused. */
   skippedForOrder: () => number;
+  /** Slots passed over because their date already held the most rounds a team
+   *  may play in a day (`maxRoundsPerDate`). Reported the same way. */
+  skippedForDayLimit: () => number;
 };
 
 /**
@@ -299,13 +302,26 @@ export type SlotPicker = {
  * every further pick is null: the game stays unscheduled and the caller reports
  * it. It NEVER clamps to the last date or restarts at the first slot — that is
  * the wraparound that stacked three games on one field at 9:00 AM.
+ *
+ * `maxRoundsPerDate` (round robin only): a new round may not START on a date
+ * that already holds that many rounds — it moves to a later date instead. A
+ * team plays at most once per round, so no team plays more than that many
+ * games in a day. A round that runs past one date keeps going on the next; the
+ * count is per date, by the rounds that touched it.
  */
-export function makeSlotPicker(slots: PlanSlot[], settings: { durationMin: number; bufferMin: number }): SlotPicker {
+export function makeSlotPicker(
+  slots: PlanSlot[],
+  settings: { durationMin: number; bufferMin: number },
+  maxRoundsPerDate?: number,
+): SlotPicker {
   let cursor = 0;
   let lastRound = "";
   let prevRoundEnd: { date: string; endMin: number } | null = null;
   let thisRoundEnd: { date: string; endMin: number } | null = null;
   let skipped = 0;
+  let skippedDay = 0;
+  const roundsOnDate = new Map<string, number>();
+  let thisRoundDates = new Set<string>();
 
   const later = (a: { date: string; endMin: number }, b: { date: string; endMin: number }) =>
     a.date > b.date || (a.date === b.date && a.endMin > b.endMin);
@@ -314,6 +330,7 @@ export function makeSlotPicker(slots: PlanSlot[], settings: { durationMin: numbe
     if (round !== lastRound) {
       if (thisRoundEnd) prevRoundEnd = thisRoundEnd;
       thisRoundEnd = null;
+      thisRoundDates = new Set();
       lastRound = round;
     }
     if (prevRoundEnd) {
@@ -327,15 +344,29 @@ export function makeSlotPicker(slots: PlanSlot[], settings: { durationMin: numbe
         skipped++;
       }
     }
+    if (maxRoundsPerDate !== undefined) {
+      while (
+        cursor < slots.length &&
+        !thisRoundDates.has(slots[cursor].date) &&
+        (roundsOnDate.get(slots[cursor].date) ?? 0) >= maxRoundsPerDate
+      ) {
+        cursor++;
+        skippedDay++;
+      }
+    }
     const slot = slots[cursor] ?? null;
     if (!slot) return null;
+    if (!thisRoundDates.has(slot.date)) {
+      thisRoundDates.add(slot.date);
+      roundsOnDate.set(slot.date, (roundsOnDate.get(slot.date) ?? 0) + 1);
+    }
     cursor++;
     const endsAt = { date: slot.date, endMin: slot.startMin + settings.durationMin };
     if (!thisRoundEnd || later(endsAt, thisRoundEnd)) thisRoundEnd = endsAt;
     return slot;
   }
 
-  return { pick, skippedForOrder: () => skipped };
+  return { pick, skippedForOrder: () => skipped, skippedForDayLimit: () => skippedDay };
 }
 
 function gameFromSlot(
@@ -518,7 +549,7 @@ export function buildDoubleElimination(
   return games;
 }
 
-// ─── Round robin (UNTESTED FORMAT — moved verbatim, picker only) ──────────────
+// ─── Round robin (harness: npm run sim:round-robin, 2026-10-19) ───────────────
 
 function roundRobinRounds(ids: string[]): [string, string][][] {
   const arr = ids.length % 2 === 0 ? [...ids] : [...ids, "__bye__"];
@@ -539,6 +570,28 @@ function roundRobinRounds(ids: string[]): [string, string][][] {
   return rounds;
 }
 
+/**
+ * Which of two teams is home, so every team is home in as close to half its
+ * games as a single round robin allows (2026-10-19; the circle method alone
+ * made the first team home in every game). Decided by list position, not by
+ * round:
+ * - odd n: i is home against j when (j − i) mod n is 1…(n−1)/2 — every team
+ *   is home exactly (n−1)/2 times;
+ * - even n: the first n−1 teams use that rule among themselves, and the last
+ *   team is home against the teams at even positions — every team is home
+ *   n/2 or n/2 − 1 times (it plays an odd number of games).
+ */
+export function roundRobinHomeFirst(ia: number, ib: number, n: number): boolean {
+  if (n % 2 === 0) {
+    const last = n - 1;
+    if (ia === last) return ib % 2 === 0;
+    if (ib === last) return ia % 2 === 1;
+    n = n - 1;
+  }
+  const d = (((ib - ia) % n) + n) % n;
+  return d >= 1 && d <= (n - 1) / 2;
+}
+
 export function buildRoundRobin(
   seeds: SeededTeam[],
   ids: BracketIds,
@@ -548,12 +601,15 @@ export function buildRoundRobin(
   if (teamIds.length < 2) return [];
 
   const rounds = roundRobinRounds(teamIds);
+  const position = new Map(teamIds.map((id, i) => [id, i]));
   const games: GameInsert[] = [];
   let gameNumber = 1;
 
   rounds.forEach((round, rIdx) => {
     const label = `RR${rIdx + 1}`;
-    round.forEach(([homeId, awayId]) => {
+    round.forEach(([a, b]) => {
+      const aHome = roundRobinHomeFirst(position.get(a)!, position.get(b)!, teamIds.length);
+      const [homeId, awayId] = aHome ? [a, b] : [b, a];
       games.push(gameFromSlot(ids, label, gameNumber++, homeId, awayId, picker.pick(label)));
     });
   });
@@ -572,7 +628,13 @@ export type PlanInput = {
   grid: SlotGridInput;
   settings: PlanSettings;
   divisionName: string;
+  /** Round robin only: the most games a team may play in one day (1 or 2).
+   *  Absent → 1. Other formats ignore it. */
+  gamesPerTeamPerDay?: 1 | 2;
 };
+
+/** The round robin's per-team daily limit when none is set. */
+export const DEFAULT_GAMES_PER_TEAM_PER_DAY = 1;
 
 export type BracketPlan = {
   games: GameInsert[];
@@ -580,6 +642,7 @@ export type BracketPlan = {
   days: DayDiagnostic[];
   tbdCount: number;
   skippedForOrder: number;
+  skippedForDayLimit: number;
   /** Plain-English, one per problem, each with its reason. Rendered VERBATIM
    *  by the review (pre-flight) and success screens. */
   warnings: string[];
@@ -587,7 +650,9 @@ export type BracketPlan = {
 
 export function planBracket(input: PlanInput): BracketPlan {
   const { slots, days } = buildSlotGrid(input.grid);
-  const picker = makeSlotPicker(slots, input.settings);
+  const perDay =
+    input.format === "round_robin" ? (input.gamesPerTeamPerDay ?? DEFAULT_GAMES_PER_TEAM_PER_DAY) : undefined;
+  const picker = makeSlotPicker(slots, input.settings, perDay);
   let games: GameInsert[];
   if (input.format === "single_elimination") {
     games = buildSingleElimination(input.seeds, input.ids, picker);
@@ -598,11 +663,13 @@ export function planBracket(input: PlanInput): BracketPlan {
   }
   const tbdCount = games.filter((g) => g.scheduled_date === null).length;
   const skippedForOrder = picker.skippedForOrder();
+  const skippedForDayLimit = picker.skippedForDayLimit();
   const warnings = planWarnings({
     days, slotCount: slots.length, gameCount: games.length, tbdCount, skippedForOrder,
+    skippedForDayLimit, gamesPerTeamPerDay: perDay,
     settings: input.settings, divisionName: input.divisionName,
   });
-  return { games, slots, days, tbdCount, skippedForOrder, warnings };
+  return { games, slots, days, tbdCount, skippedForOrder, skippedForDayLimit, warnings };
 }
 
 export function planWarnings(p: {
@@ -611,6 +678,8 @@ export function planWarnings(p: {
   gameCount: number;
   tbdCount: number;
   skippedForOrder: number;
+  skippedForDayLimit?: number;
+  gamesPerTeamPerDay?: number;
   settings: PlanSettings;
   divisionName: string;
 }): string[] {
@@ -652,8 +721,14 @@ export function planWarnings(p: {
       p.skippedForOrder > 0
         ? ` ${p.skippedForOrder} slot${p.skippedForOrder === 1 ? " was" : "s were"} skipped because ${p.skippedForOrder === 1 ? "it" : "they"} fell before an earlier round's games had finished — a later round can't start until the round before it is over.`
         : "";
+    const day = p.skippedForDayLimit ?? 0;
+    const perDay = p.gamesPerTeamPerDay ?? DEFAULT_GAMES_PER_TEAM_PER_DAY;
+    const dayWhy =
+      day > 0
+        ? ` ${day} slot${day === 1 ? " was" : "s were"} left unused so that no team plays more than ${perDay === 1 ? "one game" : `${perDay} games`} in a day.`
+        : "";
     out.push(
-      `${p.tbdCount} of ${p.gameCount} games could not be placed: the chosen dates, windows and fields give ${p.slotCount} slot${p.slotCount === 1 ? "" : "s"} and the bracket needs ${p.gameCount}.${why} ${p.tbdCount === 1 ? "It is" : "They are"} saved without a date, time or field (TBD). Add dates or fields and regenerate, or set each one from the bracket's list view.`,
+      `${p.tbdCount} of ${p.gameCount} games could not be placed: the chosen dates, windows and fields give ${p.slotCount} slot${p.slotCount === 1 ? "" : "s"} and the bracket needs ${p.gameCount}.${why}${dayWhy} ${p.tbdCount === 1 ? "It is" : "They are"} saved without a date, time or field (TBD). Add dates or fields and regenerate, or set each one from the bracket's list view.`,
     );
   }
 

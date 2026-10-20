@@ -644,8 +644,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   harness cannot see — add it to the plan. `preflightBracket` runs the same
   plan with nothing written, and the review step shows its warnings BEFORE
   the Generate button.
-- **Single elimination handles byes; double elimination and round robin do
-  NOT and remain untested.** `standardSeedOrder` lays out the bracket so
+- **Single elimination handles byes; double elimination does NOT and remains
+  untested. Round robin needs no byes (odd counts sit out one round each) and
+  is harnessed by `sim:round-robin` since 2026-10-19.** `standardSeedOrder` lays out the bracket so
   seeds 1 and 2 are in opposite halves (8: 1v8, 4v5 | 2v7, 3v6); a bye team
   is written into its round-2 slot AT GENERATION TIME; and `game_number` is
   the BRACKET POSITION (round-1 position p is number p+1, a bye pair leaves
@@ -691,19 +692,25 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   counters; parts A–H + S) and `npm run sim:playoff-bracket:mutants` (13
   mutants applied to the real source, each required to die FIRST at its own
   assertion). Read the sim's header before touching any of this.
-- **Round robin has its own harness: `npm run sim:round-robin`** (233 checks
-  × 3 zones, 8 counters; 2–16 teams: game count, RR labels, every pair once,
+- **Round robin has its own harness: `npm run sim:round-robin`** (259 checks
+  × 3 zones, 10 counters; 2–16 teams: game count, RR labels, every pair once,
   no team twice a round, odd-count sit-outs, numbering, round timing, field and
   team overlap, TBD on too few dates, labels, the tie refusal) + `:mutants`
-  (12, each killed at its own assertion, 2026-10-19). **Two KNOWN defects are
-  pinned, not fixed ([K1], [K2]):** the first team in the list is home in
-  EVERY game it plays (7 teams: 6 of 6; others 2–3), and nothing limits games
-  per team per day — with enough fields every round lands on one Saturday (6
-  teams on 4 fields: all 15 games, 5 per team, one day). Fixing either flips
-  its K check on purpose.
-
-## Removing a team from a bracket (branch `feat/playoff-exclude-team`, 2026-10-19)
-
+  (18, each killed at its own assertion, 2026-10-19). **Two rules added
+  2026-10-19 (approved), for every round robin, two-stage or not:**
+  - **Home/away balance — `roundRobinHomeFirst`.** Decided by list position,
+    never by round: odd n → every team home exactly (n−1)/2; even n → n/2 or
+    n/2−1. The circle method alone made the first team home in EVERY game.
+  - **Games per team per day — `PlanInput.gamesPerTeamPerDay` (1 or 2,
+    default 1, `DEFAULT_GAMES_PER_TEAM_PER_DAY`), round robin only.** The slot
+    picker's `maxRoundsPerDate` stops a new round STARTING on a date that
+    already holds that many rounds; a team plays once per round, so no team
+    exceeds the limit. Games that don't fit stay TBD and the TBD warning says
+    "N slots were left unused so that no team plays more than one game in a
+    day" — never a silent double-up. Elimination formats ignore it ([D4]).
+    **The setting is not stored yet** (no `playoffs` column; the wizard has no
+    control) — the two-stage migration adds the column and the Dates & fields
+    step the control; until then every round robin plans at 1 a day.
 - **The Seeding step lets an admin leave a team out of THIS bracket** (a team
   that opted out): Remove on each row, removed teams greyed below under "Not in
   this bracket" with Add back (a team added back is the LOWEST seed). At least 2

@@ -18,10 +18,15 @@
 //       reported
 //   L   empty slots read "TBD" (never "Winner of Game N"), round names, the
 //       database result path, and the tied-score refusal sentence
+//   H   home and away are balanced: odd counts exactly half each, even counts
+//       within one (fixed 2026-10-19 — the first team used to be home in every
+//       game it played)
+//   D   the per-team daily limit (1, or 2; default 1): no team plays more than
+//       that many games in a day; dates that can't hold every game under it
+//       leave games TBD and the warning says why; other formats ignore it
+//       (fixed 2026-10-19 — with enough fields every round used to land on
+//       one Saturday)
 //   X   a team removed in the Seeding step is in no game
-//   K   KNOWN, NOT FIXED — current behaviour pinned so a fix flips it on
-//       purpose: the first team is home in every game it plays, and a team can
-//       play every round on the same day when there are enough fields
 //
 // Section order is load-bearing: each mutant must die FIRST at its own tag, so
 // a check that would also catch an earlier rule's mutant runs after it. R0
@@ -78,7 +83,9 @@ const counters = {
   roundBoundariesTimed: 0,
   slotsSkippedForOrder: 0,
   tbdGamesSeen: 0,
-  sameDayRepeatsSeen: 0,
+  homeCountsChecked: 0,
+  secondGameSameDay: 0,
+  slotsSkippedForDayLimit: 0,
 };
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -106,9 +113,24 @@ function grid(fields: number, endDate = "2027-06-26"): SlotGridInput {
     durationMin: SETTINGS.durationMin, bufferMin: SETTINGS.bufferMin,
   };
 }
-function plan(seeds: SeededTeam[], g: SlotGridInput = grid(2)): BracketPlan {
-  return planBracket({ format: "round_robin", seeds, ids: IDS, grid: g, settings: SETTINGS, divisionName: "Majors" });
+function plan(seeds: SeededTeam[], g: SlotGridInput = grid(2), gamesPerTeamPerDay?: 1 | 2): BracketPlan {
+  return planBracket({ format: "round_robin", seeds, ids: IDS, grid: g, settings: SETTINGS, divisionName: "Majors", gamesPerTeamPerDay });
 }
+function mostGamesInADay(games: GameInsert[]): number {
+  const perDay = new Map<string, number>();
+  for (const g of games) {
+    if (!g.scheduled_date) continue;
+    // An empty bracket slot is not a team — counting null as one made D4 pass
+    // for the wrong reason (run 2's RM18 survivor).
+    for (const t of [g.home_team_id, g.away_team_id]) {
+      if (!t) continue;
+      const k = `${t}|${g.scheduled_date}`;
+      perDay.set(k, (perDay.get(k) ?? 0) + 1);
+    }
+  }
+  return Math.max(0, ...perDay.values());
+}
+const dateCount = (games: GameInsert[]) => new Set(games.filter((g) => g.scheduled_date).map((g) => g.scheduled_date)).size;
 const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const roundNo = (g: GameInsert) => Number(g.round.slice(2));
 const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -229,6 +251,27 @@ section("N1 game numbers", () => {
   }
 });
 
+// ─── H: home and away ────────────────────────────────────────────────────────
+
+function homeCounts(n: number): number[] {
+  const games = PLANS.get(n)!;
+  return seedsOf(n).map((t) => games.filter((g) => g.home_team_id === t.team_id).length);
+}
+section("H1 odd counts: exactly half at home", () => {
+  for (const n of COUNTS.filter((x) => x % 2 === 1)) {
+    const h = homeCounts(n);
+    counters.homeCountsChecked += h.length;
+    ok(h.every((c) => c === (n - 1) / 2), "H1", `${n} teams: every team is home ${(n - 1) / 2} of ${n - 1}`, JSON.stringify(h));
+  }
+});
+section("H2 even counts: within one of half", () => {
+  for (const n of COUNTS.filter((x) => x % 2 === 0)) {
+    const h = homeCounts(n);
+    counters.homeCountsChecked += h.length;
+    ok(h.every((c) => c === n / 2 || c === n / 2 - 1), "H2", `${n} teams: every team is home ${n / 2 - 1} or ${n / 2} of ${n - 1}`, JSON.stringify(h));
+  }
+});
+
 // ─── T: timing ───────────────────────────────────────────────────────────────
 
 section("T timing", () => {
@@ -310,28 +353,57 @@ section("X removed teams", () => {
   ok(games.length === 15, "X1", "6 teams left → 15 games", `got ${games.length}`);
 });
 
-// ─── K: KNOWN, NOT FIXED (pinned so a fix flips them on purpose) ─────────────
+// ─── D: games per team per day ───────────────────────────────────────────────
+// 6 teams on 4 fields: one Saturday holds 4 time steps × 4 fields, enough for
+// every round at once — which is exactly what the limit must stop.
 
-section("K known", () => {
-  const n = 7;
-  const games = PLANS.get(n)!;
-  const home = new Map<string, number>();
-  for (const g of games) home.set(g.home_team_id!, (home.get(g.home_team_id!) ?? 0) + 1);
-  const spread = [...home.values()];
-  ok(home.get("t1") === n - 1, "K1", "KNOWN: the first team in the list is home in every game it plays (6 of 6)", JSON.stringify(Object.fromEntries(home)));
-  ok(Math.max(...spread) - Math.min(...spread) === 4, "K1", "KNOWN: home games range 2–6 across 7 teams", JSON.stringify(spread));
-  // No limit on games per team per day: with enough fields every round lands
-  // on the same Saturday.
-  const wide = plan(seedsOf(6), grid(4)).games;
-  const perDay = new Map<string, number>();
-  for (const g of wide) for (const t of [g.home_team_id, g.away_team_id]) {
-    const k = `${t}|${g.scheduled_date}`;
-    perDay.set(k, (perDay.get(k) ?? 0) + 1);
+section("D1 limit 1", () => {
+  const p = plan(seedsOf(6), grid(4), 1);
+  counters.slotsSkippedForDayLimit += p.skippedForDayLimit;
+  ok(mostGamesInADay(p.games) === 1, "D1", "limit 1: no team plays twice in a day", `max ${mostGamesInADay(p.games)}`);
+  ok(p.tbdCount === 0 && dateCount(p.games) === 5, "D1", "limit 1: all 15 games placed, one round per Saturday (5 Saturdays)", `${p.tbdCount} TBD, ${dateCount(p.games)} dates`);
+});
+
+section("D2 limit 2", () => {
+  const p = plan(seedsOf(6), grid(4), 2);
+  const most = mostGamesInADay(p.games);
+  if (most === 2) counters.secondGameSameDay++;
+  ok(most === 2, "D2", "limit 2: a team plays at most 2 games in a day, and the second slot is used", `max ${most}`);
+  ok(p.tbdCount === 0 && dateCount(p.games) === 3, "D2", "limit 2: all 15 games on 3 Saturdays", `${p.tbdCount} TBD, ${dateCount(p.games)} dates`);
+});
+
+section("D0 default", () => {
+  const p = plan(seedsOf(6), grid(4));
+  ok(mostGamesInADay(p.games) === 1, "D0", "no limit given: a team plays at most 1 game a day", `max ${mostGamesInADay(p.games)}`);
+});
+
+section("D3 too few dates", () => {
+  const p = plan(seedsOf(6), grid(4, "2026-11-14"), 1);
+  counters.tbdGamesSeen += p.tbdCount;
+  ok(p.tbdCount === 9 && mostGamesInADay(p.games) === 1, "D3", "2 Saturdays, limit 1: 6 games placed, 9 left TBD, never a second game in a day", `${p.tbdCount} TBD, max ${mostGamesInADay(p.games)}`);
+  const w = p.warnings.find((x) => x.includes("could not be placed")) ?? "";
+  ok(w.includes("9 of 15 games could not be placed") && w.includes("left unused so that no team plays more than one game in a day"), "D3",
+    "the warning says how many didn't fit and that the daily limit is why", w);
+  const two = plan(seedsOf(6), grid(4, "2026-11-07"), 2);
+  ok((two.warnings.find((x) => x.includes("could not be placed")) ?? "").includes("no team plays more than 2 games in a day"), "D3",
+    "limit 2 is named in the warning", two.warnings.join(" | "));
+});
+
+section("D4 other formats ignore it", () => {
+  // Fixed facts, measured with no limit: 8 teams on 4 fields fit single
+  // elimination on 1 Saturday and double elimination on 2. A limit applied to
+  // these formats would push later rounds onto later Saturdays.
+  const DATES = { single_elimination: 1, double_elimination: 2 } as const;
+  for (const format of ["single_elimination", "double_elimination"] as const) {
+    const base = { format, seeds: seedsOf(8), ids: IDS, grid: grid(4), settings: SETTINGS, divisionName: "Majors" };
+    const a = planBracket(base).games;
+    const b = planBracket({ ...base, gamesPerTeamPerDay: 1 }).games;
+    // Compared with a fixed fact, not just with each other: a mutant that
+    // applies the limit to every format would make a and b agree anyway.
+    ok(dateCount(a) === DATES[format] && dateCount(b) === DATES[format], "D4",
+      `${format}: 8 teams on 4 fields still take ${DATES[format]} Saturday(s), limit or not`, `${dateCount(a)} / ${dateCount(b)} dates`);
+    ok(JSON.stringify(a) === JSON.stringify(b), "D4", `${format}: the daily limit changes nothing`);
   }
-  const most = Math.max(...perDay.values());
-  if (most > 1) counters.sameDayRepeatsSeen++;
-  ok(most === 5 && new Set(wide.map((g) => g.scheduled_date)).size === 1, "K2",
-    "KNOWN: 6 teams on 4 fields — all 15 games on one Saturday, every team plays 5 that day", `max ${most}`);
 });
 
 // ─── Summary ─────────────────────────────────────────────────────────────────
