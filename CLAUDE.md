@@ -275,9 +275,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   role; PUBLIC, service_role and dashboard_readonly false); the 6 existing
   brackets and 21 games byte-identical apart from the new columns, all at
   their defaults; leak check clean. See "Two-stage playoffs".
-- **0114 (playoff series) is WRITTEN AND PROVEN, NOT APPLIED** (branch
-  `feat/playoff-series`, 2026-10-20) — held until the series screens are
-  built (one go-live). See "Playoff series" for its md5s and proof.
+- **0114 (playoff series) APPLIED 2026-10-20 22:38 UTC, catalog
+  `20261020223859`**, verbatim from the repo file on Whit's go (after the
+  Safari print check), following its rolled-back proof (24/24) and the
+  0107/0108/0112/0113 regressions. md5(prosrc) verified for all fourteen
+  functions (the values under "Playoff series"), one overload each; EXECUTE
+  per role exactly as stated (the five entry points authenticated only, the
+  reader anon + authenticated, the seven helpers no role; PUBLIC,
+  service_role and dashboard_readonly false); the 5 existing brackets and 19
+  games byte-identical apart from the new columns, all at their defaults
+  (`series_by_round` `{}`, `series_game` 1); the migration's own verify block
+  passed; leak check clean (no temp functions, no activity-log writes,
+  triggers enabled). See "Playoff series".
 - **`is_org_member` IS the admin gate, because every org member is an admin
   today.** If a non-admin member role (e.g. coach) is ever added,
   `set_org_timezone`, `regenerate_team_calendar_link` and
@@ -633,9 +642,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   A new outbound file belongs in its fence list. **Mutant LK3 must target the
   LATEST migration that defines `get_league_schedule_by_token`** — [D1] reads
   only each token function's latest body, so LK3 aimed at 0105 SURVIVED once
-  0112 redefined the reader (found 2026-10-20; on `main` it still points at
-  0105 and survives). Move it with every new definition of the reader — on
-  `feat/playoff-series` it targets 0114 (killed at D1). **The same rule now
+  0112 redefined the reader (found 2026-10-20). Move it with every new
+  definition of the reader — it targets 0114 since the playoff-series merge
+  (killed at D1). **The same rule now
   holds for `sim:game-notes` O1-public-reader**: it reads the LATEST migration
   defining the reader (it read 0105 only, so the 0112/0113 readers were never
   checked); its mutants GM13 (a note) and GM14 (a playoff score beside
@@ -878,7 +887,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   components and Supabase's REST answered in the browser by fixtures (0113
   isn't applied), at 1024px and 375px, then the route was deleted.
 
-## Playoff series — best of 3/5/7 per round (branch `feat/playoff-series`, IN PROGRESS)
+## Playoff series — best of 3/5/7 per round (0114, applied 2026-10-20)
 
 - **Approved mockup: `docs/mockups/playoff-series.html` (2026-10-20)**, with
   all six recommendations: series games have no "Game N" of their own ("Game
@@ -915,12 +924,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (2026-10-20) — every game of a series shares its position. Identical for
   single games.
 - **Steps (each held for Whit's go; one go-live):** 1 rules + planner (DONE on
-  the branch) → 2 migration 0114 (DONE on the branch: written and proven, NOT
-  applied) → 3 admin screens (DONE on the branch) → 4 public page, feed,
+  the branch) → 2 migration 0114 (written and proven, applied
+  2026-10-20) → 3 admin screens (DONE on the branch) → 4 public page, feed,
   print, CSV, confirms, snack shack/conflicts/daylight (DONE on the branch;
-  Safari print check is Whit's) → 5 apply 0114, then ship. **The Playoffs
-  page selects `series_by_round` (and the wizard writes it), so this branch
-  must not reach `main` before 0114 is applied.**
+  Safari print check passed 2026-10-20) → 5 apply 0114, then ship (DONE
+  2026-10-20). **Deploy order (met): 0114 was applied BEFORE the series code
+  reached `main`** — the Playoffs page selects `series_by_round` and the
+  wizard writes it.
 - **Outside the app (step 4, 2026-10-20).** Shared words in series.ts:
   `seriesGameName` ("Semifinal 1 · Game 2 of 3"), `outboundMatchup` (home team
   first once both teams are known; before that "Bears and Winner of Semifinal
@@ -1026,8 +1036,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Checked on a throwaway route (real components, REST faked) at 1024px and
   375px: wording matches the mockup, connectors land on the team rows, no
   overflow; then deleted.
-- **Migration 0114 (`0114_playoff_series.sql`) — WRITTEN AND PROVEN, NOT
-  APPLIED.** Schema: `playoffs.series_by_round` (jsonb object, `{}` = every
+- **Migration 0114 (`0114_playoff_series.sql`) — APPLIED 2026-10-20 (see the
+  Database section).** Schema: `playoffs.series_by_round` (jsonb object, `{}` = every
   round 1 game), `playoff_games.series_game` (1..7, default 1), status
   `not_needed`, unique `(playoff_id, round, game_number, series_game)`.
   New helpers callable by NO role: `playoff_check_series` (the payload shape;
@@ -1173,13 +1183,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   take Stage 2's `GameNumbering`. A numbering that isn't known (null) names
   NO game — never a stored position. The two-stage I/O reads Stage 2's game
   numbers only to word such a refusal (fail-soft).
-- **NOT YET: the activity log** (deferred by Whit, 2026-10-20 — see Open
-  items). The LIVE `enter_playoff_result` and `clear_playoff_result` (0113)
-  write "Game %s" / "moved into Game %s" / "result cleared for Game %s" /
-  "removed from Game %s" with the STORED position. **0114 (written, not
-  applied) replaces these with the round and the teams** ("Majors playoffs:
-  Semifinals, game 2 of 3 — …"); once 0114 is applied, nothing in SQL prints a
-  game number to a person except round-robin "RR Game N".
+- **The activity log (closed by 0114).** Before 0114 the
+  `enter_playoff_result` and `clear_playoff_result` (0113) wrote "Game %s" / "moved into Game %s" / "result cleared for Game %s" /
+  "removed from Game %s" with the STORED position. **0114 (applied
+  2026-10-20) replaced these with the round and the teams** ("Majors playoffs:
+  Semifinals, game 2 of 3 — …"); nothing in SQL prints a game number to a
+  person any more except round-robin "RR Game N". Log entries written before
+  0114 still carry the old stored positions.
 - **The approved two-stage mockup shows stored numbers** ("bye to Game 5",
   "Game 2: Mets…"); the app now shows 1..N. Decided 2026-10-20.
 - **Harness: `npm run sim:playoff-numbers`** (68 checks × 3 zones, 6 counters:
@@ -5062,15 +5072,6 @@ Still open:
   "Pool A #1" later), so screen, print, public page and CSV gain pool wording
   in one place. Not in the first build: per-pool round robins, per-pool
   records, per-pool advancing counts.
-
-- **DONE IN 0114 (written, NOT applied) — next time `enter_playoff_result` /
-  `clear_playoff_result` change, make their activity-log messages name the
-  ROUND and the TEAMS instead of a game number** (decided 2026-10-20). Remove
-  this item once 0114 is applied. Today they log the stored bracket position
-  ("Game 6", "moved into Game 7"), which with byes doesn't match the shown
-  numbers (see "Playoff game numbers people see"). Round + teams needs no
-  numbering in SQL. Deferred, not a migration of its own; same proof
-  standard when it rides along.
 
 - **Remove `process_checkout_event`'s legacy no-purchase-id branch (0111) in a
   follow-up migration, NOT BEFORE 2026-10-20 21:00 UTC** — 24 hours after
