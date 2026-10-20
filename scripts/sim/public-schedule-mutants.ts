@@ -47,8 +47,12 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "PM6", what: "open playoff slot names the wrong feeder", file: VIEW,
-    find: `2 * pos + (side === "home" ? 0 : 1)`,
-    replace: `2 * pos + (side === "home" ? 1 : 0)`,
+    // Re-keyed 2026-10-19: the positional arithmetic this used to flip was
+    // removed in 5b5b418 (the page now calls the shared emptySlotLabel), which
+    // left PM6 stale from 2026-10-13. The page's own remaining step is mapping
+    // its side onto the shared rule, so that is what flips now.
+    find: `  return emptySlotLabel(asRow(game), side, bracket.map(asRow), game.format);`,
+    replace: `  return emptySlotLabel(asRow(game), side === "home" ? "away" : "home", bracket.map(asRow), game.format);`,
     expect: "P1",
   },
   {
@@ -64,3 +68,7 @@ runMutants({
   timezones: ["UTC", "America/Los_Angeles", "Pacific/Kiritimati"],
   mutants: MUTANTS,
 });
+// 2026-10-19 — PM6 had been STALE since 2026-10-13 (5b5b418 removed its target
+// text) and the pass reported "1 PROBLEM" on main for six days. Re-keyed to the
+// page's mapping of its side onto emptySlotLabel; run: 7/7 KILLED at their own
+// assertion (PM6 → [P1]), source restored, green after.
