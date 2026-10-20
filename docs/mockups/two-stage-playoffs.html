@@ -234,7 +234,7 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
 <header>
   <h1>Two-stage playoffs</h1>
   <p class="lede">Stage 1 is one round robin. Stage 2 is a single-elimination bracket the admin seeds by hand once Stage 1 is done. FieldSlate shows each team's round-robin record as reference and never ranks them. Each screen is shown at desktop width (left) and on a 375px phone (right); the two are the same screen. Narrow your window below 1000px to see the phone frames only.</p>
-  <p class="lede"><b>Example used throughout:</b> Majors has 8 teams. The Cubs opted out, so 7 play the round robin (21 games). The top 6 advance to an 8-slot bracket, so seeds 1 and 2 get byes. Majors games are 120 minutes.</p>
+  <p class="lede"><b>Example used throughout:</b> Majors has 8 teams. The Cubs opted out, so 7 play the round robin (21 games). The top 6 advance to an 8-slot bracket, so seeds 1 and 2 get byes. Majors games are 120 minutes. Both stages play at most 1 game per team per day, so the bracket runs round 1 Sat 11/14, semifinals Sun 11/15, final Sat 11/21 (updated 2026-10-19 after the daily limit was approved).</p>
   <ul class="toc">
     <li><a href="#s1">1 Format</a></li><li><a href="#s2">2 Teams</a></li><li><a href="#s3">3 Dates &amp; fields</a></li><li><a href="#s4">4 Review</a></li>
     <li><a href="#s5">5 Stage 1 in progress</a></li><li><a href="#s6">6 Stage 1 done</a></li><li><a href="#s6b">6b Games never played</a></li><li><a href="#s7">7 Seed Stage 2</a></li><li><a href="#s8">8 Confirm seeds</a></li><li><a href="#s8b">8b Confirm, seeded anyway</a></li>
@@ -335,6 +335,10 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
               <label class="field">Saturday<span class="input">9:00 AM – 5:00 PM</span></label>
               <label class="field">Sunday<span class="input">10:00 AM – 6:00 PM</span></label>
             </div>
+            <div class="field" style="margin-bottom:10px">Games per team per day
+              <div class="days"><span class="on" style="width:auto;padding:0 10px">1</span><span style="width:auto;padding:0 10px">2</span></div>
+              <span class="tiny">No team plays more than this many games in one day. Games that don't fit stay undated, and Review says so.</span>
+            </div>
             <div class="field">Fields
               <div class="row-flex" style="gap:6px"><span class="pill navy">Monroe Complex — Andrews</span><span class="pill navy">Monroe Complex — Perry</span><span class="pill">+ Add field</span></div>
             </div>
@@ -343,7 +347,7 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
             <div class="stage-head"><span class="stage-num">2</span><b>Stage 2 · Bracket</b><span class="tiny">5 games</span></div>
             <div class="grid2" style="margin-bottom:10px">
               <label class="field">Starts<span class="input">Sat, Nov 14, 2026</span></label>
-              <label class="field">Ends<span class="input">Sun, Nov 15, 2026</span></label>
+              <label class="field">Ends<span class="input">Sun, Nov 22, 2026</span></label>
             </div>
             <div class="field" style="margin-bottom:10px">Days
               <div class="days"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span class="on">Sa</span><span class="on">Su</span></div>
@@ -351,6 +355,10 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
             <div class="grid2" style="margin-bottom:10px">
               <label class="field">Saturday<span class="input">9:00 AM – 5:00 PM</span></label>
               <label class="field">Sunday<span class="input">10:00 AM – 6:00 PM</span></label>
+            </div>
+            <div class="field" style="margin-bottom:10px">Games per team per day
+              <div class="days"><span class="on" style="width:auto;padding:0 10px">1</span><span style="width:auto;padding:0 10px">2</span></div>
+              <span class="tiny">With 1, each bracket round is on its own day.</span>
             </div>
             <div class="chk"><i></i>Same fields as Stage 1</div>
           </div>
@@ -379,14 +387,16 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
             <dt>Teams</dt><dd>7 (Cubs left out)</dd>
             <dt>Stage 1</dt><dd>21 games · Oct 24 – Nov 8 · Sat, Sun · Andrews, Perry</dd>
             <dt>Advancing</dt><dd>Top 6 · byes for seeds 1–2</dd>
-            <dt>Stage 2</dt><dd>5 games · Nov 14 – 15 · Sat, Sun · Andrews, Perry</dd>
+            <dt>Stage 2</dt><dd>5 games · Nov 14 – 22 · Sat, Sun · Andrews, Perry · 1 game per team per day</dd>
           </dl>
           <div class="note plain"><b>Stage 1:</b> all 21 games fit (28 slots).</div>
-          <div class="note amber"><b>Stage 2:</b> Sun, Nov 15: no games were placed — Monroe Complex — Perry is closed on Sundays. Open the field that day on the Venues page, or take Sundays out of the playoff days.</div>
+          <div class="note plain"><b>Stage 2:</b> all 5 games fit — round 1 Sat 11/14, semifinals Sun 11/15, final Sat 11/21.</div>
           <div class="note plain">Stage 2 is set up with dates and fields now. Its teams read "Seed 1", "Seed 4"… until you seed it after the round robin.</div>
         </div>
         <div class="wiz-foot"><button class="btn">Back</button><button class="btn primary">Generate both stages</button></div>
       </div>
+      <p class="tiny" style="margin:10px 2px 0"><b>The alternative — Stage 2 given only Nov 14–15</b> at 1 game a day: the final can't fit, so it is saved without a date and Review says why (the planner's own sentence, verbatim). Generate stays allowed; the final can be dated later from the bracket.</p>
+      <div class="note amber" style="margin-top:6px"><b>Stage 2:</b> 1 of 5 games could not be placed: the chosen dates, windows and fields give 12 slots and the bracket needs 5. 8 slots were left unused so that no team plays more than one game in a day. It is saved without a date, time or field (TBD). Add dates or fields and regenerate, or set each one from the bracket's list view.</div>
     </div></div></div>
     <div class="phone"><p class="frame-label">375px</p><div class="frame"></div></div>
   </div>
@@ -442,7 +452,7 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
           </div>
 
           <div class="stage">
-            <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="tiny">Nov 14 – 15</span><span class="pill">Not seeded</span><span class="grow"></span><button class="btn primary" disabled>Seed Stage 2</button></div>
+            <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="tiny">Nov 14 – 22</span><span class="pill">Not seeded</span><span class="grow"></span><button class="btn primary" disabled>Seed Stage 2</button></div>
             <div class="sbody">
               <p class="tiny" style="margin:0 0 10px">You can seed Stage 2 once every round-robin game has a result, or once the only games left without one are rained out or already past. 9 of 21 still need one, and Game 13 onward is still to come.</p>
               <div class="tree">
@@ -451,19 +461,19 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
                   <div class="g"><div class="w">Game 4 · Sat 11/14 · 9:00 AM<br>Monroe Complex — Perry</div><div class="s"><span class="n ph">Seed 3</span></div><div class="s"><span class="n ph">Seed 6</span></div></div>
                 </div>
                 <div class="tcol"><h5>Semifinal</h5>
-                  <div class="g"><div class="w">Game 5 · Sat 11/14 · 11:30 AM<br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Seed 1</span></div><div class="s"><span class="n ph">Winner of Game 2</span></div></div>
-                  <div class="g"><div class="w">Game 6 · Sat 11/14 · 11:30 AM<br>Monroe Complex — Perry</div><div class="s"><span class="n ph">Seed 2</span></div><div class="s"><span class="n ph">Winner of Game 4</span></div></div>
+                  <div class="g"><div class="w">Game 5 · Sun 11/15 · 10:00 AM<br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Seed 1</span></div><div class="s"><span class="n ph">Winner of Game 2</span></div></div>
+                  <div class="g"><div class="w">Game 6 · Sun 11/15 · 10:00 AM<br>Monroe Complex — Perry</div><div class="s"><span class="n ph">Seed 2</span></div><div class="s"><span class="n ph">Winner of Game 4</span></div></div>
                 </div>
                 <div class="tcol"><h5>Final</h5>
-                  <div class="g"><div class="w">Game 7 · Sat 11/14 · 2:00 PM<br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Winner of Game 5</span></div><div class="s"><span class="n ph">Winner of Game 6</span></div></div>
+                  <div class="g"><div class="w">Game 7 · Sat 11/21 · 9:00 AM<br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Winner of Game 5</span></div><div class="s"><span class="n ph">Winner of Game 6</span></div></div>
                 </div>
               </div>
               <div class="glist">
                 <div class="gl"><div class="w">Round 1 · Game 2 · Sat 11/14 · 9:00 AM · Andrews</div><div class="s"><span class="n ph">Seed 4</span></div><div class="s"><span class="n ph">Seed 5</span></div></div>
                 <div class="gl"><div class="w">Round 1 · Game 4 · Sat 11/14 · 9:00 AM · Perry</div><div class="s"><span class="n ph">Seed 3</span></div><div class="s"><span class="n ph">Seed 6</span></div></div>
-                <div class="gl"><div class="w">Semifinal · Game 5 · Sat 11/14 · 11:30 AM · Andrews</div><div class="s"><span class="n ph">Seed 1</span></div><div class="s"><span class="n ph">Winner of Game 2</span></div></div>
-                <div class="gl"><div class="w">Semifinal · Game 6 · Sat 11/14 · 11:30 AM · Perry</div><div class="s"><span class="n ph">Seed 2</span></div><div class="s"><span class="n ph">Winner of Game 4</span></div></div>
-                <div class="gl"><div class="w">Final · Game 7 · Sat 11/14 · 2:00 PM · Andrews</div><div class="s"><span class="n ph">Winner of Game 5</span></div><div class="s"><span class="n ph">Winner of Game 6</span></div></div>
+                <div class="gl"><div class="w">Semifinal · Game 5 · Sun 11/15 · 10:00 AM · Andrews</div><div class="s"><span class="n ph">Seed 1</span></div><div class="s"><span class="n ph">Winner of Game 2</span></div></div>
+                <div class="gl"><div class="w">Semifinal · Game 6 · Sun 11/15 · 10:00 AM · Perry</div><div class="s"><span class="n ph">Seed 2</span></div><div class="s"><span class="n ph">Winner of Game 4</span></div></div>
+                <div class="gl"><div class="w">Final · Game 7 · Sat 11/21 · 9:00 AM · Andrews</div><div class="s"><span class="n ph">Winner of Game 5</span></div><div class="s"><span class="n ph">Winner of Game 6</span></div></div>
               </div>
               <p class="tiny" style="margin:8px 0 0">Games 1 and 3 are byes for seeds 1 and 2, so they don't appear (today's numbering).</p>
             </div>
@@ -492,7 +502,7 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
           <div class="shead"><span class="stage-num">1</span><b>Round robin</b><span class="pill green">Done · 21 of 21</span><span class="grow"></span><button class="btn">Show games</button><button class="btn">Records</button></div>
         </div>
         <div class="stage">
-          <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="tiny">Nov 14 – 15</span><span class="pill amber">Ready to seed</span><span class="grow"></span><button class="btn primary">Seed Stage 2</button></div>
+          <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="tiny">Nov 14 – 22</span><span class="pill amber">Ready to seed</span><span class="grow"></span><button class="btn primary">Seed Stage 2</button></div>
           <div class="sbody"><p class="tiny" style="margin:0">The round robin is finished. Put the teams in seed order; the top 6 go into the bracket. Until then, families see "Seed 1", "Seed 4"… on the public schedule.</p></div>
         </div>
       </div>
@@ -519,7 +529,7 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
           <div class="sbody"><p class="tiny" style="margin:0">Never played: RR Game 8 (Mets vs Giants, rained out Oct 25) and RR Game 17 (Lions vs Royals, Nov 7, no result). Enter a result if they were played; otherwise records leave them out.</p></div>
         </div>
         <div class="stage">
-          <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="tiny">Nov 14 – 15</span><span class="pill amber">Ready to seed</span><span class="grow"></span><button class="btn primary">Seed anyway</button></div>
+          <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="tiny">Nov 14 – 22</span><span class="pill amber">Ready to seed</span><span class="grow"></span><button class="btn primary">Seed anyway</button></div>
           <div class="sbody"><p class="tiny" style="margin:0">The round robin is over with 2 games never played. You can seed now; the confirm will say so and it goes in the activity log.</p></div>
         </div>
       </div>
@@ -622,7 +632,7 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
     <div class="desk"><p class="frame-label">Desktop</p><div class="frame"><div class="app">
       <div class="card div-card">
         <div class="stage" style="border-top:none">
-          <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="tiny">Nov 14 – 15</span><span class="pill green">Seeded</span><span class="grow"></span><button class="btn">Change seeds</button></div>
+          <div class="shead"><span class="stage-num">2</span><b>Bracket</b><span class="tiny">Nov 14 – 22</span><span class="pill green">Seeded</span><span class="grow"></span><button class="btn">Change seeds</button></div>
           <div class="sbody">
             <p class="tiny" style="margin:0 0 10px">Seeded Nov 9 by Jenn M. · Not advancing: Giants</p>
             <div class="tree">
@@ -631,19 +641,19 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
                 <div class="g"><div class="w">Game 4 · Sat 11/14 · 9:00 AM<br>Monroe Complex — Perry</div><div class="s"><span class="sd">3</span><span class="n">Lions</span></div><div class="s"><span class="sd">6</span><span class="n">Royals</span></div></div>
               </div>
               <div class="tcol"><h5>Semifinal</h5>
-                <div class="g"><div class="w">Game 5 · Sat 11/14 · 11:30 AM<br>Monroe Complex — Andrews</div><div class="s"><span class="sd">1</span><span class="n">Expos</span></div><div class="s"><span class="n ph">Winner of Game 2</span></div></div>
-                <div class="g"><div class="w">Game 6 · Sat 11/14 · 11:30 AM<br>Monroe Complex — Perry</div><div class="s"><span class="sd">2</span><span class="n">Bears</span></div><div class="s"><span class="n ph">Winner of Game 4</span></div></div>
+                <div class="g"><div class="w">Game 5 · Sun 11/15 · 10:00 AM<br>Monroe Complex — Andrews</div><div class="s"><span class="sd">1</span><span class="n">Expos</span></div><div class="s"><span class="n ph">Winner of Game 2</span></div></div>
+                <div class="g"><div class="w">Game 6 · Sun 11/15 · 10:00 AM<br>Monroe Complex — Perry</div><div class="s"><span class="sd">2</span><span class="n">Bears</span></div><div class="s"><span class="n ph">Winner of Game 4</span></div></div>
               </div>
               <div class="tcol"><h5>Final</h5>
-                <div class="g"><div class="w">Game 7 · Sat 11/14 · 2:00 PM<br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Winner of Game 5</span></div><div class="s"><span class="n ph">Winner of Game 6</span></div></div>
+                <div class="g"><div class="w">Game 7 · Sat 11/21 · 9:00 AM<br>Monroe Complex — Andrews</div><div class="s"><span class="n ph">Winner of Game 5</span></div><div class="s"><span class="n ph">Winner of Game 6</span></div></div>
               </div>
             </div>
             <div class="glist">
               <div class="gl"><div class="w">Round 1 · Game 2 · Sat 11/14 · 9:00 AM · Andrews</div><div class="s"><span class="n">4 · Mets</span></div><div class="s"><span class="n">5 · Pirates</span></div></div>
               <div class="gl"><div class="w">Round 1 · Game 4 · Sat 11/14 · 9:00 AM · Perry</div><div class="s"><span class="n">3 · Lions</span></div><div class="s"><span class="n">6 · Royals</span></div></div>
-              <div class="gl"><div class="w">Semifinal · Game 5 · Sat 11/14 · 11:30 AM · Andrews</div><div class="s"><span class="n">1 · Expos</span></div><div class="s"><span class="n ph">Winner of Game 2</span></div></div>
-              <div class="gl"><div class="w">Semifinal · Game 6 · Sat 11/14 · 11:30 AM · Perry</div><div class="s"><span class="n">2 · Bears</span></div><div class="s"><span class="n ph">Winner of Game 4</span></div></div>
-              <div class="gl"><div class="w">Final · Game 7 · Sat 11/14 · 2:00 PM · Andrews</div><div class="s"><span class="n ph">Winner of Game 5</span></div><div class="s"><span class="n ph">Winner of Game 6</span></div></div>
+              <div class="gl"><div class="w">Semifinal · Game 5 · Sun 11/15 · 10:00 AM · Andrews</div><div class="s"><span class="n">1 · Expos</span></div><div class="s"><span class="n ph">Winner of Game 2</span></div></div>
+              <div class="gl"><div class="w">Semifinal · Game 6 · Sun 11/15 · 10:00 AM · Perry</div><div class="s"><span class="n">2 · Bears</span></div><div class="s"><span class="n ph">Winner of Game 4</span></div></div>
+              <div class="gl"><div class="w">Final · Game 7 · Sat 11/21 · 9:00 AM · Andrews</div><div class="s"><span class="n ph">Winner of Game 5</span></div><div class="s"><span class="n ph">Winner of Game 6</span></div></div>
             </div>
           </div>
         </div>
@@ -728,13 +738,15 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
         <div class="card">
           <div class="pub-day">Saturday, November 14</div>
           <div class="pub-row"><span class="t">9:00 AM<small>Majors</small></span><span><b class="ph-t">Seed 4</b> vs <b class="ph-t">Seed 5</b><div class="lab">Playoffs · Bracket · Round 1 · Game 2</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
-          <div class="pub-row"><span class="t">11:30 AM<small>Majors</small></span><span><b class="ph-t">Seed 1</b> vs <b class="ph-t">Winner of Game 2</b><div class="lab">Playoffs · Bracket · Semifinal · Game 5</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
+          <div class="pub-day">Sunday, November 15</div>
+          <div class="pub-row"><span class="t">10:00 AM<small>Majors</small></span><span><b class="ph-t">Seed 1</b> vs <b class="ph-t">Winner of Game 2</b><div class="lab">Playoffs · Bracket · Semifinal · Game 5</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
         </div>
         <p class="sec-title" style="margin:6px 0 0">After seeding</p>
         <div class="card">
           <div class="pub-day">Saturday, November 14</div>
           <div class="pub-row"><span class="t">9:00 AM<small>Majors</small></span><span><b>Mets</b> vs <b>Pirates</b><div class="lab">Playoffs · Bracket · Round 1 · Game 2</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
-          <div class="pub-row"><span class="t">11:30 AM<small>Majors</small></span><span><b>Expos</b> vs <b class="ph-t">Winner of Game 2</b><div class="lab">Playoffs · Bracket · Semifinal · Game 5</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
+          <div class="pub-day">Sunday, November 15</div>
+          <div class="pub-row"><span class="t">10:00 AM<small>Majors</small></span><span><b>Expos</b> vs <b class="ph-t">Winner of Game 2</b><div class="lab">Playoffs · Bracket · Semifinal · Game 5</div></span><span class="f">Monroe Complex — Andrews<br><span class="tiny">Home</span></span></div>
         </div>
         <p class="sec-title" style="margin:6px 0 0">A round-robin game</p>
         <div class="card">
@@ -757,8 +769,8 @@ pre.csv{margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;backg
 <pre class="csv">Round,Game,Date,Start,End,Home,Away,Field
 Round robin,RR Game 13,11/01/2026,10:00 AM,12:00 PM,Expos,Mets,Monroe Complex — Andrews
 Round 1,Game 2,11/14/2026,9:00 AM,11:00 AM,Seed 4,Seed 5,Monroe Complex — Andrews
-Semifinal,Game 5,11/14/2026,11:30 AM,1:30 PM,Seed 1,Winner of Game 2,Monroe Complex — Andrews
-Final,Game 7,11/14/2026,2:00 PM,4:00 PM,Winner of Game 5,Winner of Game 6,Monroe Complex — Andrews</pre>
+Semifinal,Game 5,11/15/2026,10:00 AM,12:00 PM,Seed 1,Winner of Game 2,Monroe Complex — Andrews
+Final,Game 7,11/21/2026,9:00 AM,11:00 AM,Winner of Game 5,Winner of Game 6,Monroe Complex — Andrews</pre>
         <p class="tiny" style="margin:0">Columns shown are illustrative; the build keeps the export's existing columns and only changes End and the empty-slot text.</p>
         <div class="note amber">Majors has no game length set, so End is blank in this file. Set it on the division to fill it in.</div>
       </div>
