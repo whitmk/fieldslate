@@ -266,10 +266,15 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `end_date + 7`; leak check clean.)** The public schedule and team calendar
   feeds stop 7 days after the LATER of the end date and the season's last
   dated game, not the end date alone. See "Feeds' last day (0112)".
-- **0113 (two-stage playoffs) is WRITTEN AND PROVEN, NOT APPLIED** (branch
-  `feat/two-stage-playoffs`, 2026-10-19; held for Whit's go). Live
-  `enter_playoff_result` / `clear_playoff_result` are still 0108's / 0112's
-  bodies. See "Two-stage playoffs".
+- **0113 (two-stage playoffs) APPLIED 2026-10-20 15:49 UTC, catalog
+  `20261020154950`**, verbatim from the repo file on Whit's go, after its
+  rolled-back proof (23/23) and the 0107/0108 regressions (15/15, 18/18).
+  md5(prosrc) verified for all ten functions (the values under "Two-stage
+  playoffs"); EXECUTE per role exactly as stated (the six entry points
+  authenticated only, the reader anon + authenticated, the two helpers no
+  role; PUBLIC, service_role and dashboard_readonly false); the 6 existing
+  brackets and 21 games byte-identical apart from the new columns, all at
+  their defaults; leak check clean. See "Two-stage playoffs".
 - **`is_org_member` IS the admin gate, because every org member is an admin
   today.** If a non-admin member role (e.g. coach) is ever added,
   `set_org_timezone`, `regenerate_team_calendar_link` and
@@ -720,7 +725,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     day" — never a silent double-up. Elimination formats ignore it ([D4]).
     Stored in `playoffs.games_per_team_per_day` (0113 — sent by
     `settingsPayload`, set in the Dates step's "Games per team per day" for a
-    plain round robin). Until 0113 is applied the column doesn't exist.
+    plain round robin).
 - **The Seeding step lets an admin leave a team out of THIS bracket** (a team
   that opted out): Remove on each row, removed teams greyed below under "Not in
   this bracket" with Add back (a team added back is the LOWEST seed). At least 2
@@ -742,7 +747,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   size) + `:mutants` (11, each killed first at its own assertion; EX9–EX11 are
   source greps — weak by nature). No migration.
 
-## Two-stage playoffs — "Round robin, then bracket" (branch `feat/two-stage-playoffs`, IN PROGRESS)
+## Two-stage playoffs — "Round robin, then bracket" (0113, applied 2026-10-20)
 
 - **Approved mockup: `docs/mockups/two-stage-playoffs.html` (2026-10-19).**
   Stage 1 = one round robin (no pools yet — see Open items); Stage 2 = single
@@ -769,8 +774,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (bracket-labels.ts) reads "Seed N" via `seedLabel` when the slot carries a
   seed, before "Winner of Game N" / "TBD". Ordinary brackets carry no seeds,
   so they read exactly as before. Pools later change `seedLabel` only.
-- **Migration 0113 (`0113_two_stage_playoffs.sql`) is WRITTEN AND PROVEN,
-  NOT APPLIED (held for Whit's go, 2026-10-19).** Schema: the
+- **Migration 0113 (`0113_two_stage_playoffs.sql`) APPLIED 2026-10-20 15:49
+  UTC (catalog `20261020154950`; see the Database section).** Schema: the
   `(league_id, division_id)` unique key becomes `(league_id, division_id,
   stage)`; `playoffs` gains `stage` (1/2), `parent_playoff_id` (Stage 2 →
   Stage 1, cascade), `advance_count`, `games_per_team_per_day` (1/2),
@@ -813,7 +818,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `ee9d9bb385487fc0191f32249f5395bf`, `playoff_write_stage`
   `554caf24ab8c8f554e60995f98e62665`, `playoff_apply_seeds`
   `8d85207ccbe3eb4f341170c4928da0b4`. Read its RUN LOG.
-- **Screens (steps 4–5, built 2026-10-20 on the branch; NOT pushed).** Wizard:
+- **Screens (steps 4–5, built 2026-10-20; reached `main` right after 0113 was applied).** Wizard:
   a fourth Format card (`format: "round_robin"` + `two_stage: true`; Edit setup
   can't switch a setup between one bracket and a pair), then Teams
   (`step-teams.tsx`: Remove / Add back, the advancing stepper, no seed order),
@@ -846,9 +851,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **ONE KNOWN GAP FROM THE MOCKUP, kept by decision (2026-10-20, "skip gap
   2"):** the seed confirm has no "N bracket games are on the public schedule"
   line (seed_playoff_stage returns no public count).
-- **0113 is applied right before the step 4/5 push, same as 0111** (decided
-  2026-10-20): the Playoffs page selects the new columns, so this code on
-  `main` without 0113 breaks the page for every Elite league.
+- **Deploy order (met 2026-10-20): 0113 was applied BEFORE the screens reached
+  `main`** — the Playoffs page selects the new columns, so this code without
+  0113 breaks the page for every Elite league.
 - **Harness: `npm run sim:two-stage`** (145 checks × 3 zones, 8 counters; every
   expected value hand-written from the mockup) + `:mutants` (26, each killed
   at its own assertion; run 1 had 3 survivors, all harness/mutant faults — read

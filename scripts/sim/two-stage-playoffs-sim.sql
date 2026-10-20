@@ -1104,4 +1104,7 @@ $h113$;
 -- batches applied the 0113 schema plus the functions their harness exercises
 -- (0107: replace/delete; 0108: enter/clear), verbatim from the file. Leak
 -- check after both clean.
--- 0113 NOT APPLIED — held for the founder's go.
+-- 0113 APPLIED 2026-10-20 15:49 UTC (catalog 20261020154950), verbatim, on the
+-- founder's go. Live md5(prosrc) equal to run 2's for all ten functions;
+-- privileges per role as stated; existing 6 brackets / 21 games unchanged
+-- apart from the new columns at their defaults; leak check clean.
