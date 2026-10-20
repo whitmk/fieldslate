@@ -3,6 +3,7 @@ import type {
   DayWindowMap,
   VenueAssignment,
 } from "@/components/divisions/wizard-types";
+import type { SeriesByRound } from "@/lib/playoffs/series-lengths";
 
 export type { PlayingDay, DayWindowMap, VenueAssignment };
 
@@ -31,6 +32,8 @@ export type Stage2WizardData = {
   day_windows: DayWindowMap;
   venue_assignments: VenueAssignment[];
   games_per_team_per_day: GamesPerDay;
+  /** Each round's series length (0114); a round not listed is 1 game. */
+  series_by_round: SeriesByRound;
   /** On by default: Stage 2 plays on Stage 1's fields. Wizard state only. */
   same_fields: boolean;
 };
@@ -56,8 +59,12 @@ export type PlayoffWizardData = {
   end_date: string;
   playing_days: PlayingDay[];
   day_windows: DayWindowMap;
-  /** Round robin (plain, or Stage 1): games per team per day. */
+  /** Round robin (plain, or Stage 1), and a single elimination with a
+   *  series round: games per team per day. */
   games_per_team_per_day: GamesPerDay;
+  /** Single elimination only: each round's series length (0114); a round not
+   *  listed is 1 game. Two-stage: Stage 2's is in `stage2`. */
+  series_by_round: SeriesByRound;
   // Step 5 — Venues
   venue_assignments: VenueAssignment[];
   /** Two-stage only. */
@@ -84,6 +91,7 @@ export const DEFAULT_PLAYOFF_DATA: PlayoffWizardData = {
     Su: { start: "09:00", end: "17:00" },
   },
   games_per_team_per_day: 1,
+  series_by_round: {},
   venue_assignments: [],
   stage2: {
     start_date: "",
@@ -95,6 +103,7 @@ export const DEFAULT_PLAYOFF_DATA: PlayoffWizardData = {
     },
     venue_assignments: [],
     games_per_team_per_day: 1,
+    series_by_round: {},
     same_fields: true,
   },
   cross_division_enabled: false,

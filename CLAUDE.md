@@ -908,8 +908,32 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   single games.
 - **Steps (each held for Whit's go; one go-live):** 1 rules + planner (DONE on
   the branch) → 2 migration 0114 (DONE on the branch: written and proven, NOT
-  applied) → 3 admin screens → 4 public page, feed, print, CSV, confirms, snack
-  shack/conflicts/daylight → 5 apply 0114, then ship.
+  applied) → 3 admin screens (DONE on the branch) → 4 public page, feed,
+  print, CSV, confirms, snack shack/conflicts/daylight → 5 apply 0114, then
+  ship. **The Playoffs page selects `series_by_round` (and the wizard writes
+  it), so this branch must not reach `main` before 0114 is applied.**
+- **Admin screens (step 3, 2026-10-20).** Wizard: `SeriesLengthsControl`
+  (`steps/series-lengths-control.tsx`) — a 1/3/5/7 choice per round from
+  `wizardRounds`, in the plain Dates step for single elimination and in the
+  Stage 2 panel; the per-day control shows for a single elimination once a
+  round is a series. `series_by_round` lives in `PlayoffWizardData` and
+  `stage2`; payloads send only rounds the planned games have
+  (`seriesByRoundPayload`) and `series_game` per game. Review: `SeriesReview`
+  (per-round dates, the games line, every undated game named). Page:
+  `series-card.tsx` — the tree lays out ONE row per series
+  (`oneRowPerSeries`) in taller slots (`screenSeriesTree`: the single card's
+  top bands, so the lines land on the same rows, + one h-6 row per game); the
+  list names series games and offers Result only on the next game, Edit only
+  on the last result, Move on every needed game without a result
+  (`seriesGameActions` / `seriesCardActions`). The result modal shows the
+  series box, "(home)", the consequence line (`seriesEnterLine`) and the
+  in-order refusal; the clear confirm takes `seriesClearLines`. The
+  database's replies `series_order` / `series_later_result` /
+  `game_not_needed` and a next-round series with a result are worded by
+  `playoff-result.ts` with series.ts's sentences (`ResultNumbering.seriesOf`).
+  Checked on a throwaway route (real components, REST faked) at 1024px and
+  375px: wording matches the mockup, connectors land on the team rows, no
+  overflow; then deleted.
 - **Migration 0114 (`0114_playoff_series.sql`) — WRITTEN AND PROVEN, NOT
   APPLIED.** Schema: `playoffs.series_by_round` (jsonb object, `{}` = every
   round 1 game), `playoff_games.series_game` (1..7, default 1), status

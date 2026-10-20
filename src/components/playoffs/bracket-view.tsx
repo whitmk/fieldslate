@@ -6,8 +6,20 @@ import { createClient } from "@/lib/supabase/client";
 import { EnterResultModal } from "@/components/playoffs/enter-result-modal";
 import { EditPlayoffGameModal } from "@/components/playoffs/edit-playoff-game-modal";
 import { playoffRoundLabel, resultButtonShown } from "@/lib/playoffs/playoff-result";
-import { gameNumbering, slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
-import { SCREEN_TREE, singleElimLayout } from "@/lib/playoffs/bracket-print";
+import { gameLabel, gameNumbering, slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
+import { SCREEN_TREE, screenSeriesTree, singleElimLayout } from "@/lib/playoffs/bracket-print";
+import { SeriesCard, TONE_CHIP } from "@/components/playoffs/series-card";
+import {
+  NOT_NEEDED,
+  SERIES_TAG_TEXT,
+  gameHasResult,
+  oneRowPerSeries,
+  seriesGameActions,
+  seriesGameTag,
+  seriesGamesOf,
+  seriesHeadline,
+} from "@/lib/playoffs/series";
+import { isSeriesGame, isSeriesRound, roundTitle, seriesLengthOf } from "@/lib/playoffs/series-names";
 import { useDaylight } from "@/components/daylight/use-daylight";
 import { DaylightChip, DaylightStatusLine } from "@/components/daylight/daylight-pieces";
 import type { DaylightFlag } from "@/lib/daylight/flags";
@@ -244,12 +256,22 @@ function TeamRow({
 
 // ─── List view row ────────────────────────────────────────────────────────────
 
+/** A game of a series in the list (0114): its name, its chip and what it
+ *  offers — all from series.ts. Null for a single game. */
+type ListSeries = {
+  label: string;
+  chip: { text: string; className: string } | null;
+  notNeeded: boolean;
+  actions: { result: boolean; edit: boolean; move: boolean };
+} | null;
+
 function ListGameRow({
   game,
   isChampionship,
   labelOf,
   numberOf,
   flagOf,
+  series,
   onEnterResult,
   onEdit,
 }: {
@@ -258,18 +280,22 @@ function ListGameRow({
   labelOf: LabelOf;
   numberOf: NumberOf;
   flagOf: FlagOf;
+  series: ListSeries;
   onEnterResult: () => void;
   onEdit: () => void;
 }) {
   const bothTeams = !!game.home_team_id && !!game.away_team_id;
   const isDone = game.status === "completed";
+  const notNeeded = series?.notNeeded ?? false;
+  const showMove = series ? series.actions.move : !isDone;
+  const showResult = series ? series.actions.result || series.actions.edit : resultButtonShown(bothTeams, isDone);
   const homeWon = slotWon(game.winner_id, game.home_team_id);
   const awayWon = slotWon(game.winner_id, game.away_team_id);
   const daylight = flagOf(game);
 
   return (
-    <div className="flex items-center gap-3 border-b border-gray-50 px-4 py-3 last:border-0">
-      <span className="w-5 text-center text-xs font-semibold text-gray-300">{numberOf(game)}</span>
+    <div className={`flex items-center gap-3 border-b border-gray-50 px-4 py-3 last:border-0 ${notNeeded ? "opacity-70" : ""}`}>
+      <span className="w-5 text-center text-xs font-semibold text-gray-300">{series ? "" : numberOf(game)}</span>
 
       <div className="min-w-0 flex-1">
         {isDone ? (
@@ -293,11 +319,16 @@ function ListGameRow({
             </span>
           </p>
         ) : (
-          <p className={`text-sm font-medium ${!bothTeams ? "italic text-gray-400" : "text-gray-900"}`}>
+          <p className={`text-sm font-medium ${notNeeded ? "text-gray-400 line-through" : !bothTeams ? "italic text-gray-400" : "text-gray-900"}`}>
             {`${labelOf(game, "home")} vs ${labelOf(game, "away")}`}
           </p>
         )}
-        <p className="text-xs text-gray-400">{roundLabel(game.round)}</p>
+        <p className={`text-xs text-gray-400 ${notNeeded ? "line-through" : ""}`}>{series ? series.label : roundLabel(game.round)}</p>
+        {series?.chip && (
+          <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${series.chip.className}`}>
+            {series.chip.text}
+          </span>
+        )}
         {daylight && (
           <div className="mt-1">
             <DaylightChip flag={daylight} variant="bracket" />
@@ -328,20 +359,20 @@ function ListGameRow({
         </span>
       )}
 
-      {isChampionship && isDone && (
+      {!series && isChampionship && isDone && (
         <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-600">
           <Trophy className="h-3 w-3" />
           Champion
         </span>
       )}
 
-      {!isChampionship && isDone && (
+      {!series && !isChampionship && isDone && (
         <span className="rounded-full bg-[#22C55E]/10 px-2 py-0.5 text-xs font-medium text-[#22C55E]">
           Final
         </span>
       )}
 
-      {!isDone && (
+      {showMove && (
         <button
           onClick={onEdit}
           aria-label="Set date, time and field"
@@ -352,7 +383,7 @@ function ListGameRow({
         </button>
       )}
 
-      {resultButtonShown(bothTeams, isDone) && (
+      {showResult && (
         <button
           onClick={onEnterResult}
           className="flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
@@ -373,6 +404,7 @@ function BracketTree({
   labelOf,
   numberOf,
   flagOf,
+  teamName,
   onEnterResult,
   onEdit,
 }: {
@@ -381,6 +413,7 @@ function BracketTree({
   labelOf: LabelOf;
   numberOf: NumberOf;
   flagOf: FlagOf;
+  teamName: (id: string) => string;
   onEnterResult: (game: GameWithTeams) => void;
   onEdit: (game: GameWithTeams) => void;
 }) {
@@ -388,8 +421,20 @@ function BracketTree({
 
   // The print's layout with the screen's dimensions: cards by bracket
   // position (round 1 beside the slot it feeds, byes leave gaps), one line per
-  // advancing game into the exact row it fills (singleElimTarget).
-  const L = singleElimLayout(games, SCREEN_TREE);
+  // advancing game into the exact row it fills (singleElimTarget). With a
+  // series round (0114) the tree lays out ONE row per series and every slot
+  // is as tall as the longest series card (screenSeriesTree).
+  const withSeries = games.some((g) => (g.series_game ?? 1) >= 2);
+  const rows = withSeries ? oneRowPerSeries(games) : games;
+  const longest = withSeries ? Math.max(...games.map((g) => g.series_game ?? 1)) : 0;
+  const dims = withSeries ? screenSeriesTree(longest) : SCREEN_TREE;
+  const L = singleElimLayout(rows, dims);
+  const header = (round: string) => {
+    if (!withSeries) return roundLabel(round);
+    const title = roundTitle(round, games);
+    const row = games.find((g) => g.round === round);
+    return row && isSeriesRound(round, games) ? `${title} · best of ${seriesLengthOf(row, games)}` : title;
+  };
 
   return (
     <div style={{ position: "relative", height: L.height, width: L.width, minWidth: L.width }}>
@@ -416,13 +461,29 @@ function BracketTree({
           style={{ position: "absolute", top: 0, left: rIdx * (SCREEN_TREE.cardW + SCREEN_TREE.gap), width: SCREEN_TREE.cardW, textAlign: "center" }}
         >
           <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-            {roundLabel(round)}
+            {header(round)}
           </span>
         </div>
       ))}
 
       {/* Game cards */}
-      {L.cards.map((c) => (
+      {L.cards.map((c) => isSeriesGame(c.game, games) ? (
+        <div key={c.game.id} style={{ position: "absolute", left: c.x, top: c.y }}>
+          <SeriesCard
+            games={seriesGamesOf(c.game, games)}
+            bracket={games}
+            width={dims.cardW}
+            height={dims.cardH}
+            isFinal={c.game.round === championshipRound}
+            labelOf={labelOf}
+            teamName={teamName}
+            flagOf={flagOf}
+            onResult={onEnterResult}
+            onEditResult={onEnterResult}
+            onMove={onEdit}
+          />
+        </div>
+      ) : (
         <div key={c.game.id} style={{ position: "absolute", left: c.x, top: c.y }}>
           <GameCard
             game={c.game}
@@ -548,6 +609,36 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
   const numbering = gameNumbering(games);
   const numberOf: NumberOf = (g) => numbering(g.game_number);
 
+  const names = new Map<string, string>();
+  for (const g of games) {
+    if (g.home_team_id && g.home_team_name) names.set(g.home_team_id, g.home_team_name);
+    if (g.away_team_id && g.away_team_name) names.set(g.away_team_id, g.away_team_name);
+  }
+  const teamName = (id: string) => names.get(id) ?? "TBD";
+
+  /** A series game's list info (0114): its name, its chip — the series'
+   *  standing on its latest result, else Next / If needed / Not needed — and
+   *  what it offers. Null for a single game. */
+  const seriesInfo = (g: GameWithTeams): ListSeries => {
+    if (!isSeriesGame(g, games)) return null;
+    const sgames = seriesGamesOf(g, games);
+    const tag = seriesGameTag(g, sgames);
+    const latest = [...sgames].reverse().find(gameHasResult);
+    let chip: { text: string; className: string } | null = null;
+    if (latest && latest.id === g.id) {
+      const h = seriesHeadline(sgames, teamName);
+      chip = { text: h.text, className: TONE_CHIP[h.tone] };
+    } else if (tag === "next" || tag === "if_needed" || tag === "not_needed") {
+      chip = { text: SERIES_TAG_TEXT[tag], className: tag === "if_needed" ? TONE_CHIP.amber : TONE_CHIP.gray };
+    }
+    return {
+      label: gameLabel(g, games),
+      chip,
+      notNeeded: g.status === NOT_NEEDED || tag === "not_needed",
+      actions: seriesGameActions(g, sgames),
+    };
+  };
+
   const labelOf: LabelOf = (g, side) => {
     // Two-stage Stage 2: a seeded team reads "4 · Mets".
     const seed = side === "home" ? g.seed_home : g.seed_away;
@@ -589,7 +680,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
   const championshipRound = CHAMPIONSHIP_ROUNDS.has(lastRound ?? "") ? lastRound : null;
 
   const useBracketTree = format === "single_elimination";
-  const unplaced = games.filter((g) => !g.scheduled_date).length;
+  const unplaced = games.filter((g) => !g.scheduled_date && g.status !== NOT_NEEDED).length;
 
   return (
     <div className="flex flex-col gap-3">
@@ -634,6 +725,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
               labelOf={labelOf}
               numberOf={numberOf}
               flagOf={flagOf}
+              series={seriesInfo(g)}
               onEnterResult={() => setActiveGame(g)}
               onEdit={() => setEditingGame(g)}
             />
@@ -648,6 +740,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
               labelOf={labelOf}
               numberOf={numberOf}
               flagOf={flagOf}
+              teamName={teamName}
               onEnterResult={setActiveGame}
               onEdit={setEditingGame}
             />
@@ -668,7 +761,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
       {editingGame && (
         <EditPlayoffGameModal
           game={editingGame}
-          roundLabel={roundLabel(editingGame.round)}
+          roundLabel={isSeriesGame(editingGame, games) ? gameLabel(editingGame, games) : roundLabel(editingGame.round)}
           leagueId={leagueId}
           divisionId={divisionId}
           divisionName={divisionName}

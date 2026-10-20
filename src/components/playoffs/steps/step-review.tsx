@@ -18,6 +18,7 @@ import {
   type RebuildCounts,
 } from "@/lib/playoffs/bracket-delete";
 import type { PlayoffWizardData, PlayoffFormat } from "../playoff-wizard-types";
+import { SeriesReview } from "./series-review";
 
 interface Props {
   data: PlayoffWizardData;
@@ -331,6 +332,9 @@ export function StepReview({ data, leagueId, playoffId, onEdit, onComplete }: Pr
           )}
         </ReviewSection>
       )}
+
+      {/* 0114: each round's games and dates when any round is a series. */}
+      {canPreflight && preflight?.ok && <SeriesReview games={preflight.games} />}
 
       {/* Pre-flight: what Generate will do, before it does it. */}
       {canPreflight && (

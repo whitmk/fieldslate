@@ -36,7 +36,7 @@ import {
 import { gameNumbering, seedLabel, shortDate, shortTime, type GameNumbering } from "@/lib/playoffs/bracket-labels";
 import type { SeriesByRound } from "@/lib/playoffs/series-lengths";
 import { isSeriesGame, seriesName } from "@/lib/playoffs/series-names";
-import { seriesSeedLine } from "@/lib/playoffs/series";
+import { seriesByRoundPayload, seriesSeedLine } from "@/lib/playoffs/series";
 import type {
   DayWindowMap,
   PlayingDay,
@@ -759,6 +759,8 @@ export type StageSettings = {
   venue_assignments: VenueAssignment[];
   games_per_team_per_day: 1 | 2;
   advance_count?: number;
+  /** Stage 2 only (0114): each round's series length. */
+  series_by_round?: SeriesByRound;
 };
 
 /** Stage 2's fields: Stage 1's when "Same fields as Stage 1" is on. */
@@ -782,8 +784,9 @@ export function stage1SettingsPayload(data: PlayoffWizardData, teamsIn: SeededTe
 }
 
 /** What replace_two_stage_games writes for Stage 2: no teams, the advancing
- *  count, its own dates and limit. */
-export function stage2SettingsPayload(data: PlayoffWizardData): StageSettings {
+ *  count, its own dates and limit, and its series lengths (only rounds its
+ *  games have — 0114 refuses any other). */
+export function stage2SettingsPayload(data: PlayoffWizardData, games: ReadonlyArray<{ round: string }> = []): StageSettings {
   return {
     format: "single_elimination",
     seeding: [],
@@ -794,6 +797,7 @@ export function stage2SettingsPayload(data: PlayoffWizardData): StageSettings {
     venue_assignments: stage2Venues(data),
     games_per_team_per_day: data.stage2.games_per_team_per_day,
     advance_count: data.advance_count,
+    series_by_round: seriesByRoundPayload("single_elimination", data.stage2.series_by_round, games),
   };
 }
 
@@ -809,6 +813,8 @@ export function stage2GamesPayload(games: Stage2Game[]) {
     venue_id: g.venue_id,
     scheduled_date: g.scheduled_date,
     start_time: g.start_time,
+    // 0114: game k of a series (absent on a single game, stored as 1).
+    ...(g.series_game ? { series_game: g.series_game } : {}),
   }));
 }
 

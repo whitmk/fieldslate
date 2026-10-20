@@ -102,6 +102,7 @@ export async function planTwoStageFromWizard(
         v2.venues,
       ),
       gamesPerTeamPerDay: data.stage2.games_per_team_per_day,
+      seriesByRound: data.stage2.series_by_round,
     },
     settings,
     divisionName: divRow.name || data.division_name,
@@ -130,7 +131,7 @@ function rpcArgs(
     p_settings1: stage2Only ? null : stage1SettingsPayload(data, planned.teams),
     p_games1: stage2Only ? null : gamesPayload(planned.plan.stage1.games),
     p_stage2_id: stage2Id,
-    p_settings2: stage2SettingsPayload(data),
+    p_settings2: stage2SettingsPayload(data, planned.plan.stage2.games),
     p_games2: stage2GamesPayload(planned.plan.stage2.games),
     p_commit: commit,
   };

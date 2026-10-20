@@ -198,6 +198,19 @@ export const SCREEN_TREE: TreeDims = {
   rowTop: 41, rowH: 32, divider: 1, sourceY: 41 + 32 + 0.5,
 };
 
+/** One game row of the on-screen SERIES card (series-card.tsx): h-6. */
+export const SERIES_GAME_ROW_H = 24;
+
+/** The on-screen tree for a bracket with a series round (0114). A series card
+ *  keeps the single card's top bands — 1px border, h-10 header, the two h-8
+ *  team rows around the divider — so the lines leave and enter at the same
+ *  offsets; below them it adds one h-6 row per game of its longest series.
+ *  Every slot is that tall, so single-game cards sit at the top of theirs. */
+export function screenSeriesTree(longestSeries: number): TreeDims {
+  const cardH = SCREEN_TREE.cardH + longestSeries * SERIES_GAME_ROW_H;
+  return { ...SCREEN_TREE, cardH, slotH: cardH + (SCREEN_TREE.slotH - SCREEN_TREE.cardH) };
+}
+
 function sortedRounds(games: PrintGame[]): string[] {
   return [...new Set(games.map((g) => g.round))].sort((a, b) => getRoundOrder(a) - getRoundOrder(b));
 }

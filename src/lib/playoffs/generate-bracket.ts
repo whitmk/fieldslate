@@ -148,6 +148,8 @@ async function loadPlanInputs(
       settings,
       divisionName: divRow.name || data.division_name,
       gamesPerTeamPerDay: data.games_per_team_per_day ?? 1,
+      // 0114: single elimination only; the planner ignores it otherwise.
+      seriesByRound: data.format === "single_elimination" ? data.series_by_round : undefined,
     },
   };
 }
@@ -204,7 +206,7 @@ export async function generateBracket(
   // playoff_games here.
   const { data: reply, error } = await supabase.rpc("replace_playoff_games" as never, {
     p_playoff_id: playoffId,
-    p_settings: settingsPayload(data),
+    p_settings: settingsPayload(data, plan.games),
     p_games: gamesPayload(plan.games),
     p_commit: true,
   } as never);
@@ -232,7 +234,7 @@ export async function previewRebuild(
   const supabase = createClient();
   const { data: reply, error } = await supabase.rpc("replace_playoff_games" as never, {
     p_playoff_id: playoffId,
-    p_settings: settingsPayload(data),
+    p_settings: settingsPayload(data, games),
     p_games: gamesPayload(games),
     p_commit: false,
   } as never);

@@ -11,6 +11,9 @@ import {
   toggleDayWithWindows, type WindowStash,
 } from "@/lib/divisions/day-window-toggle";
 import { GamesPerDayControl, RR_PER_DAY_HINT } from "./games-per-day-control";
+import { SeriesLengthsControl } from "./series-lengths-control";
+import { hasSeries } from "@/lib/playoffs/series-lengths";
+import { PER_DAY_SERIES_HELP } from "@/lib/playoffs/series";
 
 interface Props {
   data: PlayoffWizardData;
@@ -254,6 +257,23 @@ export function StepDates({ data, update, windowStash, onWindowStashChange }: Pr
           value={data.games_per_team_per_day}
           onChange={(v) => update({ games_per_team_per_day: v })}
           hint={RR_PER_DAY_HINT}
+        />
+      )}
+
+      {/* 0114: a series length per round — single elimination only. The
+          per-team daily limit applies once any round is a series. */}
+      {data.format === "single_elimination" && (
+        <SeriesLengthsControl
+          teamCount={data.seeding.length}
+          value={data.series_by_round}
+          onChange={(series_by_round) => update({ series_by_round })}
+        />
+      )}
+      {data.format === "single_elimination" && hasSeries(data.series_by_round) && (
+        <GamesPerDayControl
+          value={data.games_per_team_per_day}
+          onChange={(v) => update({ games_per_team_per_day: v })}
+          hint={PER_DAY_SERIES_HELP}
         />
       )}
     </div>

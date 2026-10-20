@@ -11,6 +11,7 @@ import { PlayoffExportModal } from "@/components/playoffs/playoff-export-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { deleteBracket, previewBracketDelete } from "@/lib/playoffs/delete-bracket";
 import { deleteConfirm, deletedLine, type BracketCounts } from "@/lib/playoffs/bracket-delete";
+import { parseSeriesByRound } from "@/lib/playoffs/series-lengths";
 import {
   DEFAULT_PLAYOFF_DATA,
   type PlayoffWizardData,
@@ -47,6 +48,8 @@ type PlayoffRow = {
   seeded_at: string | null;
   seeded_by: string | null;
   stage1_changed_at: string | null;
+  // 0114 — playoff series.
+  series_by_round: unknown;
 };
 
 const FORMAT_LABELS: Record<PlayoffFormat, string> = {
@@ -88,6 +91,7 @@ function rowToWizardData(row: PlayoffRow, stage2: PlayoffRow | null): PlayoffWiz
     playing_days: row.playing_days ?? [],
     day_windows: row.day_windows ?? {},
     games_per_team_per_day: perDay(row.games_per_team_per_day),
+    series_by_round: stage2 ? {} : parseSeriesByRound(row.series_by_round),
     venue_assignments: row.venue_assignments ?? [],
     stage2: stage2
       ? {
@@ -97,6 +101,7 @@ function rowToWizardData(row: PlayoffRow, stage2: PlayoffRow | null): PlayoffWiz
           day_windows: stage2.day_windows ?? {},
           venue_assignments: stage2.venue_assignments ?? [],
           games_per_team_per_day: perDay(stage2.games_per_team_per_day),
+          series_by_round: parseSeriesByRound(stage2.series_by_round),
           same_fields: sameVenueSet(row.venue_assignments ?? [], stage2.venue_assignments ?? []),
         }
       : { ...DEFAULT_PLAYOFF_DATA.stage2 },
@@ -155,7 +160,7 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
            seeding, playing_days, day_windows, venue_assignments,
            cross_division_enabled, cross_division_opponent_id,
            stage, parent_playoff_id, advance_count, games_per_team_per_day,
-           seeded_at, seeded_by, stage1_changed_at,
+           seeded_at, seeded_by, stage1_changed_at, series_by_round,
            division:divisions!playoffs_division_id_fkey(id, name)`
         )
         .eq("league_id", seasonId)

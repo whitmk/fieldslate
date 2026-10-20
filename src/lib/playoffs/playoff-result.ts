@@ -11,6 +11,12 @@
 
 import type { GameNumbering } from "@/lib/playoffs/bracket-labels";
 import { stage2StartedRefusal } from "@/lib/playoffs/two-stage";
+import {
+  nextSeriesBlockedMessage,
+  SERIES_GAME_NOT_NEEDED,
+  seriesLaterResultRefusal,
+  seriesOrderRefusal,
+} from "@/lib/playoffs/series";
 
 export const NOTHING = "Nothing was saved.";
 
@@ -54,8 +60,14 @@ export function gameLabel(gameNumber: number, round: string): string {
 /** The numberings a result reply needs: the game's own bracket, and — for a
  *  round-robin game of a two-stage setup — the bracket that follows. Null
  *  when that bracket's games aren't known: the sentence then names no game,
- *  never a stored position. */
-export type ResultNumbering = { own: GameNumbering; nextStage: GameNumbering | null };
+ *  never a stored position. `seriesOf` names a SERIES by its round and stored
+ *  position ("the Final", "Semifinal 1"), or null for a single game; a series
+ *  has no "Game N" (series-names.ts). Absent → every game is a single game. */
+export type ResultNumbering = {
+  own: GameNumbering;
+  nextStage: GameNumbering | null;
+  seriesOf?: (round: string, storedNumber: number) => { inSentence: string } | null;
+};
 
 // ─── Refusals ─────────────────────────────────────────────────────────────────
 
@@ -101,19 +113,24 @@ const UNCONFIRMED = `${NOTHING} The save didn't confirm. Refresh the page to see
 export type NextGame = {
   gameNumber: number;
   round: string;
+  /** The next round is a series: its name in a sentence and which game of it
+   *  has the result. Null for a single game. */
+  series: { inSentence: string; seriesGame: number } | null;
   homeName: string | null;
   awayName: string | null;
   homeScore: number | null;
   awayScore: number | null;
 };
 
-function parseNextGame(raw: unknown, own: GameNumbering): NextGame | null {
+function parseNextGame(raw: unknown, numbering: ResultNumbering): NextGame | null {
   const n = (raw ?? null) as Record<string, unknown> | null;
   if (!n || typeof n.game_number !== "number" || typeof n.round !== "string") return null;
   const str = (v: unknown) => (typeof v === "string" ? v : null);
   const num = (v: unknown) => (typeof v === "number" ? v : null);
+  const named = numbering.seriesOf?.(n.round, n.game_number) ?? null;
   return {
-    gameNumber: own(n.game_number), round: n.round,
+    gameNumber: numbering.own(n.game_number), round: n.round,
+    series: named ? { inSentence: named.inSentence, seriesGame: num(n.series_game) ?? 1 } : null,
     homeName: str(n.home_name), awayName: str(n.away_name),
     homeScore: num(n.home_score), awayScore: num(n.away_score),
   };
@@ -124,6 +141,7 @@ function parseNextGame(raw: unknown, own: GameNumbering): NextGame | null {
 export function nextGameBlockedMessage(next: NextGame | null, action: "clear" | "edit"): string {
   const then = action === "clear" ? "then clear this one" : "then change this one";
   if (!next) return `A later game already has a result. Clear that game's result first, ${then}.`;
+  if (next.series) return nextSeriesBlockedMessage(next.series.inSentence, { ...next, seriesGame: next.series.seriesGame }, action);
   const score = next.homeScore !== null && next.awayScore !== null
     ? ` (${next.homeName ?? "Home"} ${next.homeScore}, ${next.awayName ?? "Away"} ${next.awayScore})`
     : "";
@@ -142,7 +160,15 @@ export function blockedMessage(r: Record<string, unknown>, action: "clear" | "ed
       ? stage2StartedRefusal(numbering.nextStage(n))
       : "The bracket has started, so round-robin results can't be changed. Clear the bracket's results first, then change this one.";
   }
-  return nextGameBlockedMessage(parseNextGame(r.next_game, numbering.own), action);
+  // 0114: the series rules.
+  if (r.reason === "game_not_needed") return SERIES_GAME_NOT_NEEDED;
+  if (r.reason === "series_order" && typeof r.previous_series_game === "number") {
+    return seriesOrderRefusal(r.previous_series_game);
+  }
+  if (r.reason === "series_later_result" && typeof r.later_series_game === "number") {
+    return seriesLaterResultRefusal(r.later_series_game, action);
+  }
+  return nextGameBlockedMessage(parseNextGame(r.next_game, numbering), action);
 }
 
 /** The browser path's (double elimination) blocked edit: clearing isn't
@@ -182,12 +208,13 @@ export type ClearPreview = {
   awayScore: number | null;
   winnerName: string | null;
   onPublicSchedule: boolean;
-  removed: { gameNumber: number; round: string; teamName: string | null } | null;
+  removed: { gameNumber: number; round: string; teamName: string | null; seriesInSentence: string | null } | null;
 };
 
 /** A clear reply (preview or commit) → its fields, or null when it can't be
  *  read. A reply that isn't for the asked-about game is unreadable. */
-export function parseClearReply(raw: unknown, gameId: string, own: GameNumbering): ClearPreview | null {
+export function parseClearReply(raw: unknown, gameId: string, numbering: ResultNumbering): ClearPreview | null {
+  const own = numbering.own;
   const r = (raw ?? null) as Record<string, unknown> | null;
   if (!r || r.game_id !== gameId) return null;
   if (typeof r.game_number !== "number" || typeof r.round !== "string") return null;
@@ -198,7 +225,10 @@ export function parseClearReply(raw: unknown, gameId: string, own: GameNumbering
   if (r.removed !== null && r.removed !== undefined) {
     const m = r.removed as Record<string, unknown>;
     if (typeof m.game_number !== "number" || typeof m.round !== "string") return null;
-    removed = { gameNumber: own(m.game_number), round: m.round, teamName: str(m.team_name) };
+    removed = {
+      gameNumber: own(m.game_number), round: m.round, teamName: str(m.team_name),
+      seriesInSentence: numbering.seriesOf?.(m.round, m.game_number)?.inSentence ?? null,
+    };
   }
   return {
     gameId, gameNumber: own(r.game_number), round: r.round,
@@ -226,7 +256,7 @@ export function clearPreviewOutcome(
   if (r && r.blocked === true) {
     return { ok: false, message: blockedMessage(r, "clear", numbering) };
   }
-  const preview = parseClearReply(data, gameId, numbering.own);
+  const preview = parseClearReply(data, gameId, numbering);
   if (!r || r.committed !== false || !preview) {
     return { ok: false, message: "Couldn't check what clearing this result would change. Nothing was changed. Try again." };
   }
@@ -245,21 +275,28 @@ export function clearCommitOutcome(
   if (r && r.blocked === true) {
     return { ok: false, message: blockedMessage(r, "clear", numbering) };
   }
-  if (!r || r.committed !== true || !parseClearReply(data, gameId, numbering.own)) return { ok: false, message: UNCONFIRMED };
+  if (!r || r.committed !== true || !parseClearReply(data, gameId, numbering)) return { ok: false, message: UNCONFIRMED };
   return { ok: true };
 }
 
-/** The confirm, from the preview. */
-export function clearConfirm(p: ClearPreview): { title: string; lines: string[] } {
+/** The confirm, from the preview. A game of a series (0114) passes its name
+ *  ("Semifinal 2 · Game 2 of 3") and the series lines (series.ts
+ *  `seriesClearLines`), which already say who leaves the next round. */
+export function clearConfirm(
+  p: ClearPreview,
+  series?: { gameTitle: string; lines: string[] },
+): { title: string; lines: string[] } {
   const score = p.homeScore !== null && p.awayScore !== null
     ? `${p.homeName ?? "Home"} ${p.homeScore}, ${p.awayName ?? "Away"} ${p.awayScore}`
     : "a result with no score";
   const lines = [
-    `${gameLabel(p.gameNumber, p.round)} — ${score}${p.winnerName ? ` (${p.winnerName} won)` : ""}.`,
+    `${series?.gameTitle ?? gameLabel(p.gameNumber, p.round)} — ${score}${p.winnerName ? ` (${p.winnerName} won)` : ""}.`,
     "The score and winner will be removed and the game goes back to scheduled.",
+    ...(series?.lines ?? []),
   ];
-  if (p.removed) {
-    lines.push(`${p.removed.teamName ?? "The winner"} will be removed from ${gameLabel(p.removed.gameNumber, p.removed.round)} until this game has a result again.`);
+  if (p.removed && !series?.lines.length) {
+    const from = p.removed.seriesInSentence ?? gameLabel(p.removed.gameNumber, p.removed.round);
+    lines.push(`${p.removed.teamName ?? "The winner"} will be removed from ${from} until this game has a result again.`);
   }
   if (p.onPublicSchedule) {
     lines.push("This is on your public schedule — the change shows there within a minute.");

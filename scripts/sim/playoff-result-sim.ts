@@ -271,7 +271,7 @@ section("S", () => {
      && clear.includes("clearCommitOutcome(data, error, gameId, numbering)"), "[S2]", "clear previews, then commits, and reads the outcome");
   const modal = read("src/components/playoffs/enter-result-modal.tsx");
   ok(modal.includes("previewClearResult(game.id, numbering)") && modal.includes("clearResult(game.id, numbering)")
-     && modal.includes("clearConfirm(clearPreview)") && modal.includes("<ConfirmDialog")
+     && /clearConfirm\(\s*clearPreview[,)]/.test(modal) && modal.includes("<ConfirmDialog")
      && modal.includes("isDone && clearOffered(format)"), "[S3]", "the modal previews, confirms with the shared dialog, and offers clear only where allowed");
   ok(modal.indexOf("<ConfirmDialog") > modal.lastIndexOf('onClick={onClose}>'), "[S3]", "the confirm renders outside the modal backdrop");
   const view = read("src/components/playoffs/bracket-view.tsx");

@@ -232,7 +232,15 @@ section("L", () => {
   // 0113 (2026-10-20): + games_per_team_per_day, the round robin's daily
   // limit. The wizard-only two-stage fields (two_stage, advance_count,
   // stage2) must never reach a plain bracket's row.
-  ok(JSON.stringify(Object.keys(s).sort()) === JSON.stringify(["cross_division_enabled", "cross_division_opponent_id", "day_windows", "end_date", "format", "games_per_team_per_day", "playing_days", "seeding", "start_date", "venue_assignments"]), "[L2]", Object.keys(s).join(","));
+  // 0114 (2026-10-20): + series_by_round — only rounds the planned games
+  // have, and nothing for a format other than single elimination.
+  ok(JSON.stringify(Object.keys(s).sort()) === JSON.stringify(["cross_division_enabled", "cross_division_opponent_id", "day_windows", "end_date", "format", "games_per_team_per_day", "playing_days", "seeding", "series_by_round", "start_date", "venue_assignments"]), "[L2]", Object.keys(s).join(","));
+  ok(JSON.stringify(s.series_by_round) === "{}", "[L2]", `no series → ${JSON.stringify(s.series_by_round)}`);
+  const sGames = [{ round: "R1" }, { round: "SF" }, { round: "F" }];
+  const withSeries = settingsPayload({ ...data, series_by_round: { SF: 3, F: 5, R2: 3 } }, sGames) as Record<string, unknown>;
+  ok(JSON.stringify(withSeries.series_by_round) === JSON.stringify({ SF: 3, F: 5 }), "[L2]", `series kept only for the games' rounds → ${JSON.stringify(withSeries.series_by_round)}`);
+  const rrSeries = settingsPayload({ ...data, format: "round_robin", series_by_round: { SF: 3 } }, sGames) as Record<string, unknown>;
+  ok(JSON.stringify(rrSeries.series_by_round) === "{}", "[L2]", `series sent for a round robin → ${JSON.stringify(rrSeries.series_by_round)}`);
   ok(settingsPayload({ ...data, games_per_team_per_day: 2 }).games_per_team_per_day === 2, "[L2]", "the daily limit dropped");
   const cross = settingsPayload({ ...data, cross_division_enabled: true }) as Record<string, unknown>;
   ok(cross.cross_division_opponent_id === "d2", "[L2]", "an enabled opponent dropped");

@@ -29,6 +29,7 @@ import {
   type TwoStagePlanned,
   type TwoStagePreview,
 } from "@/lib/playoffs/two-stage-io";
+import { SeriesReview } from "./series-review";
 
 interface Props {
   data: PlayoffWizardData;
@@ -264,6 +265,7 @@ export function StepTwoStageReview({ data, original, leagueId, existing, onEdit,
             />
           )}
           <StageNote stage={2} warnings={planned.stage2Warnings} fit={stage2FitLine(planned.plan.stage2.games)} />
+          <SeriesReview games={planned.plan.stage2.games} title="Stage 2" />
           <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-700">{STAGE2_PLACEHOLDER_NOTE}</div>
         </>
       )}

@@ -72,8 +72,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "SM10", what: "results don't have to go in order", file: SERIES,
-    find: "  if (prev && !gameHasResult(prev)) {",
-    replace: "  if (false && prev && !gameHasResult(prev)) {",
+    find: "  if (prev && !gameHasResult(prev)) return seriesOrderRefusal(k - 1);",
+    replace: "  if (false && prev && !gameHasResult(prev)) return seriesOrderRefusal(k - 1);",
     expect: "S5",
   },
   {
@@ -118,6 +118,43 @@ const MUTANTS: Mutant[] = [
     replace: "        target: `Game ${shown(g.game_number)}`,",
     expect: "S10",
   },
+  // Step 3 (screens), 2026-10-20.
+  {
+    id: "SM18", what: "Edit is offered on an earlier result while a later one stands", file: SERIES,
+    find: "    return { result: false, edit: !later, move: false };",
+    replace: "    return { result: false, edit: true, move: false };",
+    expect: "S11",
+  },
+  {
+    id: "SM19", what: "Result is offered on every game without a result (if-needed too)", file: SERIES,
+    find: `  return { result: tag === "next", edit: false, move: true };`,
+    replace: "  return { result: true, edit: false, move: true };",
+    expect: "S11",
+  },
+  {
+    id: "SM20", what: "series_by_round keeps rounds the games don't have", file: SERIES,
+    find: "    if (rounds.has(round) && isSeriesLength(n) && n > 1) out[round] = n;",
+    replace: "    if (isSeriesLength(n) && n > 1) out[round] = n;",
+    expect: "S11",
+  },
+  {
+    id: "SM21", what: "a home team is named while a team is still unknown", file: SERIES,
+    find: "  return homeTeamKnown(game) && game.home_team_id ? `${teamName(game.home_team_id)} home` : null;",
+    replace: "  return game.home_team_id ? `${teamName(game.home_team_id)} home` : null;",
+    expect: "S11",
+  },
+  {
+    id: "SM22", what: "the database's series_order reply falls through to a generic sentence", file: "src/lib/playoffs/playoff-result.ts",
+    find: `  if (r.reason === "series_order" && typeof r.previous_series_game === "number") {`,
+    replace: "  if (false) {",
+    expect: "S11",
+  },
+  {
+    id: "SM23", what: "the clear confirm repeats the database's removed line under the series lines", file: "src/lib/playoffs/playoff-result.ts",
+    find: "  if (p.removed && !series?.lines.length) {",
+    replace: "  if (p.removed) {",
+    expect: "S11",
+  },
 ];
 
 runMutants({
@@ -136,3 +173,12 @@ runMutants({
 // team slots BY HAND: built through the advancement writes, an advancement
 // mutant (SM13) would have died in S4 instead of S8.
 // Source restored and verified after every mutant.
+// 2026-10-20 — step 3 (admin screens): S11 added; SM10's find moved with the
+// refactor that shares the refusal sentences (seriesOrderRefusal); SM18–SM23
+// added, aimed at S11.
+//   Run 1: 23/24 KILLED at their own tag; SM21 (a home team named while a team
+//   is unknown) SURVIVED — a HARNESS fault: the only "one team unknown"
+//   fixture (Final Game 1) has an empty HOME slot, so dropping the both-known
+//   rule changed nothing. S11 gained the case that needs it (home known, away
+//   unknown).
+//   Run 2: 24/24 KILLED at their own tag; source restored and verified.

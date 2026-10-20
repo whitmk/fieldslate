@@ -21,6 +21,8 @@ import type {
   VenueAssignment,
 } from "../playoff-wizard-types";
 import { GamesPerDayControl, RR_PER_DAY_HINT, STAGE2_PER_DAY_HINT } from "./games-per-day-control";
+import { SeriesLengthsControl } from "./series-lengths-control";
+import { bracketGamesLabel, wizardRounds } from "@/lib/playoffs/series";
 
 type Venue = { id: string; name: string; location?: { name: string } | null };
 
@@ -50,7 +52,7 @@ const DAY_LONG: Record<string, string> = {
 function StagePanel({
   num,
   title,
-  games,
+  gamesLabel,
   value,
   onChange,
   stash,
@@ -58,11 +60,13 @@ function StagePanel({
   venues,
   showFields,
   perDayHint,
+  beforePerDay,
   footer,
 }: {
   num: 1 | 2;
   title: string;
-  games: number;
+  /** "21 games", "Up to 11 games". */
+  gamesLabel: string;
   value: StageValue;
   onChange: (patch: Partial<StageValue>) => void;
   stash: WindowStash<PlayingDay>;
@@ -70,6 +74,8 @@ function StagePanel({
   venues: Venue[] | null;
   showFields: boolean;
   perDayHint: string;
+  /** Above the per-day control (Stage 2: the series lengths). */
+  beforePerDay?: React.ReactNode;
   footer?: React.ReactNode;
 }) {
   function toggleDay(day: PlayingDay) {
@@ -97,7 +103,7 @@ function StagePanel({
       <div className="flex items-center gap-2">
         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#0C1F3F] text-xs font-bold text-white">{num}</span>
         <h4 className="text-sm font-semibold text-[#0C1F3F]">{title}</h4>
-        <span className="ml-auto text-xs text-gray-400">{games} game{games === 1 ? "" : "s"}</span>
+        <span className="ml-auto text-xs text-gray-400">{gamesLabel}</span>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -175,6 +181,8 @@ function StagePanel({
         </div>
       )}
 
+      {beforePerDay}
+
       <GamesPerDayControl
         value={value.games_per_team_per_day}
         onChange={(v) => onChange({ games_per_team_per_day: v })}
@@ -247,7 +255,7 @@ export function StepStageDates({
 
   const teams = data.seeding.length;
   const rrGames = (teams * (teams - 1)) / 2;
-  const bracketGames = Math.max(data.advance_count - 1, 0);
+  const bracketGames = bracketGamesLabel(wizardRounds(data.advance_count), data.stage2.series_by_round);
   const order = stageDateProblem(data.end_date, data.stage2.start_date);
 
   return (
@@ -267,7 +275,7 @@ export function StepStageDates({
       <StagePanel
         num={1}
         title="Stage 1 · Round robin"
-        games={rrGames}
+        gamesLabel={`${rrGames} game${rrGames === 1 ? "" : "s"}`}
         value={{
           start_date: data.start_date,
           end_date: data.end_date,
@@ -287,7 +295,7 @@ export function StepStageDates({
       <StagePanel
         num={2}
         title="Stage 2 · Bracket"
-        games={bracketGames}
+        gamesLabel={bracketGames}
         value={data.stage2}
         onChange={(patch) => update({ stage2: { ...data.stage2, ...patch } })}
         stash={stash2}
@@ -295,6 +303,13 @@ export function StepStageDates({
         venues={venues}
         showFields={!data.stage2.same_fields}
         perDayHint={STAGE2_PER_DAY_HINT}
+        beforePerDay={
+          <SeriesLengthsControl
+            teamCount={data.advance_count}
+            value={data.stage2.series_by_round}
+            onChange={(series_by_round) => update({ stage2: { ...data.stage2, series_by_round } })}
+          />
+        }
         footer={
           <label className="flex min-h-9 cursor-pointer items-center gap-2 text-sm text-gray-700">
             <input

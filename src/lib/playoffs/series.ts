@@ -36,6 +36,7 @@ import {
   type SeriesRow,
 } from "@/lib/playoffs/series-names";
 import {
+  isSeriesLength,
   seriesHomeAway,
   seriesLengthFor,
   winsNeeded,
@@ -195,7 +196,113 @@ export function bestOfLine(length: number): string {
   return `Best of ${length} — first to ${winsNeeded(length)} wins`;
 }
 
+// ─── The card's actions and lines ─────────────────────────────────────────────
+
+/** One row per series (its game 1) and every single game: what the tree lays
+ *  out. Advancement and the connector lines key on the round and the bracket
+ *  position, which every game of a series shares. */
+export function oneRowPerSeries<T extends SeriesRow>(bracket: ReadonlyArray<T>): T[] {
+  const seen = new Set<string>();
+  return [...bracket]
+    .sort((a, b) => (a.series_game ?? 1) - (b.series_game ?? 1))
+    .filter((g) => {
+      const key = `${g.round}:${g.game_number}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.game_number - b.game_number);
+}
+
+/** What a series game offers (approved mockup screens 3 and 5). Result only on
+ *  the NEXT game (both teams known, series undecided); Edit only on the LAST
+ *  game with a result (results change from the latest game back); Move on
+ *  every game without a result that is still needed. A not-needed game offers
+ *  nothing. */
+export function seriesGameActions(
+  game: SeriesGame,
+  games: ReadonlyArray<SeriesGame>,
+): { result: boolean; edit: boolean; move: boolean } {
+  if (game.status === NOT_NEEDED) return { result: false, edit: false, move: false };
+  const tag = seriesGameTag(game, games);
+  if (tag === "not_needed") return { result: false, edit: false, move: false };
+  if (gameHasResult(game)) {
+    const k = game.series_game ?? 1;
+    const later = games.some((g) => (g.series_game ?? 1) > k && gameHasResult(g));
+    return { result: false, edit: !later, move: false };
+  }
+  return { result: tag === "next", edit: false, move: true };
+}
+
+/** The series card's footer: Result and Move on the next game, Edit on the
+ *  last game with a result. Null where there is none. */
+export function seriesCardActions(games: ReadonlyArray<SeriesGame>): {
+  result: SeriesGame | null;
+  edit: SeriesGame | null;
+  move: SeriesGame | null;
+} {
+  const s = seriesState(games);
+  const next = s.next && seriesGameActions(s.next, games).move ? s.next : null;
+  const edit = [...games].reverse().find((g) => seriesGameActions(g, games).edit) ?? null;
+  return {
+    result: next && seriesGameActions(next, games).result ? next : null,
+    edit,
+    move: next,
+  };
+}
+
+/** A played game's result, winner first: "Expos 5–2". Null with no score. */
+export function seriesResultText(game: SeriesGame, teamName: (id: string) => string): string | null {
+  if (game.home_score == null || game.away_score == null || !game.winner_id) return null;
+  const hi = Math.max(game.home_score, game.away_score);
+  const lo = Math.min(game.home_score, game.away_score);
+  return `${teamName(game.winner_id)} ${hi}–${lo}`;
+}
+
+/** "Expos home" once both teams are known; null before (no home team is
+ *  named until then — decided 2026-10-20). */
+export function seriesHomeNote(game: SeriesGame, teamName: (id: string) => string): string | null {
+  return homeTeamKnown(game) && game.home_team_id ? `${teamName(game.home_team_id)} home` : null;
+}
+
 // ─── Entering and clearing results ────────────────────────────────────────────
+
+/** Game k needs game k−1's result first. Shared by the modal's own check and
+ *  the database's `series_order` reply. */
+export function seriesOrderRefusal(previous: number): string {
+  return `Game ${previous} of this series needs a result first — results go in order. If Game ${previous} was rained out, move it with Move.`;
+}
+
+/** A later game of the series has a result. Shared by the modal's own check
+ *  and the database's `series_later_result` reply. */
+export function seriesLaterResultRefusal(later: number, action: "edit" | "clear"): string {
+  return action === "edit"
+    ? `Game ${later} of this series has a result too. Clear it first, then edit this one — results are changed from the latest game back.`
+    : `Game ${later} of this series has a result too. Clear it first — results are cleared from the latest game back.`;
+}
+
+/** The database's `game_not_needed` reply (a stale page): the modal's own
+ *  check names the winner; this reply carries no names. */
+export const SERIES_GAME_NOT_NEEDED =
+  "This game isn't needed — its series is already decided. Refresh the page to see the latest.";
+
+/**
+ * The next round is a series and one of its games has a result, so this game
+ * can't be changed or cleared. "The Final already has a result (Game 1: Expos
+ * 3, Bears 2). Clear the Final's results first, then clear this one."
+ */
+export function nextSeriesBlockedMessage(
+  nameInSentence: string,
+  next: { seriesGame: number; homeName: string | null; homeScore: number | null; awayName: string | null; awayScore: number | null },
+  action: "edit" | "clear",
+): string {
+  const score =
+    next.homeScore !== null && next.awayScore !== null
+      ? ` (Game ${next.seriesGame}: ${next.homeName ?? "Home"} ${next.homeScore}, ${next.awayName ?? "Away"} ${next.awayScore})`
+      : "";
+  const then = action === "clear" ? "then clear this one" : "then change this one";
+  return `${capitalize(nameInSentence)} already has a result${score}. Clear ${nameInSentence}'s results first, ${then}.`;
+}
 
 function gameList(games: ReadonlyArray<SeriesGame>, withField?: (venueId: string | null) => string | null): string {
   const items = games.map((g) => {
@@ -226,8 +333,7 @@ export function seriesEnterRefusal(
   if (gameHasResult(game)) {
     const later = games.filter((g) => (g.series_game ?? 1) > k && gameHasResult(g));
     if (later.length) {
-      const last = later[later.length - 1].series_game ?? 1;
-      return `Game ${last} of this series has a result too. Clear it first, then edit this one — results are changed from the latest game back.`;
+      return seriesLaterResultRefusal(later[later.length - 1].series_game ?? 1, "edit");
     }
     return null;
   }
@@ -237,9 +343,7 @@ export function seriesEnterRefusal(
     return `This game isn't needed — ${w} won ${seriesNameInSentence(game, bracket)}, ${st.high}–${st.low}.`;
   }
   const prev = games.find((g) => (g.series_game ?? 1) === k - 1);
-  if (prev && !gameHasResult(prev)) {
-    return `Game ${k - 1} of this series needs a result first — results go in order. If Game ${k - 1} was rained out, move it with Move.`;
-  }
+  if (prev && !gameHasResult(prev)) return seriesOrderRefusal(k - 1);
   return null;
 }
 
@@ -250,8 +354,7 @@ export function seriesClearRefusal(game: SeriesGame, bracket: ReadonlyArray<Seri
   const k = game.series_game ?? 1;
   const later = seriesGamesOf(game, bracket).filter((g) => (g.series_game ?? 1) > k && gameHasResult(g));
   if (!later.length) return null;
-  const last = later[later.length - 1].series_game ?? 1;
-  return `Game ${last} of this series has a result too. Clear it first — results are cleared from the latest game back.`;
+  return seriesLaterResultRefusal(later[later.length - 1].series_game ?? 1, "clear");
 }
 
 /** Where a series winner goes, inside a sentence: "the Final", "Semifinal 1",
@@ -530,6 +633,36 @@ export function seriesSetupNote(rounds: WizardRound[], series: SeriesByRound): s
     `The higher seed is home in ${oddGamesText(Math.max(...lengths))}. ` +
     `If-needed games get a date and a field now and are cancelled automatically when a series is decided.`
   );
+}
+
+/** What `playoffs.series_by_round` stores for a plan: the rounds of these
+ *  games longer than 1 game — nothing for any other format, and no round the
+ *  games don't have (0114 refuses both). */
+export function seriesByRoundPayload(
+  format: string,
+  series: SeriesByRound | null | undefined,
+  games: ReadonlyArray<{ round: string }>,
+): SeriesByRound {
+  if (format !== "single_elimination") return {};
+  const rounds = new Set(games.map((g) => g.round));
+  const out: SeriesByRound = {};
+  for (const [round, n] of Object.entries(series ?? {})) {
+    if (rounds.has(round) && isSeriesLength(n) && n > 1) out[round] = n;
+  }
+  return out;
+}
+
+/** A bracket's games with every series played out: Σ matchups × length. */
+export function seriesMaxGames(rounds: WizardRound[], series: SeriesByRound): number {
+  return rounds.reduce((n, r) => n + r.matchups * seriesLengthFor(series, r.label), 0);
+}
+
+/** A stage panel's game count: "7 games", or "Up to 11 games" with a series. */
+export function bracketGamesLabel(rounds: WizardRound[], series: SeriesByRound): string {
+  const single = rounds.reduce((n, r) => n + r.matchups, 0);
+  const max = seriesMaxGames(rounds, series);
+  if (max === single) return `${single} ${single === 1 ? "game" : "games"}`;
+  return `Up to ${max} games`;
 }
 
 export const PER_DAY_SERIES_HELP = "With 1, each game of a series is on its own day.";

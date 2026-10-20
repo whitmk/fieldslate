@@ -56,6 +56,7 @@ import {
   PRINT_TREE,
   SCALE_UP_BELOW,
   SCREEN_TREE,
+  screenSeriesTree,
   PRINT_COLORS,
   buildBracketPrintHtml,
   gameCardHtml,
@@ -342,10 +343,26 @@ section("S", () => {
      && !/won \? "bg-/.test(view) && /name=\{labelOf\(game, "away"\)\}\s*\n\s*away\n/.test(view), "[S5]", "the on-screen card is two-tone and never colours the winner's row");
   const result = read("src/components/playoffs/enter-result-modal.tsx");
   ok(result.includes('slotName(game.home_team_name, game, "home", allGames, format)') && !result.includes('?? "Home"'), "[S4]", "the result modal names empty slots with slotName");
-  ok(view.includes("const L = singleElimLayout(games, SCREEN_TREE);") && !view.includes("function gameTop(") && !view.includes("V_SLOT")
+  // 0114 (2026-10-20): a bracket with a series round lays out one row per
+  // series in taller slots (screenSeriesTree); a bracket of single games is
+  // laid out exactly as before, with SCREEN_TREE.
+  ok(view.includes("const dims = withSeries ? screenSeriesTree(longest) : SCREEN_TREE;")
+     && view.includes("const rows = withSeries ? oneRowPerSeries(games) : games;")
+     && view.includes("const L = singleElimLayout(rows, dims);") && !view.includes("function gameTop(") && !view.includes("V_SLOT")
      && view.includes("style={{ height: SCREEN_TREE.cardH }}") && view.includes('className="h-10 flex-none border-b')
      && view.includes("flex h-8 flex-none items-center gap-2 px-2.5") && view.includes("flex h-8 flex-none items-center border-t"),
     "[S7]", "the on-screen tree uses the shared layout and the card keeps the bands SCREEN_TREE measures");
+  // The series card keeps the single card's top bands, so the lines leave and
+  // enter at the same offsets; only the slot grows (one h-6 row per game).
+  const sc = read("src/components/playoffs/series-card.tsx");
+  ok(sc.includes('className="flex h-10 flex-none items-center gap-1.5 border-b') && sc.includes("flex h-8 flex-none items-center gap-2 px-2.5")
+     && sc.includes('<div className="h-px flex-none bg-gray-100" />') && sc.includes("style={{ height: SERIES_GAME_ROW_H }}")
+     && sc.includes("style={{ height }}"), "[S7]", "the series card keeps the bands screenSeriesTree measures");
+  for (const k of [3, 5, 7]) {
+    const t = screenSeriesTree(k);
+    ok(t.rowTop === SCREEN_TREE.rowTop && t.rowH === SCREEN_TREE.rowH && t.sourceY === SCREEN_TREE.sourceY && t.cardW === SCREEN_TREE.cardW
+       && t.cardH === 139 + 24 * k && t.slotH === t.cardH + 17, "[S7]", `screenSeriesTree(${k}) = ${JSON.stringify(t)}`);
+  }
   const pub = read("src/lib/public-schedule/view.ts");
   ok(pub.includes("return emptySlotLabel(asRow(game), side, bracket.map(asRow), game.format);") && !pub.includes("singleElimFirstNumber"),
     "[S6]", "the public page has no label arithmetic of its own");

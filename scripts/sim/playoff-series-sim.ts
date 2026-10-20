@@ -12,7 +12,9 @@
 //   S0 nothing changes without series → S1 layout and home → S2 scheduling →
 //   S3 names and labels → S4 series state and tags → S5 results in order →
 //   S6 the Save line → S7 the Clear lines → S8 advancement writes → S9 setup
-//   text → S10 confirms → PT playthroughs → counters.
+//   text → S10 confirms → S11 screens (step 3: the card's actions and lines,
+//   the payload, the database's refusal replies, the clear confirm) → PT
+//   playthroughs → counters.
 import {
   buildSingleElimination,
   makeSlotPicker,
@@ -59,6 +61,17 @@ import {
   type SeriesSlotWrite,
 } from "../../src/lib/playoffs/series";
 import { planStage2, seedConfirm, stage1Status, type Stage2Game } from "../../src/lib/playoffs/two-stage";
+import {
+  bracketGamesLabel,
+  nextSeriesBlockedMessage,
+  oneRowPerSeries,
+  seriesByRoundPayload,
+  seriesCardActions,
+  seriesGameActions,
+  seriesHomeNote,
+  seriesResultText,
+} from "../../src/lib/playoffs/series";
+import { blockedMessage, clearConfirm, type ClearPreview, type ResultNumbering } from "../../src/lib/playoffs/playoff-result";
 import type { SeededTeam } from "../../src/components/playoffs/playoff-wizard-types";
 
 const failures: string[] = [];
@@ -635,6 +648,118 @@ section("S10 confirms", () => {
   eq(s2Games.map((g) => `${g.seed_home}/${g.seed_away}`), ["1/null", "1/null", "1/null"], "S10", "Stage 2: the bye seed sits in every game of its series");
   const r1 = planStage2({ advance: 8, ids: IDS, grid: mockupInput({ R1: 3 }).grid, settings: SETTINGS, divisionName: "Majors", seriesByRound: { R1: 3 } });
   eq(r1.games.filter((g) => g.round === "R1" && g.game_number === 1).map((g) => `${g.seed_home}/${g.seed_away}`), ["1/8", "8/1", "1/8"], "S10", "Stage 2 Round 1 series: seeds alternate home");
+});
+
+// ─── S11: the screens (step 3) ────────────────────────────────────────────────
+
+section("S11 screens", () => {
+  const rows = mockupState();
+  const g = (id: string) => rows.find((r) => r.id === id)!;
+  const series = (id: string) => seriesGamesOf(g(id), rows);
+  const acts = (id: string) => seriesGameActions(g(id), series(id));
+
+  // What each game offers (mockup screens 3 and 5).
+  eq(acts("SF-5-1"), { result: false, edit: true, move: false }, "S11", "Semifinal 1 Game 1: its result is the latest, so Edit");
+  eq(acts("SF-5-2"), { result: true, edit: false, move: true }, "S11", "Semifinal 1 Game 2 (Next): Result and Move");
+  eq(acts("SF-5-3"), { result: false, edit: false, move: true }, "S11", "Semifinal 1 Game 3 (if needed): Move only");
+  eq(acts("SF-6-1"), { result: false, edit: false, move: false }, "S11", "Semifinal 2 Game 1: a later result stands, nothing");
+  eq(acts("SF-6-2"), { result: false, edit: true, move: false }, "S11", "Semifinal 2 Game 2: the deciding result, Edit");
+  eq(acts("SF-6-3"), { result: false, edit: false, move: false }, "S11", "Semifinal 2 Game 3 (not needed): nothing");
+  eq(acts("F-7-1"), { result: false, edit: false, move: true }, "S11", "Final Game 1, one team unknown: Move only");
+
+  const card = (id: string) => {
+    const a = seriesCardActions(series(id));
+    return { result: a.result?.id ?? null, edit: a.edit?.id ?? null, move: a.move?.id ?? null };
+  };
+  eq(card("SF-5-1"), { result: "SF-5-2", edit: "SF-5-1", move: "SF-5-2" }, "S11", "Semifinal 1's footer: Result and Move on Game 2, Edit on Game 1");
+  eq(card("SF-6-1"), { result: null, edit: "SF-6-2", move: null }, "S11", "Semifinal 2's footer: Edit on Game 2 only");
+  eq(card("F-7-1"), { result: null, edit: null, move: "F-7-1" }, "S11", "the Final's footer: Move on Game 1");
+
+  // The card never offers what the modal would refuse.
+  for (const r of rows) {
+    const s = seriesGamesOf(r, rows);
+    if (s.length < 2) continue;
+    const a = seriesGameActions(r, s);
+    const refusal = seriesEnterRefusal(r, rows, teamName);
+    if ((a.result || a.edit) && refusal !== null) ok(false, "S11", `${r.id} is offered but the modal refuses it`, refusal);
+    if (gameHasResult(r) && !a.edit && refusal === null) ok(false, "S11", `${r.id}'s result can be edited but the card hides Edit`);
+  }
+  ok(true, "S11", "every series game: the card and the modal agree");
+
+  eq(seriesResultText(g("SF-5-1"), teamName), "Expos 5–2", "S11", "a home win reads winner first");
+  eq(seriesResultText(g("SF-6-2"), teamName), "Bears 3–2", "S11", "an away win reads winner first");
+  eq(seriesResultText(g("SF-5-2"), teamName), null, "S11", "no score, no result text");
+  eq(seriesHomeNote(g("SF-5-2"), teamName), "Mets home", "S11", "Game 2: Mets home (games alternate)");
+  eq(seriesHomeNote(g("F-7-1"), teamName), null, "S11", "no home team named while a team is unknown");
+  // The case that needs the both-known rule: a home slot filled, the away
+  // slot still waiting (a winner moved in before its opponent is known).
+  eq(seriesHomeNote({ ...g("F-7-1"), home_team_id: "t2", away_team_id: null }, teamName), null, "S11", "no home team named while the away team is unknown");
+
+  eq(oneRowPerSeries(rows).map((r) => r.id), ["R1-2-1", "R1-4-1", "SF-5-1", "SF-6-1", "F-7-1"], "S11", "the tree lays out one row per series");
+
+  eq(seriesByRoundPayload("single_elimination", { SF: 3, F: 3, R2: 5 }, rows), { SF: 3, F: 3 }, "S11", "series_by_round keeps only the games' rounds");
+  eq(seriesByRoundPayload("round_robin", { SF: 3 }, rows), {}, "S11", "no series for a round robin");
+  eq(bracketGamesLabel(wizardRounds(6), MOCKUP_SERIES), "Up to 11 games", "S11", "Stage 2 panel: Up to 11 games");
+  eq(bracketGamesLabel(wizardRounds(6), {}), "5 games", "S11", "Stage 2 panel without series: 5 games");
+
+  // The database's refusal replies (0114), in the same words as the modal's.
+  const numbering: ResultNumbering = {
+    own: gameNumbering(rows),
+    nextStage: null,
+    seriesOf: (round, n) => {
+      const row = rows.find((r) => r.round === round && r.game_number === n);
+      return row && seriesGamesOf(row, rows).length > 1 ? { inSentence: row.round === "F" ? "the Final" : seriesName(row, rows) } : null;
+    },
+  };
+  eq(
+    blockedMessage({ blocked: true, reason: "series_order", previous_series_game: 2 }, "edit", numbering),
+    "Game 2 of this series needs a result first — results go in order. If Game 2 was rained out, move it with Move.",
+    "S11", "reply series_order",
+  );
+  eq(
+    blockedMessage({ blocked: true, reason: "series_later_result", later_series_game: 3 }, "clear", numbering),
+    "Game 3 of this series has a result too. Clear it first — results are cleared from the latest game back.",
+    "S11", "reply series_later_result (clear)",
+  );
+  eq(
+    blockedMessage({ blocked: true, reason: "game_not_needed" }, "edit", numbering),
+    "This game isn't needed — its series is already decided. Refresh the page to see the latest.",
+    "S11", "reply game_not_needed",
+  );
+  eq(
+    blockedMessage({ blocked: true, reason: "next_game_has_result", next_game: { game_number: 7, round: "F", series_game: 1, home_name: "Expos", away_name: "Bears", home_score: 3, away_score: 2 } }, "clear", numbering),
+    "The Final already has a result (Game 1: Expos 3, Bears 2). Clear the Final's results first, then clear this one.",
+    "S11", "reply next_game_has_result for a series: the mockup's words",
+  );
+  eq(
+    nextSeriesBlockedMessage("Semifinal 1", { seriesGame: 2, homeName: "Mets", homeScore: 1, awayName: "Expos", awayScore: 4 }, "edit"),
+    "Semifinal 1 already has a result (Game 2: Mets 1, Expos 4). Clear Semifinal 1's results first, then change this one.",
+    "S11", "a series that is not the Final",
+  );
+
+  // The clear confirm (mockup screen 6, left), with the series lines.
+  const preview: ClearPreview = {
+    gameId: "SF-6-2", gameNumber: 6, round: "SF", homeName: "Royals", awayName: "Bears", homeScore: 2, awayScore: 3,
+    winnerName: "Bears", onPublicSchedule: true,
+    removed: { gameNumber: 7, round: "F", teamName: "Bears", seriesInSentence: "the Final" },
+  };
+  const field = (id: string | null) => (id === "perry" ? "Perry" : id === "andrews" ? "Andrews" : null);
+  eq(
+    clearConfirm(preview, { gameTitle: gameLabel(g("SF-6-2"), rows), lines: seriesClearLines(g("SF-6-2"), rows, teamName, field) }).lines,
+    [
+      "Semifinal 2 · Game 2 of 3 — Royals 2, Bears 3 (Bears won).",
+      "The score and winner will be removed and the game goes back to scheduled.",
+      "The series goes back to Bears lead 1–0, so Game 3 (Sun 11/22, Perry) is scheduled again.",
+      "Bears will be removed from the Final until the series is decided again.",
+      "This is on your public schedule — the change shows there within a minute.",
+    ],
+    "S11", "the clear confirm, word for word (the database's removed line is not repeated)",
+  );
+  eq(
+    clearConfirm({ ...preview, gameId: "R1-4-1", gameNumber: 4, round: "R1", removed: { gameNumber: 6, round: "SF", teamName: "Royals", seriesInSentence: "Semifinal 2" } }).lines[2],
+    "Royals will be removed from Semifinal 2 until this game has a result again.",
+    "S11", "a single game feeding a series names the series",
+  );
 });
 
 // ─── PT: playthroughs (the TypeScript twin, end to end) ───────────────────────

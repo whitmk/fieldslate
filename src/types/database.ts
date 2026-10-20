@@ -703,6 +703,7 @@ export type Database = {
           seeded_by: string | null
           stage1_changed_at: string | null
           stage1_changes: Json
+          series_by_round: Json
         }
         Insert: {
           created_at?: string
@@ -728,6 +729,7 @@ export type Database = {
           seeded_by?: string | null
           stage1_changed_at?: string | null
           stage1_changes?: Json
+          series_by_round?: Json
         }
         Update: {
           created_at?: string
@@ -753,6 +755,7 @@ export type Database = {
           seeded_by?: string | null
           stage1_changed_at?: string | null
           stage1_changes?: Json
+          series_by_round?: Json
         }
         Relationships: [
           {
@@ -800,6 +803,7 @@ export type Database = {
           seed_home: number | null
           seed_away: number | null
           pool: string | null
+          series_game: number
         }
         Insert: {
           away_score?: number | null
@@ -822,6 +826,7 @@ export type Database = {
           seed_home?: number | null
           seed_away?: number | null
           pool?: string | null
+          series_game?: number
         }
         Update: {
           away_score?: number | null
@@ -844,6 +849,7 @@ export type Database = {
           seed_home?: number | null
           seed_away?: number | null
           pool?: string | null
+          series_game?: number
         }
         Relationships: [
           {

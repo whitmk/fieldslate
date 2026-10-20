@@ -18,6 +18,7 @@
 
 import type { GameInsert } from "@/lib/playoffs/bracket-plan";
 import type { PlayoffWizardData } from "@/components/playoffs/playoff-wizard-types";
+import { seriesByRoundPayload } from "@/lib/playoffs/series";
 
 // ─── The RPC replies ──────────────────────────────────────────────────────────
 
@@ -256,7 +257,7 @@ export function addBracketBlock(divisionName: string, hasBracket: boolean): stri
 
 /** The settings replace_playoff_games writes. The division is NOT in it: a
  *  bracket's division never changes. */
-export function settingsPayload(data: PlayoffWizardData) {
+export function settingsPayload(data: PlayoffWizardData, games: ReadonlyArray<{ round: string }> = []) {
   const cross = data.cross_division_enabled && data.cross_division_opponent_id !== "";
   return {
     format: data.format,
@@ -271,6 +272,9 @@ export function settingsPayload(data: PlayoffWizardData) {
     // 0113: the round robin's per-team daily limit (the planner ignores it
     // for elimination formats; the function stores it either way).
     games_per_team_per_day: data.games_per_team_per_day ?? 1,
+    // 0114: each round's series length — only rounds these games have, and
+    // nothing for a format other than single elimination.
+    series_by_round: seriesByRoundPayload(data.format, data.series_by_round, games),
   };
 }
 
@@ -285,5 +289,7 @@ export function gamesPayload(games: GameInsert[]) {
     venue_id: g.venue_id,
     scheduled_date: g.scheduled_date,
     start_time: g.start_time,
+    // 0114: game k of a series (absent on a single game, stored as 1).
+    ...(g.series_game ? { series_game: g.series_game } : {}),
   }));
 }
