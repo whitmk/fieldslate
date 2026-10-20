@@ -959,12 +959,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   take Stage 2's `GameNumbering`. A numbering that isn't known (null) names
   NO game — never a stored position. The two-stage I/O reads Stage 2's game
   numbers only to word such a refusal (fail-soft).
-- **NOT YET: the activity log.** `enter_playoff_result` and
-  `clear_playoff_result` write "Game %s" / "moved into Game %s" / "result
-  cleared for Game %s" / "removed from Game %s" with the STORED position.
-  Fixing it is a migration (rank the game among its bracket's games in SQL) —
-  held for Whit's decision, not written. Nothing else in SQL prints a game
-  number to a person.
+- **NOT YET: the activity log** (deferred by Whit, 2026-10-20 — see Open
+  items). `enter_playoff_result` and `clear_playoff_result` write "Game %s" /
+  "moved into Game %s" / "result cleared for Game %s" / "removed from Game
+  %s" with the STORED position. Nothing else in SQL prints a game number to a
+  person.
 - **The approved two-stage mockup shows stored numbers** ("bye to Game 5",
   "Game 2: Mets…"); the app now shows 1..N. Decided 2026-10-20.
 - **Harness: `npm run sim:playoff-numbers`** (68 checks × 3 zones, 6 counters:
@@ -4832,6 +4831,14 @@ Still open:
   "Pool A #1" later), so screen, print, public page and CSV gain pool wording
   in one place. Not in the first build: per-pool round robins, per-pool
   records, per-pool advancing counts.
+
+- **Next time `enter_playoff_result` / `clear_playoff_result` change, make
+  their activity-log messages name the ROUND and the TEAMS instead of a game
+  number** (decided 2026-10-20). Today they log the stored bracket position
+  ("Game 6", "moved into Game 7"), which with byes doesn't match the shown
+  numbers (see "Playoff game numbers people see"). Round + teams needs no
+  numbering in SQL. Deferred, not a migration of its own; same proof
+  standard when it rides along.
 
 - **Remove `process_checkout_event`'s legacy no-purchase-id branch (0111) in a
   follow-up migration, NOT BEFORE 2026-10-20 21:00 UTC** — 24 hours after
