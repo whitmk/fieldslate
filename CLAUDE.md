@@ -266,6 +266,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `end_date + 7`; leak check clean.)** The public schedule and team calendar
   feeds stop 7 days after the LATER of the end date and the season's last
   dated game, not the end date alone. See "Feeds' last day (0112)".
+- **0113 (two-stage playoffs) is WRITTEN AND PROVEN, NOT APPLIED** (branch
+  `feat/two-stage-playoffs`, 2026-10-19; held for Whit's go). Live
+  `enter_playoff_result` / `clear_playoff_result` are still 0108's / 0112's
+  bodies. See "Two-stage playoffs".
 - **`is_org_member` IS the admin gate, because every org member is an admin
   today.** If a non-admin member role (e.g. coach) is ever added,
   `set_org_timezone`, `regenerate_team_calendar_link` and
@@ -759,9 +763,35 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (bracket-labels.ts) reads "Seed N" via `seedLabel` when the slot carries a
   seed, before "Winner of Game N" / "TBD". Ordinary brackets carry no seeds,
   so they read exactly as before. Pools later change `seedLabel` only.
-- **Not built yet:** the migration (stage columns, seed columns, unused
-  `pool`, the seeding/build functions, 0107/0108/reader changes) and the
-  screens. Nothing here is reachable from the app.
+- **Migration 0113 (`0113_two_stage_playoffs.sql`) is WRITTEN AND PROVEN,
+  NOT APPLIED (held for Whit's go, 2026-10-19).** Schema: the
+  `(league_id, division_id)` unique key becomes `(league_id, division_id,
+  stage)`; `playoffs` gains `stage` (1/2), `parent_playoff_id` (Stage 2 →
+  Stage 1, cascade), `advance_count`, `games_per_team_per_day` (1/2),
+  `seeded_at`/`seeded_by`, `stage1_changed_at`; `playoff_games` gains
+  `seed_home`/`seed_away` and an unused nullable `pool`. Re-creates
+  `replace_playoff_games` (refuses a two-stage bracket — those go through
+  `replace_two_stage_games`), `delete_playoff_bracket` (either stage deletes
+  BOTH), `enter_`/`clear_playoff_result` (Stage 1 frozen once Stage 2 has a
+  result → `blocked`/`next_stage_started`; a change after seeding sets
+  `stage1_changed_at` and logs `playoff_stage1_changed_after_seeding`), and
+  the public reader (emits `stage`, `seed_home`, `seed_away`). New:
+  `replace_two_stage_games` (a null Stage 1 payload rebuilds Stage 2 only and
+  KEEPS the seeds), `seed_playoff_stage` (preview/commit; fills slots in place;
+  logs `playoff_stage_seeded`), `acknowledge_stage_seeds`; helpers
+  `playoff_write_stage` / `playoff_apply_seeds` callable by no role. Lock order
+  everywhere: Stage 1 row → its games → Stage 2 row → its games. **Applying
+  takes ACCESS EXCLUSIVE on `playoffs` and `playoff_games`** (ADD COLUMN,
+  constraints; 5 brackets / 16 games today — under a second).
+- **Proof: `scripts/sim/two-stage-playoffs-sim.sql`** (+
+  `two-stage-playoffs-build.ts`, which also re-targets the 0107 and 0108
+  proofs at 0113). Run 2026-10-19: green on run 1, 18/18 mutants at their own
+  tag, md5s matched, leak check clean; the 0107 proof (15/15) and the 0108
+  proof (18/18) both green against 0113. Read its RUN LOG.
+- **Screens not built.** The app code still needs: `enterOutcome` /
+  `clearPreviewOutcome` handling `next_stage_started`; the 23505 mapping for
+  the renamed unique key; `settingsPayload` sending `games_per_team_per_day`.
+  **0113 must be applied before that code reaches `main`.**
 - **Harness: `npm run sim:two-stage`** (145 checks × 3 zones, 8 counters; every
   expected value hand-written from the mockup) + `:mutants` (26, each killed
   at its own assertion; run 1 had 3 survivors, all harness/mutant faults — read

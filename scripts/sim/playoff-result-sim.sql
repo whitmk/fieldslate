@@ -922,3 +922,10 @@ $h108$;
 -- 0108 APPLIED 2026-10-13 19:35 UTC (catalog 20261013193530), verbatim from
 -- the repo file; md5(prosrc) of all four functions re-verified against the
 -- repo bodies; privileges verified per role; leak check clean.
+-- 2026-10-19 — re-run with 0113 in place of 0108 (two-stage regression;
+-- `two-stage-playoffs-build.ts 0108`), "test" proof org, rolled back:
+--   BASELINE failures (0); 14 committed calls counted. 18/18 KILLED at their
+--   own tag, the same tags as run 2 above. md5 enter_playoff_result
+--   d988edc57a2420c93f2d03498cbc2a8c, clear_playoff_result
+--   b7c38f77dfd7c0361daa9af5d9a8b46b (0113's bodies); helpers unchanged.
+--   Leak check after: zero; live functions unchanged.

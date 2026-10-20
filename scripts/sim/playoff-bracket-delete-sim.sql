@@ -119,7 +119,17 @@ select
   gen_random_uuid() as b1, gen_random_uuid() as b2, gen_random_uuid() as c1, gen_random_uuid() as c2,
   gen_random_uuid() as x1,
   gen_random_uuid() as p_a, gen_random_uuid() as p_b, gen_random_uuid() as p_c,
-  ''::text as real_fp;
+  ''::text as real_fp,
+  -- The T-Ball bracket is shared test data that changes between runs (it had
+  -- 2 results on 2026-10-08 and 3 on 2026-10-19), so its counts are READ here,
+  -- once, before anything runs — never typed into an assertion.
+  (select count(*)::integer from public.playoff_games
+    where playoff_id = 'adceb235-a279-454f-a9a9-1f301ff93c5e') as tball_games,
+  (select count(*)::integer from public.playoff_games
+    where playoff_id = 'adceb235-a279-454f-a9a9-1f301ff93c5e' and scheduled_date is not null) as tball_dated,
+  (select count(*)::integer from public.playoff_games
+    where playoff_id = 'adceb235-a279-454f-a9a9-1f301ff93c5e'
+      and (status = 'completed' or home_score is not null or away_score is not null or winner_id is not null)) as tball_results;
 
 -- The real league's bracket, fingerprinted before anything else happens.
 update h107_fx set real_fp = md5(
@@ -399,9 +409,12 @@ begin
       v_fails := array_append(v_fails, 'PV1: preview counts for A wrong: ' || coalesce(v_j::text, 'error'));
     end if;
     v_j := pg_temp.h107_j(pg_temp.h107_del('authenticated', fx.org, fx.p_tball, false));
-    if v_j is null or (v_j ->> 'committed')::boolean or (v_j ->> 'games')::int <> 7
-       or (v_j ->> 'dated_games')::int <> 7 or (v_j ->> 'games_with_results')::int <> 2
-       or (v_j ->> 'public_games')::int <> 7 or (v_j ->> 'blocked')::boolean then
+    if fx.tball_results = 0 or fx.tball_games = 0 then
+      v_fails := array_append(v_fails, 'PV1: VACUOUS — the T-Ball bracket has no games or no results to count');
+    end if;
+    if v_j is null or (v_j ->> 'committed')::boolean or (v_j ->> 'games')::int <> fx.tball_games
+       or (v_j ->> 'dated_games')::int <> fx.tball_dated or (v_j ->> 'games_with_results')::int <> fx.tball_results
+       or (v_j ->> 'public_games')::int <> fx.tball_dated or (v_j ->> 'blocked')::boolean then
       v_fails := array_append(v_fails, 'PV1: preview counts for T-Ball wrong: ' || coalesce(v_j::text, 'error'));
     end if;
     if pg_temp.h107_snap(v_all) <> v_snap or pg_temp.h107_logs() <> v_logs0 then
@@ -453,7 +466,7 @@ begin
     loop
       v_j := pg_temp.h107_j(v_txt);
       if v_j is null or not (v_j ->> 'blocked')::boolean or (v_j ->> 'committed')::boolean
-         or not (v_j -> 'reasons') ? 'results_entered' or (v_j ->> 'games_with_results')::int <> 2 then
+         or not (v_j -> 'reasons') ? 'results_entered' or (v_j ->> 'games_with_results')::int <> fx.tball_results then
         v_fails := array_append(v_fails, 'RB1: a bracket with results was not blocked: ' || v_txt);
       end if;
     end loop;
@@ -529,15 +542,15 @@ begin
     end if;
     v_txt := pg_temp.h107_del('authenticated', fx.org, fx.p_tball, true);
     v_j := pg_temp.h107_j(v_txt);
-    if v_j is null or not (v_j ->> 'committed')::boolean or (v_j ->> 'games_with_results')::int <> 2 then
+    if v_j is null or not (v_j ->> 'committed')::boolean or (v_j ->> 'games_with_results')::int <> fx.tball_results then
       v_fails := array_append(v_fails, 'DL1: deleting a bracket with results in a locked division failed: ' || v_txt);
     elsif exists (select 1 from public.playoffs where id = fx.p_tball)
        or exists (select 1 from public.playoff_games where playoff_id = fx.p_tball) then
       v_fails := array_append(v_fails, 'DL1: the bracket row or its games survived the delete');
     elsif (select count(*) from public.playoffs) <> v_n - 1
-       or (select count(*) from public.playoff_games) <> v_m - 7
+       or (select count(*) from public.playoff_games) <> v_m - fx.tball_games
        or pg_temp.h107_snap(v_others) <> v_snap2 then
-      v_fails := array_append(v_fails, 'DL1: the delete touched something other than the one bracket and its 7 games');
+      v_fails := array_append(v_fails, 'DL1: the delete touched something other than the one bracket and its games');
     end if;
 
     -- ── RL1 ─────────────────────────────────────────────────────────────────
@@ -561,7 +574,8 @@ begin
     end if;
     select message into v_msg from public.activity_log
      where event_type = 'playoff_bracket_deleted' and division_id = v_tball_div;
-    if v_msg is distinct from 'T-Ball playoff bracket deleted (double elimination, 7 games, 2 with results, 7 dated)' then
+    if v_msg is distinct from format('T-Ball playoff bracket deleted (double elimination, %s games, %s with results, %s dated)',
+                                     fx.tball_games, fx.tball_results, fx.tball_dated) then
       v_fails := array_append(v_fails, 'LG1: delete log wrong: ' || coalesce(v_msg, 'missing'));
     end if;
   exception when others then
@@ -738,3 +752,16 @@ $h107$;
 -- 0, test org public link 0, test org plan elite, T-Ball bracket 7 games,
 -- real league 50/70 bracket 5 games, playoffs 4.
 -- 0107 NOT APPLIED — waiting on the founder's timing.
+-- 2026-10-19 — RED ON TODAY'S DATA, found while re-running this proof against
+-- 0113 (two-stage playoffs). Control run (no migration: today's live
+-- functions): BASELINE failures (5) — PV1, RB1 ×2, DL1, LG1 — every one
+-- because the shared T-Ball fixture now has 3 results, not the 2 typed into
+-- the assertions; every mutant then died first at PV1 (11 of 15 "at the wrong
+-- assertion"). Data drift, not a code fault: the live functions' md5 matched
+-- 0112's. Fixed: the T-Ball counts (games, dated, results) are READ once into
+-- h107_fx before anything runs, with a vacuity guard if there are none.
+
+-- Re-run with the fix, 0113 in place of 0107 (the two-stage regression):
+--   BASELINE failures (0); 15/15 KILLED at their own tag; md5
+--   delete_playoff_bracket 585d1e3ef36b319624339e45d6e801c3,
+--   replace_playoff_games ed9dfa7180384bb21e5c111c376c5fe6 (0113's bodies).
