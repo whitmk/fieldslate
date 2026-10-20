@@ -1589,6 +1589,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   taken without asking. Say what the lock will block and for roughly how
   long, get agreement, keep the transaction as short as possible, and
   confirm `tgenabled = 'O'` on every trigger afterward.
+- **A "real data unchanged" check finds its rows by OWNER, never by a
+  hard-coded id, and fails as VACUOUS when it finds none.** The 0107 proof's
+  RL1 named one real bracket by id; the bracket was deleted and RL1 compared
+  two empty strings while reading green (found and fixed 2026-10-20: it now
+  fingerprints every bracket and game outside the two test orgs, 7 rows that
+  day). Read rows through `to_jsonb(…) - '<new column>'` so a snapshot taken
+  before the batch's migration still compares after it adds columns.
 - **A mutation result is "killed" ONLY if the BASELINE ASSERTION fails** —
   not merely if the mutant behaves differently. Mixing those two criteria in
   one script produces mutants that look like survivors when they were caught
@@ -4932,12 +4939,6 @@ Still open:
   "Pool A #1" later), so screen, print, public page and CSV gain pool wording
   in one place. Not in the first build: per-pool round robins, per-pool
   records, per-pool advancing counts.
-
-- **The 0107 proof's RL1 is VACUOUS (found 2026-10-20).** It fingerprints the
-  real league's bracket `c903bbb7…` by id, and that bracket no longer exists,
-  so it compares two empty strings. Fingerprint every real-league bracket by
-  owner, as the 0108 and 0113 proofs do, the next time that harness is
-  touched.
 
 - **DONE IN 0114 (written, NOT applied) — next time `enter_playoff_result` /
   `clear_playoff_result` change, make their activity-log messages name the

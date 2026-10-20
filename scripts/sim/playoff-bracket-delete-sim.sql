@@ -42,8 +42,9 @@
 -- not a member of SRALL) to be the wrong-org field, and that owner is the
 -- non-member caller. NOTHING belonging to Santa Rosa American Little League
 -- is written or passed to either function: the SRALL owner is also an admin
--- there, so its 50/70 bracket (c903bbb7…) is fingerprinted before the run and
--- after every pass (RL1) and is never a function argument.
+-- there, so EVERY bracket and game outside the two test orgs (found by owner,
+-- never by a hard-coded id) is fingerprinted before the run and after every
+-- pass (RL1), and none is ever a function argument.
 --
 -- ASSERTIONS (in order; a mutant must die FIRST at its own tag)
 --   P1   privileges: both functions authenticated only; not anon /
@@ -76,8 +77,10 @@
 --   DL1  deleting a bracket WITH RESULTS in a LOCKED division succeeds: the
 --        bracket row and all 7 of its games gone, every other bracket
 --        byte-identical, exactly 1 bracket and 7 games fewer in the table
---   RL1  the real league's 50/70 bracket is byte-identical (checked last in
---        every pass, so a leak there can never hide behind another failure)
+--   RL1  every bracket and game outside the two test orgs is byte-identical
+--        on its own columns (checked last in every pass, so a leak there can
+--        never hide behind another failure); fails as VACUOUS if there are
+--        none to compare
 --   LG1  exactly one log row per write, none for a preview or refusal:
 --        playoff_bracket_rebuilt (A), playoff_bracket_generated (C),
 --        playoff_bracket_deleted (T-Ball), with the counts in the message
@@ -110,7 +113,6 @@ select
   'aa21d01c-66dc-4c37-b15c-7b743c557eea'::uuid as org,
   'bbf9afe1-9e62-41e0-becc-895085bfc9d6'::uuid as nonmember,
   'adceb235-a279-454f-a9a9-1f301ff93c5e'::uuid as p_tball,
-  'c903bbb7-3e4a-4536-95e4-a677abb45192'::uuid as p_real,
   (now() at time zone 'America/Los_Angeles')::date as today_la,
   gen_random_uuid() as v1, gen_random_uuid() as v_foreign,
   gen_random_uuid() as s1, gen_random_uuid() as s2,
@@ -120,6 +122,7 @@ select
   gen_random_uuid() as x1,
   gen_random_uuid() as p_a, gen_random_uuid() as p_b, gen_random_uuid() as p_c,
   ''::text as real_fp,
+  0::integer as real_rows,
   -- The T-Ball bracket is shared test data that changes between runs (it had
   -- 2 results on 2026-10-08 and 3 on 2026-10-19), so its counts are READ here,
   -- once, before anything runs — never typed into an assertion.
@@ -131,10 +134,32 @@ select
     where playoff_id = 'adceb235-a279-454f-a9a9-1f301ff93c5e'
       and (status = 'completed' or home_score is not null or away_score is not null or winner_id is not null)) as tball_results;
 
--- The real league's bracket, fingerprinted before anything else happens.
-update h107_fx set real_fp = md5(
-  coalesce((select string_agg(p::text, '|' order by p.id) from public.playoffs p where p.id = h107_fx.p_real), '') || '#' ||
-  coalesce((select string_agg(g::text, '|' order by g.id) from public.playoff_games g where g.playoff_id = h107_fx.p_real), ''));
+-- Every bracket and game outside the two test orgs (the SRALL test org and
+-- the "test" org), found by owner — never a hard-coded id: the old check named
+-- one real bracket by id, it was deleted, and RL1 compared two empty strings
+-- (found 2026-10-20). Rows are read through to_jsonb minus the 0114 columns,
+-- which the batch's migration adds after this snapshot, so the same check
+-- works on either catalog.
+create function pg_temp.h107_outside_fp()
+returns text language sql as $fn$
+  select md5(
+    coalesce((select string_agg((to_jsonb(p) - 'series_by_round')::text, '|' order by p.id)
+                from public.playoffs p join public.leagues l on l.id = p.league_id
+               where l.owner_id not in (select org from h107_fx union all select nonmember from h107_fx)), '') || '#' ||
+    coalesce((select string_agg((to_jsonb(g) - 'series_game')::text, '|' order by g.id)
+                from public.playoff_games g join public.leagues l on l.id = g.league_id
+               where l.owner_id not in (select org from h107_fx union all select nonmember from h107_fx)), ''))
+$fn$;
+
+create function pg_temp.h107_outside_rows()
+returns integer language sql as $fn$
+  select ((select count(*) from public.playoffs p join public.leagues l on l.id = p.league_id
+            where l.owner_id not in (select org from h107_fx union all select nonmember from h107_fx))
+        + (select count(*) from public.playoff_games g join public.leagues l on l.id = g.league_id
+            where l.owner_id not in (select org from h107_fx union all select nonmember from h107_fx)))::integer
+$fn$;
+
+update h107_fx set real_fp = pg_temp.h107_outside_fp(), real_rows = pg_temp.h107_outside_rows();
 
 -- Fixtures. Divisions are locked AFTER their teams exist.
 insert into public.venues (id, owner_id, name)
@@ -554,9 +579,12 @@ begin
     end if;
 
     -- ── RL1 ─────────────────────────────────────────────────────────────────
-    if pg_temp.h107_snap(array[fx.p_real]) <> fx.real_fp then
-      v_fails := array_append(v_fails, 'RL1: THE REAL LEAGUE''S BRACKET CHANGED');
+    if fx.real_rows = 0 or fx.real_fp = md5('#') then
+      v_fails := array_append(v_fails, 'RL1: VACUOUS — no brackets or games outside the test orgs to compare');
+    elsif pg_temp.h107_outside_rows() <> fx.real_rows or pg_temp.h107_outside_fp() <> fx.real_fp then
+      v_fails := array_append(v_fails, 'RL1: A BRACKET OR GAME OUTSIDE THE TEST ORGS CHANGED');
     end if;
+    v_notes := array_append(v_notes, format('RL1 compared %s rows outside the test orgs', fx.real_rows));
 
     -- ── LG1 ─────────────────────────────────────────────────────────────────
     if pg_temp.h107_logs() - v_logs0 <> 3 then
@@ -724,7 +752,11 @@ $h107$;
 --   (select count(*) from public_schedule_links where org_id = 'aa21d01c-66dc-4c37-b15c-7b743c557eea') as test_link_must_be_0,
 --   (select plan from profiles where id = 'aa21d01c-66dc-4c37-b15c-7b743c557eea') as test_plan_elite,
 --   (select count(*) from playoff_games where playoff_id = 'adceb235-a279-454f-a9a9-1f301ff93c5e') as tball_games_7,
---   (select count(*) from playoff_games where playoff_id = 'c903bbb7-3e4a-4536-95e4-a677abb45192') as real_games_5;
+--   (select count(*) from playoffs p join leagues l on l.id = p.league_id
+--     where l.owner_id not in ('aa21d01c-66dc-4c37-b15c-7b743c557eea', 'bbf9afe1-9e62-41e0-becc-895085bfc9d6'))
+--   + (select count(*) from playoff_games g join leagues l on l.id = g.league_id
+--     where l.owner_id not in ('aa21d01c-66dc-4c37-b15c-7b743c557eea', 'bbf9afe1-9e62-41e0-becc-895085bfc9d6'))
+--     as rows_outside_test_orgs_unchanged;
 
 -- ── RUN LOG ─────────────────────────────────────────────────────────────────
 -- 2026-10-08 — against production, test org "SRALL" fixtures + its T-Ball
@@ -779,3 +811,17 @@ $h107$;
 -- are the md5 of an empty string. The other proofs' RL1 checks fingerprint by org and
 -- still bite. Fix: fingerprint every real-league bracket by owner, as 0108's
 -- and 0113's do.
+-- 2026-10-20 — RL1 FIXED. It now fingerprints EVERY bracket and game outside
+-- the two test orgs, found by owner (no hard-coded id), each row read through
+-- to_jsonb minus the 0114 columns (series_by_round, series_game) so the
+-- snapshot taken before the batch's migration compares on either catalog; it
+-- fails as VACUOUS when there is nothing to compare, and notes the count.
+-- Re-run with 0114 in place of 0107: BASELINE failures (0); NOTES "RL1
+-- compared 7 rows outside the test orgs" (the real league's 1 bracket + 6
+-- games); 15/15 KILLED at their own tag; md5 delete/replace 0c788c4b… /
+-- 2e621878… (0114's). The batch applied the 0114 schema plus the five objects
+-- this harness calls (season_last_day, playoff_check_series, replace, delete,
+-- the reader), bodies verbatim from the file — not the whole file. No mutant
+-- writes to a row outside the test orgs (that would be a write to the real
+-- league, rolled back or not), so RL1's bite is shown by the non-empty
+-- fingerprint, not by a kill. Leak check clean (outside rows still 7).
