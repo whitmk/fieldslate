@@ -26,6 +26,8 @@
     "sim:team-calendar-route": "npx tsx scripts/sim/team-calendar-route-sim.ts",
     "sim:team-calendar-route:mutants": "npx tsx scripts/sim/team-calendar-route-mutants.ts",
     "sim:diagnostics": "TZ=UTC npx tsx scripts/sim/placement-diagnostics-sim.ts",
+    "sim:feed-cutoff": "npx tsx scripts/sim/feed-cutoff-sim.ts",
+    "sim:feed-cutoff:mutants": "npx tsx scripts/sim/feed-cutoff-mutants.ts",
     "sim:fetch-all": "npx tsx scripts/sim/fetch-all-sim.ts",
     "sim:supabase-no-store": "npx tsx scripts/sim/supabase-no-store-sim.ts",
     "sim:supabase-no-store:mutants": "npx tsx scripts/sim/supabase-no-store-mutants.ts",

@@ -90,3 +90,46 @@ export function decideAutoArchive(input: ArchiveInput): ArchiveDecision {
   }
   return { archive: true, reason: "ready", detail: `the end date ${endDate} has passed and every game is done` };
 }
+
+// ── The feeds' last day (0112) ──────────────────────────────────────────────
+// The public schedule and team calendar feeds stop FEED_GRACE_DAYS after the
+// LATER of a season's end date and its last dated game. The DATABASE decides
+// this (season_last_day, migration 0112, used by the two token readers and the
+// three bracket functions that count "games on the public schedule"); this is
+// its TypeScript twin, for the season page's wording and the sims. One case
+// table pins the two: the LASTDAY-TABLE block in scripts/sim/feed-cutoff-sim.sql.
+
+export const FEED_GRACE_DAYS = 7;
+
+/**
+ * The later of the end date and the last dated game — every regular-season
+ * game (any status, by the wall-clock date of scheduled_at) and every DATED
+ * playoff game. No end date → null: never cut off.
+ */
+export function seasonLastDay(
+  endDate: string | null,
+  gameTimes: string[],
+  playoffDates: (string | null)[],
+): string | null {
+  if (endDate === null) return null;
+  let last = endDate;
+  for (const t of gameTimes) {
+    const d = wallClockDate(t);
+    if (d > last) last = d;
+  }
+  for (const d of playoffDates) if (d !== null && d > last) last = d;
+  return last;
+}
+
+/** "YYYY-MM-DD" plus n days, by calendar arithmetic (UTC fields, no clock). */
+export function addDays(date: string, n: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + n));
+  const pad = (x: number) => String(x).padStart(2, "0");
+  return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
+}
+
+/** Whether the feeds still serve the season on `today` (league timezone). */
+export function feedsServeOn(lastDay: string | null, today: string): boolean {
+  return lastDay === null || today <= addDays(lastDay, FEED_GRACE_DAYS);
+}

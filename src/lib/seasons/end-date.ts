@@ -12,7 +12,7 @@ export function fmtSeasonDate(d: string): string {
 
 /** Shown in the editor, always. */
 export const END_DATE_NOTE =
-  "The end date decides when this season archives — once it has passed and every game, playoffs included, has been played — and when parents’ calendar feeds and the public schedule stop showing it (7 days after the end date).";
+  "The end date decides when this season archives — once it has passed and every game, playoffs included, has been played — and when parents’ calendar feeds and the public schedule stop showing it: 7 days after the end date or the season’s last game, whichever is later.";
 
 export const LAST_GAME_UNKNOWN = "Couldn’t check the season’s last game date.";
 
@@ -35,7 +35,7 @@ export function endDateEditCheck(
   if (lastGameDate && newEnd < lastGameDate) {
     return {
       error: null,
-      warning: `The last game on the schedule is ${fmtSeasonDate(lastGameDate)}, after this end date. The season won’t archive until that game has been played, but parents’ calendar feeds and the public schedule stop 7 days after the end date, so they may miss it.`,
+      warning: `The last game on the schedule is ${fmtSeasonDate(lastGameDate)}, after this end date. The season stays active until that game has been played, and parents’ calendar feeds and the public schedule keep showing it until 7 days after that game.`,
     };
   }
   return { error: null, warning: null };

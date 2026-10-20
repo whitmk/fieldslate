@@ -251,6 +251,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   backfill) green 21/21 at their own tag, md5s matched, leak check clean.
   Route, webhook and screens built 2026-10-19 (see the Billing section) and
   pushed right after the apply, on Whit's go.
+- **Feeds' last day (0112, WRITTEN AND PROVEN 2026-10-19, NOT APPLIED — held
+  for Whit; branch `fix/feed-cutoff`).** The public schedule and team calendar
+  feeds stop 7 days after the LATER of the end date and the season's last
+  dated game, not the end date alone. See "Feeds' last day (0112)".
 - **`is_org_member` IS the admin gate, because every org member is an admin
   today.** If a non-admin member role (e.g. coach) is ever added,
   `set_org_timezone`, `regenerate_team_calendar_link` and
@@ -787,7 +791,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   game) — and the confirm / review SAYS SO. The harness proves the count
   equals what the reader returns (PUB1). **If the 0105 reader's conditions
   change, change both copies in 0107 with it — and the third copy in 0108's
-  `clear_playoff_result`.**
+  `clear_playoff_result`.** (0112 does exactly that for the 7-day cut-off:
+  all five use `season_last_day`.)
 - **A new bracket** (Add bracket) is a plain `playoffs` INSERT as `draft`,
   made only after the client plan is good, then filled by
   `replace_playoff_games` — never an upsert. A division that already has a
@@ -2466,7 +2471,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (`endDateEditCheck`, `END_DATE_NOTE`): before the start date is refused;
   before the season's last dated game (regular or playoff) is a NON-blocking
   warning; the note says the end date controls archiving AND when parents'
-  calendar feeds and the public schedule stop (7 days after it). A plain
+  calendar feeds and the public schedule stop (7 days after the end date or
+  the last game, whichever is later — the 0112 rule). A plain
   browser UPDATE (0110 allows `end_date`), `.select("id")`, zero rows →
   "Nothing was saved". No migration.
 - **Harness: `npm run sim:auto-archive`** (36 checks × 3 host zones, 4
@@ -2478,6 +2484,42 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `:mutants` (11, three zones), each killed at its own assertion — read the
   mutation log in the mutants file (AA6 first crashed instead of failing
   open; AA10's true catcher is I1).
+
+## Feeds' last day (0112, branch `fix/feed-cutoff`, NOT APPLIED)
+
+- **The rule.** The public schedule and team calendar feeds stop 7 days after
+  the LATER of a season's end date and its last dated game — any
+  regular-season game (ANY status, by the stored wall-clock date of
+  `scheduled_at`) or any DATED playoff game. No end date → never cut off
+  (unchanged). "Today" is the ORG's timezone, in the database. Before 0112 the
+  cut-off was `end_date + 7`, so a season whose playoffs ran past its end date
+  vanished from parents' phones and the public page mid-playoffs.
+- **ONE helper, `season_last_day(league_id)`** (SQL, stable, SECURITY
+  INVOKER, callable by NO role — the five SECURITY DEFINER callers reach it as
+  its owner). 0112 re-creates the five functions that held `end_date + 7`
+  VERBATIM from their repo files with only that expression swapped:
+  `get_team_calendar_by_token` (0100), `get_league_schedule_by_token` (0105),
+  `delete_playoff_bracket` and `replace_playoff_games` (0107, three spots),
+  `clear_playoff_result` (0108). Never write the cut-off inline again.
+- **TypeScript twin: `seasonLastDay` / `feedsServeOn`**
+  (`src/lib/seasons/archive-decision.ts`), for wording and sims only — the
+  database decides. **One case table pins the two**: the
+  `LASTDAY-TABLE-BEGIN` / `-END` block in `scripts/sim/feed-cutoff-sim.sql`.
+  The SQL proof runs it through the helper; `npm run sim:feed-cutoff` parses
+  the SAME block and runs it through the twin. Each marker alone on its line,
+  one row per line, never a second copy (the 0093 lesson).
+- **Fail safe:** a read error inside these functions fails the whole call —
+  the feed route's 503 + Retry-After and the public page's "couldn't load"
+  are unchanged. Nothing makes a read error look like "expired".
+- **The season-page note and warning describe this rule** (`end-date.ts`), so
+  that code must reach `main` AFTER 0112 is applied.
+- **Proof: `scripts/sim/feed-cutoff-sim.sql`** (+ `feed-cutoff-build.ts`;
+  applies 0112 rolled back in the "test" org; the 10-row table, 5 seasons
+  end-to-end through both readers incl. the exact +7/+8 boundary, the three
+  bracket previews; 11 mutants — one per helper term, each function's
+  cut-off, the grace, the grant). Run 2026-10-19: dry run, then run 1 GREEN,
+  11/11 at their own tag, md5s matched, leak check clean. `sim:feed-cutoff`
+  52 checks + `:mutants` 7 (incl. the shared table skewed from the TS side).
 
 ## Record where it was played (0106, applied 2026-10-08)
 
@@ -3592,8 +3634,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   transaction — NOTE it holds ACCESS EXCLUSIVE on `venues` and `locations`
   for the run, blocking reads and writes of both), `sim:team-calendar`
   section A (+ TC22/TC23), `sim:game-notes` O1a/O1c.
-- **Expiry is 7 days after `leagues.end_date`, with "today" computed in the
-  ORG's timezone in the database** (`now() at time zone profiles.timezone`),
+- **Expiry is 7 days after `leagues.end_date` — after 0112, 7 days after the
+  LATER of the end date and the last dated game (`season_last_day`) — with
+  "today" computed in the ORG's timezone in the database** (`now() at time zone profiles.timezone`),
   never `current_date` (the old auto-archive helper's UTC-date bug, CLOSED
   2026-10-19 — see "Auto-archive"). Archived seasons are expired at once.
 - **`profiles.timezone`** (7 US IANA zones, CHECK-constrained, default
@@ -3669,7 +3712,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   playoff games of non-draft brackets are all returned, only DATED ones are
   rows, and an empty single-elimination slot reads "Winner of Game N" from
   the positional numbering (any other format: "TBD"). Seasons: unarchived,
-  ≥1 locked division, ended ≤7 days ago in the ORG's timezone; the reader
+  ≥1 locked division, ended ≤7 days ago in the ORG's timezone (after 0112, counted from `season_last_day` — the later of the end date and the last dated game); the reader
   returns `today` so the page needs no clock. More than one season → a picker.
 - **Link lifetime: the token never names a season.** Off KEEPS the token
   (website embeds survive off/on) — the OPPOSITE of the team calendar link,
