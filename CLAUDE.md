@@ -622,7 +622,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   print slice reads none, the Schedule print gets the UNFILTERED games, no
   `get_*_by_token` body names a 0109 column (live twin: the SQL proof's K1),
   sentences only in `src/lib/daylight`, and every listed surface is wired.
-  A new outbound file belongs in its fence list.
+  A new outbound file belongs in its fence list. **Mutant LK3 must target the
+  LATEST migration that defines `get_league_schedule_by_token`** — [D1] reads
+  only each token function's latest body, so LK3 aimed at 0105 SURVIVED once
+  0112 redefined the reader (found 2026-10-20; on `main` it still points at
+  0105 and survives). Move it with every new definition of the reader.
 - **Harnesses:** `npm run sim:daylight` (73 checks × 3 zones, 7 counters;
   `:mutants` 13, each killed at its own assertion — read its log: DL4 first
   died early, a harness ordering fault). SQL proof:
@@ -681,8 +685,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `src/lib/playoffs/edit-game.ts`) against BOTH the season's `games` and
   every other `playoff_games` row at that field — notices, never gates. The
   save chains `.select("id")`; zero rows is an error. Logged as
-  `playoff_game_rescheduled`. The export modal's CSV still hardcodes a
-  90-minute end time (`addMinsFmt(g.start_time, 90)`) — not touched.
+  `playoff_game_rescheduled`. The export modal's CSV ends each game at start +
+  the division's `game_duration` (projected key only); no usable length → a
+  BLANK end and a note in the modal, never a guess (`playoff-export.ts`,
+  2026-10-20 — it was a hardcoded 90).
 - **The Dates step starts from the division's own playing days and windows**
   (`playoffDefaultsFromDivision`, applied when a division is picked; orphan
   windows for non-playing days are dropped). Still editable.
@@ -712,9 +718,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     exceeds the limit. Games that don't fit stay TBD and the TBD warning says
     "N slots were left unused so that no team plays more than one game in a
     day" — never a silent double-up. Elimination formats ignore it ([D4]).
-    **The setting is not stored yet** (no `playoffs` column; the wizard has no
-    control) — the two-stage migration adds the column and the Dates & fields
-    step the control; until then every round robin plans at 1 a day.
+    Stored in `playoffs.games_per_team_per_day` (0113 — sent by
+    `settingsPayload`, set in the Dates step's "Games per team per day" for a
+    plain round robin). Until 0113 is applied the column doesn't exist.
 - **The Seeding step lets an admin leave a team out of THIS bracket** (a team
   that opted out): Remove on each row, removed teams greyed below under "Not in
   this bracket" with Add back (a team added back is the LOWEST seed). At least 2
@@ -788,14 +794,49 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   proofs at 0113). Run 2026-10-19: green on run 1, 18/18 mutants at their own
   tag, md5s matched, leak check clean; the 0107 proof (15/15) and the 0108
   proof (18/18) both green against 0113. Read its RUN LOG.
-- **Screens not built.** The app code still needs: `enterOutcome` /
-  `clearPreviewOutcome` handling `next_stage_started`; the 23505 mapping for
-  the renamed unique key; `settingsPayload` sending `games_per_team_per_day`.
-  **0113 must be applied before that code reaches `main`.**
+- **Screens (steps 4–5, built 2026-10-20 on the branch; NOT pushed).** Wizard:
+  a fourth Format card (`format: "round_robin"` + `two_stage: true`; Edit setup
+  can't switch a setup between one bracket and a pair), then Teams
+  (`step-teams.tsx`: Remove / Add back, the advancing stepper, no seed order),
+  Dates & fields (`step-stage-dates.tsx`: one panel per stage, own days,
+  windows, daily limit and fields, "Same fields as Stage 1"), Review
+  (`step-two-stage-review.tsx`: both pre-flights verbatim; an existing pair
+  also gets replace_two_stage_games's preview — once the round robin has
+  results it previews a Stage-2-only rebuild and refuses a changed team list
+  or advancing count, `STAGE1_LOCKED_SETUP`). I/O: `two-stage-io.ts`; a NEW
+  setup inserts both rows as drafts and deletes them again (through
+  delete_playoff_bracket) if the second insert or the call fails. Page: a Stage
+  2 row is never its own card; `two-stage-card.tsx` shows Stage 1 by round
+  (RR Game N, sit-outs, Records box: admins only, A–Z, never a ranking) and
+  Stage 2 (BracketView with `showSeeds`), the pills and the Seed / Change
+  seeds button from `stage1HeaderPill` / `stage2HeaderPill` / `stage2Button`,
+  the never-played and locked lines, and the re-check note.
+  `seed-stage2-modal.tsx`: A–Z (or the saved order), drag + ▲▼, cut line,
+  preview → confirm (`seedConfirm`) → commit. Delete removes both stages; the
+  confirm says so (`deleteConfirm(…, twoStage)`). Public page: "Playoffs ·
+  Bracket · Round 1 · Game 2" and "Playoffs · Round robin · RR Game 13" for a
+  pair, "Seed 4" placeholders; ordinary brackets unchanged. Export: a pair's
+  bracket print is Stage 2's tree, the schedule and CSV hold both stages.
+- **TWO KNOWN GAPS FROM THE MOCKUP, both because the database doesn't keep
+  the data:** (1) the re-check note can't name the changed game or its old
+  score (only `stage1_changed_at` is stored), so it says when, and points at
+  the records; (2) the seed confirm has no "N bracket games are on the public
+  schedule" line (seed_playoff_stage returns no public count). Either is a
+  small 0113 change if wanted — before it is applied.
+- **0113 is applied right before the step 4/5 push, same as 0111** (decided
+  2026-10-20): the Playoffs page selects the new columns, so this code on
+  `main` without 0113 breaks the page for every Elite league.
 - **Harness: `npm run sim:two-stage`** (145 checks × 3 zones, 8 counters; every
   expected value hand-written from the mockup) + `:mutants` (26, each killed
   at its own assertion; run 1 had 3 survivors, all harness/mutant faults — read
-  the RUN LOG).
+  the RUN LOG). **`npm run sim:two-stage-screens`** (94 checks × 3 zones, 6
+  counters: export CSV and its end time, card pills/buttons/lines, payloads,
+  replies, the next-stage refusal, public labels, the pair delete confirm,
+  Review lines, wiring) + `:mutants` (14, each killed at its own assertion;
+  run 1 had two killed at the wrong line — a harness ordering fault, read the
+  RUN LOG). The screens were checked on a throwaway route with the REAL
+  components and Supabase's REST answered in the browser by fixtures (0113
+  isn't applied), at 1024px and 375px, then the route was deleted.
 
 ## Printable playoff bracket + slot labels (2026-10-13)
 
@@ -4736,18 +4777,10 @@ Still open:
   `npm run sim:practice-planner` (section K pins the field counts, which don't
   depend on the dates; W1/T1 pin Santa Rosa sentences and totals that do).
 
-- **Playoff export CSV end time is still start + a hardcoded 90 minutes — REDO
-  the parked fix with a narrow division read.** Branch
-  `fix/playoff-export-duration` (`b131bb4`, 2026-10-05, never pushed, no sign
-  of review; left UNMERGED by the founder's decision 2026-10-08) fixes it, but
-  by embedding `division:divisions(settings)` on the export's read — the whole
-  settings blob, coach metadata in `teams[]` included, once per game row,
-  which the "Schedule page — the ONE shared games query" section forbids. It
-  also falls back to 90 silently when a division has no duration. Redo: read
-  only `game_duration:settings->game_duration` (the projected key), resolve
-  with `planSettingsFromDivision`, and SAY when the duration was defaulted
-  (or render a start-only end). Keep its harness idea (sim:playoff-bracket
-  part X + a mutant back to 90). Then delete the old branch.
+- **The parked branch `fix/playoff-export-duration` (`b131bb4`) is superseded**
+  by the export fix on `feat/two-stage-playoffs` (2026-10-20: projected key,
+  blank end when unset, `sim:two-stage-screens` E1–E3 + mutants SX1–SX3).
+  Delete it once that branch is merged — with Whit's OK.
 
 - **0106's UTC-today mutant (MU3) is owed a run** between 00:00 and 10:00 UTC
   (5pm–3am Pacific) against the APPLIED function, rolled back. If it survives,

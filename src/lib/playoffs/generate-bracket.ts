@@ -50,6 +50,41 @@ export type BracketPreflight =
 
 type Supa = ReturnType<typeof createClient>;
 
+/** The chosen fields with their hours, for the planner. Shared with the
+ *  two-stage planner (two-stage-io.ts) — one read, one fallback rule. */
+export async function loadPlanVenues(
+  supabase: Supa,
+  venueIds: string[],
+): Promise<{ venues: PlanVenue[]; warnings: string[] }> {
+  const warnings: string[] = [];
+  const venues: PlanVenue[] = [];
+  if (venueIds.length === 0) return { venues, warnings };
+  const { data: venueRows, error: venueErr } = await supabase
+    .from("venues")
+    .select("id, name, availability")
+    .in("id", venueIds);
+  const byId = new Map(
+    ((venueRows ?? []) as { id: string; name: string; availability: unknown }[]).map((v) => [v.id, v]),
+  );
+  if (venueErr) {
+    warnings.push(
+      "Couldn't read the fields' hours, so playoff times were not checked against them. Check each field's hours on the Venues page.",
+    );
+  }
+  for (const id of venueIds) {
+    const row = byId.get(id);
+    venues.push({
+      id,
+      name: row?.name ?? "Field",
+      // A venue missing from the read passes through unfiltered — the
+      // wizard only offers configured venues, so missing means the fetch
+      // failed, and blocking every slot would be worse.
+      availability: row ? parseAvailability(row.availability) : null,
+    });
+  }
+  return { venues, warnings };
+}
+
 type LoadedInputs =
   | { ok: true; input: PlanInput; extraWarnings: string[] }
   | { ok: false; error: string };
@@ -90,34 +125,9 @@ async function loadPlanInputs(
   const divRow = div as { name: string; settings: unknown };
   const settings = planSettingsFromDivision(divRow.settings);
 
-  const extraWarnings: string[] = [];
-  const venueIds = data.venue_assignments.map((v) => v.venue_id);
-  const venues: PlanVenue[] = [];
-  if (venueIds.length > 0) {
-    const { data: venueRows, error: venueErr } = await supabase
-      .from("venues")
-      .select("id, name, availability")
-      .in("id", venueIds);
-    const byId = new Map(
-      ((venueRows ?? []) as { id: string; name: string; availability: unknown }[]).map((v) => [v.id, v]),
-    );
-    if (venueErr) {
-      extraWarnings.push(
-        "Couldn't read the fields' hours, so playoff times were not checked against them. Check each field's hours on the Venues page.",
-      );
-    }
-    for (const id of venueIds) {
-      const row = byId.get(id);
-      venues.push({
-        id,
-        name: row?.name ?? "Field",
-        // A venue missing from the read passes through unfiltered — the
-        // wizard only offers configured venues, so missing means the fetch
-        // failed, and blocking every slot would be worse.
-        availability: row ? parseAvailability(row.availability) : null,
-      });
-    }
-  }
+  const loadedVenues = await loadPlanVenues(supabase, data.venue_assignments.map((v) => v.venue_id));
+  const venues = loadedVenues.venues;
+  const extraWarnings = loadedVenues.warnings;
 
   return {
     ok: true,
@@ -137,6 +147,7 @@ async function loadPlanInputs(
       },
       settings,
       divisionName: divRow.name || data.division_name,
+      gamesPerTeamPerDay: data.games_per_team_per_day ?? 1,
     },
   };
 }

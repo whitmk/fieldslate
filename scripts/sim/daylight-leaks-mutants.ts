@@ -21,7 +21,7 @@ const MUTANTS: Mutant[] = [
     // latest body of each token function, so a mutant in a superseded file
     // proves nothing (LK3 pointed at 0105 and survived once 0112 redefined
     // the reader — found 2026-10-20). Move it with every new definition.
-    id: "LK3", what: "(0112) the public reader emits a field's lights", file: "supabase/migrations/0112_feed_cutoff_last_day.sql",
+    id: "LK3", what: "(0113) the public reader emits a field's lights", file: "supabase/migrations/0113_two_stage_playoffs.sql",
     find: "                     'status',              g.status,",
     replace: "                     'status',              g.status, 'has_lights', v.has_lights,",
     expect: "D1",

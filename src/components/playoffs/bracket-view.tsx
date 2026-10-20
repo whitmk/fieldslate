@@ -38,6 +38,11 @@ interface Props {
   format: string;
   /** The playoff's playing days — the edit modal's "doesn't play on …" notice. */
   playingDays: string[];
+  /** Two-stage Stage 2: show each seeded team's seed number beside its name. */
+  showSeeds?: boolean;
+  /** Called after a result or a game's time is saved, so a parent (the
+   *  two-stage card) can reload what depends on it. */
+  onChanged?: () => void;
 }
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
@@ -472,7 +477,7 @@ function ColumnView({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function BracketView({ playoffId, leagueId, divisionId, divisionName, format, playingDays }: Props) {
+export function BracketView({ playoffId, leagueId, divisionId, divisionName, format, playingDays, showSeeds, onChanged }: Props) {
   const [games, setGames] = useState<GameWithTeams[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"bracket" | "list">("list");
@@ -530,8 +535,13 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
         })
       : null;
 
-  const labelOf: LabelOf = (g, side) =>
-    slotName(side === "home" ? g.home_team_name : g.away_team_name, g, side, games, format);
+  const labelOf: LabelOf = (g, side) => {
+    // Two-stage Stage 2: a seeded team reads "4 · Mets".
+    const seed = side === "home" ? g.seed_home : g.seed_away;
+    const team = side === "home" ? g.home_team_name : g.away_team_name;
+    if (showSeeds && team && seed != null) return `${seed} · ${team}`;
+    return slotName(side === "home" ? g.home_team_name : g.away_team_name, g, side, games, format);
+  };
 
   if (loading) {
     return (
@@ -653,6 +663,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
             setEditingGame(null);
             setLoading(true);
             await loadGames();
+            onChanged?.();
           }}
         />
       )}
@@ -667,6 +678,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
             setActiveGame(null);
             setLoading(true);
             await loadGames();
+            onChanged?.();
           }}
         />
       )}

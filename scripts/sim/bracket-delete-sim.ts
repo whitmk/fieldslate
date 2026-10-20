@@ -229,7 +229,11 @@ section("L", () => {
   const s = settingsPayload(data) as Record<string, unknown>;
   ok(!("division_id" in s) && !("division_name" in s) && !("cross_division_opponent_name" in s), "[L1]", `settings carry: ${Object.keys(s).join(", ")}`);
   ok(s.cross_division_opponent_id === null && s.end_date === null && s.start_date === "2026-11-07", "[L2]", JSON.stringify(s));
-  ok(JSON.stringify(Object.keys(s).sort()) === JSON.stringify(["cross_division_enabled", "cross_division_opponent_id", "day_windows", "end_date", "format", "playing_days", "seeding", "start_date", "venue_assignments"]), "[L2]", Object.keys(s).join(","));
+  // 0113 (2026-10-20): + games_per_team_per_day, the round robin's daily
+  // limit. The wizard-only two-stage fields (two_stage, advance_count,
+  // stage2) must never reach a plain bracket's row.
+  ok(JSON.stringify(Object.keys(s).sort()) === JSON.stringify(["cross_division_enabled", "cross_division_opponent_id", "day_windows", "end_date", "format", "games_per_team_per_day", "playing_days", "seeding", "start_date", "venue_assignments"]), "[L2]", Object.keys(s).join(","));
+  ok(settingsPayload({ ...data, games_per_team_per_day: 2 }).games_per_team_per_day === 2, "[L2]", "the daily limit dropped");
   const cross = settingsPayload({ ...data, cross_division_enabled: true }) as Record<string, unknown>;
   ok(cross.cross_division_opponent_id === "d2", "[L2]", "an enabled opponent dropped");
   const g: GameInsert = { playoff_id: "p", league_id: "l", division_id: "d", round: "R1", game_number: 2, home_team_id: "t1", away_team_id: "t2", venue_id: "v", scheduled_date: "2026-11-07", start_time: "09:00", status: "scheduled" };

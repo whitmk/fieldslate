@@ -695,6 +695,13 @@ export type Database = {
           status: string
           updated_at: string
           venue_assignments: Json
+          stage: number
+          parent_playoff_id: string | null
+          advance_count: number | null
+          games_per_team_per_day: number
+          seeded_at: string | null
+          seeded_by: string | null
+          stage1_changed_at: string | null
         }
         Insert: {
           created_at?: string
@@ -712,6 +719,13 @@ export type Database = {
           status?: string
           updated_at?: string
           venue_assignments?: Json
+          stage?: number
+          parent_playoff_id?: string | null
+          advance_count?: number | null
+          games_per_team_per_day?: number
+          seeded_at?: string | null
+          seeded_by?: string | null
+          stage1_changed_at?: string | null
         }
         Update: {
           created_at?: string
@@ -729,6 +743,13 @@ export type Database = {
           status?: string
           updated_at?: string
           venue_assignments?: Json
+          stage?: number
+          parent_playoff_id?: string | null
+          advance_count?: number | null
+          games_per_team_per_day?: number
+          seeded_at?: string | null
+          seeded_by?: string | null
+          stage1_changed_at?: string | null
         }
         Relationships: [
           {
@@ -773,6 +794,9 @@ export type Database = {
           updated_at: string
           venue_id: string | null
           winner_id: string | null
+          seed_home: number | null
+          seed_away: number | null
+          pool: string | null
         }
         Insert: {
           away_score?: number | null
@@ -792,6 +816,9 @@ export type Database = {
           updated_at?: string
           venue_id?: string | null
           winner_id?: string | null
+          seed_home?: number | null
+          seed_away?: number | null
+          pool?: string | null
         }
         Update: {
           away_score?: number | null
@@ -811,6 +838,9 @@ export type Database = {
           updated_at?: string
           venue_id?: string | null
           winner_id?: string | null
+          seed_home?: number | null
+          seed_away?: number | null
+          pool?: string | null
         }
         Relationships: [
           {

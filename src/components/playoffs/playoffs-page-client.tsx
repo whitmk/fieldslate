@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Medal, Plus, Pencil, ChevronDown, ChevronUp, Trophy, FileDown, Trash2, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
-import { PlayoffWizard } from "@/components/playoffs/playoff-wizard";
+import { PlayoffWizard, type TwoStageEdit } from "@/components/playoffs/playoff-wizard";
+import { TwoStageCard } from "@/components/playoffs/two-stage-card";
 import { BracketView } from "@/components/playoffs/bracket-view";
 import { PlayoffExportModal } from "@/components/playoffs/playoff-export-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -18,6 +19,7 @@ import {
   type DayWindowMap,
   type VenueAssignment,
   type SeededTeam,
+  type GamesPerDay,
 } from "@/components/playoffs/playoff-wizard-types";
 
 type League = { id: string; name: string; sport: string };
@@ -37,6 +39,14 @@ type PlayoffRow = {
   cross_division_enabled: boolean;
   cross_division_opponent_id: string | null;
   division: { id: string; name: string } | null;
+  // 0113 — two-stage playoffs.
+  stage: number;
+  parent_playoff_id: string | null;
+  advance_count: number | null;
+  games_per_team_per_day: number | null;
+  seeded_at: string | null;
+  seeded_by: string | null;
+  stage1_changed_at: string | null;
 };
 
 const FORMAT_LABELS: Record<PlayoffFormat, string> = {
@@ -57,18 +67,39 @@ const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
 };
 
-function rowToWizardData(row: PlayoffRow): PlayoffWizardData {
+const perDay = (n: number | null | undefined): GamesPerDay => (n === 2 ? 2 : 1);
+
+const sameVenueSet = (a: VenueAssignment[], b: VenueAssignment[]) =>
+  a.length === b.length && a.map((v) => v.venue_id).sort().join() === b.map((v) => v.venue_id).sort().join();
+
+/** A saved bracket → the wizard's data. With `stage2`, a two-stage pair:
+ *  Stage 1's row fills the top level, Stage 2's row fills `stage2`. */
+function rowToWizardData(row: PlayoffRow, stage2: PlayoffRow | null): PlayoffWizardData {
   return {
     division_id: row.division_id,
     division_name: row.division?.name ?? "",
     format: row.format,
+    two_stage: !!stage2,
+    advance_count: stage2?.advance_count ?? DEFAULT_PLAYOFF_DATA.advance_count,
     seeding: row.seeding ?? [],
     excluded: [],
     start_date: row.start_date ?? "",
     end_date: row.end_date ?? "",
     playing_days: row.playing_days ?? [],
     day_windows: row.day_windows ?? {},
+    games_per_team_per_day: perDay(row.games_per_team_per_day),
     venue_assignments: row.venue_assignments ?? [],
+    stage2: stage2
+      ? {
+          start_date: stage2.start_date ?? "",
+          end_date: stage2.end_date ?? "",
+          playing_days: stage2.playing_days ?? [],
+          day_windows: stage2.day_windows ?? {},
+          venue_assignments: stage2.venue_assignments ?? [],
+          games_per_team_per_day: perDay(stage2.games_per_team_per_day),
+          same_fields: sameVenueSet(row.venue_assignments ?? [], stage2.venue_assignments ?? []),
+        }
+      : { ...DEFAULT_PLAYOFF_DATA.stage2 },
     cross_division_enabled: row.cross_division_enabled ?? false,
     cross_division_opponent_id: row.cross_division_opponent_id ?? "",
     cross_division_opponent_name: "",
@@ -96,6 +127,7 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
   const [wizardLeague, setWizardLeague] = useState<League | null>(null);
   const [editData, setEditData] = useState<PlayoffWizardData | undefined>(undefined);
   const [editPlayoffId, setEditPlayoffId] = useState<string | null>(null);
+  const [twoStageEdit, setTwoStageEdit] = useState<TwoStageEdit | null>(null);
   // Delete: the card's button runs the PREVIEW first; the confirm opens with
   // its counts (null = couldn't count, never zero) and stays open on a
   // refusal, showing why.
@@ -106,6 +138,7 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
   const [notice, setNotice] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [exportingPlayoff, setExportingPlayoff] = useState<PlayoffRow | null>(null);
+  const [exportingStage2, setExportingStage2] = useState<PlayoffRow | null>(null);
 
   const seasonId = season?.id ?? null;
 
@@ -121,6 +154,8 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
           `id, league_id, division_id, format, status, start_date, end_date,
            seeding, playing_days, day_windows, venue_assignments,
            cross_division_enabled, cross_division_opponent_id,
+           stage, parent_playoff_id, advance_count, games_per_team_per_day,
+           seeded_at, seeded_by, stage1_changed_at,
            division:divisions!playoffs_division_id_fkey(id, name)`
         )
         .eq("league_id", seasonId)
@@ -144,15 +179,31 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
     setWizardLeague(league);
     setEditData(undefined);
     setEditPlayoffId(null);
+    setTwoStageEdit(null);
     setWizardOpen(true);
   }
 
   function openEditWizard(league: League, row: PlayoffRow) {
     setWizardLeague(league);
-    setEditData(rowToWizardData(row));
+    setEditData(rowToWizardData(row, null));
     setEditPlayoffId(row.id);
+    setTwoStageEdit(null);
     setWizardOpen(true);
   }
+
+  function openEditPair(league: League, stage1: PlayoffRow, stage2: PlayoffRow, stage1HasResults: boolean) {
+    setWizardLeague(league);
+    setEditData(rowToWizardData(stage1, stage2));
+    setEditPlayoffId(stage1.id);
+    setTwoStageEdit({ stage1Id: stage1.id, stage2Id: stage2.id, stage1HasResults });
+    setWizardOpen(true);
+  }
+
+  // A Stage 2 row belongs to its Stage 1's card; it never gets a card of its own.
+  const stage2ByParent = new Map(
+    playoffs.filter((p) => p.parent_playoff_id).map((p) => [p.parent_playoff_id as string, p]),
+  );
+  const cardRows = playoffs.filter((p) => !p.parent_playoff_id);
 
   function handleWizardComplete() {
     setWizardOpen(false);
@@ -267,7 +318,7 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
         /* ── Bracket cards, grouped by league ── */
         <div className="flex flex-col gap-8">
           {leagues.map((league) => {
-            const leaguePlayoffs = playoffs.filter((p) => p.league_id === league.id);
+            const leaguePlayoffs = cardRows.filter((p) => p.league_id === league.id);
             if (leaguePlayoffs.length === 0) return null;
 
             return (
@@ -295,6 +346,23 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
                 {/* Cards */}
                 <div className="flex flex-col gap-3">
                   {leaguePlayoffs.map((playoff) => {
+                    const pairStage2 = stage2ByParent.get(playoff.id);
+                    if (pairStage2) {
+                      return (
+                        <TwoStageCard
+                          key={playoff.id}
+                          stage1={playoff}
+                          stage2={pairStage2}
+                          counting={counting === playoff.id}
+                          onEdit={(hasResults) => openEditPair(league, playoff, pairStage2, hasResults)}
+                          onDelete={() => startDelete(playoff)}
+                          onExport={() => {
+                            setExportingStage2(pairStage2);
+                            setExportingPlayoff(playoff);
+                          }}
+                        />
+                      );
+                    }
                     const isExpanded = expandedId === playoff.id;
                     const hasGames = playoff.status !== "draft";
 
@@ -350,7 +418,10 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
                             )}
                             {hasGames && (
                               <button
-                                onClick={() => setExportingPlayoff(playoff)}
+                                onClick={() => {
+                                setExportingStage2(null);
+                                setExportingPlayoff(playoff);
+                              }}
                                 className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-800"
                                 aria-label="Export bracket"
                               >
@@ -412,6 +483,7 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
           initialData={editData ?? { ...DEFAULT_PLAYOFF_DATA }}
           isEditMode={!!editData}
           playoffId={editData ? editPlayoffId : null}
+          twoStageEdit={editData ? twoStageEdit : null}
           currentOrgId={currentOrgId}
           onClose={handleWizardClose}
           onComplete={handleWizardComplete}
@@ -419,7 +491,11 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
       )}
 
       {deleting && (() => {
-        const c = deleteConfirm(deleting.playoff.division?.name ?? "division", deleting.counts);
+        const c = deleteConfirm(
+          deleting.playoff.division?.name ?? "division",
+          deleting.counts,
+          stage2ByParent.has(deleting.playoff.id),
+        );
         return (
           <ConfirmDialog
             title={c.title}
@@ -455,7 +531,11 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
           divisionName={exportingPlayoff.division?.name ?? ""}
           leagueName={leagues.find((l) => l.id === exportingPlayoff.league_id)?.name ?? ""}
           format={exportingPlayoff.format}
-          onClose={() => setExportingPlayoff(null)}
+          stage2Id={exportingStage2?.id ?? null}
+          onClose={() => {
+            setExportingPlayoff(null);
+            setExportingStage2(null);
+          }}
         />
       )}
     </div>

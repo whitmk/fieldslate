@@ -10,6 +10,7 @@ import type { PlayoffWizardData, PlayingDay, DayWindowMap } from "../playoff-wiz
 import {
   toggleDayWithWindows, type WindowStash,
 } from "@/lib/divisions/day-window-toggle";
+import { GamesPerDayControl, RR_PER_DAY_HINT } from "./games-per-day-control";
 
 interface Props {
   data: PlayoffWizardData;
@@ -247,6 +248,14 @@ export function StepDates({ data, update, windowStash, onWindowStashChange }: Pr
           })}
         </div>
       </div>
+
+      {data.format === "round_robin" && (
+        <GamesPerDayControl
+          value={data.games_per_team_per_day}
+          onChange={(v) => update({ games_per_team_per_day: v })}
+          hint={RR_PER_DAY_HINT}
+        />
+      )}
     </div>
   );
 }

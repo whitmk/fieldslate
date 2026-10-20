@@ -10,7 +10,8 @@
 // substring, never parsed as an instant (house rule, game-time.ts).
 
 import type { GameRow } from "@/lib/playoffs/advancement";
-import { emptySlotLabel } from "@/lib/playoffs/bracket-labels";
+import { emptySlotLabel, type SeedSlots } from "@/lib/playoffs/bracket-labels";
+import { rrGameLabel } from "@/lib/playoffs/two-stage";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   gameStatusDisplay,
@@ -138,13 +139,15 @@ export function openSlotLabel(
   side: "home" | "away",
   bracket: PublicPlayoffGame[],
 ): string {
-  const asRow = (g: PublicPlayoffGame): GameRow => ({
+  const asRow = (g: PublicPlayoffGame): GameRow & SeedSlots => ({
     id: g.id,
     round: g.round,
     game_number: g.game_number,
     home_team_id: g.home_team?.id ?? null,
     away_team_id: g.away_team?.id ?? null,
     winner_id: null,
+    seed_home: g.seed_home ?? null,
+    seed_away: g.seed_away ?? null,
   });
   return emptySlotLabel(asRow(game), side, bracket.map(asRow), game.format);
 }
@@ -189,6 +192,18 @@ export function buildRows(season: PublicSeason): ScheduleRow[] {
     });
   }
 
+  // A division with a Stage 2 bracket is a two-stage setup ("Round robin,
+  // then bracket"): its labels name the stage, and its round-robin games read
+  // "RR Game N" so "Game N" always means the bracket (approved mockup, 12).
+  const twoStageDivisions = new Set(
+    season.playoff_games.filter((p) => p.stage === 2).map((p) => p.division_id),
+  );
+  const playoffLabelOf = (p: PublicPlayoffGame): string => {
+    if (p.stage === 2) return `Playoffs · Bracket · ${playoffRoundName(p.round)} · Game ${p.game_number}`;
+    if (twoStageDivisions.has(p.division_id)) return `Playoffs · Round robin · ${rrGameLabel(p.game_number)}`;
+    return `Playoffs · ${playoffRoundName(p.round)} · Game ${p.game_number}`;
+  };
+
   const brackets = new Map<string, PublicPlayoffGame[]>();
   for (const p of season.playoff_games) {
     if (!brackets.has(p.playoff_id)) brackets.set(p.playoff_id, []);
@@ -217,7 +232,7 @@ export function buildRows(season: PublicSeason): ScheduleRow[] {
       fieldLabel: field.label,
       address: field.address,
       interleague: false,
-      playoffLabel: `Playoffs · ${playoffRoundName(p.round)} · Game ${p.game_number}`,
+      playoffLabel: playoffLabelOf(p),
       struck: status.struck,
       statusLabel: status.label,
       statusIsNote: status.note,

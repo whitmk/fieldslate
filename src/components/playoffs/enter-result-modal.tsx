@@ -17,9 +17,13 @@ interface Props {
   format: string;
   onClose: () => void;
   onSaved: () => void;
+  /** Replaces "Enter Result" (two-stage round-robin games: "RR Game 19 · Mets vs Royals"). */
+  title?: string;
+  /** An amber note above the scores (two-stage: Stage 2 is already seeded). */
+  notice?: string | null;
 }
 
-export function EnterResultModal({ game, allGames, format, onClose, onSaved }: Props) {
+export function EnterResultModal({ game, allGames, format, onClose, onSaved, title, notice }: Props) {
   const [homeScore, setHomeScore] = useState(
     game.home_score != null ? String(game.home_score) : "",
   );
@@ -32,6 +36,8 @@ export function EnterResultModal({ game, allGames, format, onClose, onSaved }: P
   const isChampionship = CHAMPIONSHIP_ROUNDS.has(game.round);
   const isDone = game.status === "completed";
   const saveBlocked = saveBlockedReason(game.home_team_id, game.away_team_id);
+  const homeLabel = slotName(game.home_team_name, game, "home", allGames, format);
+  const awayLabel = slotName(game.away_team_name, game, "away", allGames, format);
 
   // Clear result: preview first (clear_playoff_result writes nothing), then
   // the shared confirm. A refusal or failure keeps the confirm open with the
@@ -89,7 +95,7 @@ export function EnterResultModal({ game, allGames, format, onClose, onSaved }: P
           {/* Header */}
           <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
             <div>
-              <p className="text-sm font-semibold text-[#0C1F3F]">Enter Result</p>
+              <p className="text-sm font-semibold text-[#0C1F3F]">{title ?? "Enter Result"}</p>
               {isChampionship && (
                 <p className="text-xs font-medium text-amber-500">Championship Game</p>
               )}
@@ -101,8 +107,17 @@ export function EnterResultModal({ game, allGames, format, onClose, onSaved }: P
 
           {/* Score inputs */}
           <div className="space-y-3 px-5 py-5">
-            <ScoreRow label={slotName(game.home_team_name, game, "home", allGames, format)} value={homeScore} onChange={setHomeScore} />
-            <ScoreRow label={slotName(game.away_team_name, game, "away", allGames, format)} value={awayScore} onChange={setAwayScore} />
+            {notice && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{notice}</p>
+            )}
+            <ScoreRow label={homeLabel} value={homeScore} onChange={setHomeScore} />
+            <ScoreRow label={awayLabel} value={awayScore} onChange={setAwayScore} />
+            {title && isDone && game.home_score != null && game.away_score != null && (
+              <p className="text-xs text-gray-500">
+                Was {homeLabel} {game.home_score}, {awayLabel} {game.away_score}.
+                Every game needs a winner — a tied score can&apos;t be saved.
+              </p>
+            )}
             {saveBlocked && <p className="text-xs text-gray-500">{saveBlocked}</p>}
             {error && <p className="text-xs text-red-500">{error}</p>}
             {isDone && clearOffered(format) && (

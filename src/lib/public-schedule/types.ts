@@ -45,6 +45,11 @@ export type PublicPlayoffGame = {
   home_team: { id: string; name: string } | null;
   away_team: { id: string; name: string } | null;
   venue: PublicVenue;
+  /** 0113, two-stage playoffs: 1 or 2, and the seed numbers on a Stage 2 slot
+   *  waiting for seeding. Absent from a reader older than 0113. */
+  stage?: number;
+  seed_home?: number | null;
+  seed_away?: number | null;
 };
 
 export type PublicDivision = { id: string; name: string; game_duration: unknown };

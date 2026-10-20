@@ -18,12 +18,33 @@ export type SeededTeam = {
   team_name: string;
 };
 
+/** A per-team daily limit: no team plays more than this many games in a day
+ *  (round robin, and both stages of a two-stage setup). */
+export type GamesPerDay = 1 | 2;
+
+/** Stage 2 of a two-stage setup ("Round robin, then bracket"): its own dates,
+ *  days, windows, fields and daily limit. Stage 1 uses the top-level fields. */
+export type Stage2WizardData = {
+  start_date: string;
+  end_date: string;
+  playing_days: PlayingDay[];
+  day_windows: DayWindowMap;
+  venue_assignments: VenueAssignment[];
+  games_per_team_per_day: GamesPerDay;
+  /** On by default: Stage 2 plays on Stage 1's fields. Wizard state only. */
+  same_fields: boolean;
+};
+
 export type PlayoffWizardData = {
   // Step 1 — Division
   division_id: string;
   division_name: string;
-  // Step 2 — Format
+  // Step 2 — Format. "Round robin, then bracket" is `format: "round_robin"`
+  // with `two_stage: true`: Stage 1 is that round robin, Stage 2 a
+  // single-elimination bracket for the top `advance_count` (0113).
   format: PlayoffFormat;
+  two_stage: boolean;
+  advance_count: number;
   // Step 3 — Seeding (ordered array; index 0 = seed 1)
   seeding: SeededTeam[];
   // Teams removed from THIS bracket in the Seeding step. Wizard state only:
@@ -35,8 +56,12 @@ export type PlayoffWizardData = {
   end_date: string;
   playing_days: PlayingDay[];
   day_windows: DayWindowMap;
+  /** Round robin (plain, or Stage 1): games per team per day. */
+  games_per_team_per_day: GamesPerDay;
   // Step 5 — Venues
   venue_assignments: VenueAssignment[];
+  /** Two-stage only. */
+  stage2: Stage2WizardData;
   // Step 6 — Cross-division championship
   cross_division_enabled: boolean;
   cross_division_opponent_id: string;
@@ -47,6 +72,8 @@ export const DEFAULT_PLAYOFF_DATA: PlayoffWizardData = {
   division_id: "",
   division_name: "",
   format: "single_elimination",
+  two_stage: false,
+  advance_count: 4,
   seeding: [],
   excluded: [],
   start_date: "",
@@ -56,7 +83,20 @@ export const DEFAULT_PLAYOFF_DATA: PlayoffWizardData = {
     Sa: { start: "09:00", end: "17:00" },
     Su: { start: "09:00", end: "17:00" },
   },
+  games_per_team_per_day: 1,
   venue_assignments: [],
+  stage2: {
+    start_date: "",
+    end_date: "",
+    playing_days: ["Sa", "Su"],
+    day_windows: {
+      Sa: { start: "09:00", end: "17:00" },
+      Su: { start: "09:00", end: "17:00" },
+    },
+    venue_assignments: [],
+    games_per_team_per_day: 1,
+    same_fields: true,
+  },
   cross_division_enabled: false,
   cross_division_opponent_id: "",
   cross_division_opponent_name: "",

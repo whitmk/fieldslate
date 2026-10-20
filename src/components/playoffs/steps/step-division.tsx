@@ -128,6 +128,7 @@ export function StepDivision({ data, update, leagueId, isEditMode }: Props) {
                   // every team removed from the bracket back in (Edit setup
                   // opens with its own division selected).
                   if (div.id === data.division_id) return;
+                  const days = playoffDefaultsFromDivision(div.settings, DEFAULT_PLAYOFF_DATA);
                   update({
                     division_id: div.id,
                     division_name: div.name,
@@ -136,8 +137,9 @@ export function StepDivision({ data, update, leagueId, isEditMode }: Props) {
                     // The Dates step starts from the division's OWN playing
                     // days and windows (a Saturday-only division should not
                     // start from the wizard's Sa+Su 9–5 default). Still
-                    // editable there.
-                    ...playoffDefaultsFromDivision(div.settings, DEFAULT_PLAYOFF_DATA),
+                    // editable there. A two-stage Stage 2 starts the same.
+                    ...days,
+                    stage2: { ...data.stage2, playing_days: [...days.playing_days], day_windows: { ...days.day_windows } },
                   });
                 }}
                 className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${

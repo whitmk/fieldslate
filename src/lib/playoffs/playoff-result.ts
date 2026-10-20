@@ -9,6 +9,8 @@
 // back committed FOR THE GAME THAT WAS ASKED ABOUT; anything else says nothing
 // was saved.
 
+import { stage2StartedRefusal } from "@/lib/playoffs/two-stage";
+
 export const NOTHING = "Nothing was saved.";
 
 // ─── Which path a format takes ────────────────────────────────────────────────
@@ -119,6 +121,21 @@ export function nextGameBlockedMessage(next: NextGame | null, action: "clear" | 
   return `${gameLabel(next.gameNumber, next.round)} already has a result${score}. Clear that game's result first, ${then}.`;
 }
 
+/**
+ * A blocked reply → its sentence. Two reasons exist: the next bracket game has
+ * a result (0108), or — for a round-robin game of a two-stage setup — the
+ * bracket that follows has a result (0113, `next_stage_started`).
+ */
+export function blockedMessage(r: Record<string, unknown>, action: "clear" | "edit"): string {
+  if (r.reason === "next_stage_started") {
+    const n = typeof r.stage2_game_number === "number" ? r.stage2_game_number : null;
+    return n !== null
+      ? stage2StartedRefusal(n)
+      : "The bracket has started, so round-robin results can't be changed. Clear the bracket's results first, then change this one.";
+  }
+  return nextGameBlockedMessage(parseNextGame(r.next_game), action);
+}
+
 /** The browser path's (double elimination) blocked edit: clearing isn't
  *  offered there, so the way out is deleting the bracket. */
 export const DOUBLE_ELIM_EDIT_BLOCKED =
@@ -137,7 +154,7 @@ export function enterOutcome(
   if (error) return { ok: false, message: resultErrorMessage(error.message) };
   const r = (data ?? null) as Record<string, unknown> | null;
   if (r && r.blocked === true) {
-    return { ok: false, message: nextGameBlockedMessage(parseNextGame(r.next_game), "edit") };
+    return { ok: false, message: blockedMessage(r, "edit") };
   }
   if (!r || r.committed !== true || r.game_id !== gameId) return { ok: false, message: UNCONFIRMED };
   return { ok: true };
@@ -196,7 +213,7 @@ export function clearPreviewOutcome(
   if (error) return { ok: false, message: resultErrorMessage(error.message) };
   const r = (data ?? null) as Record<string, unknown> | null;
   if (r && r.blocked === true) {
-    return { ok: false, message: nextGameBlockedMessage(parseNextGame(r.next_game), "clear") };
+    return { ok: false, message: blockedMessage(r, "clear") };
   }
   const preview = parseClearReply(data, gameId);
   if (!r || r.committed !== false || !preview) {
@@ -214,7 +231,7 @@ export function clearCommitOutcome(
   if (error) return { ok: false, message: resultErrorMessage(error.message) };
   const r = (data ?? null) as Record<string, unknown> | null;
   if (r && r.blocked === true) {
-    return { ok: false, message: nextGameBlockedMessage(parseNextGame(r.next_game), "clear") };
+    return { ok: false, message: blockedMessage(r, "clear") };
   }
   if (!r || r.committed !== true || !parseClearReply(data, gameId)) return { ok: false, message: UNCONFIRMED };
   return { ok: true };

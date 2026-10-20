@@ -94,8 +94,12 @@ export const COULDNT_COUNT =
  * call's reply, or null when it failed — which renders "couldn't count",
  * never zero.
  */
-export function deleteConfirm(divisionName: string, counts: BracketCounts | null): DeleteConfirm {
-  const title = `Delete the ${divisionName} playoff bracket?`;
+export function deleteConfirm(divisionName: string, counts: BracketCounts | null, twoStage = false): DeleteConfirm {
+  // A two-stage setup is deleted whole (0113, decided 2026-10-19, D4): the
+  // counts already cover both stages; the title says so.
+  const title = twoStage
+    ? `Delete the ${divisionName} playoffs (round robin and bracket)?`
+    : `Delete the ${divisionName} playoff bracket?`;
   const last = "This can't be undone.";
   if (!counts) {
     return { title, lines: [COULDNT_COUNT, last], publicWarning: null };
@@ -110,7 +114,11 @@ export function deleteConfirm(divisionName: string, counts: BracketCounts | null
         : counts.datedGames === 0
           ? "none have dates yet"
           : `${counts.datedGames} with a date`;
-    lines.push(`This deletes the bracket and ${counts.games === 1 ? "its 1 game" : `all ${counts.games} of its games`} (${dated}).`);
+    lines.push(
+      twoStage
+        ? `This deletes both stages and ${counts.games === 1 ? "their 1 game" : `all ${counts.games} of their games`} (${dated}).`
+        : `This deletes the bracket and ${counts.games === 1 ? "its 1 game" : `all ${counts.games} of its games`} (${dated}).`,
+    );
   }
   if (counts.gamesWithResults > 0) {
     lines.push(
@@ -260,6 +268,9 @@ export function settingsPayload(data: PlayoffWizardData) {
     venue_assignments: data.venue_assignments,
     cross_division_enabled: data.cross_division_enabled,
     cross_division_opponent_id: cross ? data.cross_division_opponent_id : null,
+    // 0113: the round robin's per-team daily limit (the planner ignores it
+    // for elimination formats; the function stores it either way).
+    games_per_team_per_day: data.games_per_team_per_day ?? 1,
   };
 }
 

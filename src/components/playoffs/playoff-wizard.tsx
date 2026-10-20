@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { StepDivision } from "./steps/step-division";
 import { StepFormat } from "./steps/step-format";
@@ -9,6 +9,9 @@ import { StepDates } from "./steps/step-dates";
 import { StepVenues } from "./steps/step-venues";
 import { StepCrossDivision } from "./steps/step-cross-division";
 import { StepReview } from "./steps/step-review";
+import { StepTeams } from "./steps/step-teams";
+import { StepStageDates } from "./steps/step-stage-dates";
+import { StepTwoStageReview } from "./steps/step-two-stage-review";
 import type { PlayoffWizardData, PlayingDay } from "./playoff-wizard-types";
 import type { WindowStash } from "@/lib/divisions/day-window-toggle";
 
@@ -22,6 +25,21 @@ const STEPS = [
   { label: "Review" },
 ];
 
+// "Round robin, then bracket": no seed order (the bracket is seeded after the
+// round robin), one Dates & fields step for both stages, and no Cross-division
+// step (saved today but never used by the generator).
+const TWO_STAGE_STEPS = [
+  { label: "Division" },
+  { label: "Format" },
+  { label: "Teams" },
+  { label: "Dates & fields" },
+  { label: "Review" },
+];
+
+/** Editing an existing two-stage setup: both rows, and whether the round
+ *  robin has results (then only Stage 2's dates and fields can change). */
+export type TwoStageEdit = { stage1Id: string; stage2Id: string; stage1HasResults: boolean };
+
 interface Props {
   leagueId: string;
   leagueName: string;
@@ -29,6 +47,8 @@ interface Props {
   isEditMode: boolean;
   /** The bracket being edited; null when setting up a new one. */
   playoffId: string | null;
+  /** Set when editing a two-stage setup. */
+  twoStageEdit?: TwoStageEdit | null;
   currentOrgId: string;
   onClose: () => void;
   onComplete: () => void;
@@ -40,6 +60,7 @@ export function PlayoffWizard({
   initialData,
   isEditMode,
   playoffId,
+  twoStageEdit = null,
   currentOrgId,
   onClose,
   onComplete,
@@ -58,13 +79,57 @@ export function PlayoffWizard({
   // and same shared function as the division wizard — see
   // lib/divisions/day-window-toggle.ts.
   const [dayWindowStash, setDayWindowStash] = useState<WindowStash<PlayingDay>>({});
+  // Stage 2's own stash (two-stage only).
+  const [stage2Stash, setStage2Stash] = useState<WindowStash<PlayingDay>>({});
+  const existingPair = useMemo(
+    () => (twoStageEdit ? { stage1Id: twoStageEdit.stage1Id, stage2Id: twoStageEdit.stage2Id } : null),
+    [twoStageEdit],
+  );
 
   const step0Valid = data.division_id !== "";
   const canAdvance = step === 0 ? step0Valid : true;
 
+  const twoStage = data.two_stage;
+  const steps = twoStage ? TWO_STAGE_STEPS : STEPS;
+  const editingTwoStage = isEditMode ? !!twoStageEdit : null;
+
+  const twoStageContent = [
+    <StepDivision key="division" data={data} update={update} leagueId={leagueId} isEditMode={isEditMode} />,
+    <StepFormat key="format" data={data} update={update} editingTwoStage={editingTwoStage} />,
+    <StepTeams
+      key="teams"
+      data={data}
+      update={update}
+      lockedReason={
+        twoStageEdit?.stage1HasResults
+          ? "The round robin has results, so the team list and the number advancing can't change. Stage 2's dates, days and fields still can."
+          : null
+      }
+    />,
+    <StepStageDates
+      key="stage-dates"
+      data={data}
+      update={update}
+      currentOrgId={currentOrgId}
+      stash1={dayWindowStash}
+      stash2={stage2Stash}
+      onStash1Change={setDayWindowStash}
+      onStash2Change={setStage2Stash}
+    />,
+    <StepTwoStageReview
+      key="review"
+      data={data}
+      original={isEditMode ? initialData : null}
+      leagueId={leagueId}
+      existing={existingPair}
+      onEdit={setStep}
+      onComplete={onComplete}
+    />,
+  ];
+
   const stepContent = [
     <StepDivision key="division" data={data} update={update} leagueId={leagueId} isEditMode={isEditMode} />,
-    <StepFormat key="format" data={data} update={update} />,
+    <StepFormat key="format" data={data} update={update} editingTwoStage={editingTwoStage} />,
     <StepSeeding key="seeding" data={data} update={update} />,
     <StepDates
       key="dates"
@@ -78,7 +143,8 @@ export function PlayoffWizard({
     <StepReview key="review" data={data} leagueId={leagueId} playoffId={playoffId} onEdit={setStep} onComplete={onComplete} />,
   ];
 
-  const REVIEW_STEP = STEPS.length - 1;
+  const REVIEW_STEP = steps.length - 1;
+  const content = twoStage ? twoStageContent : stepContent;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
@@ -103,7 +169,7 @@ export function PlayoffWizard({
 
         {/* Step indicator */}
         <div className="flex flex-shrink-0 items-center gap-0.5 overflow-x-auto border-b border-gray-100 px-6 py-3">
-          {STEPS.map((s, i) => (
+          {steps.map((s, i) => (
             <div key={i} className="flex min-w-0 items-center gap-0.5">
               <button
                 onClick={() => (isEditMode || i < step) && setStep(i)}
@@ -140,7 +206,7 @@ export function PlayoffWizard({
               >
                 {s.label}
               </span>
-              {i < STEPS.length - 1 && (
+              {i < steps.length - 1 && (
                 <div
                   className={`mx-1 h-px w-4 flex-shrink-0 sm:w-5 ${
                     i < step ? "bg-[#22C55E]/40" : "bg-gray-200"
@@ -153,7 +219,7 @@ export function PlayoffWizard({
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
-          {stepContent[step]}
+          {content[Math.min(step, content.length - 1)]}
         </div>
 
         {/* Footer — hidden on review step (has its own CTA) */}
@@ -168,7 +234,7 @@ export function PlayoffWizard({
               Back
             </button>
             <span className="text-xs text-gray-400">
-              Step {step + 1} of {STEPS.length}
+              Step {step + 1} of {steps.length}
             </span>
             <button
               onClick={() => setStep((s) => s + 1)}

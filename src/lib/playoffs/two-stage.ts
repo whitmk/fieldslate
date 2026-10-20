@@ -34,7 +34,13 @@ import {
   type SlotGridInput,
 } from "@/lib/playoffs/bracket-plan";
 import { seedLabel, shortDate, shortTime } from "@/lib/playoffs/bracket-labels";
-import type { SeededTeam } from "@/components/playoffs/playoff-wizard-types";
+import type {
+  DayWindowMap,
+  PlayingDay,
+  PlayoffWizardData,
+  SeededTeam,
+  VenueAssignment,
+} from "@/components/playoffs/playoff-wizard-types";
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
@@ -323,9 +329,10 @@ export function stage1Pill(s: Stage1Status): string {
 }
 
 /** The line under the Stage 2 header. */
-export function stage2Line(s: Stage1Status): string {
+export function stage2Line(s: Stage1Status, advance?: number): string {
   if (s.kind === "done") {
-    return "The round robin is finished. Put the teams in seed order; the top teams go into the bracket.";
+    const top = advance === undefined ? "the top teams go" : `the top ${advance} go`;
+    return `The round robin is finished. Put the teams in seed order; ${top} into the bracket.`;
   }
   if (s.kind === "seed_anyway") {
     return `The round robin is over with ${plural(s.neverPlayed.length, "game", "games")} never played. ` +
@@ -486,4 +493,425 @@ export function stage1ChangedNote(input: {
  *  bracket has a result (decided 2026-10-19). */
 export function stage2StartedRefusal(firstResultGameNumber: number): string {
   return `The bracket has started (Game ${firstResultGameNumber} has a result), so round-robin results can't be changed. Clear the bracket's results first, then change this one.`;
+}
+
+// ─── The playoffs page: card, pills and lines ─────────────────────────────────
+
+/** The card's subtitle: "Round robin, then bracket · 7 teams · top 6 advance". */
+export function twoStageCardLine(teamCount: number, advance: number): string {
+  return `Round robin, then bracket · ${plural(teamCount, "team", "teams")} · top ${advance} advance`;
+}
+
+export type PillTone = "gray" | "green" | "amber";
+export type Pill = { text: string; tone: PillTone };
+
+/** The Stage 1 header's pill, with its tone. Locked once the bracket has a
+ *  result (decided 2026-10-19). */
+export function stage1HeaderPill(s: Stage1Status, bracketStarted: boolean): Pill {
+  if (bracketStarted) return { text: "Locked", tone: "gray" };
+  if (s.kind === "done") return { text: stage1Pill(s), tone: "green" };
+  if (s.kind === "seed_anyway") return { text: stage1Pill(s), tone: "amber" };
+  return { text: stage1Pill(s), tone: "gray" };
+}
+
+export type Stage2State = {
+  seeded: boolean;
+  /** A round-robin result changed after seeding and nobody has re-checked. */
+  recheck: boolean;
+  /** The lowest-numbered bracket game with a result, or null. */
+  firstResultGame: number | null;
+  status: Stage1Status;
+};
+
+/** The Stage 2 header's pill. */
+export function stage2HeaderPill(s: Stage2State): Pill {
+  if (s.firstResultGame !== null) return { text: "In progress", tone: "green" };
+  if (s.seeded && s.recheck) return { text: "Re-check seeds", tone: "amber" };
+  if (s.seeded) return { text: "Seeded", tone: "green" };
+  if (s.status.kind !== "in_progress") return { text: "Ready to seed", tone: "amber" };
+  return { text: "Not seeded", tone: "gray" };
+}
+
+/** The Stage 2 header's button: its label, and why it is off (null = on). */
+export function stage2Button(s: Stage2State): { label: string; disabledReason: string | null } {
+  if (s.seeded) {
+    return {
+      label: "Change seeds",
+      disabledReason: s.firstResultGame !== null ? "The bracket has started, so the seeds can't be changed." : null,
+    };
+  }
+  return {
+    label: seedButtonLabel(s.status),
+    disabledReason: seedButtonEnabled(s.status) ? null : stage2Line(s.status),
+  };
+}
+
+/** The line under Stage 1's header once the bracket has a result. */
+export function stage1LockedLine(firstResultGame: number): string {
+  return `The bracket has started (Game ${firstResultGame} has a result), so round-robin results can't be changed. To change one, clear the bracket's results first.`;
+}
+
+/** "Never played: RR Game 8 (Mets vs Giants, rained out Oct 25) and RR Game 17
+ *  (Lions vs Royals, Nov 7, no result). Enter a result if they were played;
+ *  otherwise records leave them out." */
+export function neverPlayedLine(neverPlayed: UnplayedGame[], teamName: (id: string | null) => string): string {
+  const items = neverPlayed.map(({ game, reason }) => {
+    const teams = `${teamName(game.home_team_id)} vs ${teamName(game.away_team_id)}`;
+    const date = game.scheduled_date ? monthDay(game.scheduled_date) : null;
+    const why =
+      reason === "rained_out" ? `rained out${date ? ` ${date}` : ""}`
+        : reason === "no_date" ? "no date"
+          : `${date ? `${date}, ` : ""}no result`;
+    return `${rrGameLabel(game.game_number)} (${teams}, ${why})`;
+  });
+  const them = neverPlayed.length === 1 ? "it" : "them";
+  return `Never played: ${joinList(items)}. Enter a result if ${neverPlayed.length === 1 ? "it was" : "they were"} played; otherwise records leave ${them} out.`;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "Oct 25" from "2026-10-25". String arithmetic only — no zone can shift it. */
+export function monthDay(iso: string): string {
+  const [, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return `${MONTHS[m - 1]} ${d}`;
+}
+
+/** "Seeded Nov 9 by Jenn M. · Not advancing: Giants" — `seededOn` is the
+ *  date in the league's timezone; a name that couldn't be read is left out. */
+export function seededLine(seededOn: string, byName: string | null, notAdvancing: string[]): string {
+  const who = byName ? ` by ${byName}` : "";
+  const out = notAdvancing.length ? ` · Not advancing: ${joinList(notAdvancing)}` : "";
+  return `Seeded ${monthDay(seededOn)}${who}${out}`;
+}
+
+/**
+ * The amber note on Stage 2 while a re-check is owed. The database keeps WHEN
+ * a round-robin result changed after seeding (`stage1_changed_at`), not the
+ * old score, so the note says what is known and points at the records, which
+ * are always current.
+ */
+export function stage1RecheckNote(changedOn: string): string {
+  return (
+    `A round-robin result changed after you seeded the bracket (${monthDay(changedOn)}). ` +
+    `The seeds didn't move. Check the records above and make sure the seeds still match your league's rules.`
+  );
+}
+
+export const RECHECK_KEPT = "Seeds are still right";
+
+/** Records' footnote on the Seed screen. */
+export function recordsFootnote(total: number, neverPlayed: number): string {
+  if (neverPlayed > 0) {
+    return `Records leave out ${plural(neverPlayed, "game that was", "games that were")} never played. Regular-season games aren't included.`;
+  }
+  return `Records count the ${plural(total, "round-robin game", "round-robin games")} only. Regular-season games aren't included.`;
+}
+
+/** The dashed line in the Seed list. */
+export function cutLine(advance: number): string {
+  return `↑ Top ${advance} advance · not advancing ↓`;
+}
+
+/** A stage's date range: "Oct 24 – Nov 8", or "Nov 14 – 22" within a month. */
+export function stageRange(start: string | null, end: string | null): string | null {
+  if (!start || !end) return null;
+  if (start === end) return monthDay(start);
+  if (start.slice(0, 7) === end.slice(0, 7)) return `${monthDay(start)} – ${Number(end.slice(8, 10))}`;
+  return `${monthDay(start)} – ${monthDay(end)}`;
+}
+
+// ─── The wizard's payloads ────────────────────────────────────────────────────
+
+export type StageSettings = {
+  format: "round_robin" | "single_elimination";
+  seeding: SeededTeam[];
+  start_date: string | null;
+  end_date: string | null;
+  playing_days: PlayingDay[];
+  day_windows: DayWindowMap;
+  venue_assignments: VenueAssignment[];
+  games_per_team_per_day: 1 | 2;
+  advance_count?: number;
+};
+
+/** Stage 2's fields: Stage 1's when "Same fields as Stage 1" is on. */
+export function stage2Venues(data: PlayoffWizardData): VenueAssignment[] {
+  return data.stage2.same_fields ? data.venue_assignments : data.stage2.venue_assignments;
+}
+
+/** What replace_two_stage_games writes for Stage 1 — the round robin of the
+ *  teams IN (the excluded ones are never sent). */
+export function stage1SettingsPayload(data: PlayoffWizardData, teamsIn: SeededTeam[]): StageSettings {
+  return {
+    format: "round_robin",
+    seeding: teamsIn,
+    start_date: data.start_date || null,
+    end_date: data.end_date || null,
+    playing_days: data.playing_days,
+    day_windows: data.day_windows,
+    venue_assignments: data.venue_assignments,
+    games_per_team_per_day: data.games_per_team_per_day,
+  };
+}
+
+/** What replace_two_stage_games writes for Stage 2: no teams, the advancing
+ *  count, its own dates and limit. */
+export function stage2SettingsPayload(data: PlayoffWizardData): StageSettings {
+  return {
+    format: "single_elimination",
+    seeding: [],
+    start_date: data.stage2.start_date || null,
+    end_date: data.stage2.end_date || null,
+    playing_days: data.stage2.playing_days,
+    day_windows: data.stage2.day_windows,
+    venue_assignments: stage2Venues(data),
+    games_per_team_per_day: data.stage2.games_per_team_per_day,
+    advance_count: data.advance_count,
+  };
+}
+
+/** Stage 2's planned games for the function: seeds, never teams. */
+export function stage2GamesPayload(games: Stage2Game[]) {
+  return games.map((g) => ({
+    round: g.round,
+    game_number: g.game_number,
+    home_team_id: null,
+    away_team_id: null,
+    seed_home: g.seed_home,
+    seed_away: g.seed_away,
+    venue_id: g.venue_id,
+    scheduled_date: g.scheduled_date,
+    start_time: g.start_time,
+  }));
+}
+
+/** Review's one-line summary per stage: "21 games · Oct 24 – Nov 8 · Sat, Sun". */
+export function stageReviewLine(games: number, start: string, end: string, days: string[]): string {
+  const range = stageRange(start || null, end || null) ?? "No dates";
+  const dayText = days.length ? days.map((d) => DAY_SHORT[d] ?? d).join(", ") : "No days";
+  return `${plural(games, "game", "games")} · ${range} · ${dayText}`;
+}
+
+const DAY_SHORT: Record<string, string> = {
+  Mo: "Mon", Tu: "Tue", We: "Wed", Th: "Thu", Fr: "Fri", Sa: "Sat", Su: "Sun",
+};
+
+/** "Top 6 · byes for seeds 1–2" */
+export function advancingReviewLine(advance: number): string {
+  const byes = stage2Byes(advance);
+  return `Top ${advance}${byes === 0 ? "" : byes === 1 ? " · a bye for seed 1" : ` · byes for seeds 1–${byes}`}`;
+}
+
+/** "1 game per team per day" */
+export function perDayLine(n: 1 | 2): string {
+  return `${n} game${n === 1 ? "" : "s"} per team per day`;
+}
+
+/** Review's note about Stage 2's placeholders. */
+export const STAGE2_PLACEHOLDER_NOTE =
+  "Stage 2 is set up with dates and fields now. Its teams read \"Seed 1\", \"Seed 4\"… until you seed it after the round robin.";
+
+// ─── replace_two_stage_games: the reply and its refusals ──────────────────────
+
+export type TwoStageCounts = {
+  rebuildStage1: boolean;
+  keepsSeeds: boolean;
+  stage1Games: number;
+  stage2Games: number;
+  newStage1Games: number;
+  newStage2Games: number;
+  publicGames: number;
+  publicGamesAfter: number;
+};
+
+function nonNeg(v: unknown): number | null {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null;
+}
+
+/** The reply's counts, or null if any is unreadable (never zeros). */
+export function parseTwoStageCounts(raw: unknown): TwoStageCounts | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const nums = [r.stage1_games, r.stage2_games, r.new_stage1_games, r.new_stage2_games, r.public_games, r.public_games_after].map(nonNeg);
+  if (nums.some((n) => n === null) || typeof r.rebuild_stage1 !== "boolean" || typeof r.keeps_seeds !== "boolean") {
+    return null;
+  }
+  const [stage1Games, stage2Games, newStage1Games, newStage2Games, publicGames, publicGamesAfter] = nums as number[];
+  return {
+    rebuildStage1: r.rebuild_stage1, keepsSeeds: r.keeps_seeds,
+    stage1Games, stage2Games, newStage1Games, newStage2Games, publicGames, publicGamesAfter,
+  };
+}
+
+const NOTHING_SAVED = "Nothing was saved.";
+
+/** A blocked two-stage reply → its sentence. */
+export function twoStageBlockedMessage(raw: unknown): string {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const reasons = Array.isArray(r.reasons) ? r.reasons : [];
+  if (reasons.includes("stage2_started")) {
+    const n = nonNeg(r.stage2_game_number);
+    return `${NOTHING_SAVED} The bracket has started${n !== null ? ` (Game ${n} has a result)` : ""}, so neither stage can be rebuilt. Clear the bracket's results first.`;
+  }
+  if (reasons.includes("results_entered")) {
+    const n = nonNeg(r.games_with_results);
+    return `${NOTHING_SAVED} The round robin has ${n !== null ? plural(n, "result", "results") : "results"} entered, so only Stage 2's dates, days and fields can change now.`;
+  }
+  return `${NOTHING_SAVED} This setup can't be rebuilt right now. Refresh the page and try again.`;
+}
+
+const TWO_STAGE_REFUSALS: Record<string, string> = {
+  stage_order: `${NOTHING_SAVED} Stage 2 has to start after Stage 1's last date.`,
+  not_a_pair: `${NOTHING_SAVED} These two stages don't belong together any more. Refresh the page.`,
+  two_stage_pair: `${NOTHING_SAVED} This bracket is part of a "round robin, then bracket" setup. Edit it from its card.`,
+  not_stage2: `${NOTHING_SAVED} This isn't a Stage 2 bracket. Refresh the page.`,
+  invalid_order: `${NOTHING_SAVED} The seed list doesn't match the round-robin teams. Refresh the page and try again.`,
+};
+
+/** Every refusal key 0113 adds — with the shared ones (bracketErrorMessage),
+ *  the sim pins this list against the migration file. */
+export const TWO_STAGE_REFUSAL_KEYS = Object.keys(TWO_STAGE_REFUSALS);
+
+/** A two-stage function error → its sentence; anything else falls through
+ *  to `fallback` (the shared bracket refusals). */
+export function twoStageErrorMessage(raw: string, fallback: (raw: string) => string): string {
+  for (const key of TWO_STAGE_REFUSAL_KEYS) {
+    if (raw.includes(key)) return TWO_STAGE_REFUSALS[key];
+  }
+  return fallback(raw);
+}
+
+/** What Review says about an EXISTING two-stage setup before Generate. */
+export function twoStageReviewLines(c: TwoStageCounts): string[] {
+  const lines: string[] = [];
+  if (!c.rebuildStage1) {
+    lines.push(
+      `The round robin has results, so only Stage 2 is rebuilt: its ${plural(c.stage2Games, "game", "games")} ` +
+        `${c.stage2Games === 1 ? "is" : "are"} replaced with ${plural(c.newStage2Games, "new game", "new games")}.` +
+        (c.keepsSeeds ? " The seeds you set are kept." : ""),
+    );
+  } else if (c.stage1Games + c.stage2Games > 0) {
+    lines.push(
+      `Generating replaces both stages' ${plural(c.stage1Games + c.stage2Games, "game", "games")} with ` +
+        `${plural(c.newStage1Games + c.newStage2Games, "new game", "new games")}.`,
+    );
+  }
+  return lines;
+}
+
+// ─── seed_playoff_stage: the reply and its refusals ───────────────────────────
+
+export type SeedReply = {
+  reseed: boolean;
+  advanceCount: number;
+  neverPlayed: { gameNumber: number; homeName: string | null; awayName: string | null; reason: "rained_out" | "no_date" | "past" }[];
+};
+
+/** A readable seed reply for THIS Stage 2, or null. */
+export function parseSeedReply(raw: unknown, stage2Id: string): SeedReply | null {
+  const r = (raw ?? null) as Record<string, unknown> | null;
+  if (!r || r.stage2_id !== stage2Id || typeof r.reseed !== "boolean") return null;
+  const adv = nonNeg(r.advance_count);
+  if (adv === null || !Array.isArray(r.never_played)) return null;
+  const never: SeedReply["neverPlayed"] = [];
+  for (const n of r.never_played as Record<string, unknown>[]) {
+    const gn = nonNeg(n?.game_number);
+    const reason = n?.reason;
+    if (gn === null || (reason !== "rained_out" && reason !== "no_date" && reason !== "past")) return null;
+    never.push({
+      gameNumber: gn,
+      homeName: typeof n.home_name === "string" ? n.home_name : null,
+      awayName: typeof n.away_name === "string" ? n.away_name : null,
+      reason,
+    });
+  }
+  return { reseed: r.reseed, advanceCount: adv, neverPlayed: never };
+}
+
+/** A blocked seed reply → its sentence. */
+export function seedBlockedMessage(raw: unknown): string {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  if (r.reason === "bracket_started") {
+    const n = nonNeg(r.stage2_game_number);
+    return `${NOTHING_SAVED} The bracket has started${n !== null ? ` (Game ${n} has a result)` : ""}, so the seeds can't be changed. Clear the bracket's results first.`;
+  }
+  if (r.reason === "stage1_in_progress") {
+    const n = nonNeg(r.upcoming);
+    return `${NOTHING_SAVED} The round robin isn't over yet${n !== null && n > 0 ? `: ${plural(n, "game is", "games are")} still to come` : ""}. Seed Stage 2 once every game has a result, or once the only ones left are rained out, undated or past.`;
+  }
+  return `${NOTHING_SAVED} Stage 2 can't be seeded right now. Refresh the page and try again.`;
+}
+
+export type SeedOutcome = { ok: true; reply: SeedReply } | { ok: false; message: string };
+
+/** A seed preview (`commit` false) or commit (`commit` true) → success only
+ *  when the reply is readable, for this Stage 2, and committed as asked. */
+export function seedOutcome(
+  data: unknown,
+  error: { message: string } | null,
+  stage2Id: string,
+  commit: boolean,
+  errorMessage: (raw: string) => string,
+): SeedOutcome {
+  if (error) return { ok: false, message: errorMessage(error.message) };
+  const r = (data ?? null) as Record<string, unknown> | null;
+  if (r && r.blocked === true) return { ok: false, message: seedBlockedMessage(r) };
+  const reply = parseSeedReply(data, stage2Id);
+  if (!r || r.committed !== commit || !reply) {
+    return {
+      ok: false,
+      message: commit
+        ? `${NOTHING_SAVED} The save didn't confirm. Refresh the page to see what's there.`
+        : "Couldn't check the seeds before saving. Nothing was changed. Try again.",
+    };
+  }
+  return { ok: true, reply };
+}
+
+/** The public schedule line on the seed confirm. */
+export function seedPublicLine(publicStage2Games: number): string | null {
+  if (publicStage2Games <= 0) return null;
+  return `${plural(publicStage2Games, "bracket game is", "bracket games are")} on the public schedule. Families will see team names instead of seeds within a minute.`;
+}
+
+// ─── Review: when everything fits ─────────────────────────────────────────────
+
+/** "all 21 games fit (28 slots)." — only when nothing is TBD. */
+export function stage1FitLine(gameCount: number, slotCount: number): string {
+  return `all ${plural(gameCount, "game", "games")} ${gameCount === 1 ? "fits" : "fit"} (${plural(slotCount, "slot", "slots")}).`;
+}
+
+const STAGE2_ROUND_WORDS: Record<string, string> = { F: "final", SF: "semifinals" };
+
+/** "all 5 games fit — round 1 Sat 11/14, semifinals Sun 11/15, final Sat 11/21."
+ *  Each round named once, at its first dated game. */
+export function stage2FitLine(games: Stage2Game[]): string {
+  const firstByRound = new Map<string, string>();
+  for (const g of [...games].sort((a, b) => a.game_number - b.game_number)) {
+    if (!g.scheduled_date) continue;
+    const cur = firstByRound.get(g.round);
+    if (!cur || g.scheduled_date < cur) firstByRound.set(g.round, g.scheduled_date);
+  }
+  const order = (r: string) => (r === "F" ? 1000 : r === "SF" ? 999 : Number(r.replace(/\D/g, "")) || 0);
+  const parts = [...firstByRound.entries()]
+    .sort(([a], [b]) => order(a) - order(b))
+    .map(([round, date]) => `${STAGE2_ROUND_WORDS[round] ?? `round ${round.replace(/\D/g, "")}`} ${shortDate(date)}`);
+  const head = `all ${plural(games.length, "game", "games")} ${games.length === 1 ? "fits" : "fit"}`;
+  return parts.length ? `${head} — ${parts.join(", ")}.` : `${head}.`;
+}
+
+/** Review's refusal in a Stage-2-only rebuild when the team list or the
+ *  advancing count was changed (decided 2026-10-19, D5/D6). */
+export const STAGE1_LOCKED_SETUP =
+  "The round robin has results, so the team list and the number advancing can't change. Put them back as they were, or clear the round robin's results first.";
+
+/** The success screen's public line, from the commit's counts. */
+export function twoStagePublicLine(publicGamesAfter: number): string | null {
+  if (publicGamesAfter <= 0) return null;
+  return `${plural(publicGamesAfter, "of these games is", "of these games are")} now on your public schedule.`;
+}
+
+/** "7 (Cubs left out)" */
+export function teamsReviewLine(teamCount: number, leftOut: string[]): string {
+  return leftOut.length ? `${teamCount} (${joinList(leftOut)} left out)` : String(teamCount);
 }
