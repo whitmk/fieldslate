@@ -26,6 +26,10 @@ export type PlayoffWizardData = {
   format: PlayoffFormat;
   // Step 3 — Seeding (ordered array; index 0 = seed 1)
   seeding: SeededTeam[];
+  // Teams removed from THIS bracket in the Seeding step. Wizard state only:
+  // never saved (settingsPayload leaves it out) — an existing bracket's
+  // excluded teams are re-derived from the division (lib/playoffs/seeding.ts).
+  excluded: SeededTeam[];
   // Step 4 — Dates & time windows
   start_date: string;
   end_date: string;
@@ -44,6 +48,7 @@ export const DEFAULT_PLAYOFF_DATA: PlayoffWizardData = {
   division_name: "",
   format: "single_elimination",
   seeding: [],
+  excluded: [],
   start_date: "",
   end_date: "",
   playing_days: ["Sa", "Su"],

@@ -63,6 +63,7 @@ function rowToWizardData(row: PlayoffRow): PlayoffWizardData {
     division_name: row.division?.name ?? "",
     format: row.format,
     seeding: row.seeding ?? [],
+    excluded: [],
     start_date: row.start_date ?? "",
     end_date: row.end_date ?? "",
     playing_days: row.playing_days ?? [],

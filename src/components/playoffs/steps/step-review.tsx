@@ -270,6 +270,12 @@ export function StepReview({ data, leagueId, playoffId, onEdit, onComplete }: Pr
               : "None (will use team order)"
           }
         />
+        {data.excluded.length > 0 && (
+          <Row
+            label="Not in bracket"
+            value={data.excluded.map((t) => t.team_name).join(", ")}
+          />
+        )}
       </ReviewSection>
 
       <ReviewSection title="Schedule" onEdit={() => onEdit(3)}>

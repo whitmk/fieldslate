@@ -692,6 +692,29 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   mutants applied to the real source, each required to die FIRST at its own
   assertion). Read the sim's header before touching any of this.
 
+## Removing a team from a bracket (branch `feat/playoff-exclude-team`, 2026-10-19)
+
+- **The Seeding step lets an admin leave a team out of THIS bracket** (a team
+  that opted out): Remove on each row, removed teams greyed below under "Not in
+  this bracket" with Add back (a team added back is the LOWEST seed). At least 2
+  stay in. Same step in Edit setup, which is still refused while any result
+  exists (0107). Nothing touches the team, its games or another bracket.
+- **All rules: `src/lib/playoffs/seeding.ts` (pure).** `playoffs.seeding` holds
+  the INCLUDED teams only; exclusion is NOT stored — Edit setup re-derives it as
+  the division's teams that aren't in the seeding (`reconcileSeeding`), so a
+  team added to the division after setup shows as removed, with Add back.
+  `PlayoffWizardData.excluded` is wizard state only; `settingsPayload` never
+  sends it. `generate-bracket.ts` plans from `planSeeds(seeding, excluded)` and
+  refuses with `teamCountProblem` (double elimination's 2/4/8/16/32 counts the
+  teams IN the bracket). Byes, "Winner of Game N", print, public page and feeds
+  need nothing: they read `playoff_games`, which only ever holds included teams.
+- **Step 1 no longer resets on re-picking the chosen division** — it used to
+  wipe the seeding, which in Edit setup put every removed team back silently.
+- **Harness: `npm run sim:playoff-exclude`** (55 checks × 3 zones, 6 counters;
+  all three formats end to end, labels equal to a native bracket of the same
+  size) + `:mutants` (11, each killed first at its own assertion; EX9–EX11 are
+  source greps — weak by nature). No migration.
+
 ## Printable playoff bracket + slot labels (2026-10-13)
 
 - **ONE RULE for where a winner goes: `singleElimTarget` (advancement.ts).**

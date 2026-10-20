@@ -10,8 +10,8 @@
 import { createClient } from "@/lib/supabase/client";
 import type { PlayoffWizardData, SeededTeam } from "@/components/playoffs/playoff-wizard-types";
 import { parseAvailability } from "@/lib/venues/availability";
+import { planSeeds, teamCountProblem } from "@/lib/playoffs/seeding";
 import {
-  DOUBLE_ELIM_SUPPORTED_COUNTS,
   planBracket,
   planSettingsFromDivision,
   type BracketPlan,
@@ -60,8 +60,10 @@ async function loadPlanInputs(
   leagueId: string,
   data: PlayoffWizardData,
 ): Promise<LoadedInputs> {
-  let seeds: SeededTeam[] = data.seeding;
-  if (!seeds.length) {
+  // The INCLUDED teams only (lib/playoffs/seeding.ts): a team removed in the
+  // Seeding step is never handed to the planner, so it can't reach a game.
+  let seeds: SeededTeam[] = planSeeds(data.seeding, data.excluded);
+  if (!seeds.length && !data.excluded.length) {
     const { data: teams, error } = await supabase
       .from("teams")
       .select("id, name")
@@ -71,21 +73,8 @@ async function loadPlanInputs(
     seeds = (teams ?? []).map((t) => ({ team_id: t.id, team_name: t.name }));
   }
 
-  if (seeds.length < 2) {
-    return { ok: false, error: "Need at least 2 teams to generate a bracket." };
-  }
-
-  if (
-    data.format === "double_elimination" &&
-    !DOUBLE_ELIM_SUPPORTED_COUNTS.includes(seeds.length)
-  ) {
-    return {
-      ok: false,
-      error:
-        `Double elimination needs exactly 2, 4, 8, 16, or 32 teams — this division has ${seeds.length}. ` +
-        `Adjust the division's teams or pick a different format (bye rounds aren't supported for double elimination yet).`,
-    };
-  }
+  const countProblem = teamCountProblem(data.format, seeds.length);
+  if (countProblem) return { ok: false, error: countProblem };
 
   // Spacing comes from the division: duration + buffer. A missing setting is
   // defaulted AND reported (bracket-plan's planSettingsFromDivision), never
