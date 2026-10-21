@@ -149,3 +149,6 @@ end $h$;
 --   default-privileges backlog item); BASELINE pass; MU1 KILLED at A2 (the
 --   NO ACTION FK fires), MU2 KILLED at A1, MU3 KILLED at A4 — first run.
 --   Leak check: 0 / 0, live md5 still 0082's cfcaec7b… (0115 NOT applied).
+-- 2026-10-21 04:08 UTC — 0115 APPLIED verbatim (catalog 20261021040826);
+--   md5(prosrc) ac83c7547bf926f85e8fd1ad0e590782 verified live; privileges
+--   unchanged per role; leak check clean.

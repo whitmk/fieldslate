@@ -282,9 +282,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   role; PUBLIC, service_role and dashboard_readonly false); the 6 existing
   brackets and 21 games byte-identical apart from the new columns, all at
   their defaults; leak check clean. See "Two-stage playoffs".
-- **0115 (division delete clears cross-division) is WRITTEN AND PROVEN, NOT
-  APPLIED** (branch `feat/hide-cross-div-step`, 2026-10-20). See "Division
-  deletion".
+- **0115 (division delete clears cross-division) APPLIED 2026-10-21 04:08
+  UTC, catalog `20261021040826`**, verbatim from the repo file on Whit's go,
+  after its first-run-green rolled-back proof (3/3 mutants). md5(prosrc)
+  `ac83c7547bf926f85e8fd1ad0e590782` verified, one overload, SECURITY DEFINER
+  `search_path=public`; EXECUTE unchanged (authenticated true; anon,
+  service_role, PUBLIC false; dashboard_readonly true as before — the backlog
+  item); leak check clean, no bracket has a cross-division setting. See
+  "Division deletion".
 - **0114 (playoff series) APPLIED 2026-10-20 22:38 UTC, catalog
   `20261020223859`**, verbatim from the repo file on Whit's go (after the
   Safari print check), following its rolled-back proof (24/24) and the
@@ -1468,8 +1473,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Deletion order is load-bearing:** games → teams → division. `games`→`teams`
   FKs are NO ACTION and `teams.division_id` is SET NULL, so deleting the
   division alone ORPHANS its teams rather than removing them.
-- **0115 (WRITTEN AND PROVEN, NOT APPLIED, 2026-10-20) removes the block
-  below:** a bracket naming the division as its cross-division opponent no
+- **0115 (APPLIED 2026-10-21) removed the block below:** a bracket naming the division as its cross-division opponent no
   longer refuses the delete — that setting does nothing and its wizard step is
   hidden, so nothing could clear it. The function instead sets
   `cross_division_enabled = false`, `cross_division_opponent_id = null` on
@@ -1479,11 +1483,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   0082; expected md5(prosrc) `ac83c7547bf926f85e8fd1ad0e590782`; privileges
   unchanged (authenticated; dashboard_readonly as before). Proof:
   `scripts/sim/division-delete-cross-sim.sql` (+ build script; rolled back,
-  "test" org; 3 mutants, first run green — read its RUN LOG). No table lock to
-  apply; no deploy order. After it is applied, the
-  `cross_division_playoff_opponent` sentence in `division-section.tsx` is
+  "test" org; 3 mutants, first run green — read its RUN LOG). The
+  `cross_division_playoff_opponent` sentence in `division-section.tsx` is now
   unreachable (left in place).
-- **Until 0115 is applied — exactly one block condition:** `playoffs.cross_division_opponent_id` →
+- **Before 0115 (history) — exactly one block condition:** `playoffs.cross_division_opponent_id` →
   `divisions` is NO ACTION, so a division named as ANOTHER division's
   cross-division playoff opponent would raise a raw FK error. It is counted
   explicitly and blocks with a named reason (house rule from 0078: a guard
