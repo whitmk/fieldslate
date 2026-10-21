@@ -696,8 +696,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     counts. `teamHint` matches lowercased + trimmed and gives NO hint when the
     season has two divisions with that name (2 such seasons existed live on
     2026-10-21). `newPlanInput` keeps a new plan inside INPUT_LIMITS (≤ 40
-    divisions, names cut to 60 code points, counts capped at 60) so the first
-    save can't be refused. No season with teams → an empty planner.
+    divisions, names cut to 60 code points, counts capped at 60 — every cap
+    read from INPUT_LIMITS, never retyped; mutant RU13 retypes 30) so the
+    first save can't be refused, and returns what it changed
+    (`adjustments`: dropped / shortened / capped) for the planner's one-line
+    note, `prefillAdjustedLine` — a trim is never silent. No season with
+    teams → an empty planner.
   - `request.ts` — `litLine` / `planRequestText`: the module's `requestText`
     unchanged, plus "On lit fields: Majors." for divisions that are lit AND
     counted (`divisionIsActive`, the same set as the module's "Based on");
@@ -705,8 +709,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   - `words.ts` — EVERY app-only sentence, rendered verbatim. Outside the
     calculator module; imports neither `src/lib/daylight` nor
     `sun/sunset` (sim:daylight-leaks S1; checked again by the rules sim W3).
-  - **Harness:** `npm run sim:practice-plan-rules` (40 checks × 3 zones) +
-    `:mutants` (11, each killed at its own assertion).
+  - **Harness:** `npm run sim:practice-plan-rules` (44 checks × 3 zones) +
+    `:mutants` (13, each killed at its own assertion).
 
 ## Daylight flags (admin-only, branch `feat/daylight-flags`, 2026-10-14)
 

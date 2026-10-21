@@ -84,19 +84,34 @@ export function teamHint(prefill: Prefill, name: string): { count: number; seaso
 /** Code points, as Postgres counts characters. */
 const cut = (s: string, max: number) => Array.from(s).slice(0, max).join("");
 
+/** What newPlanInput had to change to fit a plan's limits — shown, never silent. */
+export type PrefillAdjustments = {
+  /** Divisions left out past the plan's limit. */
+  dropped: number;
+  /** Names cut to the limit. */
+  shortened: number;
+  /** Team counts lowered to the limit. */
+  capped: number;
+};
+
 /**
  * A new plan's input: no dates yet, one row per prefilled division with the
  * calculator's NEW_DIVISION defaults for everything but the name and team
- * count. Kept inside INPUT_LIMITS so the first save can't be refused: at most
- * 40 divisions, names cut to 60 characters, counts capped at 60.
+ * count. Kept inside INPUT_LIMITS (the limits 0117 checks) so the first save
+ * can't be refused, and every change made to fit is counted in
+ * `adjustments` for the planner's note (prefillAdjustedLine).
  */
-export function newPlanInput(prefill: Prefill): PlanInput {
-  const divisions: PlanDivision[] = prefill.divisions.slice(0, INPUT_LIMITS.divisions.max).map((d, i) => ({
-    ...NEW_DIVISION,
-    days: [...NEW_DIVISION.days],
-    name: cut(d.name, INPUT_LIMITS.divisionName.maxChars),
-    teams: Math.min(Math.max(0, Math.trunc(d.teams)), INPUT_LIMITS.teams.max),
-    id: `d${i + 1}`,
-  }));
-  return { seasonStart: "", seasonEnd: "", minutesBetween: 0, divisions };
+export function newPlanInput(prefill: Prefill): { input: PlanInput; adjustments: PrefillAdjustments } {
+  const L = INPUT_LIMITS;
+  const kept = prefill.divisions.slice(0, L.divisions.max);
+  const adjustments: PrefillAdjustments = { dropped: prefill.divisions.length - kept.length, shortened: 0, capped: 0 };
+  const divisions: PlanDivision[] = kept.map((d, i) => {
+    const name = cut(d.name, L.divisionName.maxChars);
+    if (name !== d.name) adjustments.shortened++;
+    const count = Math.max(0, Math.trunc(d.teams));
+    const teams = Math.min(count, L.teams.max);
+    if (teams !== count) adjustments.capped++;
+    return { ...NEW_DIVISION, days: [...NEW_DIVISION.days], name, teams, id: `d${i + 1}` };
+  });
+  return { input: { seasonStart: "", seasonEnd: "", minutesBetween: 0, divisions }, adjustments };
 }

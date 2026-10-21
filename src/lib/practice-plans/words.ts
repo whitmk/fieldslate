@@ -39,6 +39,22 @@ export function noTeamsLine(name: string, seasonName: string | null): string {
     : "Not counted until you enter teams.";
 }
 
+/**
+ * The planner's one-line note when New plan had to change the prefill to fit
+ * a plan's limits; null when it changed nothing.
+ */
+export function prefillAdjustedLine(
+  seasonName: string,
+  a: { dropped: number; shortened: number; capped: number },
+  limits: { divisions: number; nameChars: number; teams: number },
+): string | null {
+  const parts: string[] = [];
+  if (a.dropped) parts.push(`${a.dropped} ${a.dropped === 1 ? "division" : "divisions"} left out (a plan holds ${limits.divisions})`);
+  if (a.shortened) parts.push(`${a.shortened} ${a.shortened === 1 ? "name" : "names"} shortened to ${limits.nameChars} characters`);
+  if (a.capped) parts.push(`${a.capped} team ${a.capped === 1 ? "count" : "counts"} lowered to ${limits.teams}`);
+  return parts.length ? `From ${seasonName}: ${parts.join("; ")}.` : null;
+}
+
 /** Beside a division switched to lit fields. */
 export function litDivisionNote(name: string): string {
   return `No daylight warnings for ${name.trim() || "this division"}.`;

@@ -54,9 +54,21 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "RU8", what: "a new plan's team count not capped", file: PREFILL,
-    find: "    teams: Math.min(Math.max(0, Math.trunc(d.teams)), INPUT_LIMITS.teams.max),",
-    replace: "    teams: d.teams,",
+    find: "    const teams = Math.min(count, L.teams.max);",
+    replace: "    const teams = d.teams;",
     expect: "N2",
+  },
+  {
+    id: "RU12", what: "a new plan's long name not cut", file: PREFILL,
+    find: "    const name = cut(d.name, L.divisionName.maxChars);",
+    replace: "    const name = d.name;",
+    expect: "N2b",
+  },
+  {
+    id: "RU13", what: "the division cap retyped as 30 instead of read from INPUT_LIMITS", file: PREFILL,
+    find: "  const kept = prefill.divisions.slice(0, L.divisions.max);",
+    replace: "  const kept = prefill.divisions.slice(0, 30);",
+    expect: "N2c",
   },
   {
     id: "RU9", what: "a lit division with no teams is named", file: REQUEST,

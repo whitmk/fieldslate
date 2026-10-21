@@ -12,7 +12,9 @@
 //       archived counts, newest created breaks a tie  ← RU3 (P1), RU4 (P2),
 //       RU5 (P3), RU6 (P4)
 //   H   the "6 in Fall 2026" hint; none for a duplicated name ← RU7 (H2)
-//   N   a new plan's input passes the save check, inside every limit ← RU8 (N2)
+//   N   a new plan's input passes the save check, inside every limit,
+//       each change counted for the planner's note ← RU8 (N2), RU12 (N2b),
+//       RU13 (N2c)
 //   T   the lit-fields line and the city request text ← RU10 (T2), RU9 (T3),
 //       RU11 (T4)
 //   W   words, verbatim, and the daylight-leaks fence (source reads)
@@ -27,7 +29,7 @@ import { computeMode, fieldTypesInUse } from "@/lib/practice-planner/plan";
 import { computePlan, requestText } from "@/lib/practice-planner/report";
 import { cityById } from "@/lib/sun/us-cities";
 import { loadPlan, upgradePlanInput, type PlanInput, type PlanRow } from "@/lib/practice-plans/load";
-import { PLAN_INPUT_VERSION, practicePlanInputProblem } from "@/lib/practice-plans/plan-input";
+import { INPUT_LIMITS, PLAN_INPUT_VERSION, practicePlanInputProblem } from "@/lib/practice-plans/plan-input";
 import { newPlanInput, pickPrefill, teamHint, type PrefillRow } from "@/lib/practice-plans/prefill";
 import { litLine, planRequestText } from "@/lib/practice-plans/request";
 import {
@@ -36,6 +38,7 @@ import {
   litFieldsLine,
   newPlanSource,
   noTeamsLine,
+  prefillAdjustedLine,
   staleSaveLine,
   teamHintLine,
 } from "@/lib/practice-plans/words";
@@ -183,24 +186,40 @@ section("H", () => {
 
 // ── N: a new plan's input ───────────────────────────────────────────────
 section("N", () => {
+  const L = INPUT_LIMITS;
   // N1: prefilled rows take NEW_DIVISION's defaults, ids d1.., no dates — and
-  // pass the save check.
-  const n1 = newPlanInput({ season: { id: "s", name: "Fall 2026" }, divisions: [{ name: "Majors", teams: 6 }, { name: "Minors", teams: 8 }] });
+  // pass the save check; nothing adjusted.
+  const { input: n1, adjustments: a1 } = newPlanInput({ season: { id: "s", name: "Fall 2026" }, divisions: [{ name: "Majors", teams: 6 }, { name: "Minors", teams: 8 }] });
   ok(practicePlanInputProblem(n1) === null && n1.seasonStart === "" && n1.seasonEnd === "" && n1.minutesBetween === 0 &&
     n1.divisions.length === 2 && n1.divisions[1].name === "Minors" && n1.divisions[1].teams === 8 && n1.divisions[1].id === "d2" &&
     n1.divisions[0].lengthMin === NEW_DIVISION.lengthMin && n1.divisions[0].fieldType === NEW_DIVISION.fieldType &&
-    n1.divisions[0].days !== NEW_DIVISION.days,
+    n1.divisions[0].days !== NEW_DIVISION.days && a1.dropped === 0 && a1.shortened === 0 && a1.capped === 0,
     "[N1] a new plan from the prefill", JSON.stringify(n1).slice(0, 200));
-  // N2: kept inside the limits — 70 teams → 60, a 65-character name cut to
-  // 60 characters (code points), 41 divisions → 40. (RU8, no cap on teams:
-  // the save check refuses it.)
-  const name65 = "⚾".repeat(65);
-  const n2 = newPlanInput({ season: { id: "s", name: "Fall 2026" }, divisions: [{ name: name65, teams: 70 }, ...Array.from({ length: 40 }, (_, i) => ({ name: `D${i}`, teams: 2 }))] });
-  ok(practicePlanInputProblem(n2) === null && n2.divisions[0].teams === 60 && Array.from(n2.divisions[0].name).length === 60 && n2.divisions.length === 40,
-    "[N2] a new plan stays inside every limit", `${practicePlanInputProblem(n2)} ${n2.divisions[0].teams} ${n2.divisions.length}`);
+  // One prefill over every limit: a 70-team division, a 65-character name
+  // (code points), 41 divisions in all — read from INPUT_LIMITS (40/60/60,
+  // the limits 0117 checks).
+  const over = { season: { id: "s", name: "Fall 2026" }, divisions: [{ name: "⚾".repeat(65), teams: 70 }, ...Array.from({ length: 40 }, (_, i) => ({ name: `D${i}`, teams: 2 }))] };
+  const { input: n2, adjustments: a2 } = newPlanInput(over);
+  // N2: the count capped at the limit and counted. (RU8, no cap: 70.)
+  ok(n2.divisions[0].teams === L.teams.max && a2.capped === 1, "[N2] a team count over the limit is capped and counted",
+    `${n2.divisions[0].teams}, capped ${a2.capped}`);
+  // N2b: the name cut at the limit and counted. (RU12, no cut: 65.)
+  ok(Array.from(n2.divisions[0].name).length === L.divisionName.maxChars && a2.shortened === 1, "[N2b] a long name is cut and counted",
+    `${Array.from(n2.divisions[0].name).length}, shortened ${a2.shortened}`);
+  // N2c: divisions past the limit left out and counted — the limit is
+  // INPUT_LIMITS', never a retyped number. (RU13, a retyped 30: 30 kept.)
+  ok(n2.divisions.length === L.divisions.max && a2.dropped === 1, "[N2c] divisions past the limit are left out and counted",
+    `${n2.divisions.length}, dropped ${a2.dropped}`);
+  ok(practicePlanInputProblem(n2) === null, "[N2d] the adjusted plan passes the save check", String(practicePlanInputProblem(n2)));
   // N3: no prefill → an empty planner that still saves.
-  const n3 = newPlanInput({ season: null, divisions: [] });
+  const { input: n3 } = newPlanInput({ season: null, divisions: [] });
   ok(n3.divisions.length === 0 && practicePlanInputProblem(n3) === null, "[N3] an empty plan saves");
+  // N4: the note says exactly what changed; nothing changed → no note.
+  const lim = { divisions: L.divisions.max, nameChars: L.divisionName.maxChars, teams: L.teams.max };
+  ok(prefillAdjustedLine("Fall 2026", a2, lim) === "From Fall 2026: 1 division left out (a plan holds 40); 1 name shortened to 60 characters; 1 team count lowered to 60." &&
+    prefillAdjustedLine("Fall 2026", { dropped: 3, shortened: 0, capped: 2 }, lim) === "From Fall 2026: 3 divisions left out (a plan holds 40); 2 team counts lowered to 60." &&
+    prefillAdjustedLine("Fall 2026", a1, lim) === null,
+    "[N4] the prefill note", String(prefillAdjustedLine("Fall 2026", a2, lim)));
 });
 
 // ── T: the lit-fields line and the city request ─────────────────────────
@@ -271,3 +290,7 @@ process.exit(failures ? 1 : 0);
 // harness, before any mutant ran: a null stored input read as "unknown
 // version", because upgradePlanInput used null for both "can't upgrade" and
 // the input itself — it now returns { input } | null.
+// 2026-10-21, caps made visible (Whit): newPlanInput returns its adjustments
+// (dropped / shortened / capped) for prefillAdjustedLine; N2 split into N2,
+// N2b, N2c so each cap has its own line. New: RU12 (name not cut) → N2b,
+// RU13 (division cap retyped as 30) → N2c.
