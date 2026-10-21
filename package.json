@@ -103,6 +103,8 @@
     "sim:practice-planner:mutants": "npx tsx scripts/sim/practice-planner-mutants.ts",
     "sim:practice-plan-input": "TZ=UTC npx tsx scripts/sim/practice-plan-input-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/practice-plan-input-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/practice-plan-input-sim.ts",
     "sim:practice-plan-input:mutants": "npx tsx scripts/sim/practice-plan-input-mutants.ts",
+    "sim:practice-plan-rules": "TZ=UTC npx tsx scripts/sim/practice-plan-rules-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/practice-plan-rules-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/practice-plan-rules-sim.ts",
+    "sim:practice-plan-rules:mutants": "npx tsx scripts/sim/practice-plan-rules-mutants.ts",
     "sim:daylight": "TZ=UTC npx tsx scripts/sim/daylight-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/daylight-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/daylight-sim.ts",
     "sim:daylight:mutants": "npx tsx scripts/sim/daylight-mutants.ts",
     "sim:daylight-leaks": "npx tsx scripts/sim/daylight-leaks-sim.ts",

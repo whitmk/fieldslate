@@ -683,6 +683,30 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `profiles` for the run (three FKs). 14 mutants. Read its RUN LOG.
 - **Harness:** `npm run sim:practice-plan-input` (177 checks × 3 zones) +
   `:mutants` (5, each killed at its own assertion).
+- **App rules (step 4, pure TypeScript, `src/lib/practice-plans/`):**
+  - `load.ts` — `loadPlan(row)`: `upgradePlanInput` (keyed steps from older
+    versions; none yet — version 1 only), then the SAME input check as the
+    database, then the mode. Any failure is `CANT_OPEN_PLAN`, never a throw
+    and never a half-read plan. A version newer than this code is "can't
+    open". When the input gains a field: bump `PLAN_INPUT_VERSION`, add the
+    step, widen 0117's check in a migration, and add case-table rows.
+  - `prefill.ts` — `pickPrefill(rows)`: the most recent season WITH at least
+    one team (latest start_date, undated after dated, then newest created,
+    then id; archived counts), its divisions oldest first with live `teams`
+    counts. `teamHint` matches lowercased + trimmed and gives NO hint when the
+    season has two divisions with that name (2 such seasons existed live on
+    2026-10-21). `newPlanInput` keeps a new plan inside INPUT_LIMITS (≤ 40
+    divisions, names cut to 60 code points, counts capped at 60) so the first
+    save can't be refused. No season with teams → an empty planner.
+  - `request.ts` — `litLine` / `planRequestText`: the module's `requestText`
+    unchanged, plus "On lit fields: Majors." for divisions that are lit AND
+    counted (`divisionIsActive`, the same set as the module's "Based on");
+    no line when none is. The print uses the same `litLine`.
+  - `words.ts` — EVERY app-only sentence, rendered verbatim. Outside the
+    calculator module; imports neither `src/lib/daylight` nor
+    `sun/sunset` (sim:daylight-leaks S1; checked again by the rules sim W3).
+  - **Harness:** `npm run sim:practice-plan-rules` (40 checks × 3 zones) +
+    `:mutants` (11, each killed at its own assertion).
 
 ## Daylight flags (admin-only, branch `feat/daylight-flags`, 2026-10-14)
 
