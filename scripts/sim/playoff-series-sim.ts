@@ -112,6 +112,8 @@ import { daylightFlag } from "../../src/lib/daylight/flags";
 import { cityById } from "../../src/lib/sun/us-cities";
 import { outboundMatchup, roundsFromTeamsLine, seriesPrintLine, seriesRoundHeader } from "../../src/lib/playoffs/series";
 import { doubleElim, roundRobin, seriesMockup, seriesSixteen, singleElim } from "./bracket-print-fixtures";
+import { DEFAULT_PLAYOFF_DATA, type PlayoffWizardData } from "../../src/components/playoffs/playoff-wizard-types";
+import { reconcileSeeding } from "../../src/lib/playoffs/seeding";
 
 const failures: string[] = [];
 let checks = 0;
@@ -157,6 +159,8 @@ const counters = {
   teamCountsListed: 0,
   /** FN13: the real 3-team best-of-3 Final played to a champion. */
   threeTeamFinalsPlayed: 0,
+  /** WZ: the Add-bracket flow reached Dates with every seeded team counted. */
+  wizardFlowCounted: 0,
 };
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -1246,6 +1250,55 @@ section("FN the last round is the Final", () => {
   ok(modal.includes("roundName: (round) => playoffRoundTitle(round, allGames)") && modal.includes("isFinalRound(game.round, allGames)"), "FN11", "the result modal names rounds by the bracket");
   const pub = readFileSync("src/lib/public-schedule/view.ts", "utf8");
   ok(pub.includes("${bracketRoundName(p.round, seriesRows("), "FN11", "the public row label uses bracketRoundName");
+});
+
+// ─── WZ: Whit's exact flow — Add bracket, 3 teams, Seeding untouched ────────
+// Reported 2026-10-20: the Seeding step listed Braves, Mariners, Mets ("1 bye
+// in round 1 (seed 1)") and the Dates step's "Games in each round" showed one
+// row. Clicked through the REAL wizard on a scratch route (REST faked) on the
+// deployed commit and this branch: the control received 3 every time (also
+// with Continue before the teams loaded, Back/Next and a format switch), so no
+// cause was found in code. This pins the flow: the wizard's data at each step,
+// through the real reconcile and round rules, and the wiring each step uses.
+
+section("WZ the Add-bracket flow counts every seeded team", () => {
+  const teams3 = [
+    { team_id: "tb", team_name: "Braves" },
+    { team_id: "tm", team_name: "Mariners" },
+    { team_id: "tz", team_name: "Mets" },
+  ];
+  let data: PlayoffWizardData = { ...DEFAULT_PLAYOFF_DATA };
+  const update = (patch: Partial<PlayoffWizardData>) => { data = { ...data, ...patch }; };
+  // Division: a new pick resets the seeding (step-division.tsx).
+  update({ division_id: "d3", division_name: "Majors", seeding: [], excluded: [] });
+  // Format: Single elimination is the default.
+  eq(data.format, "single_elimination", "WZ1", "Add bracket starts on single elimination");
+  // Dates BEFORE the teams load (Continue clicked during the spinner): no rows,
+  // never a misleading single row.
+  eq(wizardRounds(data.seeding.length).length, 0, "WZ1", "no teams loaded yet → the control shows no rows");
+  // Seeding untouched: the load reconciles the division's teams into the seeding.
+  const next = reconcileSeeding(teams3, data.seeding);
+  update({ seeding: next.included, excluded: next.excluded });
+  eq(data.seeding.map((t) => t.team_name), ["Braves", "Mariners", "Mets"], "WZ1", "Seeding untouched: all three teams are in");
+  // Dates: the control is handed data.seeding.length.
+  const rows = wizardRounds(data.seeding.length).map((r) => `${r.title}:${r.matchups}`);
+  eq(rows, ["Round 1:1", "Final:1"], "WZ1", "Dates: Round 1 (2 vs 3) and Final");
+  // Back to Seeding and on again (the step remounts and reconciles again).
+  const again = reconcileSeeding(teams3, data.seeding);
+  update({ seeding: again.included, excluded: again.excluded });
+  eq(wizardRounds(data.seeding.length).length, 2, "WZ1", "Back/Next: still two rows");
+  if (rows.length === 2) counters.wizardFlowCounted++;
+
+  // The wiring each step uses (source greps — weak by nature).
+  const dates = readFileSync("src/components/playoffs/steps/step-dates.tsx", "utf8");
+  ok(dates.includes("<SeriesLengthsControl\n          teamCount={data.seeding.length}"), "WZ2", "Dates hands the control the seeded teams");
+  const seedStep = readFileSync("src/components/playoffs/steps/step-seeding.tsx", "utf8");
+  ok(seedStep.includes("apply(reconcileSeeding(divisionTeams, data.seeding));")
+     && seedStep.includes("update({ seeding: next.included, excluded: next.excluded });"),
+    "WZ2", "Seeding writes every loaded team into the wizard's seeding");
+  const divStep = readFileSync("src/components/playoffs/steps/step-division.tsx", "utf8");
+  ok(divStep.includes("if (div.id === data.division_id) return;") && divStep.includes("seeding: [],"),
+    "WZ2", "Division resets the seeding only for a different division");
 });
 
 section("IX if-needed table", () => {

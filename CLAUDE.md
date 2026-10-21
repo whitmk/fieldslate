@@ -937,7 +937,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   gets the count of teams IN the bracket (`data.seeding.length`, or Stage 2's
   advancing count), so a single row means it was handed 2 — Whit's 3-team
   one-row report (2026-10-20) did not reproduce from the code on `main` or
-  the branch: both list Round 1 and Final for 3.
+  the branch: both list Round 1 and Final for 3. Re-checked by clicking
+  through the REAL wizard on a scratch route (REST faked), on the deployed
+  commit and the branch, in Whit's exact flow (Add bracket → 3 teams → Single
+  elimination → Seeding untouched → Dates) plus Continue during the teams
+  load, Back/Next and a format switch: the control received 3 every time.
+  Section WZ pins that flow (SM59, SM60). STILL OPEN until the screenshot's
+  cause is found.
 - **Home (decided 2026-10-20):** home for every game of a series is decided
   once BOTH teams are set (seeding or a result): the higher TRUE seed (the
   seeding list; Stage 2's given seed) is home in games 1, 3, 5, 7. Until then
@@ -1125,12 +1131,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   range" (that count depends on fields and the per-day limit); the two-stage
   seed confirm keeps today's "Game 1: Mets (4) vs …" for single games (the
   mockup showed "Round 1 · Game 1:").
-- **Harness: `npm run sim:playoff-series`** (3,496 checks × 3 zones, 15
+- **Harness: `npm run sim:playoff-series`** (3,505 checks × 3 zones, 16
   counters; S0 nothing changes without series … S10 confirms, S11 screens,
   S12 outside the app, FN the last round is the Final, IX the shared
   if-needed table, then 300 seeded
   playthroughs through the TypeScript twin, incl. clear round trips) +
-  `:mutants` (59, each killed at its own assertion — read the RUN LOG).
+  `:mutants` (61, each killed at its own assertion — read the RUN LOG).
 
 ## Printable playoff bracket + slot labels (2026-10-13)
 

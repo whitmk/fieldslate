@@ -369,6 +369,18 @@ const MUTANTS: Mutant[] = [
     replace: "{rounds.slice(-1).map((r) => {",
     expect: "FN11",
   },
+  {
+    id: "SM59", what: "the Seeding step's load drops a team (3 seeded, 2 counted)", file: "src/lib/playoffs/seeding.ts",
+    find: "    return { included: [...divisionTeams], excluded: [] };",
+    replace: "    return { included: divisionTeams.slice(0, -1), excluded: [] };",
+    expect: "WZ1",
+  },
+  {
+    id: "SM60", what: "the Dates step hands the control one team too few", file: "src/components/playoffs/steps/step-dates.tsx",
+    find: "<SeriesLengthsControl\n          teamCount={data.seeding.length}",
+    replace: "<SeriesLengthsControl\n          teamCount={data.seeding.length - 1}",
+    expect: "WZ2",
+  },
 ];
 
 runMutants({
@@ -424,3 +436,10 @@ runMutants({
 // re-anchored to the new rule (npm run sim:mutant-targets flagged it); SM55–
 // SM58 added. 59/59 KILLED at their own tag (SM55 → FN2, SM56 → FN2, SM57 →
 // FN12, SM58 → FN11). Source restored and re-verified green.
+// 2026-10-20 — Whit's exact flow (Add bracket → 3 teams → Single elimination →
+// Seeding untouched → Dates). Clicked through the REAL wizard on a scratch route
+// (REST faked) on the deployed commit 41782ab AND this branch: the control got
+// 3 every time, also with Continue during the teams load, Back/Next and a
+// format switch — no cause found in code. Section WZ pins the flow; SM59 (the
+// load drops a team) → WZ1, SM60 (Dates hands the control one too few) → WZ2.
+// 61/61 KILLED at their own tag. Source restored and re-verified green.
