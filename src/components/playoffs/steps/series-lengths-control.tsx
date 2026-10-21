@@ -6,7 +6,7 @@
 // Dates step and Stage 2 of a two-stage setup.
 
 import { SERIES_LENGTHS, seriesLengthFor, type SeriesByRound, type SeriesLength } from "@/lib/playoffs/series-lengths";
-import { roundLengthHelp, seriesSetupNote, wizardRounds } from "@/lib/playoffs/series";
+import { roundLengthHelp, roundsFromTeamsLine, seriesSetupNote, wizardRounds } from "@/lib/playoffs/series";
 
 export function SeriesLengthsControl({
   teamCount,
@@ -63,6 +63,7 @@ export function SeriesLengthsControl({
           );
         })}
       </div>
+      <p className="text-xs text-gray-500">{roundsFromTeamsLine(teamCount)}</p>
       {note && (
         <p className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-700">{note}</p>
       )}

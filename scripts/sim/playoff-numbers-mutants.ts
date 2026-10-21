@@ -35,7 +35,7 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "NX5", what: "the public schedule names the stored position", file: "src/lib/public-schedule/view.ts",
-    find: "  const shown = (p: PublicPlayoffGame) => shownGameNumber(p, brackets.get(p.playoff_id) ?? [p]);",
+    find: "  const shown = (p: PublicPlayoffGame) => shownGameNumber(p, seriesRows(brackets.get(p.playoff_id) ?? [p]));",
     replace: "  const shown = (p: PublicPlayoffGame) => p.game_number;",
     expect: "N4",
   },
@@ -47,7 +47,7 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "NX7", what: "the next-game refusal names the stored position", file: RESULT,
-    find: "    gameNumber: own(n.game_number), round: n.round,",
+    find: "    gameNumber: numbering.own(n.game_number), round: n.round,",
     replace: "    gameNumber: n.game_number, round: n.round,",
     expect: "N7a",
   },
@@ -59,8 +59,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "NX9", what: "the clear confirm names the removed game's stored position", file: RESULT,
-    find: "    removed = { gameNumber: own(m.game_number), round: m.round, teamName: str(m.team_name) };",
-    replace: "    removed = { gameNumber: m.game_number, round: m.round, teamName: str(m.team_name) };",
+    find: "      gameNumber: own(m.game_number), round: m.round,",
+    replace: "      gameNumber: m.game_number, round: m.round,",
     expect: "N7b",
   },
   {
@@ -108,3 +108,6 @@ runMutants({
 //   NX7 → [N7a] NX8 → [N7b] NX9 → [N7b] NX10 → [N7c] NX11 → [N8] NX12 → [N8]
 //   NX13 → [L]  NX14 → [L]
 // Source restored and verified after every mutant.
+// 2026-10-20 — found STALE (target not found exactly once) since the playoff-series
+// step 3/4 commits reached main the same day; the pass had not been re-run then.
+// NX5 (seriesRows wrap, step 4), NX7 (numbering.own, step 3) and NX9 (the removed object is multi-line) re-anchored; NX5 → [N4], NX7 → [N7a], NX9 → [N7b]; 14/14 KILLED at their own tag. Source restored and re-verified green.

@@ -8,12 +8,18 @@
 // share the round and the `game_number` (the bracket position, which
 // advancement keys on); `series_game` is 1..length within it.
 //
-// Names (approved mockup docs/mockups/playoff-series.html, D2): the round
-// labelled "F" is the Final, "SF" a Semifinal, a later round with four bracket
-// positions a Quarterfinal; anything else — and always the round labelled "R1",
-// which the app calls "Round 1" today — is "Round k · Series i". The series
-// number is the rank of its bracket position among the round's series, so a
-// round with byes still reads 1, 2, 3 …
+// Names (approved mockup docs/mockups/playoff-series.html, D2, revised
+// 2026-10-20 after Whit's acceptance test): a round is named by its POSITION,
+// never by its stored label. The LAST round is always the Final and the one
+// before it the Semifinals — so a 2-team bracket's only round (stored "R1")
+// is the Final, and a 4-team bracket reads Semifinals, Final. A later round
+// with four bracket positions is a Quarterfinal; anything else — the first
+// round of a bracket of 8 or more included — is "Round k" ("Round k · Series
+// i"). The series number is the rank of its bracket position among the
+// round's series, so a round with byes still reads 1, 2, 3 …
+//
+// Pass the WHOLE bracket (every game, dated or not): the last round is found
+// among the rounds it holds.
 
 import { getRoundOrder } from "@/lib/playoffs/advancement";
 
@@ -50,10 +56,34 @@ function roundPositions(round: string, bracket: ReadonlyArray<SeriesRow>): numbe
 export type RoundKind = "final" | "semifinal" | "quarterfinal" | "round";
 
 export function roundKind(round: string, bracket: ReadonlyArray<SeriesRow>): RoundKind {
-  if (round === "F") return "final";
-  if (round === "SF") return "semifinal";
-  if (round !== "R1" && roundPositions(round, bracket) === 4) return "quarterfinal";
+  const rounds = new Set(bracket.map((g) => g.round)).size;
+  const k = roundNumber(round, bracket);
+  if (round === "F" || k === rounds) return "final";
+  if (round === "SF" || k === rounds - 1) return "semifinal";
+  if (k > 1 && roundPositions(round, bracket) === 4) return "quarterfinal";
   return "round";
+}
+
+/** True for the labels a single-elimination bracket stores ("R1", "R2", "SF",
+ *  "F") — never a round robin's "RR3" or a double elimination's "WB-R1". */
+export function isSingleElimRoundLabel(round: string): boolean {
+  return /^(R\d+|SF|F)$/.test(round);
+}
+
+/** True when this round is a single-elimination bracket's Final — its last
+ *  round, whatever it is stored as. */
+export function isFinalRound(round: string, bracket: ReadonlyArray<SeriesRow>): boolean {
+  return isSingleElimRoundLabel(round) && roundKind(round, bracket) === "final";
+}
+
+/** A single-elimination round's name where the bracket has no series: "Final",
+ *  "Semifinals", else "Round k" (no Quarterfinals — single-game brackets read
+ *  as they always did, apart from the last two rounds). */
+export function singleElimRoundTitle(round: string, bracket: ReadonlyArray<SeriesRow>): string {
+  const k = roundKind(round, bracket);
+  if (k === "final") return "Final";
+  if (k === "semifinal") return "Semifinals";
+  return `Round ${roundNumber(round, bracket)}`;
 }
 
 /** "Final", "Semifinals", "Quarterfinals", "Round 2" — a round's header. */

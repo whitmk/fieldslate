@@ -284,6 +284,67 @@ const MUTANTS: Mutant[] = [
     replace: "1",
     expect: "S12",
   },
+  // ── The last round is the Final (Whit's acceptance test, 2026-10-20) ──
+  {
+    id: "SM45", what: "the last round is named by its stored label only (a 2-team Final reads Round 1)", file: "src/lib/playoffs/series-names.ts",
+    find: 'if (round === "F" || k === rounds) return "final";',
+    replace: 'if (round === "F") return "final";',
+    expect: "FN1",
+  },
+  {
+    id: "SM46", what: "the round before the Final is named by its stored label only (4 teams read Round 1, Final)", file: "src/lib/playoffs/series-names.ts",
+    find: 'if (round === "SF" || k === rounds - 1) return "semifinal";',
+    replace: 'if (round === "SF") return "semifinal";',
+    expect: "FN2",
+  },
+  {
+    id: "SM47", what: "the tree and list name a round without its bracket", file: "src/lib/playoffs/playoff-result.ts",
+    find: "return isSingleElimRoundLabel(round) ? singleElimRoundTitle(round, bracket) : playoffRoundLabel(round);",
+    replace: "return playoffRoundLabel(round);",
+    expect: "FN4",
+  },
+  {
+    id: "SM48", what: "the print's round headers ignore the bracket", file: "src/lib/playoffs/bracket-print.ts",
+    find: "seriesRoundHeader(r, games) : playoffRoundTitle(r, games))",
+    replace: "seriesRoundHeader(r, games) : playoffRoundLabel(r))",
+    expect: "FN6",
+  },
+  {
+    id: "SM49", what: "the CSV names a round by its stored label", file: "src/lib/playoffs/playoff-export.ts",
+    find: "  return playoffRoundTitle(g.round, own);\n}",
+    replace: '  return g.round === "F" ? "Final" : g.round === "SF" ? "Semifinals" : `Round ${g.round.slice(1)}`;\n}',
+    expect: "FN7",
+  },
+  {
+    id: "SM50", what: "the public page names a round by its stored label", file: "src/lib/public-schedule/view.ts",
+    find: "  if (isSingleElimRoundLabel(round)) {\n    const kind = roundKind(round, bracket);",
+    replace: "  if (round === \"__never__\") {\n    const kind = roundKind(round, bracket);",
+    expect: "FN8",
+  },
+  {
+    id: "SM51", what: "result sentences drop the bracket's round names", file: "src/lib/playoffs/playoff-result.ts",
+    find: "return numbering.roundName ? numbering.roundName(round) : playoffRoundLabel(round);",
+    replace: "return numbering && playoffRoundLabel(round);",
+    expect: "FN9",
+  },
+  {
+    id: "SM52", what: "the champion banner keys on the stored \"F\" again", file: "src/lib/playoffs/series-names.ts",
+    find: 'return isSingleElimRoundLabel(round) && roundKind(round, bracket) === "final";',
+    replace: 'return round === "F" && bracket !== null;',
+    expect: "FN5",
+  },
+  {
+    id: "SM53", what: "a round robin's rounds are treated as a single elimination's", file: "src/lib/playoffs/series-names.ts",
+    find: "return /^(R\\d+|SF|F)$/.test(round);",
+    replace: "return /^(R\\d+|RR\\d+|SF|F)$/.test(round);",
+    expect: "FN10",
+  },
+  {
+    id: "SM54", what: "the wizard drops the line under \"Games in each round\"", file: "src/components/playoffs/steps/series-lengths-control.tsx",
+    find: '      <p className="text-xs text-gray-500">{roundsFromTeamsLine(teamCount)}</p>\n',
+    replace: "",
+    expect: "FN11",
+  },
 ];
 
 runMutants({
@@ -324,3 +385,9 @@ runMutants({
 // 2026-10-20 (later) — revised tree (approved sketch: series groups of stacked
 // game cards): SM31–SM34 re-aimed at the group layout (the old one-card-per-
 // series targets are gone), SM42–SM44 added.
+// 2026-10-20 — the last round is always the Final (Whit's acceptance test: a
+// 2-team bracket's only round read "Round 1"). Section FN added (3,413 checks
+// × 3 zones; new counter twoTeamFinals 5). SM45–SM54 added; the pass was
+// 55/55 KILLED at their own tag on the first run (SM45 → FN1, SM46 → FN2,
+// SM47 → FN4, SM48 → FN6, SM49 → FN7, SM50 → FN8, SM51 → FN9, SM52 → FN5,
+// SM53 → FN10, SM54 → FN11). Source restored and re-verified green.

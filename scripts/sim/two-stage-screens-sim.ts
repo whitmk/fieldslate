@@ -153,13 +153,16 @@ section("E2 End = start + the division's length", () => {
   // An ordinary bracket game with both teams: End alone is under test here
   // (round names are E4's, empty slots E3's — run 1's ordering fault).
   const plain = { ...RR13, playoff_id: "x", round: "SF", game_number: 5 };
-  const csv = buildPlayoffCsv([plain], { divisionName: "Majors", durationMin: 120, pair: null, format: "single_elimination" });
+  // The rest of its bracket: names come from the WHOLE bracket (the last round
+  // is the Final), so a lone "SF" game would be a 2-team Final.
+  const plainFinal = { ...plain, id: "xF", round: "F", game_number: 7, scheduled_date: "2026-11-08" };
+  const csv = buildPlayoffCsv([plain, plainFinal], { divisionName: "Majors", durationMin: 120, pair: null, format: "single_elimination" });
   const lines = csv.split("\r\n");
   counters.csvRows += lines.length - 1;
   ok(lines[0] === HEADER, "E2", "the columns are unchanged", lines[0]);
   ok(lines[1] === `"11/01/2026","10:00 AM","11/01/2026","12:00 PM","Majors Playoffs - Semifinals: Expos vs Mets","Monroe Complex — Andrews","Game"`,
     "E2", "a game ends 120 minutes after it starts", lines[1]);
-  const blank = buildPlayoffCsv([plain], { divisionName: "Majors", durationMin: null, pair: null, format: "single_elimination" }).split("\r\n")[1];
+  const blank = buildPlayoffCsv([plain, plainFinal], { divisionName: "Majors", durationMin: null, pair: null, format: "single_elimination" }).split("\r\n")[1];
   ok(blank === `"11/01/2026","10:00 AM","11/01/2026","","Majors Playoffs - Semifinals: Expos vs Mets","Monroe Complex — Andrews","Game"`,
     "E2", "no length → End is blank", blank);
   if (blank.includes(`"11/01/2026",""`)) counters.blankEnds++;
@@ -183,10 +186,12 @@ section("E3 placeholders, not dropped rows", () => {
 section("E4 round names", () => {
   const rrLine = buildPlayoffCsv([RR13], { divisionName: "Majors", durationMin: 120, pair: PAIR, format: "round_robin" }).split("\r\n")[1];
   ok(rrLine.includes("Majors Playoffs - Round robin · RR Game 13: Expos vs Mets"), "E4", "a round-robin row in the CSV", rrLine);
-  ok(exportRound(RR13, PAIR) === "Round robin · RR Game 13", "E4", "Stage 1 reads RR Game N");
+  // The game's whole bracket: an 8-team tree (R1, SF, F).
+  const EIGHT = [{ round: "R1", game_number: 2 }, { round: "SF", game_number: 5 }, { round: "F", game_number: 7 }];
+  ok(exportRound(RR13, PAIR, [RR13]) === "Round robin · RR Game 13", "E4", "Stage 1 reads RR Game N");
   counters.rrLabels++;
-  ok(exportRound({ playoff_id: "s2", round: "R1", game_number: 2 }, PAIR) === "Bracket · Round 1", "E4", "Stage 2 names the bracket");
-  ok(exportRound({ playoff_id: "x", round: "SF", game_number: 5 }, null) === "Semifinals", "E4", "an ordinary bracket is unchanged");
+  ok(exportRound({ playoff_id: "s2", round: "R1", game_number: 2 }, PAIR, EIGHT) === "Bracket · Round 1", "E4", "Stage 2 names the bracket");
+  ok(exportRound({ playoff_id: "x", round: "SF", game_number: 5 }, null, EIGHT) === "Semifinals", "E4", "an ordinary bracket is unchanged");
   const plain: ExportGame = { ...s2Export.find((g) => g.game_number === 5)!, playoff_id: "x", seed_home: null, seed_away: null, home_team_id: "tE", home_team_name: "Expos" };
   const plainAll = s2Export.map((g) => ({ ...g, playoff_id: "x", seed_home: null, seed_away: null })).map((g) => (g.game_number === 5 ? plain : g));
   const line = buildPlayoffCsv(plainAll, { divisionName: "Majors", durationMin: 120, pair: null, format: "single_elimination" })
@@ -427,6 +432,10 @@ const PUBLIC: PublicSeason = {
       home_team: { id: "tE", name: "Expos" }, away_team: { id: "tM", name: "Mets" } }),
     pg({ id: "o1", playoff_id: "pMin", division_id: "dMin", stage: 1, round: "R1", game_number: 1, scheduled_date: "2026-11-01", start_time: "09:00",
       home_team: { id: "tC", name: "Cubs" }, away_team: { id: "tT", name: "Twins" } }),
+    // The rest of that 8-team bracket, undated (not rows): names come from the
+    // whole bracket, so without them "R1" would be a 2-team Final.
+    pg({ id: "o5", playoff_id: "pMin", division_id: "dMin", stage: 1, round: "SF", game_number: 5, scheduled_date: null, start_time: null }),
+    pg({ id: "o7", playoff_id: "pMin", division_id: "dMin", stage: 1, round: "F", game_number: 7, scheduled_date: null, start_time: null }),
   ],
 };
 

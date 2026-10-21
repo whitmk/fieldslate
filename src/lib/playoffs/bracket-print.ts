@@ -49,7 +49,7 @@ import {
   singleElimTarget,
 } from "@/lib/playoffs/advancement";
 import { gameWhen, slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
-import { playoffRoundLabel } from "@/lib/playoffs/playoff-result";
+import { playoffRoundLabel, playoffRoundTitle } from "@/lib/playoffs/playoff-result";
 import {
   oneRowPerSeries,
   SERIES_TAG_TEXT,
@@ -562,7 +562,7 @@ export function buildBracketPrintHtml(
     ? groupedTreeLayout(games, PRINT_SERIES_TREE, (first, series) => printGroupHeight(first, series, games))
     : singleElimLayout(games);
   const heads = L.rounds.map((r, k) =>
-    `<div style="position:absolute;top:0;left:${k * (CARD.width + GAP)}px;width:${CARD.width}px;text-align:center;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:0.6pt;color:${PRINT_COLORS.heading}">${escapeHtml(withSeries ? seriesRoundHeader(r, games) : playoffRoundLabel(r))}</div>`,
+    `<div style="position:absolute;top:0;left:${k * (CARD.width + GAP)}px;width:${CARD.width}px;text-align:center;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:0.6pt;color:${PRINT_COLORS.heading}">${escapeHtml(withSeries ? seriesRoundHeader(r, games) : playoffRoundTitle(r, games))}</div>`,
   ).join("");
   const lines = L.connectors.map((c) =>
     `<polyline data-from="${c.from}" data-to="${c.to}" points="${c.points.map(([x, y]) => `${x},${y}`).join(" ")}" fill="none" stroke="${PRINT_COLORS.line}" stroke-width="1.5"/>`,

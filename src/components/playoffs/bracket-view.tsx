@@ -5,7 +5,7 @@ import { CalendarDays, List, Trophy, Clock, ClipboardEdit, CalendarClock } from 
 import { createClient } from "@/lib/supabase/client";
 import { EnterResultModal } from "@/components/playoffs/enter-result-modal";
 import { EditPlayoffGameModal } from "@/components/playoffs/edit-playoff-game-modal";
-import { playoffRoundLabel, resultButtonShown } from "@/lib/playoffs/playoff-result";
+import { playoffRoundLabel, playoffRoundTitle, resultButtonShown } from "@/lib/playoffs/playoff-result";
 import { gameLabel, gameNumbering, slotName, slotWon, type Side } from "@/lib/playoffs/bracket-labels";
 import {
   SCREEN_GROUP,
@@ -28,7 +28,7 @@ import {
   seriesGroupTitle,
   seriesHeadline,
 } from "@/lib/playoffs/series";
-import { isSeriesGame, isSeriesRound, roundTitle, seriesLengthOf } from "@/lib/playoffs/series-names";
+import { isFinalRound, isSeriesGame, isSeriesRound, roundTitle, seriesLengthOf } from "@/lib/playoffs/series-names";
 import { useDaylight } from "@/components/daylight/use-daylight";
 import { DaylightChip, DaylightStatusLine } from "@/components/daylight/daylight-pieces";
 import type { DaylightFlag } from "@/lib/daylight/flags";
@@ -104,6 +104,8 @@ function getRoundOrder(round: string): number {
 }
 
 // Round names come from the shared, pure label (the result confirm uses it too).
+// Where the whole bracket is at hand, playoffRoundTitle names a single-
+// elimination round by position — its last round is always the Final.
 const roundLabel = playoffRoundLabel;
 
 const CHAMPIONSHIP_ROUNDS = new Set(["F", "GF"]);
@@ -285,6 +287,7 @@ function ListGameRow({
   numberOf,
   flagOf,
   series,
+  roundName,
   onEnterResult,
   onEdit,
 }: {
@@ -294,6 +297,8 @@ function ListGameRow({
   numberOf: NumberOf;
   flagOf: FlagOf;
   series: ListSeries;
+  /** The round's name in this bracket (playoffRoundTitle). */
+  roundName: string;
   onEnterResult: () => void;
   onEdit: () => void;
 }) {
@@ -336,7 +341,7 @@ function ListGameRow({
             {`${labelOf(game, "home")} vs ${labelOf(game, "away")}`}
           </p>
         )}
-        <p className={`text-xs text-gray-400 ${notNeeded ? "line-through" : ""}`}>{series ? series.label : roundLabel(game.round)}</p>
+        <p className={`text-xs text-gray-400 ${notNeeded ? "line-through" : ""}`}>{series ? series.label : roundName}</p>
         {series?.chip && (
           <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${series.chip.className}`}>
             {series.chip.text}
@@ -450,7 +455,7 @@ function BracketTree({
         ))
     : singleElimLayout(games, SCREEN_TREE);
   const header = (round: string) => {
-    if (!withSeries) return roundLabel(round);
+    if (!withSeries) return playoffRoundTitle(round, games);
     const title = roundTitle(round, games);
     const row = games.find((g) => g.round === round);
     return row && isSeriesRound(round, games) ? `${title} · best of ${seriesLengthOf(row, games)}` : title;
@@ -698,7 +703,10 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
 
   // The last round is the championship for SE/DE formats
   const lastRound = rounds[rounds.length - 1]?.[0] ?? null;
-  const championshipRound = CHAMPIONSHIP_ROUNDS.has(lastRound ?? "") ? lastRound : null;
+  // A single elimination's last round is its Final whatever it is stored as
+  // (a 2-team bracket's only round is "R1").
+  const championshipRound =
+    CHAMPIONSHIP_ROUNDS.has(lastRound ?? "") || (lastRound !== null && isFinalRound(lastRound, games)) ? lastRound : null;
 
   const useBracketTree = format === "single_elimination";
   const unplaced = games.filter((g) => !g.scheduled_date && g.status !== NOT_NEEDED).length;
@@ -747,6 +755,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
               numberOf={numberOf}
               flagOf={flagOf}
               series={seriesInfo(g)}
+              roundName={playoffRoundTitle(g.round, games)}
               onEnterResult={() => setActiveGame(g)}
               onEdit={() => setEditingGame(g)}
             />
@@ -782,7 +791,7 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
       {editingGame && (
         <EditPlayoffGameModal
           game={editingGame}
-          roundLabel={isSeriesGame(editingGame, games) ? gameLabel(editingGame, games) : roundLabel(editingGame.round)}
+          roundLabel={isSeriesGame(editingGame, games) ? gameLabel(editingGame, games) : playoffRoundTitle(editingGame.round, games)}
           leagueId={leagueId}
           divisionId={divisionId}
           divisionName={divisionName}

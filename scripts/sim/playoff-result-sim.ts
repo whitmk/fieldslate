@@ -249,7 +249,7 @@ section("C", () => {
     "Expos will be removed from Game 5 (Final) until this game has a result again.",
     "This is on your public schedule — the change shows there within a minute.",
   ]), "[C1]", JSON.stringify(c.lines));
-  const rr = clearConfirm({ ...pv.preview, round: "RR2", removed: null, onPublicSchedule: false });
+  const rr = clearConfirm({ ...pv.preview, round: "RR2", roundName: "Round 2", removed: null, onPublicSchedule: false });
   ok(JSON.stringify(rr.lines) === JSON.stringify([
     "Game 2 (Round 2) — Expos 4, Bears 2 (Expos won).",
     "The score and winner will be removed and the game goes back to scheduled.",

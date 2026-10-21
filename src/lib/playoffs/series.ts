@@ -589,6 +589,18 @@ export function wizardRounds(teamCount: number): WizardRound[] {
   }));
 }
 
+/** The line under "Games in each round": the rounds come from the team
+ *  count, and each one is set on its own (Whit's acceptance test, 2026-10-20 —
+ *  a 2-team bracket's lone row read like one setting for the whole bracket).
+ *  "Rounds come from the number of teams (8 teams → Round 1, Semifinals,
+ *  Final). Set each round separately — e.g. single games, then a best-of-3
+ *  Final." */
+export function roundsFromTeamsLine(teamCount: number): string {
+  const titles = wizardRounds(teamCount).map((r) => r.title);
+  return `Rounds come from the number of teams (${teamCount} teams → ${titles.join(", ")}). ` +
+    "Set each round separately — e.g. single games, then a best-of-3 Final.";
+}
+
 /** The line beside a round's 1/3/5/7 control. */
 export function roundLengthHelp(length: SeriesLength, matchups: number): string {
   if (length === 1) return matchups > 1 ? `1 game · ${matchups} matchups` : "1 game";

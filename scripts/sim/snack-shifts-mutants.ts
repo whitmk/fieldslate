@@ -192,8 +192,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "NM3", what: "playoff games ignored by the index", file: LIB,
-    find: "    if (g.status === \"cancelled\") continue;\n    const startMin = hhmmToMin(g.start);",
-    replace: "    if (g.status === \"cancelled\" || g.kind === \"playoff\") continue;\n    const startMin = hhmmToMin(g.start);",
+    find: "    if (g.status === \"cancelled\" || g.status === NOT_NEEDED) continue;\n    const startMin = hhmmToMin(g.start);",
+    replace: "    if (g.status === \"cancelled\" || g.status === NOT_NEEDED || g.kind === \"playoff\") continue;\n    const startMin = hhmmToMin(g.start);",
     expect: "A4",
   },
   {
@@ -222,8 +222,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "NM8", what: "a pending interleague proposal no longer counts as busy", file: LIB,
-    find: "    if (g.status === \"cancelled\") continue;\n    const startMin = hhmmToMin(g.start);",
-    replace: "    if (!countsAsScheduledGame(g.status)) continue;\n    const startMin = hhmmToMin(g.start);",
+    find: "    if (g.status === \"cancelled\" || g.status === NOT_NEEDED) continue;\n    const startMin = hhmmToMin(g.start);",
+    replace: "    if (!countsAsScheduledGame(g.status) || g.status === NOT_NEEDED) continue;\n    const startMin = hhmmToMin(g.start);",
     expect: "A8",
   },
   {
@@ -266,3 +266,6 @@ const MUTANTS: Mutant[] = [
 ];
 
 runMutants({ sim: "scripts/sim/snack-shifts-sim.ts", timezones: ["UTC"], mutants: MUTANTS });
+// 2026-10-20 — found STALE (target not found exactly once) since the playoff-series
+// step 3/4 commits reached main the same day; the pass had not been re-run then.
+// NM3 and NM8 re-anchored (the skip now also drops NOT_NEEDED, step 4); NM3 → [A4], NM8 → [A8]; 41/41 KILLED at their own tag. Source restored and re-verified green.

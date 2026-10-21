@@ -76,7 +76,7 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "SX12", what: "the public page stops naming the bracket stage", file: "src/lib/public-schedule/view.ts",
-    find: "    if (p.stage === 2) return `Playoffs · Bracket · ${playoffRoundName(p.round)} · Game ${shown(p)}`;\n",
+    find: "    if (p.stage === 2) return `Playoffs · Bracket · ${game}`;\n",
     replace: "",
     expect: "PL1",
   },
@@ -131,3 +131,6 @@ runMutants({
 //   SX13 → [D1] SX14 → [R2]
 // Run 3 (after stageRange learned "Nov 14 – 22" and stage2Line the count):
 //   baseline green, 14/14 KILLED at their own tag. Source restored, verified.
+// 2026-10-20 — found STALE (target not found exactly once) since the playoff-series
+// step 3/4 commits reached main the same day; the pass had not been re-run then.
+// SX12 re-anchored (the stage-2 label now reads '${game}', step 4); SX12 → [PL1]; 17/17 KILLED at their own tag. Source restored and re-verified green.

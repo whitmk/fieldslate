@@ -13,7 +13,7 @@ import type { GameRow } from "@/lib/playoffs/advancement";
 import { emptySlotLabel, shownGameNumber, type SeedSlots } from "@/lib/playoffs/bracket-labels";
 import { rrGameLabel } from "@/lib/playoffs/two-stage";
 import { NOT_NEEDED, outboundMatchup, seriesGameName } from "@/lib/playoffs/series";
-import { isSeriesGame, seriesLengthOf, seriesName } from "@/lib/playoffs/series-names";
+import { isSeriesGame, isSingleElimRoundLabel, roundKind, seriesLengthOf, seriesName } from "@/lib/playoffs/series-names";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
 import {
   gameStatusDisplay,
@@ -126,6 +126,22 @@ const ROUND_NAMES: Record<string, string> = {
   "GF-R": "Championship, if needed",
 };
 
+/** A round's name when its whole bracket is known: a single elimination's
+ *  last round is always the Final and the one before it a Semifinal, whatever
+ *  they are stored as (a 2-team bracket's only round is "R1") — the rule in
+ *  series-names.ts. Every other round: playoffRoundName. */
+export function bracketRoundName(
+  round: string,
+  bracket: ReadonlyArray<{ round: string; game_number: number }>,
+): string {
+  if (isSingleElimRoundLabel(round)) {
+    const kind = roundKind(round, bracket);
+    if (kind === "final") return "Final";
+    if (kind === "semifinal") return "Semifinal";
+  }
+  return playoffRoundName(round);
+}
+
 export function playoffRoundName(round: string): string {
   if (round in ROUND_NAMES) return ROUND_NAMES[round];
   let m = round.match(/^WB-R(\d+)$/);
@@ -235,7 +251,7 @@ export function buildRows(season: PublicSeason): ScheduleRow[] {
   };
   const playoffLabelOf = (p: PublicPlayoffGame): string => {
     const series = seriesOf(p);
-    const game = series ? seriesGameName(series.name, series.k, series.length) : `${playoffRoundName(p.round)} · Game ${shown(p)}`;
+    const game = series ? seriesGameName(series.name, series.k, series.length) : `${bracketRoundName(p.round, seriesRows(brackets.get(p.playoff_id) ?? [p]))} · Game ${shown(p)}`;
     if (p.stage === 2) return `Playoffs · Bracket · ${game}`;
     if (twoStageDivisions.has(p.division_id)) return `Playoffs · Round robin · ${rrGameLabel(p.game_number)}`;
     return `Playoffs · ${game}`;

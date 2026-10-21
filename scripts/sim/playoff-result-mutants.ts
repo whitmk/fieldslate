@@ -46,7 +46,7 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "PR6", what: "the blocked reply stops naming the later game", file: LIB,
-    find: "  return `${gameLabel(next.gameNumber, next.round)} already has a result${score}. Clear that game's result first, ${then}.`;",
+    find: "  return `${gameLabel(next.gameNumber, next.roundName)} already has a result${score}. Clear that game's result first, ${then}.`;",
     replace: "  return `A later game already has a result${score}. Clear that game's result first, ${then}.`;",
     expect: "O2",
   },
@@ -58,8 +58,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "PR8", what: "the confirm drops the team being removed", file: LIB,
-    find: `  if (p.removed) {\n    lines.push(`,
-    replace: `  if (p.removed && false) {\n    lines.push(`,
+    find: `  if (p.removed && !series?.lines.length) {\n    const from`,
+    replace: `  if (p.removed && false) {\n    const from`,
     expect: "C1",
   },
   {
@@ -88,3 +88,6 @@ runMutants({
 // singleElimTarget (advancement.ts) when the target lookup was split out for
 // the feeder labels and the print's connectors. Same flip, new line; re-run
 // green and PR1 still killed at its own assertion.
+// 2026-10-20 — found STALE (target not found exactly once) since the playoff-series
+// step 3/4 commits reached main the same day; the pass had not been re-run then.
+// PR6 (the round name moved into next.roundName) and PR8 (the condition is now 'p.removed && !series?.lines.length', 0114) re-anchored; PR6 → [O2], PR8 → [C1]; 9/9 KILLED at their own tag. Source restored and re-verified green.

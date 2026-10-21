@@ -892,11 +892,34 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Approved mockup: `docs/mockups/playoff-series.html` (2026-10-20)**, with
   all six recommendations: series games have no "Game N" of their own ("Game
   N" counts single games only); names Final / Semifinal i / Quarterfinal i /
-  "Round k · Series i" (the round labelled R1 is always Round 1, as today); no
+  "Round k · Series i" (names by POSITION since 2026-10-20 — see "Round
+  names" below; the first round of a bracket of 8 or more is Round 1); no
   series score on the public page; if-needed games hold the field, teams and
   snack shack until not needed; banner "Expos win the Final 2–1"; series
   lengths change only while the bracket has no results. Single elimination
   only — never double elimination or round robin.
+- **Round names — the LAST round is always the Final (2026-10-20, Whit's
+  acceptance test).** The generator stores the first round as "R1" whatever
+  the size, so a 2-team bracket's only round was "Round 1" and a 4-team
+  bracket read "Round 1, Final" — the wizard's lone "Round 1" row looked like
+  one setting for the whole bracket. ONE rule, `roundKind`
+  (`series-names.ts`): the last round present is "final", the one before it
+  "semifinal", by position, never by stored label; `isFinalRound` (champion
+  banner, result modal) and `singleElimRoundTitle` (single-game brackets: no
+  Quarterfinals, as before) sit on it. Surfaces: wizard titles
+  (`wizardRounds`), tree header + list + edit modal (`playoffRoundTitle`,
+  playoff-result.ts), print headers, CSV (`exportRound` takes the bracket),
+  public page + feed (`bracketRoundName`, "Semifinal" singular as before),
+  result sentences (`ResultNumbering.roundName`). Pass the WHOLE bracket —
+  a lone game would read as a 2-team Final (three sim fixtures did exactly
+  that and were given their brackets). Round robin and double elimination
+  are untouched (`isSingleElimRoundLabel`). Stored labels are unchanged.
+  **NOT changed: the activity log** — 0114's `playoff_round_title` still
+  names a 2-team Final "Round 1" and a 4-team first round "Round 1" (SQL;
+  needs a migration). Under "Games in each round" the wizard says
+  `roundsFromTeamsLine` ("Rounds come from the number of teams (8 teams →
+  Round 1, Semifinals, Final). Set each round separately — e.g. single
+  games, then a best-of-3 Final.").
 - **Home (decided 2026-10-20):** home for every game of a series is decided
   once BOTH teams are set (seeding or a result): the higher TRUE seed (the
   seeding list; Stage 2's given seed) is home in games 1, 3, 5, 7. Until then
@@ -1084,11 +1107,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   range" (that count depends on fields and the per-day limit); the two-stage
   seed confirm keeps today's "Game 1: Mets (4) vs …" for single games (the
   mockup showed "Round 1 · Game 1:").
-- **Harness: `npm run sim:playoff-series`** (3,375 checks × 3 zones, 12
+- **Harness: `npm run sim:playoff-series`** (3,413 checks × 3 zones, 13
   counters; S0 nothing changes without series … S10 confirms, S11 screens,
-  S12 outside the app, IX the shared if-needed table, then 300 seeded
+  S12 outside the app, FN the last round is the Final, IX the shared
+  if-needed table, then 300 seeded
   playthroughs through the TypeScript twin, incl. clear round trips) +
-  `:mutants` (45, each killed at its own assertion — read the RUN LOG).
+  `:mutants` (55, each killed at its own assertion — read the RUN LOG).
 
 ## Printable playoff bracket + slot labels (2026-10-13)
 

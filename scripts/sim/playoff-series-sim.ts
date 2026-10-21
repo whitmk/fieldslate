@@ -27,7 +27,7 @@ import {
   type PlanInput,
 } from "../../src/lib/playoffs/bracket-plan";
 import { emptySlotLabel, gameLabel, gameNumbering } from "../../src/lib/playoffs/bracket-labels";
-import { seriesName } from "../../src/lib/playoffs/series-names";
+import { isFinalRound, roundTitle, seriesName } from "../../src/lib/playoffs/series-names";
 import {
   hasSeries,
   parseSeriesByRound,
@@ -74,10 +74,17 @@ import {
   seriesHomeNote,
   seriesResultText,
 } from "../../src/lib/playoffs/series";
-import { blockedMessage, clearConfirm, type ClearPreview, type ResultNumbering } from "../../src/lib/playoffs/playoff-result";
+import {
+  blockedMessage,
+  clearConfirm,
+  clearPreviewOutcome,
+  playoffRoundTitle,
+  type ClearPreview,
+  type ResultNumbering,
+} from "../../src/lib/playoffs/playoff-result";
 import type { SeededTeam } from "../../src/components/playoffs/playoff-wizard-types";
 import { readFileSync } from "node:fs";
-import { buildRows } from "../../src/lib/public-schedule/view";
+import { bracketRoundName, buildRows } from "../../src/lib/public-schedule/view";
 import { buildLeagueCalendarIcs, playoffEventTitle } from "../../src/lib/public-schedule/league-ics";
 import type { PublicPlayoffGame, PublicScheduleOk, PublicSeason } from "../../src/lib/public-schedule/types";
 import { buildPlayoffCsv, exportableGames, exportGameName, type ExportGame } from "../../src/lib/playoffs/playoff-export";
@@ -103,8 +110,8 @@ import {
 } from "../../src/lib/snack-shack/derive-shifts";
 import { daylightFlag } from "../../src/lib/daylight/flags";
 import { cityById } from "../../src/lib/sun/us-cities";
-import { outboundMatchup, seriesPrintLine, seriesRoundHeader } from "../../src/lib/playoffs/series";
-import { seriesMockup, seriesSixteen } from "./bracket-print-fixtures";
+import { outboundMatchup, roundsFromTeamsLine, seriesPrintLine, seriesRoundHeader } from "../../src/lib/playoffs/series";
+import { doubleElim, roundRobin, seriesMockup, seriesSixteen, singleElim } from "./bracket-print-fixtures";
 
 const failures: string[] = [];
 let checks = 0;
@@ -144,6 +151,8 @@ const counters = {
   ifNeededTableRows: 0,
   publicPlaceholderMatchups: 0,
   csvIfNeededFromResults: 0,
+  /** FN: a 2-team bracket's only round named "Final" on a surface. */
+  twoTeamFinals: 0,
 };
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -775,9 +784,9 @@ section("S11 screens", () => {
 
   // The clear confirm (mockup screen 6, left), with the series lines.
   const preview: ClearPreview = {
-    gameId: "SF-6-2", gameNumber: 6, round: "SF", homeName: "Royals", awayName: "Bears", homeScore: 2, awayScore: 3,
+    gameId: "SF-6-2", gameNumber: 6, round: "SF", roundName: "Semifinals", homeName: "Royals", awayName: "Bears", homeScore: 2, awayScore: 3,
     winnerName: "Bears", onPublicSchedule: true,
-    removed: { gameNumber: 7, round: "F", teamName: "Bears", seriesInSentence: "the Final" },
+    removed: { gameNumber: 7, round: "F", roundName: "Final", teamName: "Bears", seriesInSentence: "the Final" },
   };
   const field = (id: string | null) => (id === "perry" ? "Perry" : id === "andrews" ? "Andrews" : null);
   eq(
@@ -792,7 +801,7 @@ section("S11 screens", () => {
     "S11", "the clear confirm, word for word (the database's removed line is not repeated)",
   );
   eq(
-    clearConfirm({ ...preview, gameId: "R1-4-1", gameNumber: 4, round: "R1", removed: { gameNumber: 6, round: "SF", teamName: "Royals", seriesInSentence: "Semifinal 2" } }).lines[2],
+    clearConfirm({ ...preview, gameId: "R1-4-1", gameNumber: 4, round: "R1", roundName: "Round 1", removed: { gameNumber: 6, round: "SF", roundName: "Semifinals", teamName: "Royals", seriesInSentence: "Semifinal 2" } }).lines[2],
     "Royals will be removed from Semifinal 2 until this game has a result again.",
     "S11", "a single game feeding a series names the series",
   );
@@ -1039,6 +1048,111 @@ section("S12 outside the app", () => {
 // copy. The SQL proof runs it through playoff_if_needed (IX1); here every row
 // becomes a series and goes through seriesGameTag. Change either rule alone
 // and its side goes red.
+
+// ─── FN: the last round is always the Final (Whit's acceptance test) ───────
+// A 2-team bracket stores its only round as "R1" and a 4-team bracket its
+// first round as "R1" — names come from POSITION (series-names.ts), on every
+// surface. Expected values are written out by hand.
+
+section("FN the last round is the Final", () => {
+  const titles = (n: number) => wizardRounds(n).map((r) => r.title);
+  eq(titles(2), ["Final"], "FN1", "wizard, 2 teams: the only round is the Final");
+  if (titles(2)[0] === "Final") counters.twoTeamFinals++;
+  eq(titles(3), ["Semifinals", "Final"], "FN2", "wizard, 3 teams: Semifinals, Final");
+  eq(titles(4), ["Semifinals", "Final"], "FN2", "wizard, 4 teams: Semifinals, Final");
+  eq(titles(5), ["Round 1", "Semifinals", "Final"], "FN2", "wizard, 5 teams: Round 1, Semifinals, Final");
+  eq(titles(8), ["Round 1", "Semifinals", "Final"], "FN2", "wizard, 8 teams: Round 1, Semifinals, Final");
+  eq(titles(16), ["Round 1", "Quarterfinals", "Semifinals", "Final"], "FN2", "wizard, 16 teams unchanged");
+  eq(titles(32), ["Round 1", "Round 2", "Quarterfinals", "Semifinals", "Final"], "FN2", "wizard, 32 teams unchanged");
+
+  eq(roundsFromTeamsLine(2),
+    "Rounds come from the number of teams (2 teams → Final). Set each round separately — e.g. single games, then a best-of-3 Final.",
+    "FN3", "the line under the control, 2 teams");
+  eq(roundsFromTeamsLine(8),
+    "Rounds come from the number of teams (8 teams → Round 1, Semifinals, Final). Set each round separately — e.g. single games, then a best-of-3 Final.",
+    "FN3", "the line under the control, 8 teams");
+
+  // Real generated brackets: every round's name on the tree and list.
+  const roundsOf = (g: ReadonlyArray<{ round: string; game_number: number }>) =>
+    [...new Set([...g].sort((a, b) => a.game_number - b.game_number).map((x) => x.round))];
+  const names = (n: number) => {
+    const games = buildSingleElimination(teams(n), IDS, noSlots());
+    return roundsOf(games).map((r) => playoffRoundTitle(r, games));
+  };
+  eq(names(2), ["Final"], "FN4", "tree, 2 teams");
+  if (names(2)[0] === "Final") counters.twoTeamFinals++;
+  eq(names(4), ["Semifinals", "Final"], "FN4", "tree, 4 teams");
+  eq(names(6), ["Round 1", "Semifinals", "Final"], "FN4", "tree, 6 teams (byes)");
+  eq(names(8), ["Round 1", "Semifinals", "Final"], "FN4", "tree, 8 teams unchanged");
+  eq(names(16), ["Round 1", "Round 2", "Semifinals", "Final"], "FN4", "tree, 16 single-game teams: no Quarterfinals, as before");
+  const sixteen = buildSingleElimination(teams(16), IDS, noSlots());
+  eq(roundsOf(sixteen).map((r) => roundTitle(r, sixteen)), ["Round 1", "Quarterfinals", "Semifinals", "Final"], "FN4", "a series bracket's titles keep Quarterfinals");
+  const twoSeries = buildSingleElimination(teams(2), IDS, noSlots(), { R1: 3 });
+  eq(seriesName(twoSeries[0], twoSeries), "Final", "FN4", "a 2-team best-of-3 is the Final");
+
+  // The Final's trophy / champion banner follows the same rule.
+  const two = buildSingleElimination(teams(2), IDS, noSlots());
+  const four = buildSingleElimination(teams(4), IDS, noSlots());
+  const eight = buildSingleElimination(teams(8), IDS, noSlots());
+  ok(isFinalRound("R1", two), "FN5", "a 2-team bracket's R1 is the Final (champion banner)");
+  ok(!isFinalRound("R1", four) && isFinalRound("F", four), "FN5", "4 teams: only F is the Final");
+  ok(!isFinalRound("SF", eight) && !isFinalRound("R1", eight), "FN5", "8 teams: neither R1 nor SF is the Final");
+
+  // Print headers.
+  const head = (html: string) => [...html.matchAll(/text-transform:uppercase;letter-spacing:0\.6pt;color:#[0-9a-f]+">([^<]+)</g)].map((m) => m[1]);
+  eq(head(buildBracketPrintHtml(singleElim(2, 1), "single_elimination", "L", "Majors", "Nov 21, 2026")), ["Final"], "FN6", "print, 2 teams");
+  if (head(buildBracketPrintHtml(singleElim(2, 1), "single_elimination", "L", "Majors", "Nov 21, 2026"))[0] === "Final") counters.twoTeamFinals++;
+  eq(head(buildBracketPrintHtml(singleElim(4, 3), "single_elimination", "L", "Majors", "Nov 21, 2026")), ["Semifinals", "Final"], "FN6", "print, 4 teams");
+  eq(head(buildBracketPrintHtml(singleElim(8, 7), "single_elimination", "L", "Majors", "Nov 21, 2026")), ["Round 1", "Semifinals", "Final"], "FN6", "print, 8 teams unchanged");
+
+  // CSV / schedule print titles.
+  const asExport = (g: PrintGame[]) => g.map((x) => ({ ...x, playoff_id: "p1" })) as ExportGame[];
+  const csv2 = asExport(singleElim(2, 1));
+  eq(exportGameName(csv2[0], csv2, null), "Final", "FN7", "CSV, 2 teams");
+  if (exportGameName(csv2[0], csv2, null) === "Final") counters.twoTeamFinals++;
+  const csv4 = asExport(singleElim(4, 3));
+  eq(roundsOf(csv4).map((r) => exportGameName(csv4.find((x) => x.round === r)!, csv4, null)), ["Semifinals", "Final"], "FN7", "CSV, 4 teams");
+  const csv8 = asExport(singleElim(8, 7));
+  eq(exportGameName(csv8.find((x) => x.round === "R1")!, csv8, null), "Round 1", "FN7", "CSV, 8 teams unchanged");
+
+  // Public page and feed (they share the row label).
+  eq(bracketRoundName("R1", two), "Final", "FN8", "public, 2 teams");
+  if (bracketRoundName("R1", two) === "Final") counters.twoTeamFinals++;
+  eq(bracketRoundName("R1", four), "Semifinal", "FN8", "public, 4 teams: the first round is a Semifinal");
+  eq(bracketRoundName("R1", eight), "Round 1", "FN8", "public, 8 teams unchanged");
+  eq(bracketRoundName("SF", eight), "Semifinal", "FN8", "public, 8 teams: SF unchanged");
+
+  // The result modal's sentences name rounds through the bracket.
+  const numbering: ResultNumbering = {
+    own: gameNumbering(two), nextStage: null, roundName: (r) => playoffRoundTitle(r, two),
+  };
+  const pv = clearPreviewOutcome({
+    committed: false, blocked: false, game_id: "g1", game_number: two[0].game_number, round: "R1",
+    home_name: "Expos", away_name: "Bears", home_score: 4, away_score: 2, winner_name: "Expos",
+    on_public_schedule: false, removed: null,
+  }, null, "g1", numbering);
+  eq(pv.ok ? clearConfirm(pv.preview).lines[0] : null, "Game 1 (Final) — Expos 4, Bears 2 (Expos won).", "FN9", "the clear confirm names a 2-team Final");
+
+  // Other formats are untouched.
+  const rr = roundRobin(4);
+  eq(roundsOf(rr).map((r) => playoffRoundTitle(r, rr)), roundsOf(rr).map((r) => `Round ${r.slice(2)}`), "FN10", "round robin: Round k, no Final");
+  const de = doubleElim(8);
+  ok(roundsOf(de).every((r) => playoffRoundTitle(r, de) !== "Final" || r === "F"), "FN10", "double elimination: no round renamed Final");
+  eq(bracketRoundName(rr[0].round, rr), "Round robin", "FN10", "public round robin unchanged");
+
+  // Wiring (source greps — weak by nature).
+  const control = readFileSync("src/components/playoffs/steps/series-lengths-control.tsx", "utf8");
+  ok(control.includes("{roundsFromTeamsLine(teamCount)}"), "FN11", "the control renders the line");
+  const view = readFileSync("src/components/playoffs/bracket-view.tsx", "utf8");
+  ok(view.includes("if (!withSeries) return playoffRoundTitle(round, games);")
+     && view.includes("roundName={playoffRoundTitle(g.round, games)}")
+     && view.includes("isFinalRound(lastRound, games)")
+     && view.includes(": playoffRoundTitle(editingGame.round, games)}"), "FN11", "the tree, list, banner and edit modal name rounds by the bracket");
+  const modal = readFileSync("src/components/playoffs/enter-result-modal.tsx", "utf8");
+  ok(modal.includes("roundName: (round) => playoffRoundTitle(round, allGames)") && modal.includes("isFinalRound(game.round, allGames)"), "FN11", "the result modal names rounds by the bracket");
+  const pub = readFileSync("src/lib/public-schedule/view.ts", "utf8");
+  ok(pub.includes("${bracketRoundName(p.round, seriesRows("), "FN11", "the public row label uses bracketRoundName");
+});
 
 section("IX if-needed table", () => {
   const sql = readFileSync("scripts/sim/playoff-series-sim.sql", "utf8").split("\n");

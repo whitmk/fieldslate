@@ -4,7 +4,7 @@ import { useState } from "react";
 import { X, Trophy, Eraser } from "lucide-react";
 import { enterGameResult } from "@/lib/playoffs/enter-result";
 import { clearResult, previewClearResult } from "@/lib/playoffs/clear-result";
-import { clearConfirm, clearOffered, saveBlockedReason, type ClearPreview, type ResultNumbering } from "@/lib/playoffs/playoff-result";
+import { clearConfirm, clearOffered, playoffRoundTitle, saveBlockedReason, type ClearPreview, type ResultNumbering } from "@/lib/playoffs/playoff-result";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { gameLabel, gameNumbering, slotName } from "@/lib/playoffs/bracket-labels";
 import type { GameWithTeams } from "@/components/playoffs/bracket-view";
@@ -22,7 +22,7 @@ import {
   seriesHomeNote,
   seriesResultText,
 } from "@/lib/playoffs/series";
-import { isSeriesGame, seriesLengthOf, seriesNameInSentence } from "@/lib/playoffs/series-names";
+import { isFinalRound, isSeriesGame, seriesLengthOf, seriesNameInSentence } from "@/lib/playoffs/series-names";
 
 const CHAMPIONSHIP_ROUNDS = new Set(["F", "GF"]);
 
@@ -51,7 +51,8 @@ export function EnterResultModal({ game, allGames, format, onClose, onSaved, tit
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isChampionship = CHAMPIONSHIP_ROUNDS.has(game.round);
+  // A single elimination's last round is its Final whatever it is stored as.
+  const isChampionship = CHAMPIONSHIP_ROUNDS.has(game.round) || isFinalRound(game.round, allGames);
   const isDone = game.status === "completed";
   const saveBlocked = saveBlockedReason(game.home_team_id, game.away_team_id);
   const homeLabel = slotName(game.home_team_name, game, "home", allGames, format);
@@ -76,6 +77,7 @@ export function EnterResultModal({ game, allGames, format, onClose, onSaved, tit
       const row = allGames.find((g) => g.round === round && g.game_number === stored);
       return row && isSeriesGame(row, allGames) ? { inSentence: seriesNameInSentence(row, allGames) } : null;
     },
+    roundName: (round) => playoffRoundTitle(round, allGames),
   };
 
   // Clear result: preview first (clear_playoff_result writes nothing), then

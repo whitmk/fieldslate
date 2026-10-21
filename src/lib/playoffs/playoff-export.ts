@@ -21,7 +21,7 @@
 
 import { slotName, type Side } from "@/lib/playoffs/bracket-labels";
 import { planSettingsFromDivision } from "@/lib/playoffs/bracket-plan";
-import { playoffRoundLabel } from "@/lib/playoffs/playoff-result";
+import { playoffRoundTitle } from "@/lib/playoffs/playoff-result";
 import { rrGameLabel } from "@/lib/playoffs/two-stage";
 import { gameLabel } from "@/lib/playoffs/bracket-labels";
 import { NOT_NEEDED, outboundMatchup, seriesGameTag, seriesGamesOf } from "@/lib/playoffs/series";
@@ -63,11 +63,17 @@ export function noDurationNote(divisionName: string): string {
 
 /** A game's round as the export and the schedule print name it. In a
  *  two-stage pair the round robin reads "Round robin · RR Game 13" and the
- *  bracket "Bracket · Round 1", so "Game N" always means the bracket. */
-export function exportRound(g: Pick<ExportGame, "playoff_id" | "round" | "game_number">, pair: ExportPair): string {
+ *  bracket "Bracket · Round 1", so "Game N" always means the bracket. `own`
+ *  is the game's whole bracket: a single elimination's last round is always
+ *  the Final (playoffRoundTitle). */
+export function exportRound(
+  g: Pick<ExportGame, "playoff_id" | "round" | "game_number">,
+  pair: ExportPair,
+  own: ReadonlyArray<Pick<ExportGame, "round" | "game_number">>,
+): string {
   if (pair && g.playoff_id === pair.stage1Id) return `Round robin · ${rrGameLabel(g.game_number)}`;
-  if (pair && g.playoff_id === pair.stage2Id) return `Bracket · ${playoffRoundLabel(g.round)}`;
-  return playoffRoundLabel(g.round);
+  if (pair && g.playoff_id === pair.stage2Id) return `Bracket · ${playoffRoundTitle(g.round, own)}`;
+  return playoffRoundTitle(g.round, own);
 }
 
 /** The games an export or schedule print lists: every one but a NOT-NEEDED
@@ -90,7 +96,7 @@ function bracketHasSeries(own: ExportGame[]): boolean {
  *  not-needed games — they decide the series' length and its tags. */
 export function exportGameName(g: ExportGame, all: ExportGame[], pair: ExportPair): string {
   const own = ownBracket(g, all);
-  if ((pair && g.playoff_id === pair.stage1Id) || !bracketHasSeries(own)) return exportRound(g, pair);
+  if ((pair && g.playoff_id === pair.stage1Id) || !bracketHasSeries(own)) return exportRound(g, pair, own);
   const prefix = pair && g.playoff_id === pair.stage2Id ? "Bracket · " : "";
   if (!isSeriesGame(g, own)) return `${prefix}${roundTitle(g.round, own)} · ${gameLabel(g, own)}`;
   const ifNeeded = seriesGameTag(g, seriesGamesOf(g, own)) === "if_needed" ? " (if needed)" : "";
