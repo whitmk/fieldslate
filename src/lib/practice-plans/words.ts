@@ -228,3 +228,48 @@ export const LENGTH_INVALID = (min: number, max: number) => `${min}–${max} min
 export const DATE_INVALID = "Finish the date";
 export const NAME_INVALID = "Give the plan a name";
 export const SAVE_BLOCKED_INVALID = "Not saving — fix the highlighted field.";
+
+// ── Copy for city request + Print (step 5c) ──────────────────────────────
+export const COPY_REQUEST_BUTTON = "Copy for city request";
+export const COPY_REQUEST_BUTTON_SHORT = "Copy for city";
+export const PRINT_BUTTON = "Print";
+export const COPY_FALLBACK_TITLE = "Copy for city request";
+export const COPY_DONE = "Done";
+export const PRINT_SECTION_FIELDS = "Fields to request";
+export const PRINT_SECTION_NIGHTS = "Night by night";
+export const PRINT_SECTION_NOTES = "Notes";
+export const PRINT_SECTION_DIVISIONS = "Divisions";
+export const PRINT_COL = {
+  fieldType: "Field type", fields: "Fields", busiest: "Busiest night", night: "Night", division: "Division", teams: "Teams",
+  perWeek: "Practices a week", length: "Length", days: "Days", window: "Window", field: "Field", perField: "Teams per field", lit: "Lit fields",
+} as const;
+export const PRINT_LIT_YES = "Yes";
+
+/** "Example Little League — Spring 2027 practice field request" (no league name → the plan alone). */
+export function printTitle(leagueName: string | null, planName: string): string {
+  const league = leagueName?.trim();
+  return league ? `${league} — ${planName} practice field request` : `${planName} practice field request`;
+}
+
+/** The print's meta line. "Near …" only with a league city; dates only when set. */
+export function printMetaLine(p: {
+  dates: string | null; cityLabel: string | null; mode: "spread" | "sameNights"; minutesBetween: number; printedOn: string | null;
+}): string {
+  const parts: string[] = [];
+  if (p.dates) parts.push(p.dates);
+  if (p.cityLabel) parts.push(`Near ${p.cityLabel}`);
+  parts.push(p.mode === "spread" ? "Practices spread across the week" : "Everyone wants the same nights");
+  if (p.minutesBetween) parts.push(`${p.minutesBetween} minutes between practices`);
+  if (p.printedOn) parts.push(`Printed ${p.printedOn}`);
+  return parts.join(" · ");
+}
+
+/** The print's "other mode" column heading. */
+export function printOtherModeHeading(mode: "spread" | "sameNights"): string {
+  return mode === "spread" ? "If everyone wants the same nights" : "If spread across the week";
+}
+
+/** The print's totals line. */
+export function printTotalsLine(t: { teamPracticesPerWeek: string; fieldHoursPerWeek: string; weeks: string; fieldHoursSeason: string }): string {
+  return `${t.teamPracticesPerWeek} team practices a week · ${t.fieldHoursPerWeek} field hours a week · ${t.weeks} weeks · ${t.fieldHoursSeason} field hours this season`;
+}

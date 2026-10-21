@@ -111,6 +111,10 @@ const OUTBOUND_FILES = [
   "src/components/umpires/manual-print-button.tsx",
   "src/components/umpires/umpire-schedule-actions.tsx",
   "src/components/umpires/pay-report-modal.tsx",
+  // The practice planner's print (2026-10-21). Its daylight notes are the
+  // planner module's own sunset sentences (like the free calculator's) — it
+  // must never reach the admin daylight-flags module.
+  "src/components/field-requests/plan-print-region.tsx",
 ];
 const outbound = [...new Set([...OUTBOUND_DIRS.flatMap(walk), ...OUTBOUND_FILES])].sort();
 let fenced = 0;

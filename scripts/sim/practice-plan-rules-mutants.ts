@@ -10,6 +10,7 @@ const REQUEST = "src/lib/practice-plans/request.ts";
 const WORDS = "src/lib/practice-plans/words.ts";
 const LIST = "src/lib/practice-plans/list.ts";
 const EDITOR = "src/lib/practice-plans/editor.ts";
+const PRINT = "src/components/field-requests/plan-print-region.tsx";
 
 const MUTANTS: Mutant[] = [
   {
@@ -155,6 +156,24 @@ const MUTANTS: Mutant[] = [
     find: '  return state.kind === "dirty" && invalidFields === 0;',
     replace: '  return state.kind === "dirty";',
     expect: "A10",
+  },
+  {
+    id: "RU25", what: "the print says \"Near …\" with no city", file: WORDS,
+    find: "  if (p.cityLabel) parts.push(`Near ${p.cityLabel}`);",
+    replace: "  parts.push(`Near ${p.cityLabel ?? \"Sacramento, CA\"}`);",
+    expect: "PR1",
+  },
+  {
+    id: "RU26", what: "the print's Lit fields cell left empty", file: PRINT,
+    find: '                <td>{d.lit ? PRINT_LIT_YES : ""}</td>',
+    replace: '                <td>{""}</td>',
+    expect: "PR2",
+  },
+  {
+    id: "RU27", what: "the print drops the lit line", file: PRINT,
+    find: "            {litLine && <p className=\"fieldslate-print-meta\" data-print-lit>{litLine}</p>}",
+    replace: "",
+    expect: "PR3",
   },
 ];
 

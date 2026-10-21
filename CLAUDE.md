@@ -709,8 +709,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   - `words.ts` — EVERY app-only sentence, rendered verbatim. Outside the
     calculator module; imports neither `src/lib/daylight` nor
     `sun/sunset` (sim:daylight-leaks S1; checked again by the rules sim W3).
-  - **Harness:** `npm run sim:practice-plan-rules` (65 checks × 3 zones) +
-    `:mutants` (24, each killed at its own assertion).
+  - **Harness:** `npm run sim:practice-plan-rules` (70 checks × 3 zones) +
+    `:mutants` (27, each killed at its own assertion).
 - **Screens, step 5a — the plans list (`/dashboard/field-requests`).**
   - Its own sidebar item, "Field requests", directly below Practices,
     `tier: "pro"`. NOT a route under `/dashboard/practices` — the sidebar's
@@ -786,6 +786,31 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     Length "120" typed into an empty box, Teams cleared then "12", and a date
     typed by hand (real key presses — an automation text insert doesn't reach
     a date input) all held while invalid and saved once valid.
+- **Screens, step 5c — Copy for city request + Print.**
+  - Buttons in the planner header (desktop) and a sticky bar at the bottom
+    on a phone. Copy puts `planRequestText` on the clipboard — the module's
+    `requestText` for the mode on screen, then "On lit fields: …" — and says
+    "Copied". If the browser refuses the clipboard, a modal shows the same
+    text in a read-only box, focused and selected.
+  - Print is the APP's own `PlanPrintRegion`
+    (`src/components/field-requests/plan-print-region.tsx`) in the shared
+    `.fieldslate-print-region` mechanism; the marketing print region is not
+    reused or changed, and no shared print CSS changed. Header: league
+    (`profiles.org_name`) + plan name (`printTitle`), then dates, "Near
+    <city>" ONLY with a league city, the mode, minutes between, and
+    "Printed <date>" — read when Print is pressed (flushSync, then
+    `window.print()`), never in render. Then Fields to request + the lit
+    line, Night by night, Notes (the module's warnings: daylight notes appear
+    only with a city), Divisions with a Lit fields column, totals. No "free
+    calculator" line. Keep-together rules are the calculator print's, as
+    inline styles. **Safari print check owed** (CLAUDE.md "Print path").
+  - The print is in `sim:daylight-leaks`'s outbound list by name (87 files
+    fenced): its daylight notes are the planner module's own sentences, and
+    it must never reach the admin daylight-flags module.
+  - Checked on a deleted scratch route: clipboard success → toast, refusal →
+    modal with all text selected; the print region with and without a city
+    (title, meta, lit line, Majors = Yes, 5 daylight notes vs none); sticky
+    bar at 375px.
 
 ## Daylight flags (admin-only, branch `feat/daylight-flags`, 2026-10-14)
 

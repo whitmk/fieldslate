@@ -22,11 +22,15 @@
 //   A   the planner (5b): save replies, autosave, the leave warning, adding
 //       divisions, committed values, wiring ← RU17 (A1), RU18 (A2),
 //       RU19 (A3), RU20 (A4), RU21 (A6), RU22 (A8), RU23 (A9), RU24 (A10)
+//   PR  copy for city request + the print (5c) ← RU25 (PR1), RU26 (PR2),
+//       RU27 (PR3)
 //   W   words, verbatim, and the daylight-leaks fence (source reads)
 // then ANTI-VACUITY COUNTERS.
 //
 // MUTATION LOG: see the bottom of this file.
 
+import React, { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EXAMPLE_DIVISIONS, NEW_DIVISION } from "@/lib/practice-planner/example-league";
@@ -37,6 +41,10 @@ import { loadPlan, upgradePlanInput, type PlanInput, type PlanRow } from "@/lib/
 import { INPUT_LIMITS, PLAN_INPUT_VERSION, practicePlanInputProblem } from "@/lib/practice-plans/plan-input";
 import { newPlanInput, parsePrefillAdjustmentQuery, pickPrefill, prefillAdjustmentQuery, teamHint, type PrefillRow } from "@/lib/practice-plans/prefill";
 import { litLine, planRequestText } from "@/lib/practice-plans/request";
+import { PlanPrintRegion } from "@/components/field-requests/plan-print-region";
+
+// tsx compiles JSX with the classic runtime, which reads a global React.
+(globalThis as { React?: unknown }).React = React;
 import {
   addDivision,
   afterSave,
@@ -65,6 +73,8 @@ import {
   noTeamsLine,
   planErrorMessage,
   prefillAdjustedLine,
+  printMetaLine,
+  printTitle,
   staleSaveLine,
   teamHintLine,
 } from "@/lib/practice-plans/words";
@@ -409,6 +419,48 @@ section("A", () => {
     "[A7] city, save, leave warning and gate wired");
 });
 
+// ── PR: copy for city request and the print (5c) ────────────────────────
+section("PR", () => {
+  const sr = cityById("ca-santa-rosa");
+  const withCity = computePlan(BASE_INPUT, { city: sr });
+  const noCity = computePlan(BASE_INPUT, { city: null });
+  // PR1: the header lines. (RU25, "Near …" printed with no city.)
+  ok(printTitle("Example Little League", "Spring 2027") === "Example Little League — Spring 2027 practice field request" &&
+    printTitle(null, "Spring 2027") === "Spring 2027 practice field request" &&
+    printMetaLine({ dates: "Feb 22 to May 29, 2027", cityLabel: "Santa Rosa, CA", mode: "spread", minutesBetween: 0, printedOn: "Oct 21, 2026" }) ===
+      "Feb 22 to May 29, 2027 · Near Santa Rosa, CA · Practices spread across the week · Printed Oct 21, 2026" &&
+    printMetaLine({ dates: null, cityLabel: null, mode: "sameNights", minutesBetween: 10, printedOn: null }) ===
+      "Everyone wants the same nights · 10 minutes between practices",
+    "[PR1] the print's title and meta line");
+  // PR2: the print region itself, rendered — league + plan header, the lit
+  // line, a Lit fields column with Majors = Yes, daylight notes only with a
+  // city, no free-calculator line. (RU26, the Lit fields cell left empty;
+  // RU27, the lit line dropped.)
+  const render = (plan: typeof withCity, cityLabel: string | null, input: PlanInput) =>
+    renderToStaticMarkup(createElement(PlanPrintRegion, {
+      leagueName: "Example Little League", planName: "Spring 2027", input, plan, mode: "spread", cityLabel, litLine: litLine(input), printedOn: "Oct 21, 2026",
+    }));
+  const html = render(withCity, "Santa Rosa, CA", BASE_INPUT);
+  const htmlNoCity = render(noCity, null, BASE_INPUT);
+  const unlit: PlanInput = { ...BASE_INPUT, divisions: BASE_INPUT.divisions.map(({ lit: _l, ...d }) => { void _l; return d; }) };
+  const htmlUnlit = render(computePlan(unlit, { city: sr }), "Santa Rosa, CA", unlit);
+  const majorsRow = /<tr[^>]*><td>Majors<\/td>(.*?)<\/tr>/.exec(html)?.[1] ?? "";
+  ok(html.includes('class="fieldslate-print-region hidden"') && html.includes("Example Little League — Spring 2027 practice field request") &&
+    html.includes("<th>Lit fields</th>") && majorsRow.endsWith("<td>Yes</td>"),
+    "[PR2] the print: header, Lit fields column, Majors marked", majorsRow.slice(-40));
+  ok(html.includes("On lit fields: Majors.") && !htmlUnlit.includes("On lit fields"), "[PR3] the lit line, only when something is lit");
+  ok((html.match(/<li[^>]*>Daylight:/g) ?? []).length === 5 && !htmlNoCity.includes("Daylight:") && !htmlNoCity.includes("Near ") &&
+    !/calculator/i.test(html) && !/calculator/i.test(htmlNoCity),
+    "[PR4] daylight notes only with a city; no free-calculator line");
+  // PR5: wiring (source reads): the clipboard gets planRequestText; a refusal
+  // opens the fallback with the text selected; Print sets the date at click.
+  const client = readFileSync(join(ROOT, "src/components/field-requests/planner-client.tsx"), "utf8");
+  ok(/const text = planRequestText\(input, result, plan\.inUse\);[\s\S]{0,80}navigator\.clipboard\.writeText\(text\)/.test(client) &&
+    /catch \{\s*setCopyFallback\(text\);/.test(client) && /ref\.current\?\.select\(\)/.test(client) &&
+    /flushSync\(\(\) => setPrintedOn\(/.test(client) && /<PlanPrintRegion/.test(client),
+    "[PR5] copy, fallback and print wired");
+});
+
 // ── W: words, verbatim, and the fence ───────────────────────────────────
 section("W", () => {
   const sr = cityById("ca-santa-rosa");
@@ -470,3 +522,5 @@ process.exit(failures ? 1 : 0);
 // Fields keep typed text and hold autosave while invalid (Length is typed now;
 // a half-typed date no longer reads as "no date"). RU22 → A8, RU23 → A9,
 // RU24 → A10.
+// 2026-10-21, step 5c: section PR (the print rendered to markup, its words,
+// the copy wiring); RU25 → PR1, RU26 → PR2, RU27 → PR3.

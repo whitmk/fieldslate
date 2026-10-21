@@ -7,8 +7,9 @@
 // editor.ts's; this file wires them to inputs, a timer and the page.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
-import { AlertTriangle, Check, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, ClipboardCopy, Loader2, Printer, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { computePlan } from "@/lib/practice-planner/report";
@@ -18,7 +19,7 @@ import type { PlanDivision, PlanInput } from "@/lib/practice-plans/load";
 import { INPUT_LIMITS, PLAN_INPUT_VERSION, practicePlanInputProblem } from "@/lib/practice-plans/plan-input";
 import type { Prefill, PrefillAdjustments } from "@/lib/practice-plans/prefill";
 import { saveOutcome } from "@/lib/practice-plans/list";
-import { litDivisionNames } from "@/lib/practice-plans/request";
+import { litDivisionNames, litLine, planRequestText } from "@/lib/practice-plans/request";
 import {
   addDivision,
   afterSave,
@@ -37,6 +38,12 @@ import {
   CHANGE_IN_SETTINGS,
   CITY_NOT_SET,
   CITY_SOURCE_NOTE,
+  COPIED_TOAST,
+  COPY_DONE,
+  COPY_FALLBACK,
+  COPY_FALLBACK_TITLE,
+  COPY_REQUEST_BUTTON,
+  COPY_REQUEST_BUTTON_SHORT,
   DIVISIONS_CARD,
   END_LABEL,
   LEAVE_WARNING,
@@ -46,6 +53,7 @@ import {
   NO_CITY_LINK,
   PLAN_NAME_LABEL,
   PLAN_REQUIRED_STOPPED,
+  PRINT_BUTTON,
   PRACTICES_CARD,
   PRACTICES_HINT,
   RELOAD_CONFIRM_BODY,
@@ -69,6 +77,7 @@ import {
 } from "@/lib/practice-plans/words";
 import { DivisionEditor } from "./division-editor";
 import { PlanResults, SETTINGS_DAYLIGHT_HREF } from "./plan-results";
+import { PlanPrintRegion } from "./plan-print-region";
 
 const AUTOSAVE_DELAY_MS = 900;
 const INPUT =
@@ -83,6 +92,8 @@ type Props = {
   city: UsCity | null;
   prefill: Prefill;
   prefillNote: { seasonName: string; adjustments: PrefillAdjustments } | null;
+  /** profiles.org_name — heads the print. */
+  leagueName: string | null;
 };
 
 function staleWhen(iso: string): string {
@@ -96,6 +107,9 @@ export function PlannerClient(props: Props) {
   const [mode, setMode] = useState<SpreadMode>(props.initialMode);
   const [state, setState] = useState<SaveState>({ kind: "clean" });
   const [confirmReload, setConfirmReload] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [copyFallback, setCopyFallback] = useState<string | null>(null);
+  const [printedOn, setPrintedOn] = useState<string | null>(null);
   // Fields whose typed text is not (yet) a value the plan can take.
   const [invalid, setInvalid] = useState<ReadonlySet<string>>(() => new Set());
   const onValidity = useCallback((key: string, ok: boolean) => {
@@ -179,14 +193,58 @@ export function PlannerClient(props: Props) {
 
   const onDivision = (id: string, patch: Partial<PlanDivision>) => edit(() => setInput((i) => updateDivision(i, id, patch)));
 
+  // Copy for city request: the module's request text for the mode on screen,
+  // plus the lit-fields line. Clipboard first; if the browser refuses, the
+  // same text in a modal, selected, to copy by hand.
+  const copyRequest = async () => {
+    const result = mode === "spread" ? plan.spread : plan.sameNights;
+    const text = planRequestText(input, result, plan.inUse);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      setCopyFallback(text);
+    }
+  };
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 2200);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+
+  // Print: the "Printed" date is read when the button is pressed (event time),
+  // rendered into the print region synchronously, then the browser prints.
+  const print = () => {
+    flushSync(() => setPrintedOn(new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date())));
+    window.print();
+  };
+  const cityLabel = props.city ? `${props.city.name}, ${props.city.state}` : null;
+
   return (
     <div className="flex flex-col gap-4">
       <div>
         <Link href="/dashboard/field-requests" className="text-sm font-semibold text-[#16a34a]">← {BACK_TO_PLANS}</Link>
         <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
           <h1 className="min-w-0 break-words text-2xl font-bold text-gray-900">{name.trim() || props.initialName}</h1>
-          <SaveStatus state={state} blocked={invalidCount > 0} onRetry={() => void save(updatedAt.current)} />
+          <div className="flex flex-wrap items-center gap-3">
+            <SaveStatus state={state} blocked={invalidCount > 0} onRetry={() => void save(updatedAt.current)} />
+            <div className="hidden gap-2 sm:flex">
+              <button type="button" onClick={() => void copyRequest()} disabled={plan.inUse.length === 0}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-sm font-semibold text-[#0C1F3F] hover:border-gray-300 disabled:opacity-50">
+                <ClipboardCopy className="h-4 w-4" />{COPY_REQUEST_BUTTON}
+              </button>
+              <button type="button" onClick={print}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-sm font-semibold text-[#0C1F3F] hover:border-gray-300">
+                <Printer className="h-4 w-4" />{PRINT_BUTTON}
+              </button>
+            </div>
+          </div>
         </div>
+        {copied && (
+          <p role="status" data-copied className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[#0C1F3F] px-3 py-1.5 text-sm font-semibold text-white">
+            <Check className="h-4 w-4" />{COPIED_TOAST}
+          </p>
+        )}
       </div>
 
       {state.kind === "stale" && (
@@ -257,6 +315,23 @@ export function PlannerClient(props: Props) {
       <PlanResults plan={plan} mode={mode} city={props.city} litNames={litNames} readOnly={readOnly}
         onMode={(m) => m !== mode && edit(() => setMode(m))} />
 
+      {/* Phone: Copy and Print stay in reach at the bottom of the screen. */}
+      <div className="sticky bottom-0 -mx-4 flex gap-2 border-t border-gray-200 bg-white px-4 py-2.5 sm:hidden">
+        <button type="button" onClick={() => void copyRequest()} disabled={plan.inUse.length === 0}
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-[#0C1F3F] disabled:opacity-50">
+          <ClipboardCopy className="h-4 w-4" />{COPY_REQUEST_BUTTON_SHORT}
+        </button>
+        <button type="button" onClick={print}
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-[#0C1F3F]">
+          <Printer className="h-4 w-4" />{PRINT_BUTTON}
+        </button>
+      </div>
+
+      {copyFallback !== null && <CopyFallback text={copyFallback} onDone={() => setCopyFallback(null)} />}
+
+      <PlanPrintRegion leagueName={props.leagueName} planName={name.trim() || props.initialName} input={input} plan={plan} mode={mode}
+        cityLabel={cityLabel} litLine={litLine(input)} printedOn={printedOn} />
+
       {confirmReload && (
         <ConfirmDialog title={RELOAD_CONFIRM_TITLE} detail={RELOAD_CONFIRM_BODY} confirmLabel={RELOAD_CONFIRM_BUTTON}
           onCancel={() => setConfirmReload(false)}
@@ -317,5 +392,35 @@ function DateField({ label, vkey, value, readOnly, onCommit, onValidity }: {
         }} />
       {!valid && <span className="mt-0.5 block text-xs font-semibold text-red-700">{DATE_INVALID}</span>}
     </label>
+  );
+}
+
+function CopyFallback({ text, onDone }: { text: string; onDone: () => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onDone();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onDone]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={(e) => e.target === e.currentTarget && onDone()}>
+      <div role="dialog" aria-modal="true" aria-label={COPY_FALLBACK_TITLE} data-copy-fallback
+        className="max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:max-w-xl sm:rounded-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-lg font-bold text-[#0C1F3F]">{COPY_FALLBACK_TITLE}</h2>
+          <button type="button" aria-label={COPY_DONE} onClick={onDone} className="grid h-9 w-9 place-items-center rounded-lg text-gray-500 hover:bg-gray-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="mt-1.5 text-sm text-gray-600">{COPY_FALLBACK}</p>
+        <textarea ref={ref} readOnly value={text} rows={14}
+          className="mt-3 w-full rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-xs leading-relaxed text-[#0C1F3F]" />
+        <div className="mt-4 flex justify-end">
+          <button type="button" onClick={onDone} className="min-h-10 rounded-lg bg-[#22C55E] px-4 text-sm font-semibold text-white hover:bg-[#16a34a]">{COPY_DONE}</button>
+        </div>
+      </div>
+    </div>
   );
 }

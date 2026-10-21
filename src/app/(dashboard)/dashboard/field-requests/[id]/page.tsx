@@ -61,7 +61,7 @@ export default async function FieldRequestPlanPage({
     );
   }
 
-  const [{ sunsetCity }, prefill] = await Promise.all([readLeagueSettings(supabase, orgId), readPrefill(supabase, orgId)]);
+  const [{ sunsetCity, leagueName }, prefill] = await Promise.all([readLeagueSettings(supabase, orgId), readPrefill(supabase, orgId)]);
 
   return (
     <PlannerClient
@@ -73,6 +73,7 @@ export default async function FieldRequestPlanPage({
       city={cityByIdOrNull(sunsetCity)}
       prefill={prefill}
       prefillNote={parsePrefillAdjustmentQuery(searchParams)}
+      leagueName={leagueName}
     />
   );
 }

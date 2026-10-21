@@ -47,10 +47,13 @@ export async function readPrefill(supabase: Client, orgId: string): Promise<Pref
   );
 }
 
-/** The league's timezone and stored sunset city (profiles, the org owner's row). */
-export async function readLeagueSettings(supabase: Client, orgId: string): Promise<{ timeZone: string; sunsetCity: string | null }> {
-  const { data, error } = await supabase.from("profiles").select("timezone, sunset_city").eq("id", orgId).single();
+/** The league's name, timezone and stored sunset city (profiles, the org owner's row). */
+export async function readLeagueSettings(
+  supabase: Client,
+  orgId: string,
+): Promise<{ timeZone: string; sunsetCity: string | null; leagueName: string | null }> {
+  const { data, error } = await supabase.from("profiles").select("timezone, sunset_city, org_name").eq("id", orgId).single();
   if (error || !data) throw new Error(`Could not load the league's settings: ${error?.message ?? "no row"}`);
-  const row = data as { timezone: string; sunset_city: string | null };
-  return { timeZone: row.timezone, sunsetCity: row.sunset_city };
+  const row = data as { timezone: string; sunset_city: string | null; org_name: string | null };
+  return { timeZone: row.timezone, sunsetCity: row.sunset_city, leagueName: row.org_name };
 }
