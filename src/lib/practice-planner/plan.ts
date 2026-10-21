@@ -35,7 +35,7 @@ import type {
   ModeResult,
   NightResult,
   PlacedBlock,
-  PlannerInput,
+  PlanCore,
   SpreadMode,
 } from "./types";
 
@@ -57,7 +57,7 @@ export function divisionIsActive(d: DivisionInput): boolean {
 }
 
 /** Field types some active division uses, in FIELD_TYPES order. */
-export function fieldTypesInUse(input: PlannerInput): FieldTypeId[] {
+export function fieldTypesInUse(input: PlanCore): FieldTypeId[] {
   return FIELD_TYPE_IDS.filter((z) => input.divisions.some((d) => d.fieldType === z && divisionIsActive(d)));
 }
 
@@ -71,7 +71,7 @@ function emptyByType<T>(make: () => T): Record<FieldTypeId, T> {
   return Object.fromEntries(FIELD_TYPE_IDS.map((z) => [z, make()])) as Record<FieldTypeId, T>;
 }
 
-export function distribute(input: PlannerInput, mode: SpreadMode): Demand {
+export function distribute(input: PlanCore, mode: SpreadMode): Demand {
   const demand = emptyByType(() => ALL_DAYS.map((): DayDemand[] => []));
   const load = emptyByType(() => ALL_DAYS.map(() => 0));
   const divs = input.divisions;
@@ -121,7 +121,7 @@ export function distribute(input: PlannerInput, mode: SpreadMode): Demand {
 type Block = { division: number; start: number; end: number; lengthMin: number; teams: number };
 
 /** Packs one night of one field type. */
-export function pack(input: PlannerInput, items: DayDemand[]): NightResult {
+export function pack(input: PlanCore, items: DayDemand[]): NightResult {
   const between = Number(input.minutesBetween) || 0;
   const fields: PlacedBlock[][] = [];
   const blocks: Block[] = [];
@@ -193,7 +193,7 @@ export function fieldNeed(nights: NightResult[]): FieldNeed {
   return { fields, peakDay, peakDays };
 }
 
-export function computeMode(input: PlannerInput, mode: SpreadMode): ModeResult {
+export function computeMode(input: PlanCore, mode: SpreadMode): ModeResult {
   const demand = distribute(input, mode);
   const byType = emptyByType((): NightResult[] => []);
   const need = emptyByType((): FieldNeed => ({ fields: 0, peakDay: null, peakDays: [] }));

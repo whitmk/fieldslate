@@ -594,11 +594,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Day lists go through `formatDayList`** (three or more in a row → "Mon–Fri",
   otherwise listed) and the busiest night through `busiestLabel` (one night →
   "Monday", a tie → the day list). Never hand-format a day list.
-- **Harness: `npm run sim:practice-planner`** (64 checks × 3 zones, 9
+- **Harness: `npm run sim:practice-planner`** (102 checks × 3 zones, 11
   anti-vacuity counters: the example league's 6/14, 2/4, 2/3; Santa Rosa
   sunsets ±3 min; every daylight outcome pinned AND mutant-killed: from D1,
-  until D2, never D3 + its wording W5; day lists and busiest-night ties N) +
-  `:mutants` (21, each killed first at
+  until D2, never D3 + its wording W5; day lists and busiest-night ties N;
+  the in-app options P; the calculator golden G) +
+  `:mutants` (28, each killed first at
   its own assertion). Every F fixture states its real AND mutated answer by
   hand — confirm a new fixture separates them before trusting its mutant.
 - **THE CALCULATOR'S OUTPUT IS PINNED BY A GOLDEN (2026-10-21)** —
@@ -607,10 +608,26 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   from the tree BEFORE the in-app planner's additive module change: 14 input
   cases through `computePlan` + `requestText`, plus the calculator's first
   render. `sim:practice-planner` section G compares it (runs LAST; mutants
-  PP22 → G3 and PP23 → G1 change only what G reads). The in-app planner
+  PP22 → G3, PP23 → G1 and PP28 → G1 change only what G reads). The in-app planner
   (branch `feat/practice-planner`) may ADD options to the module; it may not
   change what the calculator gets. A red G is fixed in the change, never by
   re-recording — re-record only on Whit's decision.
+- **The module's in-app options (2026-10-21, step 2 of the planner build).**
+  `computePlan(input)` is the calculator's call, unchanged: its own
+  `cityId`, resolved with `cityById` (the Sacramento fallback).
+  `computePlan(core, { city })` is the in-app planner's: `core` is a
+  `PlanCore` (no `cityId` at all), `city` is what the app resolved with
+  `cityByIdOrNull` — or null. With options the given city ALWAYS wins,
+  `cityById` is never called, and null means no daylight warnings and no
+  sunset. Options alone add `earliestSunset` ({date, minutes} or null) to the
+  result; WITHOUT options the key is absent, so the calculator's result is
+  key-for-key the golden (PP28 adds it on the no-options path and dies at
+  G1). `DivisionInput.lit` skips a division in the daylight check and NOTHING
+  else. `daylightWarnings` now takes the city as an argument (only
+  `computePlan` calls it). Section P pins all of it: P1 the given city wins
+  over any city id ← PP27, P2 a null city never falls back ← PP26, P3 lit
+  skips daylight ← PP24, P4 lit still counted ← PP25 (the city checks run
+  first — read the sim's mutation log).
 
 ## Daylight flags (admin-only, branch `feat/daylight-flags`, 2026-10-14)
 

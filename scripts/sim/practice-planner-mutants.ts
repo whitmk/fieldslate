@@ -150,9 +150,40 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "PP23", what: "the sunset shown for the season reads the end date, not the start", file: REPORT,
-    find: "    sunsetAtStart: err ? null : sunsetMinutes(parseIsoDate(input.seasonStart), cityById(input.cityId)),",
-    replace: "    sunsetAtStart: err ? null : sunsetMinutes(parseIsoDate(input.seasonEnd), cityById(input.cityId)),",
+    find: "    sunsetAtStart: err || !city ? null : sunsetMinutes(parseIsoDate(input.seasonStart), city),",
+    replace: "    sunsetAtStart: err || !city ? null : sunsetMinutes(parseIsoDate(input.seasonEnd), city),",
     expect: "G1-example-sacramento",
+  },
+  {
+    id: "PP28", what: "earliestSunset added to the calculator's result (no options)", file: REPORT,
+    find: "  if (opts) plan.earliestSunset = err || !city ? null : earliestSunset(input, city);",
+    replace: "  plan.earliestSunset = err || !city ? null : earliestSunset(input, city);",
+    expect: "G1-example-sacramento",
+  },
+  // Section P (2026-10-21): the in-app planner's options.
+  {
+    id: "PP24", what: "a lit division is still daylight-checked", file: REPORT,
+    find: "    if (!divisionIsActive(d) || d.lit) return;",
+    replace: "    if (!divisionIsActive(d)) return;",
+    expect: "P3",
+  },
+  {
+    id: "PP25", what: "a lit division is also dropped from the counts", file: PLAN,
+    find: "  return d.teams > 0 && normalizeDays(d.days).length > 0;",
+    replace: "  return d.teams > 0 && !d.lit && normalizeDays(d.days).length > 0;",
+    expect: "P4",
+  },
+  {
+    id: "PP26", what: "a null city falls back to the input's city id (Sacramento fallback)", file: REPORT,
+    find: "  const city = opts ? opts.city : cityById((input as PlannerInput).cityId);",
+    replace: "  const city = opts ? (opts.city ?? cityById((input as PlannerInput).cityId)) : cityById((input as PlannerInput).cityId);",
+    expect: "P2",
+  },
+  {
+    id: "PP27", what: "cityById is consulted when a city is given", file: REPORT,
+    find: "  const city = opts ? opts.city : cityById((input as PlannerInput).cityId);",
+    replace: "  const city = opts ? opts.city && cityById((input as PlannerInput).cityId) : cityById((input as PlannerInput).cityId);",
+    expect: "P1",
   },
 ];
 

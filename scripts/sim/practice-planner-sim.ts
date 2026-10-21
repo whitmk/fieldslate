@@ -41,6 +41,9 @@
 //   T   totals; too-long practices left out                   ← PP14 (T2)
 //   R   city-request text, incl. a season across New Year
 //   N   day lists ("Mon–Fri", "Mon, Wed, Fri") and busiest-night ties ← PP18 (N1), PP17 (N8)
+//   P   the in-app options: the given city always wins (null = no
+//       daylight), earliest sunset, lit skips daylight only ← PP27 (P1),
+//       PP26 (P2), PP24 (P3), PP25 (P4)
 //   G   the public calculator's output equals the golden recorded before
 //       the in-app planner's module change (14 cases + first render)
 // then ANTI-VACUITY COUNTERS — a zero counter fails the run.
@@ -55,8 +58,8 @@ import { ORG_TIMEZONES } from "@/lib/calendar/timezones";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EXAMPLE_LEAGUE } from "@/lib/practice-planner/example-league";
-import { fmtDate, formatDayList, parseIsoDate } from "@/lib/practice-planner/format";
-import type { DivisionInput, ModeResult, PlannerInput } from "@/lib/practice-planner/types";
+import { fmtDate, fmtTime, formatDayList, parseIsoDate } from "@/lib/practice-planner/format";
+import type { DivisionInput, ModeResult, PlanCore, PlannerInput } from "@/lib/practice-planner/types";
 import { captureGolden, GOLDEN_CASES, type Golden } from "./practice-planner-golden";
 
 let failures = 0;
@@ -411,6 +414,82 @@ section("N", () => {
   ok(busiestLabel(computeMode(league([]), "spread").need.diamond60) === "—", "[N11] no practices → dash");
 });
 
+// ── P: the in-app planner's options (2026-10-21) ────────────────────────
+// computePlan(core, { city }): the league's city resolved by the app (or
+// null), a per-division `lit` flag, and the earliest sunset. None of this may
+// reach the calculator's no-options path — section G pins that, and PP28
+// (earliestSunset added without options) dies there. Literals were computed
+// once by hand-run of the module (Santa Rosa, Feb 22 – May 29, 2027) and
+// match the in-app mockup.
+let optionsCases = 0;
+section("P", () => {
+  const sr = cityById("ca-santa-rosa");
+  const { cityId: _drop, ...rest } = EXAMPLE_LEAGUE;
+  void _drop;
+  const core: PlanCore = rest;
+  const majorsLit: PlanCore = { ...core, divisions: core.divisions.map((d) => (d.name === "Majors" ? { ...d, lit: true } : d)) };
+
+  // ORDER: the city checks run before the lit checks. The lit fixtures'
+  // input has no city id at all, so a stray cityById call (PP27) would
+  // otherwise surface at the lit assertion first instead of at P1.
+  // P1: the GIVEN city wins, even when the object also carries another
+  // city's id (the app's input has none; this proves cityById is never
+  // consulted). (PP27, cityById(input.cityId) when a city is given: New York.)
+  const elsewhere = { ...core, cityId: "ny-new-york" } as PlanCore;
+  const given = computePlan(elsewhere, { city: sr });
+  optionsCases++;
+  ok(given.warnings.spread.length === 5 &&
+    given.warnings.spread[4] === "Daylight: Minors AA, Minors AAA, Majors run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, an 8pm finish works from Apr 29." &&
+    given.earliestSunset !== undefined && given.earliestSunset !== null &&
+    fmtDate(given.earliestSunset.date) === "Feb 22" && fmtTime(given.earliestSunset.minutes) === "5:57pm",
+    "[P1] the given city wins over any city id", JSON.stringify({ w: given.warnings.spread, e: given.earliestSunset }));
+  // Earliest sunset in a fall season: the LAST day, after the clock change
+  // (Nov 1 drops to 5:11pm, Nov 7 is 5:05pm) — never the first day's 7:42pm.
+  const fall = computePlan({ ...core, seasonStart: "2026-08-31", seasonEnd: "2026-11-07" }, { city: sr });
+  optionsCases++;
+  ok(fall.earliestSunset != null && fmtDate(fall.earliestSunset.date) === "Nov 7" && fmtTime(fall.earliestSunset.minutes) === "5:05pm",
+    "[P1b] a fall season's earliest sunset is its last day", JSON.stringify(fall.earliestSunset));
+
+  // P2: city null → no daylight at all, no sunset, earliestSunset null (the
+  // key present, because options were given) — never a fallback city, even
+  // with a city id on the object. (PP26, null falls back to cityById.)
+  const none = computePlan({ ...core, cityId: "ca-santa-rosa" } as PlanCore, { city: null });
+  optionsCases++;
+  ok(none.warnings.spread.length === 0 && none.warnings.sameNights.length === 0 && none.sunsetAtStart === null &&
+    "earliestSunset" in none && none.earliestSunset === null,
+    "[P2] no city: no daylight, no sunset, no fallback", JSON.stringify({ w: none.warnings, s: none.sunsetAtStart, e: none.earliestSunset }));
+  // P3: Majors on lit fields leaves the daylight warnings; everyone else's
+  // stay. (PP24, lit ignored: "Minors AA, Minors AAA, Majors run until 8pm".)
+  const lit = computePlan(majorsLit, { city: sr });
+  optionsCases++;
+  ok(eq(lit.warnings.spread, [
+    "Daylight: T-Ball runs until 6pm, but sunset on Feb 22 is 5:57pm. Without lights, a 6pm finish works from Feb 26.",
+    "Daylight: 50/70 runs until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7pm finish works from Mar 14.",
+    "Daylight: Rookie runs until 7:15pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7:15pm finish works from Mar 14.",
+    "Daylight: Juniors runs until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7:30pm finish works from Mar 28.",
+    "Daylight: Minors AA, Minors AAA run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, an 8pm finish works from Apr 29.",
+  ]) && eq(lit.warnings.sameNights, [
+    "Daylight: T-Ball, 50/70 run until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7pm finish works from Mar 14.",
+    "Daylight: Rookie, Juniors run until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7:30pm finish works from Mar 28.",
+    "Daylight: Minors AA, Minors AAA run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, an 8pm finish works from Apr 29.",
+  ]), "[P3] a lit division is skipped by the daylight check", JSON.stringify(lit.warnings));
+
+  // P4: ...and by NOTHING else — the same counts, totals and request text as
+  // with no lit division. (PP25, lit dropped from the counts: 60-ft 5 / 12.)
+  const plain = computePlan(core, { city: sr });
+  ok(lit.spread.need.diamond60.fields === 6 && lit.sameNights.need.diamond60.fields === 14 &&
+    eq(lit.spread, plain.spread) && eq(lit.sameNights, plain.sameNights) && eq(lit.totals, plain.totals) &&
+    lit.totals?.teamPracticesPerWeek === 76 &&
+    requestText(majorsLit, lit.spread, lit.inUse) === requestText(core, plain.spread, plain.inUse) &&
+    requestText(majorsLit, lit.spread, lit.inUse).includes("Majors (6 teams, 2x/week, 90 min)"),
+    "[P4] a lit division still counts everywhere else",
+    `${lit.spread.need.diamond60.fields}/${lit.sameNights.need.diamond60.fields}, ${lit.totals?.teamPracticesPerWeek}`);
+
+  // Options with bad dates: earliestSunset null, the season error as usual.
+  const bad = computePlan({ ...core, seasonStart: "" }, { city: sr });
+  ok(bad.earliestSunset === null && bad.seasonError === "Pick a start and end date for practices.", "[P5] bad dates: no earliest sunset");
+});
+
 // ── G: the public calculator's output is byte-identical to the golden ───
 // Recorded 2026-10-21 from the tree before the in-app planner's module
 // change (practice-planner-golden.ts says what is captured). Runs LAST so
@@ -438,6 +517,7 @@ section("G", () => {
 
 // ── anti-vacuity ────────────────────────────────────────────────────────
 ok(goldenCases >= 14, "[C5] the golden compared every case", `${goldenCases}`);
+ok(optionsCases >= 4, "[C6] the in-app options were exercised", `${optionsCases}`);
 ok(counters.sharedFieldBlocks > 0, "[C1] a shared-field block was placed");
 ok(counters.fieldReused > 0, "[C2] a field held more than one block");
 ok(counters.skippedBlocks > 0, "[C3] a too-long practice was skipped");
@@ -488,3 +568,10 @@ process.exit(failures ? 1 : 0);
 // die where they did. New in S: S8 pins the city ids (a league stores one;
 // additions only) ← PP20; S9 cityByIdOrNull never falls back ← PP19; S10
 // every city maps to one of the seven league timezones ← PP21. 64 checks.
+// 2026-10-21, in-app planner steps 1–2: section G (the calculator golden,
+// PP22 → G3, PP23 → G1, PP28 → G1) and section P (the in-app options). First
+// pass of P: PP27 (cityById consulted when a city is given) was KILLED AT THE
+// WRONG ASSERTION — P1 (then the lit check) died first, because the lit
+// fixture's input carries no city id and cityById(undefined) is Sacramento.
+// A harness ordering fault: the city checks now run first and are P1/P2, the
+// lit checks P3/P4, and each mutant dies at its own tag. 28/28.

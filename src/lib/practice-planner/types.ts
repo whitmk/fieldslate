@@ -36,17 +36,28 @@ export type DivisionInput = {
   fieldType: FieldTypeId;
   /** Teams that share one field at the same time (1–4). */
   teamsPerField: number;
+  /**
+   * Practices on lit fields (in-app planner only; the calculator never sets
+   * it). Skipped by the daylight check and NOTHING else — field counts,
+   * totals, division warnings and the request text still count it.
+   */
+  lit?: boolean;
 };
 
-export type PlannerInput = {
+/** Everything the math reads except the city. */
+export type PlanCore = {
   /** "YYYY-MM-DD" */
   seasonStart: string;
   seasonEnd: string;
-  /** An id from US_CITIES. */
-  cityId: string;
   /** Minutes between practices on the same field. */
   minutesBetween: number;
   divisions: DivisionInput[];
+};
+
+/** The public calculator's input: the core plus its picked city's id. */
+export type PlannerInput = PlanCore & {
+  /** An id from US_CITIES. */
+  cityId: string;
 };
 
 /** One block on a field: a group of up to teamsPerField teams. */

@@ -13,13 +13,22 @@
 // - Season totals leave out practices too long for their window, as the
 //   warning about them says.
 // - The request text names both years when the season crosses New Year.
+//
+// IN-APP OPTIONS (additive, 2026-10-21): computePlan takes an optional second
+// argument for the in-app planner — the league's city, already resolved with
+// cityByIdOrNull, or null for none. With options, the input carries no city
+// id, cityById is never called, a null city means no daylight warnings and no
+// sunset, and the result gains `earliestSunset`. A division with `lit` is
+// skipped by the daylight check only. WITHOUT options (the calculator) the
+// result is exactly what it always was, key for key — pinned by the golden
+// in sim:practice-planner section G.
 
 import { DAY_LONG, fieldTypeLabel } from "./constants";
 import { fmtDate, fmtTime, formatDayList, isIsoDate, parseIsoDate, toMinutes } from "./format";
 import { computeMode, countedPerWeek, divisionIsActive, fieldTypesInUse, normalizeDays } from "./plan";
 import { daylightFor, sunsetMinutes } from "@/lib/sun/sunset";
-import type { DivisionInput, FieldNeed, FieldTypeId, ModeResult, PlannerInput, SpreadMode } from "./types";
-import { cityById } from "@/lib/sun/us-cities";
+import type { DivisionInput, FieldNeed, FieldTypeId, ModeResult, PlanCore, PlannerInput, SpreadMode } from "./types";
+import { cityById, type UsCity } from "@/lib/sun/us-cities";
 
 const DAY_MS = 864e5;
 
@@ -43,9 +52,21 @@ export type Plan = {
   sunsetAtStart: number | null;
   /** A sentence when the season dates can't be used; null when they can. */
   seasonError: string | null;
+  /**
+   * ONLY when computePlan is given options (the in-app planner): the earliest
+   * sunset in the season and the first day it happens; null without a city or
+   * valid dates. Absent — not undefined, not null — for the calculator.
+   */
+  earliestSunset?: EarliestSunset | null;
 };
 
-export function seasonError(input: PlannerInput): string | null {
+/** `date` is a UTC-midnight epoch value; `minutes` local clock minutes. */
+export type EarliestSunset = { date: number; minutes: number };
+
+/** The in-app planner's options: the league's city, or null for none. */
+export type PlanOptions = { city: UsCity | null };
+
+export function seasonError(input: PlanCore): string | null {
   if (!isIsoDate(input.seasonStart) || !isIsoDate(input.seasonEnd)) return "Pick a start and end date for practices.";
   if (parseIsoDate(input.seasonEnd) < parseIsoDate(input.seasonStart)) return "Practices end before they start.";
   return null;
@@ -55,7 +76,7 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
-export function divisionWarnings(input: PlannerInput): string[] {
+export function divisionWarnings(input: PlanCore): string[] {
   const w: string[] = [];
   for (const d of input.divisions) {
     const days = normalizeDays(d.days).length;
@@ -106,9 +127,8 @@ function finish(min: number): string {
   return `${/^(8|11)[:ap]/.test(t) ? "an" : "a"} ${t} finish`;
 }
 
-export function daylightWarnings(input: PlannerInput, result: ModeResult): string[] {
+export function daylightWarnings(input: PlanCore, result: ModeResult, city: UsCity): string[] {
   if (seasonError(input)) return [];
-  const city = cityById(input.cityId);
   const sd = parseIsoDate(input.seasonStart);
   const ed = parseIsoDate(input.seasonEnd);
 
@@ -117,7 +137,8 @@ export function daylightWarnings(input: PlannerInput, result: ModeResult): strin
   // daylight question; it already has its length warning.
   const byEnd = new Map<number, string[]>();
   input.divisions.forEach((d, i) => {
-    if (!divisionIsActive(d)) return;
+    // A division on lit fields has no daylight question.
+    if (!divisionIsActive(d) || d.lit) return;
     const end = latestPracticeEnd(result, i, d);
     if (end === null) return;
     byEnd.set(end, [...(byEnd.get(end) ?? []), d.name]);
@@ -155,7 +176,7 @@ export function daylightWarnings(input: PlannerInput, result: ModeResult): strin
   return w;
 }
 
-export function seasonTotals(input: PlannerInput): SeasonTotals | null {
+export function seasonTotals(input: PlanCore): SeasonTotals | null {
   if (seasonError(input)) return null;
   const sd = parseIsoDate(input.seasonStart);
   const ed = parseIsoDate(input.seasonEnd);
@@ -177,27 +198,52 @@ export function seasonTotals(input: PlannerInput): SeasonTotals | null {
   };
 }
 
-export function computePlan(input: PlannerInput): Plan {
+/** The earliest sunset from the first to the last day, and the first day it happens. */
+export function earliestSunset(input: PlanCore, city: UsCity): EarliestSunset {
+  const sd = parseIsoDate(input.seasonStart);
+  const ed = parseIsoDate(input.seasonEnd);
+  let best: EarliestSunset = { date: sd, minutes: sunsetMinutes(sd, city) };
+  for (let t = sd + DAY_MS; t <= ed; t += DAY_MS) {
+    const m = sunsetMinutes(t, city);
+    if (m < best.minutes) best = { date: t, minutes: m };
+  }
+  return best;
+}
+
+/**
+ * The calculator: computePlan(input) — its own picked city, with the
+ * Sacramento fallback, exactly as before. The in-app planner:
+ * computePlan(core, { city }) — the city it resolved, or null; the input's
+ * city id is never read.
+ */
+export function computePlan(input: PlannerInput): Plan;
+export function computePlan(input: PlanCore, opts: PlanOptions): Plan;
+export function computePlan(input: PlanCore | PlannerInput, opts?: PlanOptions): Plan {
+  const city = opts ? opts.city : cityById((input as PlannerInput).cityId);
   const err = seasonError(input);
   const spread = computeMode(input, "spread");
   const sameNights = computeMode(input, "sameNights");
   const divisionW = divisionWarnings(input);
-  return {
+  const daylight = (r: ModeResult) => (city ? daylightWarnings(input, r, city) : []);
+  const plan: Plan = {
     spread,
     sameNights,
     inUse: fieldTypesInUse(input),
     warnings: {
-      spread: [...divisionW, ...daylightWarnings(input, spread)],
-      sameNights: [...divisionW, ...daylightWarnings(input, sameNights)],
+      spread: [...divisionW, ...daylight(spread)],
+      sameNights: [...divisionW, ...daylight(sameNights)],
     },
     totals: seasonTotals(input),
-    sunsetAtStart: err ? null : sunsetMinutes(parseIsoDate(input.seasonStart), cityById(input.cityId)),
+    sunsetAtStart: err || !city ? null : sunsetMinutes(parseIsoDate(input.seasonStart), city),
     seasonError: err,
   };
+  // Options only: without them the result keeps exactly the calculator's keys.
+  if (opts) plan.earliestSunset = err || !city ? null : earliestSunset(input, city);
+  return plan;
 }
 
 /** "Feb 22 to May 29, 2027"; "Nov 1, 2026 to Feb 28, 2027" across New Year. Null without valid dates. */
-export function seasonRangeLabel(input: PlannerInput): string | null {
+export function seasonRangeLabel(input: PlanCore): string | null {
   if (seasonError(input)) return null;
   const sd = parseIsoDate(input.seasonStart);
   const ed = parseIsoDate(input.seasonEnd);
@@ -209,7 +255,7 @@ export function seasonRangeLabel(input: PlannerInput): string | null {
 }
 
 /** Plain text for the city request: night by night per field type, then the inputs. */
-export function requestText(input: PlannerInput, result: ModeResult, inUse: FieldTypeId[]): string {
+export function requestText(input: PlanCore, result: ModeResult, inUse: FieldTypeId[]): string {
   const lines: string[] = [];
   const range = seasonRangeLabel(input);
   lines.push(range ? `Practice field request: ${range}` : "Practice field request");
