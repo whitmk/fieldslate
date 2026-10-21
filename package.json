@@ -74,6 +74,8 @@
     "sim:playoff-result:mutants": "npx tsx scripts/sim/playoff-result-mutants.ts",
     "sim:bracket-print": "TZ=UTC npx tsx scripts/sim/bracket-print-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/bracket-print-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/bracket-print-sim.ts",
     "sim:bracket-print:mutants": "npx tsx scripts/sim/bracket-print-mutants.ts",
+    "sim:bracket-pieces": "TZ=UTC npx tsx scripts/sim/bracket-pieces-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/bracket-pieces-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/bracket-pieces-sim.ts",
+    "sim:bracket-pieces:mutants": "npx tsx scripts/sim/bracket-pieces-mutants.ts",
     "sim:playoff-exclude": "TZ=UTC npx tsx scripts/sim/playoff-exclude-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/playoff-exclude-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/playoff-exclude-sim.ts",
     "sim:playoff-exclude:mutants": "npx tsx scripts/sim/playoff-exclude-mutants.ts",
     "sim:round-robin": "TZ=UTC npx tsx scripts/sim/round-robin-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/round-robin-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/round-robin-sim.ts",

@@ -75,7 +75,7 @@ const MUTANTS: Mutant[] = [
     expect: "C1",
   },
   {
-    id: "BP12", what: "bracket view: winner by raw compare again", file: "src/components/playoffs/bracket-view.tsx",
+    id: "BP12", what: "bracket view: winner by raw compare again", file: "src/components/playoffs/bracket-pieces.tsx",
     find: "  const homeWon = slotWon(game.winner_id, game.home_team_id);\n  const awayWon = slotWon(game.winner_id, game.away_team_id);\n  const bothTeams",
     replace: "  const homeWon = game.winner_id === game.home_team_id;\n  const awayWon = slotWon(game.winner_id, game.away_team_id);\n  const bothTeams",
     expect: "S2",
@@ -111,7 +111,7 @@ const MUTANTS: Mutant[] = [
     expect: "G1",
   },
   {
-    id: "BP18", what: "on-screen winner row tinted again", file: "src/components/playoffs/bracket-view.tsx",
+    id: "BP18", what: "on-screen winner row tinted again", file: "src/components/playoffs/bracket-pieces.tsx",
     find: "${away ? AWAY_ROW_BG : \"bg-white\"}",
     replace: "${won ? \"bg-[#22C55E]/5\" : away ? AWAY_ROW_BG : \"bg-white\"}",
     expect: "S5",
@@ -129,21 +129,21 @@ const MUTANTS: Mutant[] = [
     expect: "P6",
   },
   {
-    id: "BP21", what: "the on-screen tree laid out with the PRINT dimensions", file: "src/components/playoffs/bracket-view.tsx",
+    id: "BP21", what: "the on-screen tree laid out with the PRINT dimensions", file: "src/components/playoffs/bracket-pieces.tsx",
     find: "    : singleElimLayout(games, SCREEN_TREE);",
     replace: "    : singleElimLayout(games);",
     expect: "S7",
   },
   {
-    id: "BP22", what: "a team row loses its fixed height", file: "src/components/playoffs/bracket-view.tsx",
+    id: "BP22", what: "a team row loses its fixed height", file: "src/components/playoffs/bracket-pieces.tsx",
     find: "flex h-8 flex-none items-center gap-2 px-2.5",
     replace: "flex flex-none items-center gap-2 px-2.5 py-2",
     expect: "S7",
   },
   {
     id: "BP23", what: "the screen tree places a series group by its top, not its middle",
-    file: "src/components/playoffs/bracket-view.tsx",
-    find: 'top: (c as PlacedItem<GameWithTeams>).centre, transform: "translateY(-50%)"',
+    file: "src/components/playoffs/bracket-pieces.tsx",
+    find: 'top: (c as PlacedItem<G>).centre, transform: "translateY(-50%)"',
     replace: "top: c.y",
     expect: "S7",
   },

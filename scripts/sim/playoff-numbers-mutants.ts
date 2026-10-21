@@ -82,7 +82,7 @@ const MUTANTS: Mutant[] = [
     expect: "N8",
   },
   {
-    id: "NX13", what: "the screen card prints game_number", file: "src/components/playoffs/bracket-view.tsx",
+    id: "NX13", what: "the screen card prints game_number", file: "src/components/playoffs/bracket-pieces.tsx",
     find: "Game {numberOf(game)} · {fmtDate",
     replace: "Game {game.game_number} · {fmtDate",
     expect: "L",

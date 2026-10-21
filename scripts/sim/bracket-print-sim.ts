@@ -334,24 +334,27 @@ section("S", () => {
   const modal = read("src/components/playoffs/playoff-export-modal.tsx");
   ok(modal.includes("buildBracketPrintHtml(games, format, leagueName, divisionName, printedOn())") && modal.includes('"landscape",')
      && !modal.includes("function buildBracketHtml"), "[S1]", "the export modal prints the shared builder, landscape");
+  // The card, rows and tree live in bracket-pieces.tsx since 2026-10-20 (the
+  // public bracket page renders them too); BracketView keeps the glue.
   const view = read("src/components/playoffs/bracket-view.tsx");
-  ok((view.match(/slotWon\(game\.winner_id, game\.(home|away)_team_id\)/g) ?? []).length === 4
-     && !/game\.winner_id === game\.(home|away)_team_id/.test(view), "[S2]", "both bracket renderings decide winners with slotWon");
+  const pieces = read("src/components/playoffs/bracket-pieces.tsx");
+  ok((pieces.match(/slotWon\(game\.winner_id, game\.(home|away)_team_id\)/g) ?? []).length === 4
+     && !/game\.winner_id === game\.(home|away)_team_id/.test(pieces), "[S2]", "both bracket renderings decide winners with slotWon");
   ok(view.includes("slotName(side === \"home\" ? g.home_team_name : g.away_team_name, g, side, games, format)")
-     && view.includes('name={labelOf(game, "home")}') && !view.includes('"TBD vs TBD"'), "[S3]", "the bracket view names empty slots with slotName");
-  ok(view.includes("${away ? AWAY_ROW_BG : \"bg-white\"}") && view.includes('const AWAY_ROW_BG = "bg-[#e6f4ea]";')
-     && !/won \? "bg-/.test(view) && /name=\{labelOf\(game, "away"\)\}\s*\n\s*away\n/.test(view), "[S5]", "the on-screen card is two-tone and never colours the winner's row");
+     && pieces.includes('name={labelOf(game, "home")}') && !pieces.includes('"TBD vs TBD"'), "[S3]", "the bracket view names empty slots with slotName");
+  ok(pieces.includes("${away ? AWAY_ROW_BG : \"bg-white\"}") && pieces.includes('const AWAY_ROW_BG = "bg-[#e6f4ea]";')
+     && !/won \? "bg-/.test(pieces) && /name=\{labelOf\(game, "away"\)\}\s*\n\s*away\n/.test(pieces), "[S5]", "the on-screen card is two-tone and never colours the winner's row");
   const result = read("src/components/playoffs/enter-result-modal.tsx");
   ok(result.includes('slotName(game.home_team_name, game, "home", allGames, format)') && !result.includes('?? "Home"'), "[S4]", "the result modal names empty slots with slotName");
   // 0114 (revised 2026-10-20, approved sketch): a bracket with a series round
   // lays out one GROUP per series (stacked game cards) by groupedTreeLayout; a
   // bracket of single games is laid out exactly as before, with SCREEN_TREE.
-  ok(view.includes("? groupedTreeLayout(games, SCREEN_TREE, (first, series) =>")
-     && view.includes(": singleElimLayout(games, SCREEN_TREE);")
-     && view.includes('top: (c as PlacedItem<GameWithTeams>).centre, transform: "translateY(-50%)"')
-     && !view.includes("function gameTop(") && !view.includes("V_SLOT")
-     && view.includes("style={{ height: SCREEN_TREE.cardH }}") && view.includes('className="h-10 flex-none border-b')
-     && view.includes("flex h-8 flex-none items-center gap-2 px-2.5") && view.includes("flex h-8 flex-none items-center border-t"),
+  ok(pieces.includes("? groupedTreeLayout(games, SCREEN_TREE, (first, series) =>")
+     && pieces.includes(": singleElimLayout(games, SCREEN_TREE);")
+     && pieces.includes('top: (c as PlacedItem<G>).centre, transform: "translateY(-50%)"')
+     && !pieces.includes("function gameTop(") && !pieces.includes("V_SLOT")
+     && pieces.includes("style={{ height: SCREEN_TREE.cardH }}") && pieces.includes('className="h-10 flex-none border-b')
+     && pieces.includes("flex h-8 flex-none items-center gap-2 px-2.5") && pieces.includes("flex h-8 flex-none items-center border-t"),
     "[S7]", "the on-screen tree uses the shared layout, a group placed by its middle, and the card keeps the bands SCREEN_TREE measures");
   // The group's numbers ARE SCREEN_GROUP's: groupHeight estimates from them.
   const sc = read("src/components/playoffs/series-card.tsx");

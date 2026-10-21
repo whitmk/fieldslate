@@ -268,7 +268,8 @@ section("L leak scan", () => {
   }
   ok(hits.length === 0, "L", "no surface prints a raw game_number", hits.join("\n    "));
   const view = read("src/components/playoffs/bracket-view.tsx");
-  ok(view.includes("Game {numberOf(game)}") && view.includes("gameNumbering(games)"), "L", "the screen card shows numberOf(game) from gameNumbering");
+  const pieces = read("src/components/playoffs/bracket-pieces.tsx");
+  ok(pieces.includes("Game {numberOf(game)}") && view.includes("gameNumbering(games)"), "L", "the screen card shows numberOf(game) from gameNumbering");
   const modal = read("src/components/playoffs/enter-result-modal.tsx");
   ok(modal.includes("own: gameNumbering(allGames)") && modal.includes("previewClearResult(game.id, numbering)") &&
      modal.includes("clearResult(game.id, numbering)") && modal.includes("allGames, format, numbering)"), "L", "the result modal maps every reply");

@@ -18,12 +18,16 @@
 // cards; a card's header band min h-10 with py-1 and 16px lines; rows h-8 +
 // h-px + h-8; action row h-8; a daylight chip mt-1 below its card; the Final's
 // banner mt-1.5.
+//
+// PRESENTATION ONLY (2026-10-20): the public bracket page renders this too.
+// No data access, modals or daylight here — the buttons come in as optional
+// callbacks (absent = no action row) and the admin's daylight chip as
+// `chipOf`, exactly as in bracket-pieces.tsx.
 
 import type { CSSProperties } from "react";
 import { CalendarClock, ClipboardEdit, Trophy } from "lucide-react";
-import { TeamRow, type GameWithTeams } from "@/components/playoffs/bracket-view";
-import { DaylightChip } from "@/components/daylight/daylight-pieces";
-import type { DaylightFlag } from "@/lib/daylight/flags";
+import type { ReactNode } from "react";
+import { TeamRow, type BracketGame } from "@/components/playoffs/bracket-pieces";
 import { slotWon, type Side } from "@/lib/playoffs/bracket-labels";
 import { SCREEN_GROUP } from "@/lib/playoffs/bracket-print";
 import {
@@ -43,29 +47,31 @@ export const TONE_CHIP: Record<HeadlineTone, string> = {
   green: "bg-[#22C55E]/10 text-[#15803d]",
 };
 
-export function SeriesGroup({
+export function SeriesGroup<G extends BracketGame>({
   games,
   bracket,
   width,
   isFinal,
   labelOf,
   teamName,
-  flagOf,
+  chipOf,
   onResult,
   onEditResult,
   onMove,
 }: {
   /** The games of this series, any order. */
-  games: GameWithTeams[];
-  bracket: GameWithTeams[];
+  games: G[];
+  bracket: G[];
   width: number;
   isFinal: boolean;
-  labelOf: (game: GameWithTeams, side: Side) => string;
+  labelOf: (game: G, side: Side) => string;
   teamName: (id: string) => string;
-  flagOf: (game: GameWithTeams) => DaylightFlag | null;
-  onResult: (game: GameWithTeams) => void;
-  onEditResult: (game: GameWithTeams) => void;
-  onMove: (game: GameWithTeams) => void;
+  /** The admin's chip under a card (the daylight flag), or null. */
+  chipOf?: (game: G) => ReactNode;
+  /** All three or none: without them no card has an action row. */
+  onResult?: (game: G) => void;
+  onEditResult?: (game: G) => void;
+  onMove?: (game: G) => void;
 }) {
   const sorted = [...games].sort((a, b) => (a.series_game ?? 1) - (b.series_game ?? 1));
   const first = sorted[0];
@@ -93,7 +99,7 @@ export function SeriesGroup({
           series={sorted}
           style={i ? { marginTop: SCREEN_GROUP.cardGap } : undefined}
           labelOf={labelOf}
-          flag={flagOf(g)}
+          chip={chipOf?.(g)}
           onResult={onResult}
           onEditResult={onEditResult}
           onMove={onMove}
@@ -110,24 +116,24 @@ export function SeriesGroup({
   );
 }
 
-function SeriesGameCard({
+function SeriesGameCard<G extends BracketGame>({
   game,
   series,
   style,
   labelOf,
-  flag,
+  chip,
   onResult,
   onEditResult,
   onMove,
 }: {
-  game: GameWithTeams;
-  series: GameWithTeams[];
+  game: G;
+  series: G[];
   style?: CSSProperties;
-  labelOf: (game: GameWithTeams, side: Side) => string;
-  flag: DaylightFlag | null;
-  onResult: (game: GameWithTeams) => void;
-  onEditResult: (game: GameWithTeams) => void;
-  onMove: (game: GameWithTeams) => void;
+  labelOf: (game: G, side: Side) => string;
+  chip: ReactNode;
+  onResult?: (game: G) => void;
+  onEditResult?: (game: G) => void;
+  onMove?: (game: G) => void;
 }) {
   const h = seriesGameHeader(game, series);
   const acts = seriesGameActions(game, series);
@@ -171,43 +177,45 @@ function SeriesGameCard({
           struck={h.notNeeded}
         />
 
-        <div className="flex h-8 flex-none items-center border-t border-gray-100 px-2">
-          {acts.result && (
-            <button
-              onClick={() => onResult(game)}
-              className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-[#0C1F3F] hover:bg-gray-50"
-            >
-              <ClipboardEdit className="h-3 w-3" />
-              Enter result
-            </button>
-          )}
-          {acts.edit && (
-            <button
-              onClick={() => onEditResult(game)}
-              className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-[#0C1F3F] hover:bg-gray-50"
-            >
-              <ClipboardEdit className="h-3 w-3" />
-              Edit result
-            </button>
-          )}
-          {acts.move && (
-            <button
-              onClick={() => onMove(game)}
-              aria-label="Set date, time and field"
-              title="Set date, time and field"
-              className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-gray-500 hover:bg-gray-50 hover:text-[#0C1F3F]"
-            >
-              <CalendarClock className="h-3 w-3" />
-              {game.scheduled_date ? "Move" : "Set time"}
-            </button>
-          )}
-        </div>
+        {onResult && onEditResult && onMove && (
+          <div className="flex h-8 flex-none items-center border-t border-gray-100 px-2">
+            {acts.result && (
+              <button
+                onClick={() => onResult(game)}
+                className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-[#0C1F3F] hover:bg-gray-50"
+              >
+                <ClipboardEdit className="h-3 w-3" />
+                Enter result
+              </button>
+            )}
+            {acts.edit && (
+              <button
+                onClick={() => onEditResult(game)}
+                className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-[#0C1F3F] hover:bg-gray-50"
+              >
+                <ClipboardEdit className="h-3 w-3" />
+                Edit result
+              </button>
+            )}
+            {acts.move && (
+              <button
+                onClick={() => onMove(game)}
+                aria-label="Set date, time and field"
+                title="Set date, time and field"
+                className="flex flex-1 items-center justify-center gap-1 rounded-md py-0.5 text-[10px] font-medium text-gray-500 hover:bg-gray-50 hover:text-[#0C1F3F]"
+              >
+                <CalendarClock className="h-3 w-3" />
+                {game.scheduled_date ? "Move" : "Set time"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Below the card, like the single card's: never moves its rows. */}
-      {flag && (
+      {chip && (
         <div className="mt-1 flex justify-center">
-          <DaylightChip flag={flag} variant="bracket" />
+          {chip}
         </div>
       )}
     </div>

@@ -274,8 +274,8 @@ section("S", () => {
      && /clearConfirm\(\s*clearPreview[,)]/.test(modal) && modal.includes("<ConfirmDialog")
      && modal.includes("isDone && clearOffered(format)"), "[S3]", "the modal previews, confirms with the shared dialog, and offers clear only where allowed");
   ok(modal.indexOf("<ConfirmDialog") > modal.lastIndexOf('onClick={onClose}>'), "[S3]", "the confirm renders outside the modal backdrop");
-  const view = read("src/components/playoffs/bracket-view.tsx");
-  ok((view.match(/resultButtonShown\(bothTeams, isDone\)/g) ?? []).length === 2, "[S4]", "both bracket renderings use the shared button rule");
+  const pieces = read("src/components/playoffs/bracket-pieces.tsx");
+  ok((pieces.match(/resultButtonShown\(bothTeams, isDone\)/g) ?? []).length === 2, "[S4]", "both bracket renderings use the shared button rule");
 });
 
 // ─── Summary ─────────────────────────────────────────────────────────────────
