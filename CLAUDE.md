@@ -709,8 +709,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   - `words.ts` — EVERY app-only sentence, rendered verbatim. Outside the
     calculator module; imports neither `src/lib/daylight` nor
     `sun/sunset` (sim:daylight-leaks S1; checked again by the rules sim W3).
-  - **Harness:** `npm run sim:practice-plan-rules` (61 checks × 3 zones) +
-    `:mutants` (21, each killed at its own assertion).
+  - **Harness:** `npm run sim:practice-plan-rules` (65 checks × 3 zones) +
+    `:mutants` (24, each killed at its own assertion).
 - **Screens, step 5a — the plans list (`/dashboard/field-requests`).**
   - Its own sidebar item, "Field requests", directly below Practices,
     `tier: "pro"`. NOT a route under `/dashboard/practices` — the sidebar's
@@ -748,16 +748,30 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     module's, verbatim. The mode switch is part of the saved plan.
   - Autosave (`editor.ts`): an edit marks the plan dirty; after 900 ms it
     saves through `save_practice_plan` with the last known `updated_at`.
-    Saved → clean (an edit made mid-save stays dirty). Stale → autosave
+    **Never two saves at once:** an edit made while a save is in flight
+    keeps the state "saving" (`stateAfterEdit`) — two saves with one
+    updated_at would make the slower one come back stale against our own
+    save — and when the reply returns, an edit made meanwhile puts the plan
+    back to dirty so the follow-up save starts on its own (`stateAfterReply`).
+    Saved → clean. Stale → autosave
     stops, the banner names who and when, "Keep mine" is an explicit second
     save with the stale stamp, "Reload" drops local edits after a
     ConfirmDialog. `plan_required` → stopped for good, fields disabled, the
     plan stays readable. Anything else → "Couldn't save." + Retry. Leaving
     warns (`beforeunload`) only while an edit is unsaved (`warnOnLeave`).
-  - Inputs commit only values inside INPUT_LIMITS (`committedTeams`,
-    `committedTime` — iOS can show an uncommitted time — `committedDate`,
-    the selects' ranges), and `save` re-runs the input check before sending,
-    so an autosave can't send what 0117 refuses. "+ Add a division" uses the
+  - **Fields keep exactly what is typed** (Teams, Length — typed minutes,
+    not a dropdown — times, dates, the plan name) and show a short inline
+    error while the text isn't a value the plan can take; only valid values
+    reach the plan (`committedTeams` / `committedLength` / `committedTime` /
+    `committedDate`). Every field reports its validity up; while ANY field is
+    invalid, autosave holds (`autosaveAllowed(state, invalidCount)`), the
+    status says "Not saving — fix the highlighted field.", and leaving warns.
+    A half-typed date or time reads as "" in the browser — the same as a
+    cleared box — so `validity.badInput` tells them apart; a half-typed date
+    is never saved as "no date". The table and the phone cards are both
+    mounted, so each reports under its own scope (t: / c:), and a field
+    that unmounts reports valid. `save` still re-runs the input check before
+    sending. "+ Add a division" uses the
     calculator's `NEW_DIVISION`, disabled at 40.
   - The trim note now reads as a past-tense heads-up ("When this plan was
     copied in from …, … Everything else came over as it was.") and shows
@@ -766,7 +780,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     reply stubbed in the browser: one debounced save with the loaded stamp,
     the stale banner, Keep mine with the stale stamp, edits held while stale,
     plan_required → read-only, failure → Retry, the leave warning only while
-    unsaved, 16px fields, no horizontal scroll.
+    unsaved, 16px fields, no horizontal scroll. Re-checked after the two
+    fixes: with a 3-second stubbed reply, an edit mid-save never started a
+    second save (max one in flight) and the follow-up started on its own;
+    Length "120" typed into an empty box, Teams cleared then "12", and a date
+    typed by hand (real key presses — an automation text insert doesn't reach
+    a date input) all held while invalid and saved once valid.
 
 ## Daylight flags (admin-only, branch `feat/daylight-flags`, 2026-10-14)
 

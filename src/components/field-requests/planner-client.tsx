@@ -26,6 +26,8 @@ import {
   canAddDivision,
   committedDate,
   removeDivision,
+  stateAfterEdit,
+  stateAfterReply,
   updateDivision,
   warnOnLeave,
   type SaveState,
@@ -38,7 +40,9 @@ import {
   DIVISIONS_CARD,
   END_LABEL,
   LEAVE_WARNING,
+  DATE_INVALID,
   MINUTES_BETWEEN_LABEL,
+  NAME_INVALID,
   NO_CITY_LINK,
   PLAN_NAME_LABEL,
   PLAN_REQUIRED_STOPPED,
@@ -47,6 +51,7 @@ import {
   RELOAD_CONFIRM_BODY,
   RELOAD_CONFIRM_BUTTON,
   RELOAD_CONFIRM_TITLE,
+  SAVE_BLOCKED_INVALID,
   SAVE_FAILED,
   SAVE_NEEDS_NAME,
   SAVE_RETRY,
@@ -91,6 +96,19 @@ export function PlannerClient(props: Props) {
   const [mode, setMode] = useState<SpreadMode>(props.initialMode);
   const [state, setState] = useState<SaveState>({ kind: "clean" });
   const [confirmReload, setConfirmReload] = useState(false);
+  // Fields whose typed text is not (yet) a value the plan can take.
+  const [invalid, setInvalid] = useState<ReadonlySet<string>>(() => new Set());
+  const onValidity = useCallback((key: string, ok: boolean) => {
+    setInvalid((cur) => {
+      if (ok ? !cur.has(key) : cur.has(key)) return cur;
+      const next = new Set(cur);
+      if (ok) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+  const nameValid = name.trim().length > 0 && Array.from(name.trim()).length <= INPUT_LIMITS.planName.maxChars;
+  const invalidCount = invalid.size + (nameValid ? 0 : 1);
   const updatedAt = useRef(props.initialUpdatedAt);
   const edits = useRef(0);
   const leaving = useRef(false);
@@ -104,7 +122,7 @@ export function PlannerClient(props: Props) {
   const edit = useCallback((apply: () => void) => {
     apply();
     edits.current++;
-    setState((s) => (s.kind === "stale" || s.kind === "stopped" ? s : { kind: "dirty" }));
+    setState(stateAfterEdit);
   }, []);
 
   const save = useCallback(async (expected: string) => {
@@ -127,21 +145,21 @@ export function PlannerClient(props: Props) {
     );
     const next = afterSave(saveOutcome(data, error), error);
     if (next.updatedAt) updatedAt.current = next.updatedAt;
-    // An edit made while this save was in flight is still unsaved.
-    if (next.state.kind === "clean" && edits.current !== startedAt) setState({ kind: "dirty" });
-    else setState(next.state);
+    // An edit made while this save was in flight is still unsaved: the
+    // plan goes back to dirty and the follow-up save starts on its own.
+    setState(stateAfterReply(next.state, edits.current !== startedAt));
   }, [props.planId]);
 
   // Debounced autosave: only from dirty, only after a pause in editing.
   useEffect(() => {
-    if (!autosaveAllowed(state)) return;
+    if (!autosaveAllowed(state, invalidCount)) return;
     const t = window.setTimeout(() => void save(updatedAt.current), AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(t);
-  }, [state, name, input, mode, save]);
+  }, [state, invalidCount, name, input, mode, save]);
 
   // Warn on leaving only while an edit is unsaved.
   useEffect(() => {
-    if (!warnOnLeave(state)) return;
+    if (!warnOnLeave(state, invalidCount)) return;
     const onBefore = (e: BeforeUnloadEvent) => {
       if (leaving.current) return;
       e.preventDefault();
@@ -149,7 +167,7 @@ export function PlannerClient(props: Props) {
     };
     window.addEventListener("beforeunload", onBefore);
     return () => window.removeEventListener("beforeunload", onBefore);
-  }, [state]);
+  }, [state, invalidCount]);
 
   const plan = useMemo(() => computePlan(input, { city: props.city }), [input, props.city]);
   const litNames = useMemo(() => litDivisionNames(input), [input]);
@@ -167,7 +185,7 @@ export function PlannerClient(props: Props) {
         <Link href="/dashboard/field-requests" className="text-sm font-semibold text-[#16a34a]">← {BACK_TO_PLANS}</Link>
         <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
           <h1 className="min-w-0 break-words text-2xl font-bold text-gray-900">{name.trim() || props.initialName}</h1>
-          <SaveStatus state={state} onRetry={() => void save(updatedAt.current)} />
+          <SaveStatus state={state} blocked={invalidCount > 0} onRetry={() => void save(updatedAt.current)} />
         </div>
       </div>
 
@@ -193,11 +211,12 @@ export function PlannerClient(props: Props) {
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="block sm:col-span-1">
             <span className="mb-1 block text-xs font-semibold text-gray-600">{PLAN_NAME_LABEL}</span>
-            <input className={INPUT} value={name} disabled={readOnly} maxLength={INPUT_LIMITS.planName.maxChars}
-              onChange={(e) => edit(() => setName(e.target.value))} />
+            <input className={`${INPUT} ${nameValid ? "" : "border-red-400"}`} aria-invalid={!nameValid} value={name} disabled={readOnly}
+              maxLength={INPUT_LIMITS.planName.maxChars} onChange={(e) => edit(() => setName(e.target.value))} />
+            {!nameValid && <span className="mt-0.5 block text-xs font-semibold text-red-700">{NAME_INVALID}</span>}
           </label>
-          <DateField label={START_LABEL} value={input.seasonStart} readOnly={readOnly} onCommit={(v) => edit(() => setInput((i) => ({ ...i, seasonStart: v })))} />
-          <DateField label={END_LABEL} value={input.seasonEnd} readOnly={readOnly} onCommit={(v) => edit(() => setInput((i) => ({ ...i, seasonEnd: v })))} />
+          <DateField label={START_LABEL} vkey="seasonStart" onValidity={onValidity} value={input.seasonStart} readOnly={readOnly} onCommit={(v) => edit(() => setInput((i) => ({ ...i, seasonStart: v })))} />
+          <DateField label={END_LABEL} vkey="seasonEnd" onValidity={onValidity} value={input.seasonEnd} readOnly={readOnly} onCommit={(v) => edit(() => setInput((i) => ({ ...i, seasonEnd: v })))} />
           <label className="block">
             <span className="mb-1 block text-xs font-semibold text-gray-600">{MINUTES_BETWEEN_LABEL}</span>
             <select className={INPUT} value={input.minutesBetween} disabled={readOnly}
@@ -231,6 +250,7 @@ export function PlannerClient(props: Props) {
           onChange={onDivision}
           onAdd={() => edit(() => setInput((i) => addDivision(i).input))}
           onRemove={(id) => edit(() => setInput((i) => removeDivision(i, id)))}
+          onValidity={onValidity}
         />
       </section>
 
@@ -249,7 +269,9 @@ export function PlannerClient(props: Props) {
   );
 }
 
-function SaveStatus({ state, onRetry }: { state: SaveState; onRetry: () => void }) {
+function SaveStatus({ state, blocked, onRetry }: { state: SaveState; blocked: boolean; onRetry: () => void }) {
+  if (blocked && state.kind !== "stale" && state.kind !== "stopped")
+    return <span data-save-status role="status" className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700"><AlertTriangle className="h-3.5 w-3.5" />{SAVE_BLOCKED_INVALID}</span>;
   if (state.kind === "saving")
     return <span data-save-status className="inline-flex items-center gap-1.5 text-xs text-gray-500"><Loader2 className="h-3.5 w-3.5 animate-spin" />{SAVE_SAVING}</span>;
   if (state.kind === "dirty") return <span data-save-status className="text-xs text-gray-500">{SAVE_UNSAVED}</span>;
@@ -267,18 +289,33 @@ function SaveStatus({ state, onRetry }: { state: SaveState; onRetry: () => void 
   return null;
 }
 
-function DateField({ label, value, readOnly, onCommit }: { label: string; value: string; readOnly: boolean; onCommit: (v: string) => void }) {
+function DateField({ label, vkey, value, readOnly, onCommit, onValidity }: {
+  label: string; vkey: string; value: string; readOnly: boolean; onCommit: (v: string) => void; onValidity: (key: string, valid: boolean) => void;
+}) {
+  // A date typed by hand reads as "" until every part is filled in — the
+  // same as a cleared box. badInput tells them apart: a half-typed date is
+  // kept on screen, reported invalid, and never saved as "no date".
   const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
+  const [partial, setPartial] = useState(false);
+  useEffect(() => setDraft((cur) => (committedDate(cur) === value ? cur : value)), [value]);
+  const valid = !partial && committedDate(draft) !== null;
+  useEffect(() => onValidity(vkey, valid), [vkey, valid, onValidity]);
+  const check = (el: HTMLInputElement) => setPartial(el.validity.badInput);
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-semibold text-gray-600">{label}</span>
-      <input type="date" className={INPUT} value={draft} disabled={readOnly} min={`${INPUT_LIMITS.yearMin}-01-01`} max={`${INPUT_LIMITS.yearMax}-12-31`}
+      <input type="date" aria-invalid={!valid} className={`${INPUT} ${valid ? "" : "border-red-400"}`} value={draft} disabled={readOnly}
+        min={`${INPUT_LIMITS.yearMin}-01-01`} max={`${INPUT_LIMITS.yearMax}-12-31`}
+        onKeyUp={(e) => check(e.currentTarget)} onBlur={(e) => check(e.currentTarget)}
         onChange={(e) => {
-          setDraft(e.target.value);
-          const v = committedDate(e.target.value);
+          const el = e.target;
+          check(el);
+          setDraft(el.value);
+          if (el.validity.badInput) return;
+          const v = committedDate(el.value);
           if (v !== null) onCommit(v);
         }} />
+      {!valid && <span className="mt-0.5 block text-xs font-semibold text-red-700">{DATE_INVALID}</span>}
     </label>
   );
 }

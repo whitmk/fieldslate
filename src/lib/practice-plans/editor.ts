@@ -77,14 +77,38 @@ export function afterSave(outcome: SaveOutcome, rawError: { message?: string } |
   return { state: { kind: "failed", message: outcome.message }, updatedAt: null };
 }
 
-/** Autosave runs only from dirty. Stale and stopped wait for the person. */
-export function autosaveAllowed(state: SaveState): boolean {
-  return state.kind === "dirty";
+/**
+ * An edit: dirty — except while a save is in flight (the reply decides what
+ * comes next, so two saves never race with the same updated_at) and while a
+ * stale answer or a refusal waits on the person.
+ */
+export function stateAfterEdit(state: SaveState): SaveState {
+  return state.kind === "saving" || state.kind === "stale" || state.kind === "stopped" ? state : { kind: "dirty" };
 }
 
-/** Warn on leaving only when an edit is unsaved: pending, saving, failed, or held back. */
-export function warnOnLeave(state: SaveState): boolean {
-  return state.kind !== "clean";
+/**
+ * A save came back. If the plan was edited while it was in flight, a saved
+ * reply leaves it DIRTY — so the follow-up save starts on its own, without
+ * waiting for another edit.
+ */
+export function stateAfterReply(next: SaveState, editedDuringSave: boolean): SaveState {
+  return next.kind === "clean" && editedDuringSave ? { kind: "dirty" } : next;
+}
+
+/**
+ * Autosave runs only from dirty, and never while a field holds a value the
+ * plan can't take (the status says why). Stale and stopped wait for the person.
+ */
+export function autosaveAllowed(state: SaveState, invalidFields = 0): boolean {
+  return state.kind === "dirty" && invalidFields === 0;
+}
+
+/**
+ * Warn on leaving only when an edit is unsaved: pending, saving, failed, held
+ * back — or typed into a field but not yet a value the plan can take.
+ */
+export function warnOnLeave(state: SaveState, invalidFields = 0): boolean {
+  return state.kind !== "clean" || invalidFields > 0;
 }
 
 /** Practice lengths the planner offers (all inside INPUT_LIMITS.lengthMin); a saved value outside the list is offered too. */
@@ -106,6 +130,13 @@ export function committedTeams(value: string): number | null {
   if (!/^\d{1,3}$/.test(value.trim())) return null;
   const n = Number(value.trim());
   return n >= INPUT_LIMITS.teams.min && n <= INPUT_LIMITS.teams.max ? n : null;
+}
+
+/** A typed practice length: whole minutes inside the limit. */
+export function committedLength(value: string): number | null {
+  if (!/^\d{1,3}$/.test(value.trim())) return null;
+  const n = Number(value.trim());
+  return n >= INPUT_LIMITS.lengthMin.min && n <= INPUT_LIMITS.lengthMin.max ? n : null;
 }
 
 /** A typed season date: "" or a YYYY-MM-DD inside the plan's years. */

@@ -116,14 +116,14 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "RU18", what: "a failed save retried on its own", file: EDITOR,
-    find: '  return state.kind === "dirty";',
-    replace: '  return state.kind === "dirty" || state.kind === "failed";',
+    find: '  return state.kind === "dirty" && invalidFields === 0;',
+    replace: '  return (state.kind === "dirty" || state.kind === "failed") && invalidFields === 0;',
     expect: "A2",
   },
   {
     id: "RU19", what: "leaving warns only while dirty", file: EDITOR,
-    find: '  return state.kind !== "clean";',
-    replace: '  return state.kind === "dirty";',
+    find: '  return state.kind !== "clean" || invalidFields > 0;',
+    replace: '  return state.kind === "dirty" || invalidFields > 0;',
     expect: "A3",
   },
   {
@@ -137,6 +137,24 @@ const MUTANTS: Mutant[] = [
     find: "  return n >= INPUT_LIMITS.teams.min && n <= INPUT_LIMITS.teams.max ? n : null;",
     replace: "  return n >= INPUT_LIMITS.teams.min ? n : null;",
     expect: "A6",
+  },
+  {
+    id: "RU22", what: "an edit mid-save goes back to dirty (a second save can race the first)", file: EDITOR,
+    find: '  return state.kind === "saving" || state.kind === "stale" || state.kind === "stopped" ? state : { kind: "dirty" };',
+    replace: '  return state.kind === "stale" || state.kind === "stopped" ? state : { kind: "dirty" };',
+    expect: "A8",
+  },
+  {
+    id: "RU23", what: "an edit made during a save waits for the next keystroke", file: EDITOR,
+    find: '  return next.kind === "clean" && editedDuringSave ? { kind: "dirty" } : next;',
+    replace: "  return next;",
+    expect: "A9",
+  },
+  {
+    id: "RU24", what: "autosave ignores fields holding invalid text", file: EDITOR,
+    find: '  return state.kind === "dirty" && invalidFields === 0;',
+    replace: '  return state.kind === "dirty";',
+    expect: "A10",
   },
 ];
 

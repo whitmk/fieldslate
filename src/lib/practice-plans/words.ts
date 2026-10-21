@@ -221,3 +221,10 @@ export const NO_RESULTS = "Add a division with teams and practice days to see th
 export function divisionSummary(d: { teams: number; perWeek: number; lengthMin: number; days: string; window: string; field: string; teamsPerField: number }): string {
   return `${d.teams} ${d.teams === 1 ? "team" : "teams"} · ${d.perWeek}×/wk · ${d.lengthMin} min · ${d.days || "no days"} ${d.window} · ${d.field}${d.teamsPerField > 1 ? ` · ${d.teamsPerField} per field` : ""}`;
 }
+
+// ── Typed values the plan can't take yet (step 5b checks) ────────────────
+export const TEAMS_INVALID = (min: number, max: number) => `Enter ${min}–${max}`;
+export const LENGTH_INVALID = (min: number, max: number) => `${min}–${max} min`;
+export const DATE_INVALID = "Finish the date";
+export const NAME_INVALID = "Give the plan a name";
+export const SAVE_BLOCKED_INVALID = "Not saving — fix the highlighted field.";

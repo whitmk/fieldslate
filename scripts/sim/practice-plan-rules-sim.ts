@@ -21,7 +21,7 @@
 //       wiring                     ← RU16 (R1), RU14 (R2), RU15 (R3)
 //   A   the planner (5b): save replies, autosave, the leave warning, adding
 //       divisions, committed values, wiring ← RU17 (A1), RU18 (A2),
-//       RU19 (A3), RU20 (A4), RU21 (A6)
+//       RU19 (A3), RU20 (A4), RU21 (A6), RU22 (A8), RU23 (A9), RU24 (A10)
 //   W   words, verbatim, and the daylight-leaks fence (source reads)
 // then ANTI-VACUITY COUNTERS.
 //
@@ -43,11 +43,14 @@ import {
   autosaveAllowed,
   canAddDivision,
   committedDate,
+  committedLength,
   committedTeams,
   committedTime,
   ensureDivisionIds,
   lengthOptions,
   removeDivision,
+  stateAfterEdit,
+  stateAfterReply,
   toggleDay,
   updateDivision,
   warnOnLeave,
@@ -336,12 +339,12 @@ section("A", () => {
   // A2: autosave runs only from dirty — never while stale, stopped, saving or
   // failed. (RU18, a failed save retried on its own.)
   const states: SaveState[] = [{ kind: "clean" }, { kind: "dirty" }, { kind: "saving" }, { kind: "failed", message: "x" }, { kind: "stale", byName: null, updatedAt: "t" }, { kind: "stopped" }];
-  ok(JSON.stringify(states.map(autosaveAllowed)) === JSON.stringify([false, true, false, false, false, false]), "[A2] autosave only from dirty",
-    JSON.stringify(states.map(autosaveAllowed)));
+  ok(JSON.stringify(states.map((x) => autosaveAllowed(x))) === JSON.stringify([false, true, false, false, false, false]), "[A2] autosave only from dirty",
+    JSON.stringify(states.map((x) => autosaveAllowed(x))));
   // A3: leaving warns whenever an edit is unsaved — and only then. (RU19,
   // only while dirty: a failed or stale save would leave silently.)
-  ok(JSON.stringify(states.map(warnOnLeave)) === JSON.stringify([false, true, true, true, true, true]), "[A3] leave warns only with an unsaved edit",
-    JSON.stringify(states.map(warnOnLeave)));
+  ok(JSON.stringify(states.map((x) => warnOnLeave(x))) === JSON.stringify([false, true, true, true, true, true]), "[A3] leave warns only with an unsaved edit",
+    JSON.stringify(states.map((x) => warnOnLeave(x))));
   // A4: "+ Add a division" — NEW_DIVISION's defaults and a fresh id; at the
   // limit, nothing. (RU20, no limit: a 41st division the save would refuse.)
   const seven = ensureDivisionIds(BASE_INPUT);
@@ -366,6 +369,28 @@ section("A", () => {
     committedDate("") === "" && committedDate("2027-02-22") === "2027-02-22" && committedDate("2027-02-30") === null && committedDate("2100-01-01") === null &&
     JSON.stringify(lengthOptions(90)) === "[45,60,75,90,105,120,150]" && JSON.stringify(lengthOptions(40)) === "[40,45,60,75,90,105,120,150]",
     "[A6] typed values committed only inside the limits", String(committedTeams("61")));
+  // A8: an edit while a save is in flight does NOT start a second save (two
+  // saves with one updated_at would make the slower one "stale" against our
+  // own save). (RU22, an edit mid-save goes back to dirty.)
+  ok(stateAfterEdit({ kind: "saving" }).kind === "saving" && stateAfterEdit({ kind: "clean" }).kind === "dirty" &&
+    stateAfterEdit({ kind: "failed", message: "x" }).kind === "dirty" && stateAfterEdit({ kind: "stale", byName: null, updatedAt: "t" }).kind === "stale" &&
+    stateAfterEdit({ kind: "stopped" }).kind === "stopped",
+    "[A8] an edit mid-save waits for the reply", stateAfterEdit({ kind: "saving" }).kind);
+  // A9: the reply comes back and the plan was edited meanwhile → dirty, so
+  // the follow-up save starts on its own. (RU23, clean: the newer edit would
+  // sit unsaved until the next keystroke.)
+  const followUp = stateAfterReply({ kind: "clean" }, true);
+  ok(followUp.kind === "dirty" && autosaveAllowed(followUp) && stateAfterReply({ kind: "clean" }, false).kind === "clean" &&
+    stateAfterReply({ kind: "stale", byName: null, updatedAt: "t" }, true).kind === "stale",
+    "[A9] an edit made during a save is saved next, on its own", followUp.kind);
+  // A10: no autosave while any field holds a value the plan can't take — and
+  // leaving warns then. (RU24, invalid fields ignored: the old value saves.)
+  ok(!autosaveAllowed({ kind: "dirty" }, 1) && autosaveAllowed({ kind: "dirty" }, 0) && warnOnLeave({ kind: "clean" }, 1) && !warnOnLeave({ kind: "clean" }, 0),
+    "[A10] an invalid field holds autosave and warns on leaving");
+  // A11: typed lengths — whole minutes inside 15–240, "120" included.
+  ok(committedLength("120") === 120 && committedLength("15") === 15 && committedLength("240") === 240 &&
+    committedLength("14") === null && committedLength("241") === null && committedLength("") === null && committedLength("1") === null,
+    "[A11] typed practice lengths", String(committedLength("120")));
   // A7: wiring (source reads — weak by nature): the planner computes with the
   // GIVEN city (computePlan with options), the page resolves it with
   // cityByIdOrNull, nothing here calls cityById; one RPC, inside save; the
@@ -377,7 +402,10 @@ section("A", () => {
   ok(/computePlan\(input, \{ city: props\.city \}\)/.test(client) && /city=\{cityByIdOrNull\(sunsetCity\)\}/.test(pagePl) &&
     ![client, pagePl, editorUi, results].some((src) => /\bcityById\(/.test(src)) &&
     (client.match(/\.rpc\(/g) ?? []).length === 1 && /\.rpc\(\s*\/\/ @ts-expect-error[^\n]*\n\s*"save_practice_plan"/.test(client) &&
-    /if \(!warnOnLeave\(state\)\) return;[\s\S]{0,400}addEventListener\("beforeunload"/.test(client) && /if \(!isProPlus\(plan\)\)/.test(pagePl),
+    /if \(!warnOnLeave\(state, invalidCount\)\) return;[\s\S]{0,400}addEventListener\("beforeunload"/.test(client) && /if \(!isProPlus\(plan\)\)/.test(pagePl) &&
+    /setState\(stateAfterEdit\)/.test(client) && /setState\(stateAfterReply\(next\.state, edits\.current !== startedAt\)\)/.test(client) &&
+    /autosaveAllowed\(state, invalidCount\)/.test(client) && /validity\.badInput/.test(client) && /validity\.badInput/.test(editorUi) &&
+    !/<select[^>]*COL\.length/.test(editorUi),
     "[A7] city, save, leave warning and gate wired");
 });
 
@@ -435,3 +463,10 @@ process.exit(failures ? 1 : 0);
 // 2026-10-21, step 5b: section A for the planner; RU17 → A1, RU18 → A2,
 // RU19 → A3, RU20 → A4, RU21 → A6. The prefill note was reworded to say it
 // describes what was copied in (N4 re-keyed for that, not loosened).
+// 2026-10-21, 5b checks (Whit): an edit made while a save was in flight set
+// the state back to dirty and could start a SECOND save with the same
+// updated_at (the slower one would come back stale against our own save) —
+// now stateAfterEdit keeps "saving" and stateAfterReply makes the follow-up.
+// Fields keep typed text and hold autosave while invalid (Length is typed now;
+// a half-typed date no longer reads as "no date"). RU22 → A8, RU23 → A9,
+// RU24 → A10.

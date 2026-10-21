@@ -5,7 +5,7 @@
 // committed only when it is inside the plan's limits (editor.ts), so an
 // autosave can never send what 0117 would refuse.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Plus, X } from "lucide-react";
 import { DAY_SHORT, FIELD_TYPES, fieldTypeLabel } from "@/lib/practice-planner/constants";
 import { fmtTime, formatDayList, toMinutes } from "@/lib/practice-planner/format";
@@ -13,14 +13,16 @@ import type { FieldTypeId } from "@/lib/practice-planner/types";
 import type { PlanDivision } from "@/lib/practice-plans/load";
 import { INPUT_LIMITS } from "@/lib/practice-plans/plan-input";
 import { teamHint, type Prefill } from "@/lib/practice-plans/prefill";
-import { committedTeams, committedTime, lengthOptions, toggleDay } from "@/lib/practice-plans/editor";
+import { committedLength, committedTeams, committedTime, toggleDay } from "@/lib/practice-plans/editor";
 import {
   ADD_DIVISION,
   COL,
   DIVISION_LIMIT,
   LIT_OFF,
+  LENGTH_INVALID,
   LIT_ON,
   REMOVE_DIVISION,
+  TEAMS_INVALID,
   TIME_INVALID,
   divisionSummary,
   litDivisionNote,
@@ -39,9 +41,18 @@ type Props = {
   onChange: (id: string, patch: Partial<PlanDivision>) => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
+  /** A field reports whether its typed text is a value the plan can take. */
+  onValidity: (key: string, valid: boolean) => void;
 };
 
-export function DivisionEditor({ divisions, prefill, canAdd, readOnly, onChange, onAdd, onRemove }: Props) {
+export function DivisionEditor({ divisions, prefill, canAdd, readOnly, onChange, onAdd, onRemove, onValidity }: Props) {
+  // The table (md+) and the cards (below md) are both mounted, so each
+  // reports validity under its own scope (t: / c:) — one never hides the other.
+  // Stable callbacks: a new function every render would re-run each field's
+  // report-on-unmount cleanup and flip its validity on every render.
+  const vt = useCallback((key: string, ok: boolean) => onValidity(`t:${key}`, ok), [onValidity]);
+  const vc = useCallback((key: string, ok: boolean) => onValidity(`c:${key}`, ok), [onValidity]);
+  const v = (scope: "t" | "c") => (scope === "t" ? vt : vc);
   const [open, setOpen] = useState<string | null>(null);
   return (
     <>
@@ -65,15 +76,15 @@ export function DivisionEditor({ divisions, prefill, canAdd, readOnly, onChange,
             {divisions.map((d) => (
               <tr key={d.id} data-division-row className="align-top">
                 <td className="border-t border-gray-100 py-2 pr-2"><NameField d={d} readOnly={readOnly} onChange={onChange} /></td>
-                <td className="border-t border-gray-100 py-2 pr-2"><TeamsField d={d} prefill={prefill} readOnly={readOnly} onChange={onChange} /></td>
+                <td className="border-t border-gray-100 py-2 pr-2"><TeamsField d={d} prefill={prefill} readOnly={readOnly} onChange={onChange} onValidity={v("t")} /></td>
                 <td className="border-t border-gray-100 py-2 pr-2"><PerWeekField d={d} readOnly={readOnly} onChange={onChange} /></td>
-                <td className="border-t border-gray-100 py-2 pr-2"><LengthField d={d} readOnly={readOnly} onChange={onChange} /></td>
+                <td className="border-t border-gray-100 py-2 pr-2"><LengthField d={d} readOnly={readOnly} onChange={onChange} onValidity={v("t")} /></td>
                 <td className="border-t border-gray-100 py-2 pr-2"><DaysField d={d} readOnly={readOnly} onChange={onChange} /></td>
                 <td className="border-t border-gray-100 py-2 pr-2">
                   <div className="flex items-center gap-1">
-                    <TimeField label={`${d.name} ${COL.from}`} value={d.start} readOnly={readOnly} onCommit={(start) => onChange(d.id!, { start })} />
+                    <TimeField label={`${d.name} ${COL.from}`} vkey={`${d.id}:start`} onValidity={v("t")} value={d.start} readOnly={readOnly} onCommit={(start) => onChange(d.id!, { start })} />
                     <span className="text-gray-400">–</span>
-                    <TimeField label={`${d.name} ${COL.until}`} value={d.end} readOnly={readOnly} onCommit={(end) => onChange(d.id!, { end })} />
+                    <TimeField label={`${d.name} ${COL.until}`} vkey={`${d.id}:end`} onValidity={v("t")} value={d.end} readOnly={readOnly} onCommit={(end) => onChange(d.id!, { end })} />
                   </div>
                 </td>
                 <td className="border-t border-gray-100 py-2 pr-2"><FieldTypeField d={d} readOnly={readOnly} onChange={onChange} /></td>
@@ -114,15 +125,15 @@ export function DivisionEditor({ divisions, prefill, canAdd, readOnly, onChange,
                 <div className="mt-3 grid gap-3">
                   <Labeled label={COL.division}><NameField d={d} readOnly={readOnly} onChange={onChange} /></Labeled>
                   <div className="grid grid-cols-2 gap-3">
-                    <Labeled label={COL.teams}><TeamsField d={d} prefill={prefill} readOnly={readOnly} onChange={onChange} /></Labeled>
+                    <Labeled label={COL.teams}><TeamsField d={d} prefill={prefill} readOnly={readOnly} onChange={onChange} onValidity={v("c")} /></Labeled>
                     <Labeled label={COL.perWeek}><PerWeekField d={d} readOnly={readOnly} onChange={onChange} /></Labeled>
-                    <Labeled label={COL.length}><LengthField d={d} readOnly={readOnly} onChange={onChange} /></Labeled>
+                    <Labeled label={COL.length}><LengthField d={d} readOnly={readOnly} onChange={onChange} onValidity={v("c")} /></Labeled>
                     <Labeled label={COL.teamsPerField}><PerFieldField d={d} readOnly={readOnly} onChange={onChange} /></Labeled>
                   </div>
                   <Labeled label={COL.days}><DaysField d={d} readOnly={readOnly} onChange={onChange} wide /></Labeled>
                   <div className="grid grid-cols-2 gap-3">
-                    <Labeled label={COL.from}><TimeField label={`${d.name} ${COL.from}`} value={d.start} readOnly={readOnly} onCommit={(start) => onChange(d.id!, { start })} /></Labeled>
-                    <Labeled label={COL.until}><TimeField label={`${d.name} ${COL.until}`} value={d.end} readOnly={readOnly} onCommit={(end) => onChange(d.id!, { end })} /></Labeled>
+                    <Labeled label={COL.from}><TimeField label={`${d.name} ${COL.from}`} vkey={`${d.id}:start`} onValidity={v("c")} value={d.start} readOnly={readOnly} onCommit={(start) => onChange(d.id!, { start })} /></Labeled>
+                    <Labeled label={COL.until}><TimeField label={`${d.name} ${COL.until}`} vkey={`${d.id}:end`} onValidity={v("c")} value={d.end} readOnly={readOnly} onCommit={(end) => onChange(d.id!, { end })} /></Labeled>
                   </div>
                   <Labeled label={COL.field}><FieldTypeField d={d} readOnly={readOnly} onChange={onChange} /></Labeled>
                   <div className="flex items-center justify-between">
@@ -169,20 +180,42 @@ function NameField({ d, readOnly, onChange }: FieldProps) {
   );
 }
 
-function TeamsField({ d, prefill, readOnly, onChange }: FieldProps & { prefill: Prefill }) {
+type Validity = { onValidity: (key: string, valid: boolean) => void };
+
+/**
+ * Reports a field's validity up while mounted, and "valid" when it goes away
+ * (a removed division, a collapsed card) so a gone field never blocks saving.
+ */
+function useReportValidity(key: string, valid: boolean, onValidity: (key: string, valid: boolean) => void) {
+  useEffect(() => {
+    onValidity(key, valid);
+  }, [key, valid, onValidity]);
+  useEffect(() => () => onValidity(key, true), [key, onValidity]);
+}
+
+function TeamsField({ d, prefill, readOnly, onChange, onValidity }: FieldProps & Validity & { prefill: Prefill }) {
+  // The box keeps exactly what is typed; only a whole number inside the limit
+  // reaches the plan. While it holds anything else it says so, and the page
+  // holds autosave.
   const [draft, setDraft] = useState(String(d.teams));
-  useEffect(() => setDraft(String(d.teams)), [d.teams]);
+  useEffect(() => {
+    setDraft((cur) => (committedTeams(cur) === d.teams ? cur : String(d.teams)));
+  }, [d.teams]);
+  const valid = committedTeams(draft) !== null;
+  useReportValidity(`${d.id}:teams`, valid, onValidity);
   const hint = teamHint(prefill, d.name);
   return (
     <div className="min-w-[4rem]">
-      <input aria-label={`${d.name} ${COL.teams}`} inputMode="numeric" className={CONTROL} value={draft} disabled={readOnly}
+      <input aria-label={`${d.name} ${COL.teams}`} inputMode="numeric" aria-invalid={!valid}
+        className={`${CONTROL} ${valid ? "" : "border-red-400"}`} value={draft} disabled={readOnly}
         onChange={(e) => {
           setDraft(e.target.value);
           const n = committedTeams(e.target.value);
           if (n !== null) onChange(d.id!, { teams: n });
-        }}
-        onBlur={() => setDraft(String(d.teams))} />
-      {hint ? (
+        }} />
+      {!valid ? (
+        <span className="mt-0.5 block whitespace-nowrap text-[11px] font-semibold text-red-700">{TEAMS_INVALID(INPUT_LIMITS.teams.min, INPUT_LIMITS.teams.max)}</span>
+      ) : hint ? (
         <span className="mt-0.5 block whitespace-nowrap text-[11px] text-gray-500">{teamHintLine(hint.count, hint.seasonName)}</span>
       ) : d.teams === 0 ? (
         <span className="mt-0.5 block max-w-[10rem] text-[11px] font-semibold text-amber-700">{noTeamsLine(d.name, prefill.season?.name ?? null)}</span>
@@ -202,14 +235,30 @@ function PerWeekField({ d, readOnly, onChange }: FieldProps) {
   );
 }
 
-function LengthField({ d, readOnly, onChange }: FieldProps) {
+function LengthField({ d, readOnly, onChange, onValidity }: FieldProps & Validity) {
+  // Typed minutes, kept as typed; committed only inside the limit.
+  const [draft, setDraft] = useState(String(d.lengthMin));
+  useEffect(() => {
+    setDraft((cur) => (committedLength(cur) === d.lengthMin ? cur : String(d.lengthMin)));
+  }, [d.lengthMin]);
+  const valid = committedLength(draft) !== null;
+  useReportValidity(`${d.id}:length`, valid, onValidity);
   return (
-    <select aria-label={`${d.name} ${COL.length}`} className={`${CONTROL} min-w-[5.5rem]`} value={d.lengthMin} disabled={readOnly}
-      onChange={(e) => onChange(d.id!, { lengthMin: Number(e.target.value) })}>
-      {lengthOptions(d.lengthMin).map((m) => (
-        <option key={m} value={m}>{m} min</option>
-      ))}
-    </select>
+    <div className="min-w-[4.5rem]">
+      <div className="relative">
+        <input aria-label={`${d.name} ${COL.length}`} inputMode="numeric" aria-invalid={!valid}
+          className={`${CONTROL} pr-9 ${valid ? "" : "border-red-400"}`} value={draft} disabled={readOnly}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            const n = committedLength(e.target.value);
+            if (n !== null) onChange(d.id!, { lengthMin: n });
+          }} />
+        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">min</span>
+      </div>
+      {!valid && (
+        <span className="mt-0.5 block whitespace-nowrap text-[11px] font-semibold text-red-700">{LENGTH_INVALID(INPUT_LIMITS.lengthMin.min, INPUT_LIMITS.lengthMin.max)}</span>
+      )}
+    </div>
   );
 }
 
@@ -230,19 +279,27 @@ function DaysField({ d, readOnly, onChange, wide }: FieldProps & { wide?: boolea
   );
 }
 
-function TimeField({ label, value, readOnly, onCommit }: { label: string; value: string; readOnly: boolean; onCommit: (v: string) => void }) {
+function TimeField({ label, vkey, value, readOnly, onCommit, onValidity }: Validity & { label: string; vkey: string; value: string; readOnly: boolean; onCommit: (v: string) => void }) {
+  // A half-typed time reads as "" (iOS can even show one it hasn't
+  // committed): kept on screen, reported invalid, never sent.
   const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  const bad = committedTime(draft) === null;
+  const [partial, setPartial] = useState(false);
+  useEffect(() => setDraft((cur) => (committedTime(cur) === value ? cur : value)), [value]);
+  const valid = !partial && committedTime(draft) !== null;
+  useReportValidity(vkey, valid, onValidity);
+  const check = (el: HTMLInputElement) => setPartial(el.validity.badInput);
   return (
     <div>
-      <input type="time" step={900} aria-label={label} className={`${CONTROL} min-w-[6.5rem] ${bad ? "border-amber-400" : ""}`} value={draft} disabled={readOnly}
+      <input type="time" step={900} aria-label={label} aria-invalid={!valid}
+        className={`${CONTROL} min-w-[6.5rem] ${valid ? "" : "border-red-400"}`} value={draft} disabled={readOnly}
+        onKeyUp={(e) => check(e.currentTarget)} onBlur={(e) => check(e.currentTarget)}
         onChange={(e) => {
+          check(e.target);
           setDraft(e.target.value);
           const t = committedTime(e.target.value);
           if (t) onCommit(t);
         }} />
-      {bad && <span className="mt-0.5 block text-[11px] font-semibold text-amber-700">{TIME_INVALID}</span>}
+      {!valid && <span className="mt-0.5 block text-[11px] font-semibold text-red-700">{TIME_INVALID}</span>}
     </div>
   );
 }
