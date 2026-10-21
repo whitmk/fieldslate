@@ -302,15 +302,6 @@ export function StepReview({ data, leagueId, playoffId, onEdit, onComplete }: Pr
         />
       </ReviewSection>
 
-      {data.cross_division_enabled && (
-        <ReviewSection title="Championship" onEdit={() => onEdit(5)}>
-          <Row
-            label="vs. division"
-            value={data.cross_division_opponent_name || "Not selected"}
-          />
-        </ReviewSection>
-      )}
-
       {/* Seeding preview */}
       {data.seeding.length > 0 && (
         <ReviewSection title="Seed order" onEdit={() => onEdit(2)}>

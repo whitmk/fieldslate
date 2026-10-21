@@ -86,6 +86,8 @@ const counters = {
   couldntCountShown: 0,
   rebuildBlocked: 0,
   addBracketBlocked: 0,
+  /** X3: a saved cross-division setting carried through an Edit setup save. */
+  crossDivCarried: 0,
 };
 
 const ROOT = join(__dirname, "../..");
@@ -276,6 +278,33 @@ section("S", () => {
   ok(/rpc\("delete_playoff_bracket"[\s\S]{0,120}p_commit: false/.test(del) && /rpc\("delete_playoff_bracket"[\s\S]{0,120}p_commit: true/.test(del), "[S5]", "delete-bracket.ts does not call the preview and the commit");
   // S6: the success screen no longer claims a draft.
   ok(!/saved as a draft/.test(review), "[S6]", "success text still says 'saved as a draft'");
+});
+
+// ── X: the Cross-div step is HIDDEN (2026-10-20) — nothing reads its settings ──
+// The step leaves the flow (Add bracket and Edit setup), the Review shows no
+// cross-division section, and the saved cross_division_* values ride through
+// settingsPayload exactly as before (L1/L2 pin the keys).
+section("X", () => {
+  const src = (f: string) => readFileSync(join(ROOT, f), "utf8");
+  const wiz = src("src/components/playoffs/playoff-wizard.tsx");
+  const steps = wiz.slice(wiz.indexOf("const STEPS = ["), wiz.indexOf("];", wiz.indexOf("const STEPS = [")));
+  const labels = [...steps.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
+  ok(JSON.stringify(labels) === JSON.stringify(["Division", "Format", "Seeding", "Dates", "Venues", "Review"]),
+    "[X1]", `the step bar is 6 steps without Cross-div: ${labels.join(", ")}`);
+  ok(!/<StepCrossDivision/.test(wiz) && !/from "\.\/steps\/step-cross-division"/.test(wiz), "[X1]", "the Cross-div step is rendered in the flow");
+  const review = src("src/components/playoffs/steps/step-review.tsx");
+  ok(!/cross_division/.test(review) && !/title="Championship"/.test(review), "[X2]", "the Review still shows a cross-division section");
+  ok(/export function StepCrossDivision/.test(src("src/components/playoffs/steps/step-cross-division.tsx")), "[X3]", "the hidden component was deleted");
+  // A new bracket saves the defaults…
+  const fresh = settingsPayload({ ...DEFAULT_PLAYOFF_DATA, division_id: "d1" }) as Record<string, unknown>;
+  ok(fresh.cross_division_enabled === false && fresh.cross_division_opponent_id === null, "[X3]", `new bracket: ${JSON.stringify([fresh.cross_division_enabled, fresh.cross_division_opponent_id])}`);
+  // …and Edit setup saves back what the row holds (the live bracket with an opponent).
+  const saved = settingsPayload({ ...DEFAULT_PLAYOFF_DATA, division_id: "d1", cross_division_enabled: true, cross_division_opponent_id: "d9" }) as Record<string, unknown>;
+  ok(saved.cross_division_enabled === true && saved.cross_division_opponent_id === "d9", "[X3]", `edit setup: ${JSON.stringify([saved.cross_division_enabled, saved.cross_division_opponent_id])}`);
+  if (saved.cross_division_opponent_id === "d9") counters.crossDivCarried++;
+  const page = src("src/components/playoffs/playoffs-page-client.tsx");
+  ok(page.includes("cross_division_enabled: row.cross_division_enabled ?? false,") && page.includes('cross_division_opponent_id: row.cross_division_opponent_id ?? "",'),
+    "[X3]", "Edit setup no longer loads the row's cross-division values");
 });
 
 for (const [k, v] of Object.entries(counters)) ok(v > 0, `[V-${k}] counter ${k} must be non-zero`, String(v));

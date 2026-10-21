@@ -69,7 +69,8 @@ export type PlayoffWizardData = {
   venue_assignments: VenueAssignment[];
   /** Two-stage only. */
   stage2: Stage2WizardData;
-  // Step 6 — Cross-division championship
+  // Cross-division championship — its step is HIDDEN (nothing reads these);
+  // the values are carried through as saved (playoff-wizard.tsx).
   cross_division_enabled: boolean;
   cross_division_opponent_id: string;
   cross_division_opponent_name: string;

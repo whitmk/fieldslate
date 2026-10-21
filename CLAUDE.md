@@ -282,6 +282,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   role; PUBLIC, service_role and dashboard_readonly false); the 6 existing
   brackets and 21 games byte-identical apart from the new columns, all at
   their defaults; leak check clean. See "Two-stage playoffs".
+- **0115 (division delete clears cross-division) is WRITTEN AND PROVEN, NOT
+  APPLIED** (branch `feat/hide-cross-div-step`, 2026-10-20). See "Division
+  deletion".
 - **0114 (playoff series) APPLIED 2026-10-20 22:38 UTC, catalog
   `20261020223859`**, verbatim from the repo file on Whit's go (after the
   Safari print check), following its rolled-back proof (24/24) and the
@@ -721,6 +724,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   the division's `game_duration` (projected key only); no usable length → a
   BLANK end and a note in the modal, never a guess (`playoff-export.ts`,
   2026-10-20 — it was a hardcoded 90).
+- **The wizard's "Cross-div" step is HIDDEN (2026-10-20) until cross-division
+  playoffs are actually built** — the planner never read its settings, so it
+  did nothing. The step bar is Division, Format, Seeding, Dates, Venues,
+  Review ("Step 6 of 6"), in Add bracket and Edit setup; the Review has no
+  cross-division section. `steps/step-cross-division.tsx` is KEPT, unrendered.
+  The saved `cross_division_enabled` / `cross_division_opponent_id` are written
+  exactly as before: a new bracket saves the defaults (false / null), Edit
+  setup saves back what the row holds (`settingsPayload`; `sim:bracket-delete`
+  L1/L2 pin the keys, section X the hidden step, BD14–BD16). The one live
+  bracket that had it ON (test org "SRALL", archived season, AAA → AA) was
+  cleared by hand 2026-10-20; none has it now. Deleting a division no longer
+  depends on it once 0115 is applied (see "Division deletion").
 - **The Dates step starts from the division's own playing days and windows**
   (`playoffDefaultsFromDivision`, applied when a division is picked; orphan
   windows for non-playing days are dropped). Still editable.
@@ -1453,7 +1468,22 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Deletion order is load-bearing:** games → teams → division. `games`→`teams`
   FKs are NO ACTION and `teams.division_id` is SET NULL, so deleting the
   division alone ORPHANS its teams rather than removing them.
-- **Exactly one block condition:** `playoffs.cross_division_opponent_id` →
+- **0115 (WRITTEN AND PROVEN, NOT APPLIED, 2026-10-20) removes the block
+  below:** a bracket naming the division as its cross-division opponent no
+  longer refuses the delete — that setting does nothing and its wizard step is
+  hidden, so nothing could clear it. The function instead sets
+  `cross_division_enabled = false`, `cross_division_opponent_id = null` on
+  every such bracket, in the same transaction before the division row goes
+  (so the NO ACTION FK never fires), and reports
+  `side_effects.cross_division_settings_cleared`. Body otherwise verbatim from
+  0082; expected md5(prosrc) `ac83c7547bf926f85e8fd1ad0e590782`; privileges
+  unchanged (authenticated; dashboard_readonly as before). Proof:
+  `scripts/sim/division-delete-cross-sim.sql` (+ build script; rolled back,
+  "test" org; 3 mutants, first run green — read its RUN LOG). No table lock to
+  apply; no deploy order. After it is applied, the
+  `cross_division_playoff_opponent` sentence in `division-section.tsx` is
+  unreachable (left in place).
+- **Until 0115 is applied — exactly one block condition:** `playoffs.cross_division_opponent_id` →
   `divisions` is NO ACTION, so a division named as ANOTHER division's
   cross-division playoff opponent would raise a raw FK error. It is counted
   explicitly and blocks with a named reason (house rule from 0078: a guard

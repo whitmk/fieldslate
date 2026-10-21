@@ -7,7 +7,6 @@ import { StepFormat } from "./steps/step-format";
 import { StepSeeding } from "./steps/step-seeding";
 import { StepDates } from "./steps/step-dates";
 import { StepVenues } from "./steps/step-venues";
-import { StepCrossDivision } from "./steps/step-cross-division";
 import { StepReview } from "./steps/step-review";
 import { StepTeams } from "./steps/step-teams";
 import { StepStageDates } from "./steps/step-stage-dates";
@@ -21,9 +20,13 @@ const STEPS = [
   { label: "Seeding" },
   { label: "Dates" },
   { label: "Venues" },
-  { label: "Cross-div" },
   { label: "Review" },
 ];
+// The Cross-division step (steps/step-cross-division.tsx) is HIDDEN until
+// cross-division playoffs are built: the planner never reads its settings.
+// The saved cross_division_* values still ride through untouched — a new
+// bracket saves the defaults and Edit setup saves back what the row holds
+// (settingsPayload), so existing brackets don't change.
 
 // "Round robin, then bracket": no seed order (the bracket is seeded after the
 // round robin), one Dates & fields step for both stages, and no Cross-division
@@ -139,7 +142,6 @@ export function PlayoffWizard({
       onWindowStashChange={setDayWindowStash}
     />,
     <StepVenues key="venues" data={data} update={update} leagueId={leagueId} currentOrgId={currentOrgId} />,
-    <StepCrossDivision key="cross" data={data} update={update} leagueId={leagueId} />,
     <StepReview key="review" data={data} leagueId={leagueId} playoffId={playoffId} onEdit={setStep} onComplete={onComplete} />,
   ];
 

@@ -90,6 +90,24 @@ const MUTANTS: Mutant[] = [
     replace: `    p_games: gamesPayload(plan.games),\n    p_commit: false,`,
     expect: "S1",
   },
+  {
+    id: "BD14", what: "the Cross-div step is back in the step bar", file: "src/components/playoffs/playoff-wizard.tsx",
+    find: '  { label: "Venues" },\n  { label: "Review" },\n];',
+    replace: '  { label: "Venues" },\n  { label: "Cross-div" },\n  { label: "Review" },\n];',
+    expect: "X1",
+  },
+  {
+    id: "BD15", what: "the Review shows the cross-division Championship again", file: "src/components/playoffs/steps/step-review.tsx",
+    find: "      {/* Seeding preview */}",
+    replace: '      {data.cross_division_enabled && <ReviewSection title="Championship" onEdit={() => onEdit(5)}>{null}</ReviewSection>}\n      {/* Seeding preview */}',
+    expect: "X2",
+  },
+  {
+    id: "BD16", what: "a new bracket saves cross-division ON", file: "src/components/playoffs/playoff-wizard-types.ts",
+    find: "  cross_division_enabled: false,",
+    replace: "  cross_division_enabled: true,",
+    expect: "X3",
+  },
 ];
 
 runMutants({
@@ -107,3 +125,6 @@ runMutants({
 // 2026-10-08 — second run, after the UI commit added part S (84 checks × 3
 // zones) and BD11–BD13: 13/13 KILLED at their own assertion —
 //   BD11 → [S2]  BD12 → [S3]  BD13 → [S1]; BD1–BD10 unchanged.
+// 2026-10-20 — the wizard's Cross-div step HIDDEN: section X added (step bar,
+// flow, Review, saved values carried through). BD14 → [X1], BD15 → [X2], BD16
+// → [X3]; 16/16 KILLED at their own assertion. Source restored and re-verified.
