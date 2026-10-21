@@ -627,3 +627,10 @@ end $h$;
 --   Leak check: no practice_plans table, none of the five functions, 0 h117
 --   temp functions, 0 policies, not in schema_migrations; "test" and
 --   "Test 2" still elite. 0117 NOT applied.
+-- 2026-10-21 20:02 UTC — 0117 APPLIED verbatim (catalog 20261021200232) on
+--   Whit's go, after a read-only check (no transaction open > 5 s, no lock on
+--   profiles). md5(prosrc) of all five equal to the values above; one
+--   overload each; search_path pinned on all five; EXECUTE authenticated only
+--   on the four entry points, none on the input check; table SELECT
+--   authenticated only, no write grant, RLS on; leak check clean (0 rows, 0
+--   h117 functions, no triggers).

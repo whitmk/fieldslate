@@ -314,18 +314,24 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (`series_by_round` `{}`, `series_game` 1); the migration's own verify block
   passed; leak check clean (no temp functions, no activity-log writes,
   triggers enabled). See "Playoff series".
-- **0117 (saved practice plans) WRITTEN AND PROVEN, NOT APPLIED (2026-10-21,
-  branch `feat/practice-planner`).** First free number, checked with
-  `list_migrations` right before writing it. Rolled-back proof green on its
-  first run after a compile fix (14/14 mutants at their own tag; md5s
-  printed — expected after apply: `practice_plan_input_problem`
-  `fc9ad6da607acc9d7ec80ca22e16e7f1`, `create_practice_plan`
-  `1ef653c9eb5fbccf09e7e4e604e34250`, `copy_practice_plan`
-  `31a4a78d7ad7d7dd3299f7f6a9ed84dd`, `save_practice_plan`
-  `eb327a8f31123181978482d08a13287a`, `delete_practice_plan`
-  `f0c8d4197e4e9074a698a6462be550d2`); leak check clean. **Apply it right
-  before the planner's screens ship** — the code reads `practice_plans`. See
-  "Saved practice plans (0117)".
+- **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
+  `20261021200232`**, verbatim from the repo file on Whit's go, after its
+  rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
+  open > 5 s, no lock on `profiles`). md5(prosrc) verified for all five:
+  `practice_plan_input_problem` `fc9ad6da607acc9d7ec80ca22e16e7f1`,
+  `create_practice_plan` `1ef653c9eb5fbccf09e7e4e604e34250`,
+  `copy_practice_plan` `31a4a78d7ad7d7dd3299f7f6a9ed84dd`,
+  `save_practice_plan` `eb327a8f31123181978482d08a13287a`,
+  `delete_practice_plan` `f0c8d4197e4e9074a698a6462be550d2`; one overload
+  each; `search_path=public, pg_temp` on all five, the four entry points
+  SECURITY DEFINER and the input check INVOKER; EXECUTE authenticated only on
+  the four (PUBLIC, anon, service_role, dashboard_readonly false), the input
+  check callable by no role; table SELECT authenticated only, no write for
+  any role, RLS on with one SELECT policy; the migration's own verify block
+  passed; leak check clean (0 plan rows, 0 proof temp functions, no
+  triggers, only the table + its two indexes new). **Deploy order (met):
+  0117 was applied BEFORE the planner code reached `main`.** See "Saved
+  practice plans (0117)".
 - **`is_org_member` IS the admin gate, because every org member is an admin
   today.** If a non-admin member role (e.g. coach) is ever added,
   `set_org_timezone`, `regenerate_team_calendar_link` and
@@ -641,7 +647,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   skips daylight ← PP24, P4 lit still counted ← PP25 (the city checks run
   first — read the sim's mutation log).
 
-## Saved practice plans (0117, written and proven, NOT applied — branch `feat/practice-planner`)
+## Saved practice plans (0117, applied 2026-10-21)
 
 - **What it stores.** `practice_plans`: one row per saved field-request plan.
   The LEAGUE's (owner_id), not a season's — no league_id, no link to
