@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Public bracket — FieldSlate mockup</title>
+<style>
+:root{
+  --navy:#0C1F3F; --bg:#f4f5f0; --card:#fff; --ink:#0C1F3F; --muted:#5b6577; --faint:#8a93a3; --line:#e2e5dd; --soft:#f7f8f4;
+  --green:#22c55e; --green-dk:#16a34a; --green-bg:#ecfdf3; --away:#e6f4ea;
+  --amber-bg:#fffbeb; --amber-bd:#fcd34d; --amber-ink:#92400e;
+  --red-bg:#fef2f2; --red-bd:#fca5a5; --red-ink:#991b1b;
+  --ph:#374151; --gray-bg:#f3f4f6; --page:#f3f4f6;
+  box-sizing:border-box;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0a1830; --card:#10223f; --ink:#e8ecf3; --muted:#9aa6bb; --faint:#7d8aa3; --line:#22385c; --soft:#0d1d37; --away:#14341f; --green-bg:#0f2e1c;
+    --amber-bg:#3d2f06; --amber-bd:#6b5410; --amber-ink:#ffe08a; --red-bg:#3b1010; --red-bd:#7a2020; --red-ink:#ffc4c4; --ph:#cbd5e1; --gray-bg:#14284a; --page:#0d1d37;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1830; --card:#10223f; --ink:#e8ecf3; --muted:#9aa6bb; --faint:#7d8aa3; --line:#22385c; --soft:#0d1d37; --away:#14341f; --green-bg:#0f2e1c;
+  --amber-bg:#3d2f06; --amber-bd:#6b5410; --amber-ink:#ffe08a; --red-bg:#3b1010; --red-bd:#7a2020; --red-ink:#ffc4c4; --ph:#cbd5e1; --gray-bg:#14284a; --page:#0d1d37;
+}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.45}
+.wrap{max-width:1280px;margin:0 auto;padding:0 16px 60px}
+.mock{background:var(--navy);color:#cfd8e8;font-size:13px;text-align:center;padding:7px 12px}
+.mock b{color:#fff}
+header{padding:26px 0 6px}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.4px}
+.lede{color:var(--muted);margin:0 0 8px;max-width:85ch}
+.toc{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;margin:10px 0 0;padding:0;list-style:none}
+.toc a{color:var(--green-dk);text-decoration:none}
+.screen{margin-top:44px}
+.screen > h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+.screen > h3{font-size:19px;margin:0 0 4px}
+.screen > .why{color:var(--muted);font-size:13.5px;margin:0 0 14px;max-width:90ch}
+.screen > .why b{color:var(--ink)}
+.pair{display:grid;grid-template-columns:minmax(0,1fr) 375px;gap:22px;align-items:start}
+.frame-label{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:0 0 6px}
+.frame{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:16px;overflow:hidden}
+.frame.page{background:var(--page)}
+.phone .frame{width:375px;padding:16px;border-radius:26px;border-width:6px;border-color:#1f2937}
+@media (max-width:1000px){
+  .pair{grid-template-columns:1fr}
+  .desk{display:none}
+  .phone .frame{width:100%;max-width:375px}
+}
+.decide{margin-top:12px;border-left:3px solid var(--amber-bd);background:var(--amber-bg);color:var(--amber-ink);padding:8px 12px;font-size:13px;border-radius:0 8px 8px 0;max-width:90ch}
+.decide b{font-weight:700}
+
+/* ── app vocabulary ── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.row-flex{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.tiny{font-size:12px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--muted);white-space:nowrap;min-height:32px}
+.btn.navy{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn.primary{background:var(--green);border-color:var(--green);color:#fff}
+.btn[disabled]{opacity:.45}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:600;background:var(--soft);color:var(--muted);border:1px solid var(--line);white-space:nowrap}
+.pill.green{background:var(--green-bg);color:var(--green-dk);border-color:#bbf7d0}
+.pill.amber{background:var(--amber-bg);color:var(--amber-ink);border-color:var(--amber-bd)}
+.pill.gray{background:var(--gray-bg);color:var(--muted)}
+
+/* admin bracket card */
+.bc-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding:14px 16px}
+.bc-ico{width:36px;height:36px;border-radius:8px;background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--faint);flex:none}
+.bc-name{font-weight:700}
+.bc-acts{display:flex;flex-wrap:wrap;gap:6px}
+@container (max-width:760px){ .bc-acts{width:100%} }
+.app{container-type:inline-size}
+.share{border-top:1px solid var(--line);background:var(--soft);padding:10px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;font-size:12.5px}
+.share .lbl{font-weight:700;color:var(--ink);font-size:12px}
+.share .muted{color:var(--muted)}
+.switch{display:inline-flex;align-items:center;gap:8px;color:var(--ink);font-weight:500}
+.sw{width:32px;height:18px;border-radius:999px;background:#cbd5e1;position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.sw.on{background:var(--green)}
+.sw.on::after{left:16px}
+.toast{display:inline-flex;align-items:center;gap:6px;background:var(--navy);color:#fff;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600}
+.share a{color:var(--green-dk);font-weight:600;text-decoration:none}
+.share .why-line{flex-basis:100%;color:var(--muted);font-size:12px;margin-top:-2px}
+
+/* public page chrome */
+.pub{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.pub-head{padding:16px 18px 12px;border-bottom:1px solid var(--line)}
+.pub-org{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+.pub-title{font-size:20px;font-weight:800;margin:2px 0 2px}
+.pub-sub{font-size:12.5px;color:var(--muted)}
+.pub-bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:10px 18px;border-bottom:1px solid var(--line)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;padding:2px}
+.seg span{padding:4px 10px;font-size:12px;font-weight:600;border-radius:6px;color:var(--muted)}
+.seg span.on{background:var(--navy);color:#fff}
+.pub-body{padding:16px 18px;background:var(--soft)}
+.pub-foot{padding:10px 18px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;border-top:1px solid var(--line)}
+.pub-foot a{color:var(--green-dk);text-decoration:none;font-weight:600}
+.stale{font-size:12px;color:var(--amber-ink);background:var(--amber-bg);border:1px solid var(--amber-bd);border-radius:8px;padding:6px 10px;margin:10px 18px 0}
+
+/* tree */
+.tree{display:flex;gap:28px;overflow-x:auto;padding-bottom:4px}
+.col{display:flex;flex-direction:column;min-width:200px;width:200px}
+.col-h{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center;height:22px}
+.col-b{flex:1;display:flex;flex-direction:column;justify-content:space-around;gap:16px}
+.gc{background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.04);overflow:hidden;position:relative}
+.gc .when{font-size:10px;line-height:14px;color:var(--muted);padding:4px 10px;border-bottom:1px solid var(--line)}
+.gc .when .tbd{color:var(--amber-ink);font-style:italic}
+.gc .when div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr{display:flex;align-items:center;height:30px;padding:0 10px;font-size:12.5px;gap:6px}
+.tr.away{background:var(--away)}
+.tr .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr .sc{font-variant-numeric:tabular-nums;font-weight:600;color:var(--muted);min-width:14px;text-align:right}
+.tr.won .nm,.tr.won .sc{font-weight:800;color:var(--ink)}
+.tr .trophy{color:#f59e0b;font-size:11px}
+.tr.ph .nm{color:var(--ph);font-style:italic}
+.tr .ha{font-size:9px;color:var(--faint);font-weight:700;letter-spacing:.04em}
+.gc + .gc{margin-top:0}
+.champ{margin-top:6px;background:#fffbeb;border-radius:6px;padding:4px 8px;text-align:center;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#b45309}
+.conn{position:relative}
+.conn::after{content:"";position:absolute;right:-28px;top:50%;width:28px;border-top:1.5px solid #9ca3af}
+/* series group */
+.sg{border:1.5px dashed #cbd5e1;border-radius:10px;padding:6px;background:rgba(255,255,255,.4)}
+.sg-h{display:flex;justify-content:space-between;gap:6px;align-items:baseline;font-size:10.5px;padding:0 2px 5px;flex-wrap:wrap}
+.sg-h b{font-size:10.5px}
+.sg-h .st{font-weight:700;color:var(--green-dk)}
+.sg .gc{margin-bottom:6px}
+.sg .gc .when div{white-space:normal;overflow-wrap:anywhere}
+.sg .gc:last-child{margin-bottom:0}
+.gc.notneeded{opacity:.5}
+.gc.notneeded .tr .nm{text-decoration:line-through}
+.ifn{color:var(--amber-ink);font-weight:700}
+
+/* list (phone) */
+.lr{background:var(--card);border-bottom:1px solid var(--line);padding:10px 12px}
+.lr:last-child{border-bottom:0}
+.lr-top{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);margin-bottom:4px;flex-wrap:wrap}
+.lr-top b{color:var(--ink);font-size:11.5px}
+.lr .tr{height:26px;padding:0 6px;border-radius:4px}
+.lr .fld{font-size:11px;color:var(--muted);margin-top:4px}
+.round-h{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);padding:12px 2px 6px}
+.lgroup{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.lseries{border:1.5px dashed #cbd5e1;border-radius:10px;overflow:hidden;margin-bottom:10px}
+.lseries-h{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:7px 12px;font-size:12px;background:var(--card);border-bottom:1px solid var(--line)}
+.lseries-h .st{color:var(--green-dk);font-weight:700}
+
+/* state cards */
+.state{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:32px 20px;text-align:center}
+.state h4{margin:0;font-size:15px}
+.state p{margin:8px auto 0;max-width:42ch;font-size:13px;color:var(--muted)}
+.state .btn{margin-top:14px;color:var(--ink)}
+.states{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.state-cap{font-size:11.5px;color:var(--faint);margin:6px 2px 0}
+.state-cap code{font-size:11px}
+
+table.spec{border-collapse:collapse;width:100%;font-size:13px;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+table.spec th,table.spec td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+table.spec th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+.scroll-x{overflow-x:auto}
+</style>
+</head>
+<body>
+<div class="mock"><b>Mockup — APPROVED 2026-10-20</b> — public bracket page per division. Made-up league, teams and parks.</div>
+<div class="wrap">
+<header>
+  <h1>Public bracket page</h1>
+  <p class="lede">One read-only page per division's playoffs, at <b>thefieldslate.com/s/&lt;token&gt;/bracket/&lt;division&gt;</b> — the league's public schedule link plus the division. The public schedule's on/off switch and Reset govern it. Desktop opens on the bracket tree, a phone on the list. It refreshes itself every 60 seconds while the tab is visible.</p>
+  <ul class="toc">
+    <li><a href="#admin">1 · Playoffs card: share + scores setting</a></li>
+    <li><a href="#single">2 · Single elimination, scores on</a></li>
+    <li><a href="#scoresoff">3 · Scores off</a></li>
+    <li><a href="#series">4 · Series</a></li>
+    <li><a href="#twostage">5 · Two-stage</a></li>
+    <li><a href="#states">6 · Empty and error states</a></li>
+    <li><a href="#schedlink">6b · "Bracket →" on the schedule</a></li>
+    <li><a href="#settings">7 · Settings → Reset wording</a></li>
+    <li><a href="#confirm">8 · To confirm</a></li>
+  </ul>
+</header>
+
+<!-- ═════════════════════════ 1 · ADMIN ═════════════════════════ -->
+<section class="screen" id="admin">
+  <h2>Screen 1 · Playoffs page (admin)</h2>
+  <h3>A "Public page" strip on every bracket card</h3>
+  <p class="why">The card's header is unchanged (View bracket · Export · Edit setup · Delete). Below it, one strip: <b>Copy public link</b>, <b>Open ↗</b>, and the <b>Show scores publicly</b> switch (default on). The switch saves at once — it is NOT in Edit setup, because Edit setup is refused once results exist and scores can be turned off at any time. When the bracket can't be shared, the strip says why in one line, with a link to fix it, and the copy button is disabled. A two-stage pair is one card, one strip, one switch for both stages.</p>
+  <div class="pair">
+    <div class="desk">
+      <p class="frame-label">Desktop</p>
+      <div class="frame app">
+        <div class="stack" style="display:flex;flex-direction:column;gap:12px">
+
+          <div class="card">
+            <div class="bc-head">
+              <div class="bc-ico">🏆</div>
+              <div class="grow"><div class="bc-name">Majors</div><div class="tiny">Single elimination · starts 2026-10-24</div></div>
+              <span class="pill green">Active</span>
+              <div class="bc-acts"><span class="btn navy">▾ View bracket</span><span class="btn">Export</span><span class="btn">Edit setup</span><span class="btn">Delete</span></div>
+            </div>
+            <div class="share">
+              <span class="lbl">Public page</span>
+              <span class="btn">🔗 Copy public link</span>
+              <span class="btn">Open ↗</span>
+              <span class="switch"><span class="sw on"></span>Show scores publicly</span>
+              <span class="toast">✓ Link copied</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="bc-head">
+              <div class="bc-ico">🏆</div>
+              <div class="grow"><div class="bc-name">AAA</div><div class="tiny">Round robin, then bracket · starts 2026-10-24</div></div>
+              <span class="pill green">Active</span>
+              <div class="bc-acts"><span class="btn navy">▾ View bracket</span><span class="btn">Export</span><span class="btn">Edit setup</span><span class="btn">Delete</span></div>
+            </div>
+            <div class="share">
+              <span class="lbl">Public page</span>
+              <span class="btn">🔗 Copy public link</span>
+              <span class="btn">Open ↗</span>
+              <span class="switch"><span class="sw"></span>Show scores publicly</span>
+              <span class="why-line">Scores are hidden on the public page. It shows who won and who moves on.</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="bc-head">
+              <div class="bc-ico">🏆</div>
+              <div class="grow"><div class="bc-name">AA</div><div class="tiny">Single elimination · starts 2026-10-31</div></div>
+              <span class="pill green">Active</span>
+              <div class="bc-acts"><span class="btn navy">▾ View bracket</span><span class="btn">Export</span><span class="btn">Edit setup</span><span class="btn">Delete</span></div>
+            </div>
+            <div class="share">
+              <span class="lbl">Public page</span>
+              <span class="btn" disabled>🔗 Copy public link</span>
+              <span class="switch"><span class="sw on"></span>Show scores publicly</span>
+              <span class="why-line">AA's schedule isn't locked, so its bracket isn't public yet. <a href="#">Lock it on the season page</a></span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="bc-head">
+              <div class="bc-ico">🏆</div>
+              <div class="grow"><div class="bc-name">Minors</div><div class="tiny">Single elimination</div></div>
+              <span class="pill gray">Draft</span>
+              <div class="bc-acts"><span class="btn">Edit setup</span><span class="btn">Delete</span></div>
+            </div>
+            <div class="share">
+              <span class="lbl">Public page</span>
+              <span class="btn" disabled>🔗 Copy public link</span>
+              <span class="why-line">A draft bracket isn't public. Generate its games to share it.</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="bc-head">
+              <div class="bc-ico">🏆</div>
+              <div class="grow"><div class="bc-name">Juniors</div><div class="tiny">Double elimination · starts 2026-10-24</div></div>
+              <span class="pill green">Active</span>
+              <div class="bc-acts"><span class="btn navy">▾ View bracket</span><span class="btn">Export</span><span class="btn">Edit setup</span><span class="btn">Delete</span></div>
+            </div>
+            <div class="share">
+              <span class="lbl">Public page</span>
+              <span class="btn" disabled>🔗 Copy public link</span>
+              <span class="why-line">Double elimination brackets can't be shared yet.</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      <p class="tiny" style="margin-top:8px">Other "why" lines, same place: <b>"The public schedule is off, so bracket links don't work. <a href="#" style="color:var(--green-dk)">Turn it on in Settings</a>"</b> · <b>"Public pages are on the Pro and Elite plans."</b> (only reachable for a Free org, which can't have a bracket today). Switching scores on/off shows "Saved" for 2 seconds; a failed save puts the switch back and says "Couldn't save. Try again."</p>
+    </div>
+    <div class="phone">
+      <p class="frame-label">375px</p>
+      <div class="frame app">
+        <div class="card">
+          <div class="bc-head">
+            <div class="bc-ico">🏆</div>
+            <div class="grow"><div class="bc-name">Majors</div><div class="tiny">Single elimination · starts 2026-10-24</div></div>
+            <span class="pill green">Active</span>
+            <div class="bc-acts"><span class="btn navy">▾ View bracket</span><span class="btn">Export</span><span class="btn">Edit setup</span><span class="btn">Delete</span></div>
+          </div>
+          <div class="share">
+            <span class="lbl" style="flex-basis:100%">Public page</span>
+            <span class="btn">🔗 Copy public link</span>
+            <span class="btn">Open ↗</span>
+            <span class="switch" style="flex-basis:100%;min-height:36px"><span class="sw on"></span>Show scores publicly</span>
+          </div>
+        </div>
+        <div class="card" style="margin-top:12px">
+          <div class="bc-head">
+            <div class="bc-ico">🏆</div>
+            <div class="grow"><div class="bc-name">AA</div><div class="tiny">Single elimination</div></div>
+            <span class="pill green">Active</span>
+          </div>
+          <div class="share">
+            <span class="lbl" style="flex-basis:100%">Public page</span>
+            <span class="btn" disabled>🔗 Copy public link</span>
+            <span class="why-line" style="margin-top:0">AA's schedule isn't locked, so its bracket isn't public yet. <a href="#">Lock it on the season page</a></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ 2 · SINGLE ELIM ═════════════════════════ -->
+<section class="screen" id="single">
+  <h2>Screen 2 · Public page</h2>
+  <h3>Single elimination, 6 teams, scores on</h3>
+  <p class="why">The same cards and lines as the admin bracket, with <b>no buttons</b> (the card's action row is gone, so it's shorter). Winner = bold + trophy, never a row colour. Empty slots read "Winner of Game 1"; a game with no date reads <b>"Date TBD"</b>. Field names include the park. A link back to the full schedule sits under the title. Not-needed games never appear.</p>
+  <div class="pair">
+    <div class="desk">
+      <p class="frame-label">Desktop — opens on Bracket</p>
+      <div class="frame page">
+        <div class="pub">
+          <div class="pub-head">
+            <div class="pub-org">Riverside Little League</div>
+            <div class="pub-title">Majors Playoffs</div>
+            <div class="pub-sub">Fall 2026 · Single elimination · <a href="#" style="color:var(--green-dk);text-decoration:none;font-weight:600">See all games →</a></div>
+          </div>
+          <div class="pub-bar">
+            <span class="seg"><span class="on">Bracket</span><span>List</span></span>
+            <span class="tiny">Updates on its own every minute</span>
+          </div>
+          <div class="pub-body">
+            <div class="tree">
+              <div class="col">
+                <div class="col-h">Round 1</div>
+                <div class="col-b">
+                  <div class="gc conn">
+                    <div class="when"><div>Game 1 · Sat 10/24 · 9:00 AM</div><div>Monroe Complex — Andrews</div></div>
+                    <div class="tr won"><span class="nm">Cubs</span><span class="trophy">🏆</span><span class="sc">7</span></div>
+                    <div class="tr away"><span class="nm">Royals</span><span class="sc">4</span></div>
+                  </div>
+                  <div class="gc conn">
+                    <div class="when"><div>Game 2 · Sat 10/24 · 11:30 AM</div><div>Monroe Complex — Andrews</div></div>
+                    <div class="tr"><span class="nm">Mets</span><span class="sc">3</span></div>
+                    <div class="tr away won"><span class="nm">Giants</span><span class="trophy">🏆</span><span class="sc">5</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="col-h">Semifinals</div>
+                <div class="col-b">
+                  <div class="gc conn">
+                    <div class="when"><div>Game 3 · Sat 10/31 · 9:00 AM</div><div>Monroe Complex — Andrews</div></div>
+                    <div class="tr"><span class="nm">Braves</span><span class="sc"></span></div>
+                    <div class="tr away"><span class="nm">Cubs</span><span class="sc"></span></div>
+                  </div>
+                  <div class="gc conn">
+                    <div class="when"><div>Game 4 · Sat 10/31 · 11:30 AM</div><div>Wright Park — Field 2</div></div>
+                    <div class="tr"><span class="nm">Expos</span><span class="sc"></span></div>
+                    <div class="tr away"><span class="nm">Giants</span><span class="sc"></span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="col-h">Final</div>
+                <div class="col-b">
+                  <div class="gc">
+                    <div class="when"><div class="tbd">Game 5 · Date TBD</div><div>&nbsp;</div></div>
+                    <div class="tr ph"><span class="nm">Winner of Game 3</span></div>
+                    <div class="tr away ph"><span class="nm">Winner of Game 4</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p class="tiny" style="margin:12px 0 0">Mockup approximation of the tree — the build uses the admin tree's real layout and connector lines (seeds 1 and 2 on byes into the semifinals).</p>
+          </div>
+          <div class="pub-foot"><span>Bracket by <b style="color:var(--ink)">FieldSlate</b></span><span>Times are local to the league.</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="phone">
+      <p class="frame-label">375px — opens on List</p>
+      <div class="frame page" style="padding:10px">
+        <div class="pub">
+          <div class="pub-head" style="padding:14px">
+            <div class="pub-org">Riverside Little League</div>
+            <div class="pub-title" style="font-size:18px">Majors Playoffs</div>
+            <div class="pub-sub">Fall 2026 · Single elimination<br><a href="#" style="color:var(--green-dk);text-decoration:none;font-weight:600">See all games →</a></div>
+          </div>
+          <div class="pub-bar" style="padding:8px 14px">
+            <span class="seg"><span>Bracket</span><span class="on">List</span></span>
+          </div>
+          <div class="pub-body" style="padding:4px 10px 12px">
+            <div class="round-h">Round 1</div>
+            <div class="lgroup">
+              <div class="lr">
+                <div class="lr-top"><b>Game 1</b><span>Sat 10/24 · 9:00 AM</span></div>
+                <div class="tr won"><span class="nm">Cubs</span><span class="trophy">🏆</span><span class="sc">7</span></div>
+                <div class="tr away"><span class="nm">Royals</span><span class="sc">4</span></div>
+                <div class="fld">Monroe Complex — Andrews</div>
+              </div>
+              <div class="lr">
+                <div class="lr-top"><b>Game 2</b><span>Sat 10/24 · 11:30 AM</span></div>
+                <div class="tr"><span class="nm">Mets</span><span class="sc">3</span></div>
+                <div class="tr away won"><span class="nm">Giants</span><span class="trophy">🏆</span><span class="sc">5</span></div>
+                <div class="fld">Monroe Complex — Andrews</div>
+              </div>
+            </div>
+            <div class="round-h">Semifinals</div>
+            <div class="lgroup">
+              <div class="lr">
+                <div class="lr-top"><b>Game 3</b><span>Sat 10/31 · 9:00 AM</span></div>
+                <div class="tr"><span class="nm">Braves</span></div>
+                <div class="tr away"><span class="nm">Cubs</span></div>
+                <div class="fld">Monroe Complex — Andrews</div>
+              </div>
+              <div class="lr">
+                <div class="lr-top"><b>Game 4</b><span>Sat 10/31 · 11:30 AM</span></div>
+                <div class="tr"><span class="nm">Expos</span></div>
+                <div class="tr away"><span class="nm">Giants</span></div>
+                <div class="fld">Wright Park — Field 2</div>
+              </div>
+            </div>
+            <div class="round-h">Final</div>
+            <div class="lgroup">
+              <div class="lr">
+                <div class="lr-top"><b>Game 5</b><span class="ifn" style="font-weight:600;font-style:italic">Date TBD</span></div>
+                <div class="tr ph"><span class="nm">Winner of Game 3</span></div>
+                <div class="tr away ph"><span class="nm">Winner of Game 4</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="pub-foot" style="padding:10px 14px"><span>Bracket by <b style="color:var(--ink)">FieldSlate</b></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="why" style="margin-top:14px">When the Final has a result, the champion banner shows under the Final card on both views: <span class="champ" style="display:inline-block;margin:0">🏆 Champion: Braves</span></p>
+  <p class="why" style="margin-top:6px">If a background refresh fails, the page keeps what it last showed and adds one line under the bar — never an empty bracket: <span class="stale" style="display:inline-block;margin:0">Couldn't refresh. Showing results as of 2:41 PM.</span> It disappears on the next good refresh.</p>
+</section>
+
+<!-- ═════════════════════════ 3 · SCORES OFF ═════════════════════════ -->
+<section class="screen" id="scoresoff">
+  <h2>Screen 3 · Public page, "Show scores publicly" off</h2>
+  <h3>Winners and advancement, no numbers</h3>
+  <p class="why">The database sends <b>no scores at all</b> for this bracket — only who won. The winner keeps the bold name and the trophy; the score column is gone. Nothing on the page says scores are hidden.</p>
+  <div class="pair">
+    <div class="desk">
+      <p class="frame-label">Desktop</p>
+      <div class="frame page">
+        <div class="pub-body" style="border:1px solid var(--line);border-radius:12px">
+          <div class="tree">
+            <div class="col">
+              <div class="col-h">Round 1</div>
+              <div class="col-b">
+                <div class="gc conn">
+                  <div class="when"><div>Game 1 · Sat 10/24 · 9:00 AM</div><div>Monroe Complex — Andrews</div></div>
+                  <div class="tr won"><span class="nm">Cubs</span><span class="trophy">🏆</span></div>
+                  <div class="tr away"><span class="nm">Royals</span></div>
+                </div>
+                <div class="gc conn">
+                  <div class="when"><div>Game 2 · Sat 10/24 · 11:30 AM</div><div>Monroe Complex — Andrews</div></div>
+                  <div class="tr"><span class="nm">Mets</span></div>
+                  <div class="tr away won"><span class="nm">Giants</span><span class="trophy">🏆</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="col">
+              <div class="col-h">Semifinals</div>
+              <div class="col-b">
+                <div class="gc conn">
+                  <div class="when"><div>Game 3 · Sat 10/31 · 9:00 AM</div><div>Monroe Complex — Andrews</div></div>
+                  <div class="tr"><span class="nm">Braves</span></div>
+                  <div class="tr away"><span class="nm">Cubs</span></div>
+                </div>
+                <div class="gc conn">
+                  <div class="when"><div>Game 4 · Sat 10/31 · 11:30 AM</div><div>Wright Park — Field 2</div></div>
+                  <div class="tr"><span class="nm">Expos</span></div>
+                  <div class="tr away"><span class="nm">Giants</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="col">
+              <div class="col-h">Final</div>
+              <div class="col-b">
+                <div class="gc">
+                  <div class="when"><div class="tbd">Game 5 · Date TBD</div><div>&nbsp;</div></div>
+                  <div class="tr ph"><span class="nm">Winner of Game 3</span></div>
+                  <div class="tr away ph"><span class="nm">Winner of Game 4</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="phone">
+      <p class="frame-label">375px</p>
+      <div class="frame page" style="padding:10px">
+        <div class="pub-body" style="padding:4px 10px 12px;border:1px solid var(--line);border-radius:12px">
+          <div class="round-h">Round 1</div>
+          <div class="lgroup">
+            <div class="lr">
+              <div class="lr-top"><b>Game 1</b><span>Sat 10/24 · 9:00 AM</span></div>
+              <div class="tr won"><span class="nm">Cubs</span><span class="trophy">🏆</span></div>
+              <div class="tr away"><span class="nm">Royals</span></div>
+              <div class="fld">Monroe Complex — Andrews</div>
+            </div>
+            <div class="lr">
+              <div class="lr-top"><b>Game 2</b><span>Sat 10/24 · 11:30 AM</span></div>
+              <div class="tr"><span class="nm">Mets</span></div>
+              <div class="tr away won"><span class="nm">Giants</span><span class="trophy">🏆</span></div>
+              <div class="fld">Monroe Complex — Andrews</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ 4 · SERIES ═════════════════════════ -->
+<section class="screen" id="series">
+  <h2>Screen 4 · Public page with series</h2>
+  <h3>Semifinals and Final best of 3 — the admin's series groups, read-only</h3>
+  <p class="why">Each series is the admin's dashed group: title left ("Semifinal 1 · best of 3"), where it stands right (<b>"Braves lead 1–0"</b>, "Tied 1–1", "Braves win 2–0"), one full card per game. "If needed" sits in the game's header. A game that turned out not needed is <b>left out</b> (the reader never sends it), so a 2–0 series shows two cards. The banner reads "Expos win the Final 2–1".</p>
+  <div class="pair">
+    <div class="desk">
+      <p class="frame-label">Desktop — scores on</p>
+      <div class="frame page">
+        <div class="pub-body" style="border:1px solid var(--line);border-radius:12px">
+          <div class="tree">
+            <div class="col">
+              <div class="col-h">Semifinals · best of 3</div>
+              <div class="col-b">
+                <div class="sg conn">
+                  <div class="sg-h"><b>Semifinal 1 · best of 3</b><span class="st">Braves win 2–0</span></div>
+                  <div class="gc">
+                    <div class="when"><div>Game 1 of 3 · Sat 10/24 · 9:00 AM</div><div>Monroe Complex — Andrews</div></div>
+                    <div class="tr won"><span class="nm">Braves</span><span class="trophy">🏆</span><span class="sc">6</span></div>
+                    <div class="tr away"><span class="nm">Cubs</span><span class="sc">2</span></div>
+                  </div>
+                  <div class="gc">
+                    <div class="when"><div>Game 2 of 3 · Sat 10/24 · 1:00 PM</div><div>Monroe Complex — Andrews</div></div>
+                    <div class="tr"><span class="nm">Cubs</span><span class="sc">3</span></div>
+                    <div class="tr away won"><span class="nm">Braves</span><span class="trophy">🏆</span><span class="sc">4</span></div>
+                  </div>
+                </div>
+                <div class="sg conn">
+                  <div class="sg-h"><b>Semifinal 2 · best of 3</b><span class="st">Expos lead 1–0</span></div>
+                  <div class="gc">
+                    <div class="when"><div>Game 1 of 3 · Sat 10/24 · 11:00 AM</div><div>Wright Park — Field 2</div></div>
+                    <div class="tr won"><span class="nm">Expos</span><span class="trophy">🏆</span><span class="sc">9</span></div>
+                    <div class="tr away"><span class="nm">Giants</span><span class="sc">8</span></div>
+                  </div>
+                  <div class="gc">
+                    <div class="when"><div>Game 2 of 3 · Sun 10/25 · 10:00 AM</div><div>Wright Park — Field 2</div></div>
+                    <div class="tr"><span class="nm">Giants</span></div>
+                    <div class="tr away"><span class="nm">Expos</span></div>
+                  </div>
+                  <div class="gc">
+                    <div class="when"><div>Game 3 of 3 · <span class="ifn">If needed</span> · Sun 10/25 · 12:30 PM</div><div>Wright Park — Field 2</div></div>
+                    <div class="tr"><span class="nm">Expos</span></div>
+                    <div class="tr away"><span class="nm">Giants</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col">
+              <div class="col-h">Final · best of 3</div>
+              <div class="col-b">
+                <div class="sg">
+                  <div class="sg-h"><b>Final · best of 3</b><span class="st" style="color:var(--muted)">Not started</span></div>
+                  <div class="gc">
+                    <div class="when"><div>Game 1 of 3 · Sat 10/31 · 10:00 AM</div><div>Monroe Complex — Andrews</div></div>
+                    <div class="tr"><span class="nm">Braves</span></div>
+                    <div class="tr away ph"><span class="nm">Winner of Semifinal 2</span></div>
+                  </div>
+                  <div class="gc">
+                    <div class="when"><div>Game 2 of 3 · Sat 10/31 · 1:00 PM</div><div>Monroe Complex — Andrews</div></div>
+                    <div class="tr"><span class="nm">Braves</span></div>
+                    <div class="tr away ph"><span class="nm">Winner of Semifinal 2</span></div>
+                  </div>
+                  <div class="gc">
+                    <div class="when"><div class="tbd">Game 3 of 3 · If needed · Date TBD</div><div>&nbsp;</div></div>
+                    <div class="tr"><span class="nm">Braves</span></div>
+                    <div class="tr away ph"><span class="nm">Winner of Semifinal 2</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="tiny" style="margin-top:8px"><b>Scores off:</b> the cards drop their numbers exactly as in screen 3; the series line still says <b>"Braves win 2–0"</b> — that's games won, which the trophies already show. (See "To confirm" #2.)</p>
+    </div>
+    <div class="phone">
+      <p class="frame-label">375px</p>
+      <div class="frame page" style="padding:10px">
+        <div class="pub-body" style="padding:4px 10px 12px;border:1px solid var(--line);border-radius:12px">
+          <div class="round-h">Semifinals · best of 3</div>
+          <div class="lseries">
+            <div class="lseries-h"><b>Semifinal 2</b><span class="st">Expos lead 1–0</span></div>
+            <div class="lr">
+              <div class="lr-top"><b>Game 1 of 3</b><span>Sat 10/24 · 11:00 AM</span></div>
+              <div class="tr won"><span class="nm">Expos</span><span class="trophy">🏆</span><span class="sc">9</span></div>
+              <div class="tr away"><span class="nm">Giants</span><span class="sc">8</span></div>
+              <div class="fld">Wright Park — Field 2</div>
+            </div>
+            <div class="lr">
+              <div class="lr-top"><b>Game 2 of 3</b><span>Sun 10/25 · 10:00 AM</span></div>
+              <div class="tr"><span class="nm">Giants</span></div>
+              <div class="tr away"><span class="nm">Expos</span></div>
+              <div class="fld">Wright Park — Field 2</div>
+            </div>
+            <div class="lr">
+              <div class="lr-top"><b>Game 3 of 3 · <span class="ifn">If needed</span></b><span>Sun 10/25 · 12:30 PM</span></div>
+              <div class="tr"><span class="nm">Expos</span></div>
+              <div class="tr away"><span class="nm">Giants</span></div>
+              <div class="fld">Wright Park — Field 2</div>
+            </div>
+          </div>
+          <div class="round-h">Final · best of 3</div>
+          <div class="lseries">
+            <div class="lseries-h"><b>Final</b><span style="color:var(--muted)">Not started</span></div>
+            <div class="lr">
+              <div class="lr-top"><b>Game 3 of 3 · <span class="ifn">If needed</span></b><span class="ifn" style="font-style:italic;font-weight:600">Date TBD</span></div>
+              <div class="tr"><span class="nm">Braves</span></div>
+              <div class="tr away ph"><span class="nm">Winner of Semifinal 2</span></div>
+            </div>
+          </div>
+          <p class="tiny" style="margin:8px 2px 0">(Semifinal 1 and Final Games 1–2 trimmed from this frame.)</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ 5 · TWO-STAGE ═════════════════════════ -->
+<section class="screen" id="twostage">
+  <h2>Screen 5 · Public page, round robin then bracket</h2>
+  <h3>Stage 1 games with results; Stage 2 with seed placeholders. No records table.</h3>
+  <p class="why">One page for the pair. <b>Stage 1</b> lists its games by round with scores (or winners only) and who sits out. <b>Stage 2</b> is the bracket tree / list, reading "Seed 1"–"Seed 4" until the league seeds it, then team names with their seed. There is <b>no records table and no standings</b> on this page, in either stage — that box stays admin-only. The one line under Stage 1 says how many move on, not who.</p>
+  <div class="pair">
+    <div class="desk">
+      <p class="frame-label">Desktop</p>
+      <div class="frame page">
+        <div class="pub">
+          <div class="pub-head">
+            <div class="pub-org">Riverside Little League</div>
+            <div class="pub-title">AAA Playoffs</div>
+            <div class="pub-sub">Fall 2026 · Round robin, then bracket · <a href="#" style="color:var(--green-dk);text-decoration:none;font-weight:600">See all games →</a></div>
+          </div>
+          <div class="pub-bar">
+            <span class="seg"><span class="on">Stage 1 · Round robin</span><span>Stage 2 · Bracket</span></span>
+            <span class="tiny">Top 4 move on to the bracket.</span>
+          </div>
+          <div class="pub-body">
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+              <div>
+                <div class="round-h" style="padding-top:0">Round 1 · Sat 10/17</div>
+                <div class="lgroup">
+                  <div class="lr"><div class="lr-top"><b>RR Game 1</b><span>9:00 AM · Monroe Complex — Polley</span></div>
+                    <div class="tr won"><span class="nm">Bears</span><span class="trophy">🏆</span><span class="sc">5</span></div>
+                    <div class="tr away"><span class="nm">Lions</span><span class="sc">1</span></div></div>
+                  <div class="lr"><div class="lr-top"><b>RR Game 2</b><span>11:00 AM · Monroe Complex — Polley</span></div>
+                    <div class="tr"><span class="nm">Owls</span><span class="sc">3</span></div>
+                    <div class="tr away won"><span class="nm">Hawks</span><span class="trophy">🏆</span><span class="sc">4</span></div></div>
+                  <div class="lr" style="font-size:12px;color:var(--muted)">Sits out: Foxes</div>
+                </div>
+              </div>
+              <div>
+                <div class="round-h" style="padding-top:0">Round 2 · Sat 10/24</div>
+                <div class="lgroup">
+                  <div class="lr"><div class="lr-top"><b>RR Game 3</b><span>9:00 AM · Monroe Complex — Polley</span></div>
+                    <div class="tr"><span class="nm">Foxes</span></div>
+                    <div class="tr away"><span class="nm">Bears</span></div></div>
+                  <div class="lr"><div class="lr-top"><b>RR Game 4</b><span class="ifn" style="font-style:italic;font-weight:600">Date TBD</span></div>
+                    <div class="tr"><span class="nm">Lions</span></div>
+                    <div class="tr away"><span class="nm">Owls</span></div></div>
+                  <div class="lr" style="font-size:12px;color:var(--muted)">Sits out: Hawks</div>
+                </div>
+              </div>
+            </div>
+            <p class="tiny" style="margin:12px 0 0">A rained-out Stage 1 game reads <b>"Rained out"</b> in place of a score, as on the schedule.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="phone">
+      <p class="frame-label">375px — Stage 2 tab, before seeding</p>
+      <div class="frame page" style="padding:10px">
+        <div class="pub">
+          <div class="pub-head" style="padding:14px">
+            <div class="pub-org">Riverside Little League</div>
+            <div class="pub-title" style="font-size:18px">AAA Playoffs</div>
+            <div class="pub-sub">Fall 2026 · Round robin, then bracket</div>
+          </div>
+          <div class="pub-bar" style="padding:8px 14px">
+            <span class="seg"><span>Stage 1</span><span class="on">Stage 2</span></span>
+            <span class="seg"><span>Bracket</span><span class="on">List</span></span>
+          </div>
+          <div class="pub-body" style="padding:4px 10px 12px">
+            <p class="tiny" style="margin:10px 2px 0">The bracket fills in when the league sets the seeds after the round robin.</p>
+            <div class="round-h">Semifinals</div>
+            <div class="lgroup">
+              <div class="lr"><div class="lr-top"><b>Game 1</b><span>Sat 11/7 · 9:00 AM</span></div>
+                <div class="tr ph"><span class="nm">Seed 1</span></div>
+                <div class="tr away ph"><span class="nm">Seed 4</span></div>
+                <div class="fld">Monroe Complex — Andrews</div></div>
+              <div class="lr"><div class="lr-top"><b>Game 2</b><span>Sat 11/7 · 11:30 AM</span></div>
+                <div class="tr ph"><span class="nm">Seed 2</span></div>
+                <div class="tr away ph"><span class="nm">Seed 3</span></div>
+                <div class="fld">Monroe Complex — Andrews</div></div>
+            </div>
+            <div class="round-h">Final</div>
+            <div class="lgroup">
+              <div class="lr"><div class="lr-top"><b>Game 3</b><span>Sat 11/14 · 10:00 AM</span></div>
+                <div class="tr ph"><span class="nm">Winner of Game 1</span></div>
+                <div class="tr away ph"><span class="nm">Winner of Game 2</span></div>
+                <div class="fld">Monroe Complex — Andrews</div></div>
+            </div>
+            <p class="tiny" style="margin:10px 2px 0">After seeding: "1 · Bears", "4 · Owls" — the admin bracket's seed labels.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="why" style="margin-top:14px">The page opens on <b>Stage 1</b> until the bracket has a seeded team, then on <b>Stage 2</b>.</p>
+</section>
+
+<!-- ═════════════════════════ 6 · STATES ═════════════════════════ -->
+<section class="screen" id="states">
+  <h2>Screen 6 · Empty and error states</h2>
+  <h3>One plain card each — the public schedule's state card</h3>
+  <p class="why">Same card, same wording style as <code>/s/&lt;token&gt;</code>. Inside a website's frame (<code>?embed=1</code>) the card has no border. A wrong division, a deleted one, one from another league, and a season past its last day <b>all read the same</b> — the page never hints which.</p>
+  <div class="states">
+    <div><div class="state"><h4>Loading the bracket…</h4></div><p class="state-cap">First load only. Background refreshes never show this.</p></div>
+    <div><div class="state"><h4>We couldn't load the bracket right now</h4><p>This is a problem on our side, not a change to the games. Try again in a few minutes.</p><span class="btn">Try again</span></div><p class="state-cap">First load failed (503, never cached).</p></div>
+    <div><div class="state"><h4>This link isn't recognized</h4><p>Check the link with your league — it may have been replaced.</p></div><p class="state-cap">Unknown token, or the public link was reset.</p></div>
+    <div><div class="state"><h4>This bracket isn't available</h4><p>This league has turned off its public schedule. Check the league's website or ask your coach.</p></div><p class="state-cap">Public schedule off, or the league is below Pro.</p></div>
+    <div><div class="state"><h4>This bracket isn't available</h4><p>The league may have moved on to a new season. Check the league's website or ask your coach.</p><span class="btn">See all games</span></div><p class="state-cap">Division unknown / deleted / another league's / season ended. The button goes to <code>/s/&lt;token&gt;</code>.</p></div>
+    <div><div class="state"><h4>Majors isn't published yet</h4><p>The league hasn't published this division's schedule. Check back soon.</p><span class="btn">See all games</span></div><p class="state-cap">Division not locked. Names the division (the schedule already lists unpublished names).</p></div>
+    <div><div class="state"><h4>No bracket for Majors yet</h4><p>The league hasn't set up playoffs for this division. Check back soon.</p><span class="btn">See all games</span></div><p class="state-cap">No bracket, or only a draft — the two look the same.</p></div>
+    <div><div class="state"><h4>This bracket can't be shown here yet</h4><p>The league's games are still on the full schedule.</p><span class="btn">See all games</span></div><p class="state-cap">A double-elimination bracket. The reader refuses it (<code>not_shareable</code>) and sends no games.</p></div>
+  </div>
+  <div class="phone" style="margin-top:18px">
+    <p class="frame-label">375px — same card</p>
+    <div class="frame page" style="width:375px;max-width:100%"><div class="state"><h4>No bracket for Majors yet</h4><p>The league hasn't set up playoffs for this division. Check back soon.</p><span class="btn">See all games</span></div></div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ 6b · SCHEDULE LINK ═════════════════════════ -->
+<section class="screen" id="schedlink">
+  <h2>Screen 6b · Public schedule (/s/&lt;token&gt;)</h2>
+  <h3>"Bracket →" on playoff rows</h3>
+  <p class="why">Every playoff row on the public schedule gets a <b>Bracket →</b> link to its division's bracket page — only when that bracket is shareable (locked division, not a draft, not double elimination; the schedule already only lists playoff games from locked, non-draft brackets). Still no scores on the schedule.</p>
+  <div class="pair">
+    <div class="desk">
+      <p class="frame-label">Desktop</p>
+      <div class="frame page">
+        <div class="pub">
+          <div class="pub-body" style="background:var(--card)">
+            <div class="round-h" style="padding-top:0">Saturday, October 31</div>
+            <div class="lgroup">
+              <div class="lr" style="display:grid;grid-template-columns:90px 110px minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px">
+                <b>9:00 AM</b><span class="tiny">Majors</span><span><b>Braves</b> vs Cubs<br><span class="tiny">Playoffs · Semifinal 1 · Game 1 of 3</span></span><span class="tiny">Monroe Complex — Andrews</span><a href="#" style="color:var(--green-dk);font-weight:600;text-decoration:none;font-size:12.5px;white-space:nowrap">Bracket →</a>
+              </div>
+              <div class="lr" style="display:grid;grid-template-columns:90px 110px minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px">
+                <b>11:00 AM</b><span class="tiny">Juniors</span><span><b>Lions</b> vs Owls<br><span class="tiny">Playoffs · Winners Round 1 · Game 2</span></span><span class="tiny">Wright Park — Field 2</span><span></span>
+              </div>
+            </div>
+            <p class="tiny" style="margin:8px 0 0">The Juniors row (double elimination) has no link.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="phone">
+      <p class="frame-label">375px</p>
+      <div class="frame page" style="padding:10px">
+        <div class="lgroup">
+          <div class="lr">
+            <div class="lr-top"><b>9:00 AM · Majors</b><a href="#" style="color:var(--green-dk);font-weight:600;text-decoration:none">Bracket →</a></div>
+            <div style="font-size:13px"><b>Braves</b> vs Cubs</div>
+            <div class="fld">Playoffs · Semifinal 1 · Game 1 of 3 · Monroe Complex — Andrews</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ 7 · SETTINGS ═════════════════════════ -->
+<section class="screen" id="settings">
+  <h2>Screen 7 · Settings → Public schedule</h2>
+  <h3>Two wording changes, no new controls</h3>
+  <p class="why">The off switch and Reset already govern bracket links; the card just has to say so.</p>
+  <div class="card" style="max-width:640px;padding:16px">
+    <p style="margin:0 0 8px;font-size:13px"><b>Under the switch, new line:</b> <span style="color:var(--muted)">"Turning this off also turns off every playoff bracket link."</span></p>
+    <p style="margin:0;font-size:13px"><b>Reset confirm, added sentence:</b> <span style="color:var(--muted)">"Playoff bracket links stop working too — copy them again from the Playoffs page."</span></p>
+  </div>
+</section>
+
+<!-- ═════════════════════════ 8 · CONFIRM ═════════════════════════ -->
+<section class="screen" id="confirm">
+  <h2>To confirm</h2>
+  <h3>Approved 2026-10-20 — every choice as shown, with #5 (ties) removed and #6, #9 decided</h3>
+  <div class="scroll-x">
+  <table class="spec">
+    <tr><th>#</th><th>Choice in this mockup</th><th>Alternative</th></tr>
+    <tr><td>1</td><td>The scores switch lives on the card's "Public page" strip and saves at once — not in Edit setup (which is refused once results exist).</td><td>A setting inside Edit setup only.</td></tr>
+    <tr><td>2</td><td>Scores off still shows series standing in games won ("Braves lead 1–0") — the per-game trophies already reveal it.</td><td>Scores off says only "Braves win the series" once decided, nothing while in progress.</td></tr>
+    <tr><td>3</td><td>A two-stage pair has ONE switch for both stages (stored on both rows).</td><td>A switch per stage.</td></tr>
+    <tr><td>4</td><td>No "scores hidden" notice on the public page.</td><td>A small "This league doesn't post scores" line.</td></tr>
+    
+    <tr><td>6</td><td><b>Decided:</b> the page links back ("See all games →") AND the public schedule's playoff rows link to the bracket ("Bracket →", screen 6b) when it is shareable.</td><td>—</td></tr>
+    <tr><td>7</td><td>A failed background refresh keeps the last results with "Couldn't refresh. Showing results as of 2:41 PM."</td><td>Silent retry.</td></tr>
+    <tr><td>8</td><td>Desktop opens on Bracket, a phone (under 640px) on List; the choice isn't remembered.</td><td>Remember the last choice in the browser.</td></tr>
+    <tr><td>9</td><td><b>Decided:</b> double elimination is not shareable yet — the card's copy button is disabled ("Double elimination brackets can't be shared yet.") and the reader refuses it.</td><td>—</td></tr>
+  </table>
+  </div>
+</section>
+</div>
+</body>
+</html>
