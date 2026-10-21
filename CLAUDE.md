@@ -709,8 +709,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   - `words.ts` — EVERY app-only sentence, rendered verbatim. Outside the
     calculator module; imports neither `src/lib/daylight` nor
     `sun/sunset` (sim:daylight-leaks S1; checked again by the rules sim W3).
-  - **Harness:** `npm run sim:practice-plan-rules` (51 checks × 3 zones) +
-    `:mutants` (16, each killed at its own assertion).
+  - **Harness:** `npm run sim:practice-plan-rules` (61 checks × 3 zones) +
+    `:mutants` (21, each killed at its own assertion).
 - **Screens, step 5a — the plans list (`/dashboard/field-requests`).**
   - Its own sidebar item, "Field requests", directly below Practices,
     `tier: "pro"`. NOT a route under `/dashboard/practices` — the sidebar's
@@ -736,6 +736,37 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     map stays empty).
   - **0117 must be applied before this reaches `main`** — the page reads
     `practice_plans`. Checked on a deleted scratch route at 1280px and 375px.
+- **Screens, step 5b — the planner (`/dashboard/field-requests/<id>`).**
+  - Server page: Pro+ gate, the plan read under RLS (`owner_id` = the org;
+    not found → 404; `loadPlan` fails → `CANT_OPEN_PLAN` with a back link),
+    the city via `cityByIdOrNull(profiles.sunset_city)`, the prefill (shared
+    `server-reads.ts`, also used by the list) for the team hints, and the
+    trim note from the link. Opening writes NOTHING.
+  - Results are `computePlan(input, { city })` — never `cityById` in these
+    files (rules sim A7). No city → the no-city note linking to Settings →
+    Daylight flags; a city → `earliestSunsetLine`. Warnings are the
+    module's, verbatim. The mode switch is part of the saved plan.
+  - Autosave (`editor.ts`): an edit marks the plan dirty; after 900 ms it
+    saves through `save_practice_plan` with the last known `updated_at`.
+    Saved → clean (an edit made mid-save stays dirty). Stale → autosave
+    stops, the banner names who and when, "Keep mine" is an explicit second
+    save with the stale stamp, "Reload" drops local edits after a
+    ConfirmDialog. `plan_required` → stopped for good, fields disabled, the
+    plan stays readable. Anything else → "Couldn't save." + Retry. Leaving
+    warns (`beforeunload`) only while an edit is unsaved (`warnOnLeave`).
+  - Inputs commit only values inside INPUT_LIMITS (`committedTeams`,
+    `committedTime` — iOS can show an uncommitted time — `committedDate`,
+    the selects' ranges), and `save` re-runs the input check before sending,
+    so an autosave can't send what 0117 refuses. "+ Add a division" uses the
+    calculator's `NEW_DIVISION`, disabled at 40.
+  - The trim note now reads as a past-tense heads-up ("When this plan was
+    copied in from …, … Everything else came over as it was.") and shows
+    only on the first open (it rides in the link).
+  - Checked on a deleted scratch route at 1280px and 375px with the save
+    reply stubbed in the browser: one debounced save with the loaded stamp,
+    the stale banner, Keep mine with the stale stamp, edits held while stale,
+    plan_required → read-only, failure → Retry, the leave warning only while
+    unsaved, 16px fields, no horizontal scroll.
 
 ## Daylight flags (admin-only, branch `feat/daylight-flags`, 2026-10-14)
 

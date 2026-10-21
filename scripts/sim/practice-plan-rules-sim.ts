@@ -19,6 +19,9 @@
 //       RU11 (T4)
 //   R   the plans list (5a): replies, the edited line, the prefill query,
 //       wiring                     ← RU16 (R1), RU14 (R2), RU15 (R3)
+//   A   the planner (5b): save replies, autosave, the leave warning, adding
+//       divisions, committed values, wiring ← RU17 (A1), RU18 (A2),
+//       RU19 (A3), RU20 (A4), RU21 (A6)
 //   W   words, verbatim, and the daylight-leaks fence (source reads)
 // then ANTI-VACUITY COUNTERS.
 //
@@ -34,6 +37,22 @@ import { loadPlan, upgradePlanInput, type PlanInput, type PlanRow } from "@/lib/
 import { INPUT_LIMITS, PLAN_INPUT_VERSION, practicePlanInputProblem } from "@/lib/practice-plans/plan-input";
 import { newPlanInput, parsePrefillAdjustmentQuery, pickPrefill, prefillAdjustmentQuery, teamHint, type PrefillRow } from "@/lib/practice-plans/prefill";
 import { litLine, planRequestText } from "@/lib/practice-plans/request";
+import {
+  addDivision,
+  afterSave,
+  autosaveAllowed,
+  canAddDivision,
+  committedDate,
+  committedTeams,
+  committedTime,
+  ensureDivisionIds,
+  lengthOptions,
+  removeDivision,
+  toggleDay,
+  updateDivision,
+  warnOnLeave,
+  type SaveState,
+} from "@/lib/practice-plans/editor";
 import { editedLabel, planDatesLabel, planErrorKey, planSummaryLine, saveOutcome, writeOutcome } from "@/lib/practice-plans/list";
 import {
   CANT_OPEN_PLAN,
@@ -220,8 +239,8 @@ section("N", () => {
   ok(n3.divisions.length === 0 && practicePlanInputProblem(n3) === null, "[N3] an empty plan saves");
   // N4: the note says exactly what changed; nothing changed → no note.
   const lim = { divisions: L.divisions.max, nameChars: L.divisionName.maxChars, teams: L.teams.max };
-  ok(prefillAdjustedLine("Fall 2026", a2, lim) === "From Fall 2026: 1 division left out (a plan holds 40); 1 name shortened to 60 characters; 1 team count lowered to 60." &&
-    prefillAdjustedLine("Fall 2026", { dropped: 3, shortened: 0, capped: 2 }, lim) === "From Fall 2026: 3 divisions left out (a plan holds 40); 2 team counts lowered to 60." &&
+  ok(prefillAdjustedLine("Fall 2026", a2, lim) === "When this plan was copied in from Fall 2026, 1 division was left out (a plan holds 40); 1 name was shortened to 60 characters; 1 team count was lowered to 60. Everything else came over as it was." &&
+    prefillAdjustedLine("Fall 2026", { dropped: 3, shortened: 0, capped: 2 }, lim) === "When this plan was copied in from Fall 2026, 3 divisions were left out (a plan holds 40); 2 team counts were lowered to 60. Everything else came over as it was." &&
     prefillAdjustedLine("Fall 2026", a1, lim) === null,
     "[N4] the prefill note", String(prefillAdjustedLine("Fall 2026", a2, lim)));
 });
@@ -302,6 +321,66 @@ section("R", () => {
     "[R6] gate, sidebar item and RPC calls wired", `${rpcs.length} rpc calls`);
 });
 
+// ── A: the planner's editing and autosave rules (5b) ────────────────────
+section("A", () => {
+  // A1: what each save reply does. (RU17, a plan_required refusal read as a
+  // plain failure: autosave would keep retrying a league that left Pro.)
+  const saved = afterSave({ kind: "saved", updatedAt: "2026-10-21T18:00:00.000+00:00" }, null);
+  const stale = afterSave({ kind: "stale", updatedAt: "2026-10-21T21:41:00.000+00:00", byName: "Jenn M." }, null);
+  const stopped = afterSave({ kind: "error", message: "x" }, { message: "plan_required" });
+  const failed = afterSave({ kind: "error", message: "boom" }, { message: "boom" });
+  ok(saved.state.kind === "clean" && saved.updatedAt === "2026-10-21T18:00:00.000+00:00" &&
+    stale.state.kind === "stale" && stale.updatedAt === null && stale.state.byName === "Jenn M." &&
+    stopped.state.kind === "stopped" && failed.state.kind === "failed",
+    "[A1] save replies → clean / stale / stopped / failed", JSON.stringify([saved, stale, stopped, failed].map((x) => x.state.kind)));
+  // A2: autosave runs only from dirty — never while stale, stopped, saving or
+  // failed. (RU18, a failed save retried on its own.)
+  const states: SaveState[] = [{ kind: "clean" }, { kind: "dirty" }, { kind: "saving" }, { kind: "failed", message: "x" }, { kind: "stale", byName: null, updatedAt: "t" }, { kind: "stopped" }];
+  ok(JSON.stringify(states.map(autosaveAllowed)) === JSON.stringify([false, true, false, false, false, false]), "[A2] autosave only from dirty",
+    JSON.stringify(states.map(autosaveAllowed)));
+  // A3: leaving warns whenever an edit is unsaved — and only then. (RU19,
+  // only while dirty: a failed or stale save would leave silently.)
+  ok(JSON.stringify(states.map(warnOnLeave)) === JSON.stringify([false, true, true, true, true, true]), "[A3] leave warns only with an unsaved edit",
+    JSON.stringify(states.map(warnOnLeave)));
+  // A4: "+ Add a division" — NEW_DIVISION's defaults and a fresh id; at the
+  // limit, nothing. (RU20, no limit: a 41st division the save would refuse.)
+  const seven = ensureDivisionIds(BASE_INPUT);
+  const added = addDivision(seven);
+  const last = added.input.divisions[added.input.divisions.length - 1];
+  const forty: PlanInput = { ...BASE_INPUT, divisions: Array.from({ length: 40 }, (_, i) => ({ ...BASE_INPUT.divisions[0], id: `d${i + 1}` })) };
+  const full = addDivision(forty);
+  ok(added.id === "d8" && last.name === NEW_DIVISION.name && last.teams === NEW_DIVISION.teams && last.days !== NEW_DIVISION.days &&
+    canAddDivision(seven) && !canAddDivision(forty) && full.id === null && full.input.divisions.length === 40,
+    "[A4] add a division from the calculator's defaults, never past the limit", `${added.id} ${full.input.divisions.length}`);
+  // A5: missing ids are filled without colliding; edits and removals keep ids.
+  const mixed: PlanInput = { ...BASE_INPUT, divisions: [{ ...BASE_INPUT.divisions[0], id: "d2" }, { ...BASE_INPUT.divisions[1], id: undefined }, { ...BASE_INPUT.divisions[2], id: undefined }] };
+  const ids = ensureDivisionIds(mixed).divisions.map((d) => d.id);
+  const upd = updateDivision(seven, "d3", { teams: 9, id: "zzz" });
+  ok(JSON.stringify(ids) === JSON.stringify(["d2", "d1", "d3"]) && upd.divisions[2].teams === 9 && upd.divisions[2].id === "d3" &&
+    removeDivision(seven, "d3").divisions.length === 6 && JSON.stringify(toggleDay([4, 0], 2)) === "[0,2,4]" && JSON.stringify(toggleDay([0, 2], 0)) === "[2]",
+    "[A5] ids filled, kept through edits; days stay Monday-first", JSON.stringify(ids));
+  // A6: only whole values inside the limits are committed. (RU21, no upper
+  // bound on teams: 61 would be sent and refused.)
+  ok(committedTeams("60") === 60 && committedTeams("61") === null && committedTeams("-1") === null && committedTeams("") === null && committedTeams("6.5") === null &&
+    committedTime("17:30") === "17:30" && committedTime("7:30") === null && committedTime("") === null &&
+    committedDate("") === "" && committedDate("2027-02-22") === "2027-02-22" && committedDate("2027-02-30") === null && committedDate("2100-01-01") === null &&
+    JSON.stringify(lengthOptions(90)) === "[45,60,75,90,105,120,150]" && JSON.stringify(lengthOptions(40)) === "[40,45,60,75,90,105,120,150]",
+    "[A6] typed values committed only inside the limits", String(committedTeams("61")));
+  // A7: wiring (source reads — weak by nature): the planner computes with the
+  // GIVEN city (computePlan with options), the page resolves it with
+  // cityByIdOrNull, nothing here calls cityById; one RPC, inside save; the
+  // leave warning is tied to warnOnLeave.
+  const client = readFileSync(join(ROOT, "src/components/field-requests/planner-client.tsx"), "utf8");
+  const pagePl = readFileSync(join(ROOT, "src/app/(dashboard)/dashboard/field-requests/[id]/page.tsx"), "utf8");
+  const editorUi = readFileSync(join(ROOT, "src/components/field-requests/division-editor.tsx"), "utf8");
+  const results = readFileSync(join(ROOT, "src/components/field-requests/plan-results.tsx"), "utf8");
+  ok(/computePlan\(input, \{ city: props\.city \}\)/.test(client) && /city=\{cityByIdOrNull\(sunsetCity\)\}/.test(pagePl) &&
+    ![client, pagePl, editorUi, results].some((src) => /\bcityById\(/.test(src)) &&
+    (client.match(/\.rpc\(/g) ?? []).length === 1 && /\.rpc\(\s*\/\/ @ts-expect-error[^\n]*\n\s*"save_practice_plan"/.test(client) &&
+    /if \(!warnOnLeave\(state\)\) return;[\s\S]{0,400}addEventListener\("beforeunload"/.test(client) && /if \(!isProPlus\(plan\)\)/.test(pagePl),
+    "[A7] city, save, leave warning and gate wired");
+});
+
 // ── W: words, verbatim, and the fence ───────────────────────────────────
 section("W", () => {
   const sr = cityById("ca-santa-rosa");
@@ -322,7 +401,7 @@ section("W", () => {
     "[W2] the planner's sentences");
   // W3: the fence — no daylight-flag module or sunset math in the app rules,
   // and nothing here imports the marketing calculator.
-  for (const f of ["words.ts", "load.ts", "prefill.ts", "request.ts", "plan-input.ts"]) {
+  for (const f of ["words.ts", "load.ts", "prefill.ts", "request.ts", "plan-input.ts", "list.ts", "editor.ts", "server-reads.ts"]) {
     const src = readFileSync(join(ROOT, "src/lib/practice-plans", f), "utf8");
     ok(!/from\s+["'][^"']*\/lib\/daylight/.test(src) && !/from\s+["'][^"']*\/sun\/sunset["']/.test(src) && !/components\/marketing/.test(src),
       `[W3] ${f} stays outside the daylight fence and the marketing calculator`);
@@ -353,3 +432,6 @@ process.exit(failures ? 1 : 0);
 // RU13 (division cap retyped as 30) → N2c.
 // 2026-10-21, step 5a: section R for the plans list; RU14 → R2, RU15 → R3,
 // RU16 → R1.
+// 2026-10-21, step 5b: section A for the planner; RU17 → A1, RU18 → A2,
+// RU19 → A3, RU20 → A4, RU21 → A6. The prefill note was reworded to say it
+// describes what was copied in (N4 re-keyed for that, not loosened).

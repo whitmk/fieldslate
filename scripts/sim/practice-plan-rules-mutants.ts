@@ -9,6 +9,7 @@ const PREFILL = "src/lib/practice-plans/prefill.ts";
 const REQUEST = "src/lib/practice-plans/request.ts";
 const WORDS = "src/lib/practice-plans/words.ts";
 const LIST = "src/lib/practice-plans/list.ts";
+const EDITOR = "src/lib/practice-plans/editor.ts";
 
 const MUTANTS: Mutant[] = [
   {
@@ -106,6 +107,36 @@ const MUTANTS: Mutant[] = [
     find: '  if (!d || d.committed !== true || typeof d.id !== "string") return { ok: false, message: planErrorMessage("unknown") };',
     replace: '  if (!d || d.committed !== true) return { ok: false, message: planErrorMessage("unknown") };',
     expect: "R1",
+  },
+  {
+    id: "RU17", what: "a plan_required refusal treated as a plain failure", file: EDITOR,
+    find: '  if (planErrorKey(rawError) === "plan_required") return { state: { kind: "stopped" }, updatedAt: null };\n',
+    replace: "",
+    expect: "A1",
+  },
+  {
+    id: "RU18", what: "a failed save retried on its own", file: EDITOR,
+    find: '  return state.kind === "dirty";',
+    replace: '  return state.kind === "dirty" || state.kind === "failed";',
+    expect: "A2",
+  },
+  {
+    id: "RU19", what: "leaving warns only while dirty", file: EDITOR,
+    find: '  return state.kind !== "clean";',
+    replace: '  return state.kind === "dirty";',
+    expect: "A3",
+  },
+  {
+    id: "RU20", what: "a division added past the limit", file: EDITOR,
+    find: "  if (!canAddDivision(input)) return { input, id: null };",
+    replace: "",
+    expect: "A4",
+  },
+  {
+    id: "RU21", what: "a typed team count not capped", file: EDITOR,
+    find: "  return n >= INPUT_LIMITS.teams.min && n <= INPUT_LIMITS.teams.max ? n : null;",
+    replace: "  return n >= INPUT_LIMITS.teams.min ? n : null;",
+    expect: "A6",
   },
 ];
 

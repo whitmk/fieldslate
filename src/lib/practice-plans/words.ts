@@ -41,7 +41,9 @@ export function noTeamsLine(name: string, seasonName: string | null): string {
 
 /**
  * The planner's one-line note when New plan had to change the prefill to fit
- * a plan's limits; null when it changed nothing.
+ * a plan's limits; null when it changed nothing. It describes what was COPIED
+ * IN when the plan was made — not something still wrong — and is shown only
+ * on that first open (it rides in the link).
  */
 export function prefillAdjustedLine(
   seasonName: string,
@@ -49,10 +51,10 @@ export function prefillAdjustedLine(
   limits: { divisions: number; nameChars: number; teams: number },
 ): string | null {
   const parts: string[] = [];
-  if (a.dropped) parts.push(`${a.dropped} ${a.dropped === 1 ? "division" : "divisions"} left out (a plan holds ${limits.divisions})`);
-  if (a.shortened) parts.push(`${a.shortened} ${a.shortened === 1 ? "name" : "names"} shortened to ${limits.nameChars} characters`);
-  if (a.capped) parts.push(`${a.capped} team ${a.capped === 1 ? "count" : "counts"} lowered to ${limits.teams}`);
-  return parts.length ? `From ${seasonName}: ${parts.join("; ")}.` : null;
+  if (a.dropped) parts.push(`${a.dropped} ${a.dropped === 1 ? "division was" : "divisions were"} left out (a plan holds ${limits.divisions})`);
+  if (a.shortened) parts.push(`${a.shortened} ${a.shortened === 1 ? "name was" : "names were"} shortened to ${limits.nameChars} characters`);
+  if (a.capped) parts.push(`${a.capped} team ${a.capped === 1 ? "count was" : "counts were"} lowered to ${limits.teams}`);
+  return parts.length ? `When this plan was copied in from ${seasonName}, ${parts.join("; ")}. Everything else came over as it was.` : null;
 }
 
 /** Beside a division switched to lit fields. */
@@ -157,4 +159,65 @@ export function planErrorMessage(key: string): string {
     default:
       return "Something went wrong and nothing was saved. Try again.";
   }
+}
+
+// ── The planner (step 5b) ────────────────────────────────────────────────
+export const BACK_TO_PLANS = "Field requests";
+export const SAVE_SAVING = "Saving…";
+export const SAVE_SAVED = "Saved";
+export const SAVE_FAILED = "Couldn't save.";
+export const SAVE_RETRY = "Retry";
+export const SAVE_UNSAVED = "Unsaved changes";
+export const SAVE_NEEDS_NAME = "Give the plan a name to save it.";
+export const PLAN_REQUIRED_STOPPED =
+  "This league is no longer on Pro or Elite, so changes to this plan can't be saved. You can still read it.";
+export const RELOAD_CONFIRM_TITLE = "Reload and drop your changes?";
+export const RELOAD_CONFIRM_BODY = "You'll see the plan as it was last saved. The changes you made here since then are dropped.";
+export const RELOAD_CONFIRM_BUTTON = "Reload";
+export const LEAVE_WARNING = "Your latest changes haven't been saved.";
+
+export const PRACTICES_CARD = "Practices";
+export const PRACTICES_HINT = "Dates set the season totals and the daylight check.";
+export const START_LABEL = "Practices start";
+export const END_LABEL = "Practices end";
+export const MINUTES_BETWEEN_LABEL = "Minutes between practices";
+export const SUNSET_FOR_LABEL = "Sunset times for";
+export const CHANGE_IN_SETTINGS = "Change in Settings";
+export const CITY_NOT_SET = "Not set";
+
+export const DIVISIONS_CARD = "Divisions";
+export function divisionsHint(seasonName: string | null): string {
+  const from = seasonName ? `From ${seasonName}, your most recent season with teams. ` : "";
+  return `${from}"Teams per field" lets younger divisions share a field. Switch on "On lit fields" for a division that practices under lights — it gets no daylight warnings.`;
+}
+export const ADD_DIVISION = "Add a division";
+export const REMOVE_DIVISION = "Remove";
+export const DIVISION_LIMIT = (max: number) => `A plan holds up to ${max} divisions.`;
+export const COL = {
+  division: "Division", teams: "Teams", perWeek: "Per week", length: "Length", days: "Days",
+  window: "Window", from: "From", until: "Until", field: "Field", perField: "Per field", teamsPerField: "Teams per field", lit: "On lit fields",
+} as const;
+export const LIT_ON = "On";
+export const LIT_OFF = "Off";
+export const TIME_INVALID = "Pick a time";
+export const NUMBER_INVALID = (min: number, max: number) => `${min}–${max}`;
+
+export const RESULTS_CARD = "Fields to request";
+export const RESULTS_HINT = "The most fields in use at the same time on your busiest night, by field type.";
+export const MODE_SHORT = { spread: "Spread out", sameNights: "Same nights" } as const;
+export function answerAlt(busiest: string, otherCount: number, mode: "spread" | "sameNights"): string {
+  return `Busiest: ${busiest}. ${otherCount} ${mode === "spread" ? "if everyone wants the same nights" : "if spread across the week"}.`;
+}
+export const NIGHT_COL = "Field";
+export const TOTALS = {
+  practices: "team practices a week",
+  hoursWeek: "field hours a week",
+  weeks: "weeks",
+  hoursSeason: "field hours this season",
+} as const;
+export const NO_RESULTS = "Add a division with teams and practice days to see the fields to request.";
+
+/** A collapsed division card on a phone. */
+export function divisionSummary(d: { teams: number; perWeek: number; lengthMin: number; days: string; window: string; field: string; teamsPerField: number }): string {
+  return `${d.teams} ${d.teams === 1 ? "team" : "teams"} · ${d.perWeek}×/wk · ${d.lengthMin} min · ${d.days || "no days"} ${d.window} · ${d.field}${d.teamsPerField > 1 ? ` · ${d.teamsPerField} per field` : ""}`;
 }

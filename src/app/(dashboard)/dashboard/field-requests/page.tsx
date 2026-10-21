@@ -5,7 +5,7 @@ import { isProPlus } from "@/lib/plan/limits";
 import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
 import { fetchAllRows, type PagedResult } from "@/lib/supabase/fetch-all";
 import { loadPlan, type PlanRow } from "@/lib/practice-plans/load";
-import { pickPrefill, type PrefillRow } from "@/lib/practice-plans/prefill";
+import { readLeagueSettings, readPrefill } from "@/lib/practice-plans/server-reads";
 import { editedLabel, planDatesLabel, planSummaryLine } from "@/lib/practice-plans/list";
 import { PLANS_FREE_CALCULATOR } from "@/lib/practice-plans/words";
 import { PlansListClient, type PlanListItem } from "@/components/field-requests/plans-list-client";
@@ -17,14 +17,6 @@ import { PlansListClient, type PlanListItem } from "@/components/field-requests/
 //
 // Every read here is complete-or-throw (fetchAllRows): the list and the New
 // plan prefill are both built from "all the rows".
-
-type DivisionReadRow = {
-  id: string;
-  name: string;
-  created_at: string;
-  league: { id: string; name: string; start_date: string | null; created_at: string; archived_at: string | null; owner_id: string };
-  teams: { count: number }[];
-};
 
 export default async function FieldRequestsPage() {
   const supabase = createClient();
@@ -43,8 +35,7 @@ export default async function FieldRequestsPage() {
     );
   }
 
-  const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", orgId).single();
-  const timeZone = (profile as { timezone: string } | null)?.timezone ?? "America/Los_Angeles";
+  const { timeZone } = await readLeagueSettings(supabase, orgId);
 
   const rows = await fetchAllRows<PlanRow>("the league's field request plans", ({ from, to, exactCount }) =>
     supabase
@@ -56,33 +47,7 @@ export default async function FieldRequestsPage() {
       .range(from, to) as unknown as PromiseLike<PagedResult<PlanRow>>,
   );
 
-  const divisionRows = await fetchAllRows<DivisionReadRow>("the league's divisions and team counts", ({ from, to, exactCount }) =>
-    supabase
-      .from("divisions")
-      .select(
-        "id, name, created_at, league:leagues!inner(id, name, start_date, created_at, archived_at, owner_id), teams(count)",
-        exactCount ? { count: "exact" } : undefined,
-      )
-      .eq("league.owner_id", orgId)
-      .order("id", { ascending: true })
-      .range(from, to) as unknown as PromiseLike<PagedResult<DivisionReadRow>>,
-  );
-
-  const prefill = pickPrefill(
-    divisionRows.map(
-      (d): PrefillRow => ({
-        seasonId: d.league.id,
-        seasonName: d.league.name,
-        seasonStart: d.league.start_date,
-        seasonCreatedAt: d.league.created_at,
-        seasonArchivedAt: d.league.archived_at,
-        divisionId: d.id,
-        divisionName: d.name,
-        divisionCreatedAt: d.created_at,
-        teamCount: d.teams?.[0]?.count ?? 0,
-      }),
-    ),
-  );
+  const prefill = await readPrefill(supabase, orgId);
 
   const now = new Date();
   const items: PlanListItem[] = rows.map((r) => {
