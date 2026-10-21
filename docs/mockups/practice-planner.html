@@ -238,7 +238,7 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
 </style>
 </head>
 <body>
-<div class="mock"><b>Mockup.</b> Example divisions are the calculator's placeholders, not any real league's numbers. Every result below was computed by the unchanged <code style="color:inherit;background:transparent;border-color:#33496e">src/lib/practice-planner/</code> module (Santa Rosa, Feb 22 – May 29, 2027).</div>
+<div class="mock"><b>Mockup.</b> Example divisions are the calculator's placeholders, not any real league's numbers. Every result below was computed by today's <code style="color:inherit;background:transparent;border-color:#33496e">src/lib/practice-planner/</code> module (Santa Rosa, Feb 22 – May 29, 2027; lit divisions left out of the daylight check the way the planned <code style="color:inherit;background:transparent;border-color:#33496e">lit</code> flag will).</div>
 <div class="wrap">
 <header class="top">
   <h1>Practice planner — in the app</h1>
@@ -251,14 +251,14 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
 <!-- ============================================================ 1 -->
 <section class="screen" id="list">
   <h2>Screen 1</h2>
-  <h3>Plans list — <code>/dashboard/practice-plans</code></h3>
-  <p class="why">Reached from the sidebar as "Field requests" under Practices. Newest first by last edit. Each row shows the answer at a glance in the mode the plan was last left in. The "…" menu holds Open, Copy, Rename, Delete — the same items on the phone card.</p>
+  <h3>Plans list — <code>/dashboard/field-requests</code></h3>
+  <p class="why">Its own sidebar item, "Field requests", directly below Practices (the sidebar is a flat list; the route is <code>/dashboard/field-requests</code>, not under <code>/dashboard/practices</code>, so Practices doesn't light up too). Newest first by last edit. Each row shows the answer at a glance in the mode the plan was last left in. The "…" menu holds Open, Copy, Rename, Delete — the same items on the phone card.</p>
   <div class="frames">
     <div>
       <p class="flabel">Desktop — a few plans</p>
       <div class="desk">
         <aside class="side"><div class="brand">Field<span>Slate</span></div>
-          <span class="nav">Overview</span><span class="nav">Seasons</span><span class="nav">Schedule</span><span class="nav">Practices</span><span class="nav sub on">Field requests</span><span class="nav">Venues</span><span class="nav">Officials</span><span class="nav">Settings</span></aside>
+          <span class="nav">Overview</span><span class="nav">Seasons</span><span class="nav">Schedule</span><span class="nav">Practices</span><span class="nav on">Field requests</span><span class="nav">Venues</span><span class="nav">Officials</span><span class="nav">Settings</span></aside>
         <div class="dmain">
           <div class="topbar"><span>Example Little League</span><span>Fall 2026 ▾</span></div>
           <div class="content" style="position:relative">
@@ -269,7 +269,7 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
             <div class="plist">
               <div class="prow head"><span>Plan</span><span>Practices</span><span>Fields to request</span><span>Edited</span><span></span></div>
               <div class="prow"><span class="nm">Spring 2027<small>7 divisions · Spread across the week</small></span><span>Feb 22 – May 29, 2027</span><span class="ans">6 60-ft diamonds · 2 50/70 · 2 90-ft</span><span class="upd">Today</span><span class="dots">⋯</span></div>
-              <div class="prow"><span class="nm">Spring 2027 — if Juniors adds a team<small>7 divisions · Same nights</small></span><span>Feb 22 – May 29, 2027</span><span class="ans">14 60-ft diamonds · 4 50/70 · 3 90-ft</span><span class="upd">Oct 19</span><span class="dots" style="background:var(--soft)">⋯</span></div>
+              <div class="prow"><span class="nm">Spring 2027 — if Juniors adds a team<small>7 divisions · Same nights</small></span><span>Feb 22 – May 29, 2027</span><span class="ans">14 60-ft diamonds · 4 50/70 · 4 90-ft</span><span class="upd">Oct 19</span><span class="dots" style="background:var(--soft)">⋯</span></div>
               <div class="prow"><span class="nm">Fall Ball 2026<small>4 divisions · Spread across the week</small></span><span>Aug 31 – Nov 7, 2026</span><span class="ans">3 60-ft diamonds · 1 50/70</span><span class="upd">Aug 4</span><span class="dots">⋯</span></div>
               <div class="menu" style="right:30px;top:198px"><div class="on">Open</div><div>Copy</div><div>Rename</div><div class="del">Delete…</div></div>
             </div>
@@ -280,7 +280,7 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
       <p class="flabel" style="margin-top:22px">Desktop — empty</p>
       <div class="desk" style="min-height:330px">
         <aside class="side"><div class="brand">Field<span>Slate</span></div>
-          <span class="nav">Overview</span><span class="nav">Seasons</span><span class="nav">Schedule</span><span class="nav">Practices</span><span class="nav sub on">Field requests</span><span class="nav">Venues</span><span class="nav">Settings</span></aside>
+          <span class="nav">Overview</span><span class="nav">Seasons</span><span class="nav">Schedule</span><span class="nav">Practices</span><span class="nav on">Field requests</span><span class="nav">Venues</span><span class="nav">Settings</span></aside>
         <div class="dmain">
           <div class="topbar"><span>Example Little League</span><span>Fall 2026 ▾</span></div>
           <div class="content">
@@ -288,7 +288,7 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
             <div class="empty">
               <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 5v14M3 12h18"/></svg></div>
               <h5>No field requests yet</h5>
-              <p>Enter your divisions and practice nights, and FieldSlate works out how many fields of each kind to ask the city for — night by night, with sunset times for your city. Starts from your divisions and team counts in Fall 2026.</p>
+              <p>Enter your divisions and practice nights, and FieldSlate works out how many fields of each kind to ask the city for — night by night, with sunset times for your city. Starts from your divisions and team counts in Fall 2026, your most recent season with teams.</p>
               <span class="btn primary">+ New plan</span>
             </div>
             <p class="muted" style="font-size:12.5px;margin-top:10px">"Copy from a previous plan" is hidden until there is a plan to copy.</p>
@@ -313,7 +313,7 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
           <p class="muted" style="margin:0 0 12px;font-size:13px">How many practice fields to ask the city for. Plans belong to the league, not a season.</p>
           <div class="btns" style="margin-bottom:14px"><span class="btn primary" style="flex:1;justify-content:center;min-height:44px">+ New plan</span><span class="btn" style="flex:1;justify-content:center;min-height:44px">Copy a plan</span></div>
           <div class="pcard"><div><div class="nm">Spring 2027</div><div class="meta">Feb 22 – May 29, 2027 · edited today</div><div class="ans">6 60-ft · 2 50/70 · 2 90-ft</div></div><span class="dots">⋯</span></div>
-          <div class="pcard"><div><div class="nm">Spring 2027 — if Juniors adds a team</div><div class="meta">Feb 22 – May 29, 2027 · Oct 19</div><div class="ans">14 60-ft · 4 50/70 · 3 90-ft · same nights</div></div><span class="dots">⋯</span></div>
+          <div class="pcard"><div><div class="nm">Spring 2027 — if Juniors adds a team</div><div class="meta">Feb 22 – May 29, 2027 · Oct 19</div><div class="ans">14 60-ft · 4 50/70 · 4 90-ft · same nights</div></div><span class="dots">⋯</span></div>
           <div class="pcard"><div><div class="nm">Fall Ball 2026</div><div class="meta">Aug 31 – Nov 7, 2026 · Aug 4</div><div class="ans">3 60-ft · 1 50/70</div></div><span class="dots">⋯</span></div>
         </div>
       </div></div>
@@ -325,13 +325,13 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
 <section class="screen" id="new">
   <h2>Screen 2</h2>
   <h3>New plan · Copy from a previous plan</h3>
-  <p class="why"><b>New plan</b> asks for a name only and opens the planner with one row per division of the league's most recent season (by start date, archived or not), team counts prefilled from that season's live teams. <b>Copy</b> duplicates every setting of an earlier plan, team counts included — it does not re-read the season. No season and no purchase is created either way.</p>
+  <p class="why"><b>New plan</b> asks for a name only and opens the planner with one row per division of the league's most recent season with teams (latest start date among seasons that have at least one team, archived or not), team counts prefilled from that season's live teams. <b>Copy</b> duplicates every setting of an earlier plan, team counts included — it does not re-read the season. No season and no purchase is created either way.</p>
   <div class="frames">
     <div>
       <p class="flabel">Desktop — New plan</p>
       <div class="modal" style="margin:0 0 22px">
         <div class="mh"><h4>New field request</h4><span class="x">✕</span></div>
-        <p class="sub">Starts with your divisions and team counts from <b>Fall 2026</b>, your most recent season. You can change anything.</p>
+        <p class="sub">Starts with your divisions and team counts from <b>Fall 2026</b>, your most recent season with teams. You can change anything.</p>
         <div class="f"><label>Plan name</label><div class="in">Spring 2027</div><div class="help">Any name — "Spring 2027", "Spring 2027 — two new fields".</div></div>
         <div class="mact"><span class="btn">Cancel</span><span class="btn primary">Create plan</span></div>
       </div>
@@ -355,7 +355,7 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
         <div class="scrim"></div>
         <div class="modal sheet" style="width:auto">
           <div class="mh"><h4>New field request</h4><span class="x">✕</span></div>
-          <p class="sub">Starts with your divisions and team counts from <b>Fall 2026</b>, your most recent season. You can change anything.</p>
+          <p class="sub">Starts with your divisions and team counts from <b>Fall 2026</b>, your most recent season with teams. You can change anything.</p>
           <div class="f"><label>Plan name</label><div class="in">Spring 2027</div></div>
           <div class="mact"><span class="btn">Cancel</span><span class="btn primary">Create plan</span></div>
         </div>
@@ -367,14 +367,14 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
 <!-- ============================================================ 3 -->
 <section class="screen" id="planner">
   <h2>Screen 3</h2>
-  <h3>The planner — <code>/dashboard/practice-plans/&lt;id&gt;</code></h3>
+  <h3>The planner — <code>/dashboard/field-requests/&lt;id&gt;</code></h3>
   <p class="why">One page, three cards: Practices (name, dates, minutes between), Divisions (one row each, editable), Fields to request (the answer). Saves as you go ("Saved"), like Settings. Majors is switched to "On lit fields", so it is left out of the daylight warnings — compare the last warning with the calculator's "Minors AA, Minors AAA, Majors". Lit fields do not change the field count. Click the two mode buttons — the results swap between the module's two real answers.</p>
   <div class="frames">
     <div>
       <p class="flabel">Desktop</p>
       <div class="desk">
         <aside class="side"><div class="brand">Field<span>Slate</span></div>
-          <span class="nav">Overview</span><span class="nav">Seasons</span><span class="nav">Schedule</span><span class="nav">Practices</span><span class="nav sub on">Field requests</span><span class="nav">Venues</span><span class="nav">Officials</span><span class="nav">Settings</span></aside>
+          <span class="nav">Overview</span><span class="nav">Seasons</span><span class="nav">Schedule</span><span class="nav">Practices</span><span class="nav on">Field requests</span><span class="nav">Venues</span><span class="nav">Officials</span><span class="nav">Settings</span></aside>
         <div class="dmain">
           <div class="topbar"><span>Example Little League</span><span>Fall 2026 ▾</span></div>
           <div class="content">
@@ -400,7 +400,7 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
 
             <div class="card" style="overflow-x:auto">
               <h5>Divisions</h5>
-              <p class="hint">From Fall 2026. "Teams per field" lets younger divisions share a field. Switch on "On lit fields" for a division that practices under lights — it gets no daylight warnings.</p>
+              <p class="hint">From Fall 2026, your most recent season with teams. "Teams per field" lets younger divisions share a field. Switch on "On lit fields" for a division that practices under lights — it gets no daylight warnings.</p>
               <table class="dtable">
                 <thead><tr><th>Division</th><th>Teams</th><th>Per week</th><th>Length</th><th>Days</th><th>Window</th><th>Field</th><th>Per field</th><th>On lit fields</th><th></th></tr></thead>
                 <tbody>
@@ -424,7 +424,7 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
               <div class="answers" data-answers></div>
               <table class="nights" data-nights></table>
               <div style="margin-top:14px">
-                <p class="sunline">Sunset in Santa Rosa on Feb 22 is 5:57pm. Majors is on lit fields and isn't checked.</p>
+                <p class="sunline">Earliest sunset in Santa Rosa this season: 5:57pm on Feb 22. Majors is on lit fields and isn't checked.</p>
                 <div data-warnings></div>
               </div>
               <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
@@ -465,7 +465,7 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
           </div>
           <div class="card">
             <h5>Divisions</h5>
-            <p class="hint">From Fall 2026. Tap a division to edit.</p>
+            <p class="hint">From Fall 2026, your most recent season with teams. Tap a division to edit.</p>
             <div class="dcard"><div class="top"><b>T-Ball</b><span class="chev">▸</span></div><div class="sum">6 teams · 1×/wk · 60 min · Mon–Fri 5–7pm · 60-ft · 2 per field</div></div>
             <div class="dcard"><div class="top"><b>Rookie</b><span class="chev">▸</span></div><div class="sum">6 teams · 2×/wk · 75 min · Mon–Fri 5–7:30pm · 60-ft · 2 per field</div></div>
             <div class="dcard open"><div class="top"><b>Majors</b><span class="chev">▾</span></div>
@@ -486,7 +486,7 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
             <div class="seg" role="group" aria-label="Practice spread" data-seg="phone" style="margin-top:8px"><button aria-pressed="true" data-mode="spread">Spread out</button><button aria-pressed="false" data-mode="same">Same nights</button></div>
             <div class="answers" data-answers></div>
             <div class="nlist" data-nlist></div>
-            <p class="sunline" style="margin-top:12px">Sunset in Santa Rosa on Feb 22 is 5:57pm. Majors is on lit fields and isn't checked.</p>
+            <p class="sunline" style="margin-top:12px">Earliest sunset in Santa Rosa this season: 5:57pm on Feb 22. Majors is on lit fields and isn't checked.</p>
             <div data-warnings></div>
             <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
               <div class="totals"><div><b>76</b>team practices a week</div><div><b>101</b>field hours a week</div><div><b>14</b>weeks</div><div><b>1,407</b>field hours this season</div></div>
@@ -503,7 +503,7 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
 <section class="screen" id="request">
   <h2>Screen 4</h2>
   <h3>Copy for city request · Print</h3>
-  <p class="why"><b>Copy</b> puts the module's <code>requestText</code> on the clipboard verbatim, for the mode on screen, and says "Copied". If the clipboard is refused, a modal shows the same text selected so it can be copied by hand. <b>Print</b> uses the app's <code>.fieldslate-print-region</code> mechanism with a new app component (not the marketing one): league and plan name in the header, a "Lit fields" column, and no "Made with the free calculator" line. Notes list the warnings as shown. Safari print check owed when built.</p>
+  <p class="why"><b>Copy</b> puts the module's <code>requestText</code> on the clipboard verbatim, for the mode on screen, followed by one app-side line naming the divisions on lit fields (left out when none are), and says "Copied". If the clipboard is refused, a modal shows the same text selected so it can be copied by hand. <b>Print</b> uses the app's <code>.fieldslate-print-region</code> mechanism with a new app component (not the marketing one): league and plan name in the header, a "Lit fields" column, and no "Made with the free calculator" line. Notes list the warnings as shown. Safari print check owed when built.</p>
   <div class="frames">
     <div>
       <p class="flabel">Desktop — clipboard refused fallback (spread)</p>
@@ -531,7 +531,9 @@ pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,m
   Wednesday: 2 fields, 5:30pm to 7:30pm
   Friday: 2 fields, 5:30pm to 7:30pm
 
-Based on: T-Ball (6 teams, 1x/week, 60 min); Rookie (6 teams, 2x/week, 75 min); Minors AA (8 teams, 2x/week, 90 min); Minors AAA (8 teams, 2x/week, 90 min); Majors (6 teams, 2x/week, 90 min); 50/70 (4 teams, 2x/week, 90 min); Juniors (3 teams, 2x/week, 120 min).</pre>
+Based on: T-Ball (6 teams, 1x/week, 60 min); Rookie (6 teams, 2x/week, 75 min); Minors AA (8 teams, 2x/week, 90 min); Minors AAA (8 teams, 2x/week, 90 min); Majors (6 teams, 2x/week, 90 min); 50/70 (4 teams, 2x/week, 90 min); Juniors (3 teams, 2x/week, 120 min).
+
+On lit fields: Majors.</pre>
         <div class="mact"><span class="btn primary">Done</span></div>
       </div>
 
@@ -543,6 +545,7 @@ Based on: T-Ball (6 teams, 1x/week, 60 min); Rookie (6 teams, 2x/week, 75 min); 
         <h6>Fields to request</h6>
         <table><thead><tr><th>Field type</th><th>Fields</th><th>Busiest night</th><th>If everyone wants the same nights</th></tr></thead>
           <tbody><tr><td>60-ft diamond</td><td>6</td><td>Mon–Fri</td><td>14</td></tr><tr><td>50/70 diamond</td><td>2</td><td>Mon–Wed</td><td>4</td></tr><tr><td>90-ft diamond</td><td>2</td><td>Mon, Wed, Fri</td><td>3</td></tr></tbody></table>
+        <p class="mt" style="margin-top:4px">On lit fields: Majors.</p>
         <h6>Night by night</h6>
         <table><thead><tr><th>Night</th><th>60-ft diamond</th><th>50/70 diamond</th><th>90-ft diamond</th></tr></thead>
           <tbody>
@@ -642,22 +645,22 @@ Based on: T-Ball (6 teams, 1x/week, 60 min); Rookie (6 teams, 2x/week, 75 min); 
 <section class="screen" id="free">
   <h2>Screen 6</h2>
   <h3>Free plan — upsell</h3>
-  <p class="why">Server-gated like the other paid pages: a Free league sees the nav item with the Pro tag and, on the page, the shared <code>FeatureLockedCard</code> pattern. It points to the free public calculator so the league isn't stuck — that tool saves nothing and doesn't know the league's divisions or city. Plans saved while paid stay stored after a downgrade (tier-blind data, gated UI, same as officials).</p>
+  <p class="why">The app's standard paid-feature gate, unchanged: the sidebar item carries the Pro lock badge and opens the shared locked-feature upgrade modal; a direct visit to the page renders the shared <code>FeatureLockedCard</code> (<code>src/components/plan/upgrade-cta.tsx</code>) with <code>feature="Field requests"</code>, <code>tier="Pro"</code>. Its button is "Request upgrade", the same mailto every other upsell uses. Plans saved while paid stay stored after a downgrade; the page and every write refuse until the league is paid again.</p>
   <div class="frames">
     <div>
       <p class="flabel">Desktop</p>
       <div class="desk" style="min-height:380px">
         <aside class="side"><div class="brand">Field<span>Slate</span></div>
-          <span class="nav">Overview</span><span class="nav">Seasons</span><span class="nav">Schedule</span><span class="nav">Practices</span><span class="nav sub on">Field requests<span class="pro">PRO</span></span><span class="nav">Venues</span><span class="nav">Settings</span></aside>
+          <span class="nav">Overview</span><span class="nav">Seasons</span><span class="nav">Schedule</span><span class="nav">Practices<span class="pro">PRO</span></span><span class="nav on">Field requests<span class="pro">PRO</span></span><span class="nav">Venues</span><span class="nav">Settings</span></aside>
         <div class="dmain">
           <div class="topbar"><span>Example Little League · Free</span><span>Fall 2026 ▾</span></div>
           <div class="content">
-            <div class="ph"><div><h4>Field requests</h4></div></div>
-            <div class="empty" style="border-style:solid">
-              <div class="ic" style="background:var(--violet-bg);color:var(--violet)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
-              <h5>Field requests are on Pro and Elite</h5>
-              <p>Save practice field plans for your league: starts from your divisions and team counts, checks daylight for your city, and keeps every plan so next season starts from this one.</p>
-              <div class="btns" style="justify-content:center"><span class="btn primary">See plans</span><span class="btn">Use the free calculator ↗</span></div>
+            <div class="crumb"><a>← Back to dashboard</a></div>
+            <div class="empty" style="border-style:solid;max-width:420px;margin:24px auto 0">
+              <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+              <h5>Pro feature</h5>
+              <p>Field requests is available on Pro. Upgrade to unlock.</p>
+              <span class="btn primary">Request upgrade</span>
             </div>
           </div>
         </div>
@@ -668,13 +671,12 @@ Based on: T-Ball (6 teams, 1x/week, 60 min); Rookie (6 teams, 2x/week, 75 min); 
       <div class="phone"><div class="scr" style="min-height:560px">
         <div class="ptop"><b>Field<span>Slate</span></b><span>☰</span></div>
         <div class="content">
-          <h4 style="margin:0 0 12px;font-size:19px">Field requests</h4>
-          <div class="empty" style="border-style:solid;padding:24px 16px">
-            <div class="ic" style="background:var(--violet-bg);color:var(--violet)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
-            <h5>Field requests are on Pro and Elite</h5>
-            <p>Save practice field plans for your league: starts from your divisions and team counts, checks daylight for your city, and keeps every plan.</p>
-            <span class="btn primary" style="width:100%;justify-content:center;min-height:44px">See plans</span>
-            <span class="btn" style="width:100%;justify-content:center;min-height:44px;margin-top:8px">Use the free calculator ↗</span>
+          <div class="crumb"><a>← Back to dashboard</a></div>
+          <div class="empty" style="border-style:solid;padding:24px 16px;margin-top:16px">
+            <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+            <h5>Pro feature</h5>
+            <p>Field requests is available on Pro. Upgrade to unlock.</p>
+            <span class="btn primary" style="width:100%;justify-content:center;min-height:44px">Request upgrade</span>
           </div>
         </div>
       </div></div>
@@ -685,30 +687,33 @@ Based on: T-Ball (6 teams, 1x/week, 60 min); Rookie (6 teams, 2x/week, 75 min); 
 <!-- ============================================================ notes -->
 <section class="notes" id="notes">
   <h2>Notes for the build</h2>
-  <h3>Module — unchanged, and how the app uses it</h3>
+  <h3>Module — one small additive change (decided 2026-10-21)</h3>
   <ul>
-    <li><b>No edits to <code>src/lib/practice-planner/</code> or <code>src/lib/sun/</code>.</b> The app calls <code>computeMode</code>, <code>divisionWarnings</code>, <code>daylightWarnings</code>, <code>seasonTotals</code>, <code>requestText</code>, <code>busiestLabel</code>, <code>seasonRangeLabel</code> directly — <b>not <code>computePlan</code></b>, whose daylight warnings and sunset line go through <code>cityById</code> (the Sacramento fallback). Daylight is computed only when <code>cityByIdOrNull</code> returns a city; the city id handed to the module is then always a real one.</li>
-    <li><b>Lit fields without touching the module:</b> <code>daylightWarnings</code> is called with a copy of the input where each lit division's <code>days</code> is <code>[]</code>. <code>divisionIsActive</code> then skips it, while the mode result (computed from the real input) keeps its division indexes. Field counts, totals and the request text use the real input. The numbers on this page were produced exactly that way.</li>
-    <li>All sentences on screen are the module's, verbatim. App-only words (lit-fields line, prefill hints, empty states, no-city note, upsell) live in one new pure file in <code>src/lib/practice-planner-app/</code> or similar — not inside the calculator module.</li>
+    <li><b><code>computePlan(input, opts?)</code></b> gains an optional second argument, <code>{ city: UsCity | null }</code>. Omitted → exactly today's behaviour (<code>cityById(input.cityId)</code>), so the public calculator's call site and output don't change. <code>city: null</code> → no daylight warnings, <code>sunsetAtStart</code> null, and <code>cityById</code> is never called. A city → that city is used. The app always passes the result of <code>cityByIdOrNull(profiles.sunset_city)</code>.</li>
+    <li><b><code>DivisionInput.lit?: boolean</code></b>. The daylight check skips a lit division (one added condition beside <code>divisionIsActive</code>); field counts, totals, division warnings and <code>requestText</code> ignore it. The calculator never sets it.</li>
+    <li><b>Earliest sunset</b> (the line above the warnings): an additive <code>Plan</code> field with the earliest sunset in the season and its date. The warnings already check every day (a fall plan's Nov 1 clock change included); only the old one-line sunset label read the first day. For a spring season the earliest sunset IS the first day, so a spring plan reads as before.</li>
+    <li><b>Lit line in the city request:</b> app-side, appended after the module's text: "On lit fields: Majors." — left out when no division is lit. Same line on the print. <code>requestText</code> is unchanged.</li>
+    <li>Proof: a golden of today's calculator output (every sim fixture through <code>computePlan</code> and <code>requestText</code>, plus the calculator's first render) recorded BEFORE the change, compared after — byte-identical. Mutants: lit ignored, lit also dropped from the counts, a null city falling back to Sacramento.</li>
   </ul>
-  <h3>Storage (needs a migration — not part of this mockup)</h3>
+  <h3>Storage (migration 0117 — design only, not part of this mockup)</h3>
   <ul>
-    <li>One table, e.g. <code>practice_plans</code>: org-scoped (<code>owner_id</code>), <code>name</code>, <code>input jsonb</code> (a <code>PlannerInput</code> minus <code>cityId</code>, each division plus <code>lit</code>), <code>mode</code>, timestamps, <code>updated_by</code>. No <code>league_id</code>, no FK to divisions — a plan is a snapshot the admin edits. RLS the 0049 <code>is_org_member</code> form; Pro/Elite enforced in writes, not just the page.</li>
-    <li>The city is NOT stored per plan; every plan reads the league's <code>profiles.sunset_city</code> at render time.</li>
+    <li>One table, <code>practice_plans</code>: org-scoped (<code>owner_id</code> → profiles, the locations/venues convention), name, <code>input jsonb</code> (a <code>PlannerInput</code> minus <code>cityId</code>, each division with <code>lit</code>), <code>input_version</code>, <code>mode</code>, created/updated at and by. No <code>league_id</code>, no link to divisions — a plan is a snapshot the admin edits.</li>
+    <li>Browser reads under RLS (<code>is_org_member</code>); every write goes through SECURITY DEFINER functions that check membership, Pro/Elite (<code>plan_required</code>), the input's shape, and that nobody else saved first.</li>
+    <li>The city is NOT stored per plan; every plan reads the league's <code>profiles.sunset_city</code> when it opens.</li>
   </ul>
   <h3>Prefill</h3>
   <ul>
-    <li>"Most recent season" = the org's season with the latest <code>start_date</code>, archived or not. One row per division of that season, name copied, team count = that division's live <code>teams</code> rows (never <code>teams.practices_per_week</code>, never <code>divisions.team_count</code>). Other fields start from the calculator's <code>NEW_DIVISION</code> defaults.</li>
-    <li>The "6 in Fall 2026" hint matches by case-insensitive trimmed name; a division with no match starts at 0 teams (not counted) with the amber line.</li>
-    <li>A league with no seasons yet: the planner opens with no rows and "+ Add a division".</li>
+    <li>"Most recent season with teams" = the latest start date (then newest created) among the org's seasons, archived or not, that have at least one team in one of their divisions. A season created early for next year with no teams yet is skipped. One row per division of that season; team count = its live <code>teams</code> rows (never <code>teams.practices_per_week</code>, never <code>divisions.team_count</code>). Other fields start from the calculator's <code>NEW_DIVISION</code> defaults.</li>
+    <li>The "6 in Fall 2026" hint matches by case-insensitive trimmed name against that same season. Two divisions with the same name there → no hint (never a guess). No match → 0 teams, not counted, amber line.</li>
+    <li>No season has teams (or no seasons at all): the planner opens with no rows and "+ Add a division".</li>
   </ul>
-  <h3>Open questions for Whit</h3>
+  <h3>Questions — answered 2026-10-21</h3>
   <ul>
-    <li><b>Nav placement:</b> "Field requests" under Practices (shown), or a tab on the Practices page?</li>
-    <li><b>Daylight toggle:</b> if Settings → Daylight flags is switched OFF but a city is set, should the planner still show daylight warnings? Mockup assumes yes (the toggle is about game flags).</li>
-    <li><b>Copy + teams:</b> should Copy offer "Refresh team counts from Fall 2026"? Mockup says no — Copy is an exact duplicate.</li>
-    <li><b>Request text and lit fields:</b> <code>requestText</code> (unchanged) doesn't mention lights. Fine for v1, or does the city need to know which requests are for lit fields? That would mean an app-side line after the module's text, or a module change.</li>
-    <li><b>"See plans"</b> on the upsell goes to the existing plan-choice screen — confirm the target.</li>
+    <li><b>Nav:</b> its own sidebar item, "Field requests", directly below Practices.</li>
+    <li><b>Daylight toggle:</b> warnings show whenever a league city is set, whatever the Settings game-flag toggle says.</li>
+    <li><b>Copy:</b> an exact duplicate; no team-count refresh.</li>
+    <li><b>Lights in the city request:</b> one app-side line naming the divisions on lit fields; the module's text and the calculator are unchanged.</li>
+    <li><b>Upsell:</b> the shared <code>FeatureLockedCard</code> and its "Request upgrade" mailto, like every other paid page.</li>
   </ul>
 </section>
 </div>
