@@ -13,6 +13,7 @@ import {
   Trophy,
   CalendarDays,
   CalendarRange,
+  ClipboardList,
   Users,
   MapPin,
   Layers,
@@ -50,6 +51,9 @@ const navItems: NavItem[] = [
   { href: "/dashboard/leagues", label: "Seasons", icon: Trophy, tier: null },
   { href: "/dashboard/schedule", label: "Schedule", icon: CalendarDays, tier: null },
   { href: "/dashboard/practices", label: "Practices", icon: CalendarRange, tier: "pro" },
+  // Its own route, NOT under /dashboard/practices — the active check is a
+  // prefix match, so a nested route would light up Practices too.
+  { href: "/dashboard/field-requests", label: "Field requests", icon: ClipboardList, tier: "pro" },
   { href: "/dashboard/teams", label: "Teams", icon: Users, tier: null },
   { href: "/dashboard/venues", label: "Venues", icon: MapPin, tier: null },
   { href: "/dashboard/divisions", label: "Divisions", icon: Layers, tier: null },

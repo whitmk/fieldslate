@@ -100,3 +100,61 @@ function joinNames(names: string[]): string {
   if (names.length <= 2) return names.join(" and ");
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
+
+// ── Plans list (step 5a) ─────────────────────────────────────────────────
+export const PLANS_TITLE = "Field requests";
+export const PLANS_INTRO = "Work out how many practice fields to ask the city for, night by night. Plans belong to the league, not a season.";
+export const NEW_PLAN_BUTTON = "New plan";
+export const COPY_PLAN_BUTTON = "Copy from a previous plan";
+export const COPY_PLAN_BUTTON_SHORT = "Copy a plan";
+export const NEW_PLAN_TITLE = "New field request";
+export const COPY_PLAN_TITLE = "Copy a plan";
+export const RENAME_PLAN_TITLE = "Rename plan";
+export const PLAN_NAME_LABEL = "Plan name";
+export const NEW_PLAN_NAME_LABEL = "New plan name";
+export const PLAN_NAME_HELP = "Any name — “Spring 2027”, “Spring 2027 — two new fields”.";
+export const MENU_OPEN = "Open";
+export const MENU_COPY = "Copy";
+export const MENU_RENAME = "Rename";
+export const MENU_DELETE = "Delete…";
+export const CREATE_BUTTON = "Create plan";
+export const COPY_BUTTON = "Copy plan";
+export const RENAME_BUTTON = "Save name";
+export const CANCEL_BUTTON = "Cancel";
+export const DELETE_BUTTON = "Delete plan";
+export const PLAN_CANT_OPEN_TAG = "Can't open";
+export const PLAN_NO_DATES = "No dates yet";
+export const PLAN_NO_FIELDS = "No practices yet";
+export const PLANS_FREE_CALCULATOR = "Use the free calculator";
+
+export const MODE_NAMES = { spread: "Spread across the week", sameNights: "Everyone wants the same nights" } as const;
+
+/** The default name in the Copy modal: "Copy of Spring 2027", kept to the 80-character limit. */
+export function copyName(name: string, maxChars: number): string {
+  return Array.from(`Copy of ${name}`).slice(0, maxChars).join("");
+}
+
+/** A choice row in the Copy modal. */
+export function copyChoiceDetail(dates: string, divisions: number, edited: string): string {
+  return `${dates} · ${divisions} ${divisions === 1 ? "division" : "divisions"} · edited ${edited}`;
+}
+
+/** A refusal from one of the plan functions (0117), in words. */
+export function planErrorMessage(key: string): string {
+  switch (key) {
+    case "not_authorized":
+      return "You're not a member of this league, so you can't change its plans.";
+    case "plan_required":
+      return "Field requests are on Pro and Elite. Upgrade to create or change plans.";
+    case "invalid_name":
+      return "Give the plan a name (up to 80 characters).";
+    case "plan_not_found":
+      return "This plan no longer exists. It may have been deleted.";
+    case "invalid_input":
+    case "input_version":
+    case "invalid_mode":
+      return "This plan couldn't be saved — something in it is outside what a plan can hold. Nothing was saved.";
+    default:
+      return "Something went wrong and nothing was saved. Try again.";
+  }
+}

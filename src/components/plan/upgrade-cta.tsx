@@ -147,11 +147,15 @@ export function FeatureLockedCard({
   tier = "Pro",
   backHref = "/dashboard",
   backLabel = "Back to dashboard",
+  secondaryLink,
 }: {
   feature: string;
   tier?: UpgradeTier;
   backHref?: string;
   backLabel?: string;
+  /** An optional second link under the upgrade button (e.g. a free tool).
+   *  Absent → the card renders exactly as it always has. */
+  secondaryLink?: { href: string; label: string };
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -177,6 +181,11 @@ export function FeatureLockedCard({
         >
           Request upgrade
         </a>
+        {secondaryLink && (
+          <Link href={secondaryLink.href} className="text-sm font-medium text-[#16a34a] underline">
+            {secondaryLink.label}
+          </Link>
+        )}
       </div>
     </div>
   );

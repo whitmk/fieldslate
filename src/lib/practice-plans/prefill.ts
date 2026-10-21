@@ -115,3 +115,23 @@ export function newPlanInput(prefill: Prefill): { input: PlanInput; adjustments:
   });
   return { input: { seasonStart: "", seasonEnd: "", minutesBetween: 0, divisions }, adjustments };
 }
+
+/**
+ * New plan opens the planner with what the prefill had to change, so the
+ * planner can show prefillAdjustedLine once. Nothing changed → no query.
+ */
+export function prefillAdjustmentQuery(seasonName: string | null, a: PrefillAdjustments): string {
+  if (!seasonName || (a.dropped === 0 && a.shortened === 0 && a.capped === 0)) return "";
+  const q = new URLSearchParams({ from: seasonName, adjusted: `${a.dropped}.${a.shortened}.${a.capped}` });
+  return `?${q.toString()}`;
+}
+
+/** The planner's read of that query; null when absent or malformed. */
+export function parsePrefillAdjustmentQuery(params: { from?: string | string[]; adjusted?: string | string[] }): { seasonName: string; adjustments: PrefillAdjustments } | null {
+  const from = typeof params.from === "string" ? params.from : null;
+  const adj = typeof params.adjusted === "string" ? params.adjusted : null;
+  if (!from || !adj || !/^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(adj)) return null;
+  const [dropped, shortened, capped] = adj.split(".").map(Number);
+  if (dropped + shortened + capped === 0) return null;
+  return { seasonName: from, adjustments: { dropped, shortened, capped } };
+}

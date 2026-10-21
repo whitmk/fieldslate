@@ -8,6 +8,7 @@ const LOAD = "src/lib/practice-plans/load.ts";
 const PREFILL = "src/lib/practice-plans/prefill.ts";
 const REQUEST = "src/lib/practice-plans/request.ts";
 const WORDS = "src/lib/practice-plans/words.ts";
+const LIST = "src/lib/practice-plans/list.ts";
 
 const MUTANTS: Mutant[] = [
   {
@@ -87,6 +88,24 @@ const MUTANTS: Mutant[] = [
     find: "  return lit ? `${text}\\n\\n${lit}` : text;",
     replace: "  return text;",
     expect: "T4",
+  },
+  {
+    id: "RU14", what: "a stale save answer not recognised", file: LIST,
+    find: '  if (d && d.committed === false && d.status === "stale" && typeof d.updated_at === "string") {',
+    replace: "  if (false) {",
+    expect: "R2",
+  },
+  {
+    id: "RU15", what: "the edited date taken in UTC, not the league's timezone", file: LIST,
+    find: "  const day = todayInTimezone(timeZone, new Date(t));",
+    replace: "  const day = new Date(t).toISOString().slice(0, 10);",
+    expect: "R3",
+  },
+  {
+    id: "RU16", what: "a committed reply without a plan id counts as done", file: LIST,
+    find: '  if (!d || d.committed !== true || typeof d.id !== "string") return { ok: false, message: planErrorMessage("unknown") };',
+    replace: '  if (!d || d.committed !== true) return { ok: false, message: planErrorMessage("unknown") };',
+    expect: "R1",
   },
 ];
 

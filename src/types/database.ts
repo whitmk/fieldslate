@@ -1332,6 +1332,47 @@ export type Database = {
           },
         ]
       }
+      practice_plans: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          input: Json
+          input_version: number
+          mode: string
+          name: string
+          owner_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        // Written ONLY by the 0117 functions (create/copy/save/delete);
+        // no role holds a write grant. Insert/Update are typed for shape only.
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          input: Json
+          input_version?: number
+          mode?: string
+          name: string
+          owner_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          input?: Json
+          input_version?: number
+          mode?: string
+          name?: string
+          owner_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       snack_shack_blocks: {
         Row: {
           assigned_team_id: string | null

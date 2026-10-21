@@ -17,6 +17,8 @@
 //       RU13 (N2c)
 //   T   the lit-fields line and the city request text ← RU10 (T2), RU9 (T3),
 //       RU11 (T4)
+//   R   the plans list (5a): replies, the edited line, the prefill query,
+//       wiring                     ← RU16 (R1), RU14 (R2), RU15 (R3)
 //   W   words, verbatim, and the daylight-leaks fence (source reads)
 // then ANTI-VACUITY COUNTERS.
 //
@@ -30,14 +32,16 @@ import { computePlan, requestText } from "@/lib/practice-planner/report";
 import { cityById } from "@/lib/sun/us-cities";
 import { loadPlan, upgradePlanInput, type PlanInput, type PlanRow } from "@/lib/practice-plans/load";
 import { INPUT_LIMITS, PLAN_INPUT_VERSION, practicePlanInputProblem } from "@/lib/practice-plans/plan-input";
-import { newPlanInput, pickPrefill, teamHint, type PrefillRow } from "@/lib/practice-plans/prefill";
+import { newPlanInput, parsePrefillAdjustmentQuery, pickPrefill, prefillAdjustmentQuery, teamHint, type PrefillRow } from "@/lib/practice-plans/prefill";
 import { litLine, planRequestText } from "@/lib/practice-plans/request";
+import { editedLabel, planDatesLabel, planErrorKey, planSummaryLine, saveOutcome, writeOutcome } from "@/lib/practice-plans/list";
 import {
   CANT_OPEN_PLAN,
   earliestSunsetLine,
   litFieldsLine,
   newPlanSource,
   noTeamsLine,
+  planErrorMessage,
   prefillAdjustedLine,
   staleSaveLine,
   teamHintLine,
@@ -245,6 +249,59 @@ section("T", () => {
   ok(planRequestText(none, r, inUse) === requestText(none, r, inUse), "[T4b] nothing lit → the module's text exactly");
 });
 
+// ── R: the plans list's lines and the plan functions' replies (5a) ──────
+section("R", () => {
+  // R1: create / copy / delete succeed only on a committed reply naming a
+  // plan id. (RU16, the id not required: a reply without one reads as done.)
+  const w1 = writeOutcome({ committed: true, id: "p9", updated_at: "2026-10-21T17:56:59.356+00:00" }, null);
+  ok(w1.ok && w1.id === "p9" && w1.updatedAt === "2026-10-21T17:56:59.356+00:00" &&
+    !writeOutcome({ committed: true }, null).ok && !writeOutcome(null, null).ok && !writeOutcome({ committed: false, id: "x" }, null).ok,
+    "[R1] a write is done only when committed with a plan id");
+  const refused = writeOutcome(null, { message: "not_authorized" });
+  ok(!refused.ok && refused.message === planErrorMessage("not_authorized") &&
+    planErrorKey({ message: "invalid_input:teams" }) === "invalid_input" && planErrorKey({ message: "boom" }) === "unknown" && planErrorKey(null) === null,
+    "[R1b] refusals worded by key");
+  // R2: a stale save is never a save; who and when come through. (RU14, the
+  // stale branch removed: an error instead of the named stale state.)
+  const st = saveOutcome({ committed: false, status: "stale", updated_at: "2026-10-21T17:57:00.001+00:00", updated_by_name: "Jenn M." }, null);
+  ok(st.kind === "stale" && st.byName === "Jenn M." && st.updatedAt === "2026-10-21T17:57:00.001+00:00" &&
+    saveOutcome({ committed: true, status: "saved", updated_at: "2026-10-21T17:57:00.002+00:00" }, null).kind === "saved" &&
+    saveOutcome({ committed: true, status: "stale", updated_at: "x" }, null).kind === "error" &&
+    saveOutcome({ committed: false, status: "stale", updated_at: "2026-10-21T17:57:00.001+00:00" }, null).kind === "stale",
+    "[R2] save replies: saved, stale (with who), anything else an error", JSON.stringify(st));
+  // R3: "edited" is a date in the LEAGUE's timezone. 06:30Z on Oct 21 is
+  // still Oct 20 in Los Angeles. (RU15, the UTC date: "today".)
+  const now = new Date("2026-10-21T20:00:00Z");
+  ok(editedLabel("2026-10-21T17:00:00Z", "America/Los_Angeles", now) === "today" &&
+    editedLabel("2026-10-21T06:30:00Z", "America/Los_Angeles", now) === "Oct 20" &&
+    editedLabel("2025-12-04T17:00:00Z", "America/Los_Angeles", now) === "Dec 4, 2025" &&
+    editedLabel("not a date", "America/Los_Angeles", now) === "—",
+    "[R3] the edited line in the league's timezone", editedLabel("2026-10-21T06:30:00Z", "America/Los_Angeles", now));
+  // R4: the prefill note travels to the planner through the URL and back.
+  const q = prefillAdjustmentQuery("Fall 2026", { dropped: 1, shortened: 0, capped: 2 });
+  const back = parsePrefillAdjustmentQuery(Object.fromEntries(new URLSearchParams(q.slice(1))));
+  ok(back?.seasonName === "Fall 2026" && back.adjustments.dropped === 1 && back.adjustments.capped === 2 &&
+    prefillAdjustmentQuery("Fall 2026", { dropped: 0, shortened: 0, capped: 0 }) === "" &&
+    parsePrefillAdjustmentQuery({ from: "X", adjusted: "1.2" }) === null && parsePrefillAdjustmentQuery({}) === null,
+    "[R4] the prefill note's query round trip", q);
+  // R5: the list's lines.
+  ok(planSummaryLine(BASE_INPUT, "spread") === "6 60-ft diamonds · 2 50/70 diamonds · 2 90-ft diamonds" &&
+    planSummaryLine({ ...BASE_INPUT, divisions: [] }, "spread") === "No practices yet" &&
+    planDatesLabel(BASE_INPUT) === "Feb 22 to May 29, 2027" && planDatesLabel({ ...BASE_INPUT, seasonStart: "" }) === "No dates yet",
+    "[R5] the list's summary and dates", planSummaryLine(BASE_INPUT, "spread"));
+  // R6: wiring (source reads — weak by nature): the page gates Pro+ with the
+  // calculator link; the sidebar item is its own Pro route; every RPC in the
+  // list carries the house @ts-expect-error.
+  const page = readFileSync(join(ROOT, "src/app/(dashboard)/dashboard/field-requests/page.tsx"), "utf8");
+  const side = readFileSync(join(ROOT, "src/components/dashboard/sidebar.tsx"), "utf8");
+  const list = readFileSync(join(ROOT, "src/components/field-requests/plans-list-client.tsx"), "utf8");
+  const rpcs = list.match(/\.rpc\(\s*\/\/ @ts-expect-error[^\n]*\n\s*"(\w+)"/g) ?? [];
+  ok(/if \(!isProPlus\(plan\)\)/.test(page) && /secondaryLink=\{\{ href: "\/tools\/practice-field-calculator"/.test(page) &&
+    /href: "\/dashboard\/field-requests", label: "Field requests", icon: ClipboardList, tier: "pro"/.test(side) &&
+    rpcs.length === 4 && (list.match(/\.rpc\(/g) ?? []).length === 4,
+    "[R6] gate, sidebar item and RPC calls wired", `${rpcs.length} rpc calls`);
+});
+
 // ── W: words, verbatim, and the fence ───────────────────────────────────
 section("W", () => {
   const sr = cityById("ca-santa-rosa");
@@ -294,3 +351,5 @@ process.exit(failures ? 1 : 0);
 // (dropped / shortened / capped) for prefillAdjustedLine; N2 split into N2,
 // N2b, N2c so each cap has its own line. New: RU12 (name not cut) → N2b,
 // RU13 (division cap retyped as 30) → N2c.
+// 2026-10-21, step 5a: section R for the plans list; RU14 → R2, RU15 → R3,
+// RU16 → R1.

@@ -709,8 +709,33 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   - `words.ts` — EVERY app-only sentence, rendered verbatim. Outside the
     calculator module; imports neither `src/lib/daylight` nor
     `sun/sunset` (sim:daylight-leaks S1; checked again by the rules sim W3).
-  - **Harness:** `npm run sim:practice-plan-rules` (44 checks × 3 zones) +
-    `:mutants` (13, each killed at its own assertion).
+  - **Harness:** `npm run sim:practice-plan-rules` (51 checks × 3 zones) +
+    `:mutants` (16, each killed at its own assertion).
+- **Screens, step 5a — the plans list (`/dashboard/field-requests`).**
+  - Its own sidebar item, "Field requests", directly below Practices,
+    `tier: "pro"`. NOT a route under `/dashboard/practices` — the sidebar's
+    active check is a prefix match.
+  - The page refuses Free with `!isProPlus(plan)` → `FeatureLockedCard`
+    with the new optional `secondaryLink` (the free calculator). The prop is
+    absent everywhere else, so every other locked page renders as before.
+  - Reads are complete-or-throw (`fetchAllRows`): the plans (`updated_at`
+    desc, `id` tiebreak) and every division of the org with its season and
+    `teams(count)` for `pickPrefill`. "Edited" dates are formatted on the
+    SERVER in the league's timezone (`editedLabel`) and passed as strings.
+  - A plan that won't open (`loadPlan` fails) still lists, tagged "Can't
+    open", with Copy and Delete; Rename is disabled (a save re-checks the
+    input). Every write is one of the four 0117 functions via `.rpc` with
+    the house `@ts-expect-error`; replies go through `writeOutcome` /
+    `saveOutcome` (a reply that isn't a committed write naming a plan id is
+    an error; a stale save is never a save). Rename is a save with the
+    loaded `updated_at`; a stale answer shows `staleSaveLine` in the dialog.
+  - New plan opens the planner with the prefill note in the URL
+    (`prefillAdjustmentQuery` → `?from=…&adjusted=d.s.c`) when anything was
+    trimmed or capped.
+  - `practice_plans` is typed by hand in `src/types/database.ts` (Functions
+    map stays empty).
+  - **0117 must be applied before this reaches `main`** — the page reads
+    `practice_plans`. Checked on a deleted scratch route at 1280px and 375px.
 
 ## Daylight flags (admin-only, branch `feat/daylight-flags`, 2026-10-14)
 
