@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Practice planner — FieldSlate mockup</title>
+<style>
+:root{
+  --navy:#0C1F3F; --bg:#f4f5f0; --card:#fff; --ink:#0C1F3F; --muted:#5b6577; --line:#e2e5dd; --soft:#f7f8f4;
+  --green:#22c55e; --green-dk:#16a34a; --green-bg:#e9f8ef;
+  --warn-bg:#fdf3d4; --warn-ink:#854d0e; --warn-bd:#efd27a;
+  --violet:#6d28d9; --violet-bg:#f1ebfd;
+  --scrim:rgba(12,31,63,.38);
+  box-sizing:border-box;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0a1830; --card:#10223f; --ink:#e8ecf3; --muted:#9aa6bb; --line:#22385c; --soft:#0d1d37; --green-bg:#123a24;
+    --warn-bg:#3d2f06; --warn-ink:#ffe08a; --warn-bd:#6b5410; --violet:#c4b5fd; --violet-bg:#2a1f4a; --scrim:rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1830; --card:#10223f; --ink:#e8ecf3; --muted:#9aa6bb; --line:#22385c; --soft:#0d1d37; --green-bg:#123a24;
+  --warn-bg:#3d2f06; --warn-ink:#ffe08a; --warn-bd:#6b5410; --violet:#c4b5fd; --violet-bg:#2a1f4a; --scrim:rgba(0,0,0,.5);
+}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.45}
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px 60px}
+.mock{background:var(--navy);color:#cfd8e8;font-size:13px;text-align:center;padding:7px 12px}
+.mock b{color:#fff}
+header.top{padding:26px 0 6px}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.4px}
+.lede{color:var(--muted);margin:0;max-width:84ch}
+code{font-size:12.5px;background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:0 4px}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}
+.toc a{font-size:13px;color:var(--ink);text-decoration:none;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 10px}
+
+.screen{margin-top:44px}
+.screen>h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+.screen>h3{font-size:18px;margin:0 0 4px}
+.screen>.why{color:var(--muted);font-size:13.5px;margin:0 0 14px;max-width:86ch}
+.frames{display:grid;grid-template-columns:minmax(0,1fr) 391px;gap:22px;align-items:start}
+@media (max-width:1060px){.frames{grid-template-columns:minmax(0,1fr)}}
+.flabel{font-size:11.5px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin:0 0 6px}
+
+/* desktop app frame */
+.desk{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg);display:grid;grid-template-columns:168px minmax(0,1fr);min-height:420px;position:relative}
+.side{background:var(--navy);color:#b9c4d8;font-size:12.5px;padding:14px 10px}
+.side .brand{color:#fff;font-weight:800;font-size:15px;margin:0 6px 14px}
+.side .brand span{color:var(--green)}
+.side .nav{display:block;padding:6px 8px;border-radius:7px;margin-bottom:2px}
+.side .nav.on{background:rgba(255,255,255,.1);color:#fff;font-weight:700}
+.side .nav.sub{padding-left:20px;font-size:12px}
+.side .pro{font-size:10px;font-weight:800;color:var(--navy);background:#b9c4d8;border-radius:4px;padding:0 4px;margin-left:4px}
+.dmain{min-width:0}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:10px 18px;border-bottom:1px solid var(--line);background:var(--card);font-size:12.5px;color:var(--muted)}
+.content{padding:18px}
+.desk .scrim{position:absolute;inset:0;background:var(--scrim)}
+.desk .over{position:absolute;inset:0;display:flex;justify-content:center;align-items:flex-start;padding-top:44px}
+
+/* phone frame */
+.phone{width:391px;max-width:100%;border:8px solid #1d2a40;border-radius:34px;overflow:hidden;background:var(--bg);position:relative}
+.phone .scr{width:375px;max-width:100%;min-height:700px;position:relative}
+.ptop{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--navy);color:#fff;font-size:13px}
+.ptop b span{color:var(--green)}
+.phone .content{padding:16px}
+.phone .scrim{position:absolute;inset:0;background:var(--scrim)}
+.phone .sheet{position:absolute;left:0;right:0;bottom:0;border-radius:16px 16px 0 0;max-height:620px;overflow:auto}
+
+/* app pieces */
+.ph{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.ph h4{margin:0;font-size:20px;font-weight:800;letter-spacing:-.2px}
+.ph p{margin:3px 0 0;color:var(--muted);font-size:13px;max-width:60ch}
+.crumb{font-size:12.5px;color:var(--muted);margin-bottom:6px}
+.crumb a{color:var(--green-dk);font-weight:700;text-decoration:none}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card+.card{margin-top:14px}
+.card h5{margin:0 0 2px;font-size:15px;font-weight:800}
+.card .hint{color:var(--muted);font-size:12.5px;margin:0 0 12px}
+.btn{display:inline-flex;align-items:center;gap:6px;border-radius:9px;padding:8px 13px;font-weight:700;font-size:13.5px;border:1px solid var(--line);background:var(--card);color:var(--ink);white-space:nowrap;cursor:default}
+.btn.primary{background:var(--green);border-color:var(--green-dk);color:#0C1F3F}
+.btn.sm{padding:5px 10px;font-size:12.5px}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.link{color:var(--green-dk);font-weight:700;text-decoration:underline}
+.muted{color:var(--muted)}
+.saved{font-size:12px;color:var(--muted)}
+
+/* plans list */
+.plist{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.prow{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.4fr) 120px 36px;gap:14px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--line)}
+.prow:last-child{border-bottom:none}
+.prow.head{background:var(--soft);font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:8px 16px}
+.prow .nm{font-weight:800}
+.prow .nm small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+.prow .ans{font-size:13px}
+.prow .upd{font-size:12.5px;color:var(--muted)}
+.dots{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--muted)}
+.pcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 14px;display:flex;justify-content:space-between;gap:10px}
+.pcard+.pcard{margin-top:10px}
+.pcard .nm{font-weight:800}
+.pcard .meta{font-size:12.5px;color:var(--muted);margin-top:2px}
+.pcard .ans{font-size:13px;margin-top:6px}
+.menu{position:absolute;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(12,31,63,.14);padding:4px;min-width:170px;font-size:13.5px;z-index:2}
+.menu div{padding:8px 10px;border-radius:7px}
+.menu div.on{background:var(--soft)}
+.menu .del{color:#b42318}
+.empty{background:var(--card);border:1px dashed var(--line);border-radius:12px;padding:34px 20px;text-align:center}
+.empty .ic{width:46px;height:46px;border-radius:12px;background:var(--green-bg);color:var(--green-dk);display:grid;place-items:center;margin:0 auto 12px}
+.empty h5{margin:0 0 6px;font-size:16px}
+.empty p{margin:0 auto 14px;color:var(--muted);max-width:52ch;font-size:13.5px}
+
+/* modal */
+.modal{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 14px 40px rgba(12,31,63,.18);padding:20px;width:min(520px,calc(100% - 32px))}
+.mh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.mh h4{margin:0;font-size:17px;font-weight:800}
+.x{color:var(--muted)}
+.sub{color:var(--muted);font-size:13.5px;margin:6px 0 14px}
+.f label{display:block;font-size:12.5px;font-weight:700;margin-bottom:4px}
+.in{border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:14px;background:var(--card);min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:6px}
+.in.sel::after{content:"▾";color:var(--muted);font-size:11px}
+.phone .in{font-size:16px;min-height:44px}
+.f .help{font-size:12px;color:var(--muted);margin-top:3px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.phone .grid2,.phone .grid3{grid-template-columns:1fr 1fr}
+.phone .grid3 .wide{grid-column:1 / -1}
+.choice{border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start}
+.choice+.choice{margin-top:8px}
+.choice.on{border-color:var(--green-dk);box-shadow:0 0 0 3px var(--green-bg)}
+.radio{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);flex:none;margin-top:2px}
+.choice.on .radio{border-color:var(--green-dk);background:radial-gradient(var(--green-dk) 45%,transparent 50%)}
+.choice b{display:block;font-size:14px}
+.choice span{font-size:12.5px;color:var(--muted)}
+.mact{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;flex-wrap:wrap}
+.phone .mact{flex-direction:column-reverse}
+.phone .mact .btn{width:100%;justify-content:center;min-height:46px}
+
+/* planner: divisions */
+.dtable{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.dtable th{text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:0 6px 6px;white-space:nowrap}
+.dtable td{padding:6px;border-top:1px solid var(--line);vertical-align:top}
+.dtable .in{min-height:32px;padding:5px 8px;font-size:13px;white-space:nowrap}
+.num{width:58px}
+.nm-in{min-width:96px}
+.pre{font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap}
+.days{display:flex;gap:2px}
+.days i{font-style:normal;width:21px;height:28px;border-radius:6px;border:1px solid var(--line);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--muted)}
+.days i.on{background:var(--green-bg);border-color:var(--green-dk);color:var(--green-dk)}
+.sw{display:inline-flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap}
+.sw .t{width:30px;height:18px;border-radius:999px;background:var(--line);position:relative;flex:none}
+.sw .t::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;top:2px;left:2px;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.sw.on .t{background:var(--green-dk)}
+.sw.on .t::after{left:14px}
+.addrow{margin-top:10px}
+.newdiv td{background:var(--warn-bg)}
+.needs{font-size:11.5px;color:var(--warn-ink);font-weight:700;margin-top:2px;max-width:150px}
+
+/* phone division card */
+.dcard{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--card)}
+.dcard+.dcard{margin-top:10px}
+.dcard .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.dcard .top b{font-size:15px}
+.dcard .sum{font-size:12.5px;color:var(--muted);margin-top:2px}
+.dcard.open .body{margin-top:10px;display:grid;gap:10px}
+.dcard .body .days i{width:auto;flex:1;height:36px;font-size:12px}
+.chev{color:var(--muted)}
+
+/* results */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;padding:3px;background:var(--soft);gap:3px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;border-radius:7px;padding:7px 12px;font:inherit;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(12,31,63,.12)}
+.phone .seg{display:flex}
+.phone .seg button{flex:1;padding:9px 6px;font-size:12.5px}
+.answers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+.phone .answers{grid-template-columns:1fr}
+.ans-card{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--soft)}
+.ans-card .n{font-size:30px;font-weight:800;line-height:1}
+.ans-card .z{font-weight:700;margin-top:4px}
+.ans-card .alt{font-size:12.5px;color:var(--muted);margin-top:4px}
+.nights{width:100%;border-collapse:collapse;margin-top:14px;font-size:13px}
+.nights th,.nights td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left}
+.nights th{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.nights td.z{font-weight:700;white-space:nowrap}
+.nights td.c b{display:block}
+.nights td.c small{color:var(--muted);font-size:11.5px;white-space:nowrap}
+.nights td.c.none{color:var(--muted)}
+.nlist{margin-top:12px}
+.nlist .z{font-weight:800;font-size:13.5px;margin:12px 0 4px}
+.nlist .r{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line)}
+.nlist .r span:last-child{color:var(--muted)}
+.note{display:flex;gap:10px;align-items:flex-start;border-radius:10px;padding:10px 12px;font-size:13px;border:1px solid;margin-top:8px}
+.note.warn{background:var(--warn-bg);color:var(--warn-ink);border-color:var(--warn-bd)}
+.note.info{background:var(--soft);color:var(--ink);border-color:var(--line)}
+.note svg{flex:none;margin-top:2px}
+.sunline{font-size:12.5px;color:var(--muted);margin:2px 0 8px}
+.totals{display:flex;flex-wrap:wrap;gap:22px;margin-top:6px;font-size:13px;color:var(--muted)}
+.totals b{font-size:20px;font-weight:800;display:block;color:var(--ink)}
+.phone .totals{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.resbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.litnote{font-size:12.5px;color:var(--muted);margin-top:8px}
+.sticky{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:10px 16px;display:flex;gap:8px}
+.sticky .btn{flex:1;justify-content:center;min-height:44px}
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:18px;background:var(--navy);color:#fff;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:700;box-shadow:0 8px 20px rgba(0,0,0,.2)}
+pre.req{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:12px;margin:10px 0 0;max-height:300px;overflow:auto}
+
+/* paper (print preview) */
+.paper{background:#fff;color:#111;border:1px solid #d6d6d6;box-shadow:0 6px 24px rgba(0,0,0,.08);padding:28px 30px;font-family:Arial,Helvetica,sans-serif;font-size:11px;max-width:760px}
+.paper .wm{font-weight:800;font-size:14px;color:#0C1F3F}
+.paper .wm span{color:#16a34a}
+.paper .lg{font-weight:700;font-size:15px;margin:6px 0 2px}
+.paper .mt{color:#374151;font-size:10.5px}
+.paper h6{font-size:11.5px;margin:14px 0 4px;text-transform:uppercase;letter-spacing:.04em;color:#0C1F3F}
+.paper table{width:100%;border-collapse:separate;border-spacing:0;font-size:10.5px}
+.paper th,.paper td{border-bottom:1px solid #d1d5db;padding:4px 6px;text-align:left}
+.paper th{background:#f3f4f6}
+.paper ul{margin:3px 0 0 16px;padding:0;font-size:10.5px}
+.phone-paper{transform-origin:top left}
+
+@media (max-width:760px){
+  .desk{grid-template-columns:minmax(0,1fr)}
+  .desk .side{display:none}
+  .answers{grid-template-columns:1fr}
+  .nights{display:block;overflow-x:auto}
+  .prow{grid-template-columns:minmax(0,1fr) 36px}
+  .prow>span:nth-child(2),.prow>span:nth-child(3),.prow>span:nth-child(4){display:none}
+  .grid3{grid-template-columns:1fr}
+  .grid3 .f{grid-column:auto!important}
+  .paper{padding:16px;overflow-x:auto}
+  .menu{display:none}
+}
+.notes{margin-top:44px;border:1px dashed var(--line);border-radius:12px;padding:16px 18px;font-size:13.5px;background:var(--card)}
+.notes h2{font-size:15px;margin:0 0 8px}
+.notes h3{font-size:13px;margin:14px 0 4px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.notes ul{margin:0;padding-left:18px}
+.notes li{margin:4px 0}
+.notes li b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="mock"><b>Mockup.</b> Example divisions are the calculator's placeholders, not any real league's numbers. Every result below was computed by the unchanged <code style="color:inherit;background:transparent;border-color:#33496e">src/lib/practice-planner/</code> module (Santa Rosa, Feb 22 – May 29, 2027).</div>
+<div class="wrap">
+<header class="top">
+  <h1>Practice planner — in the app</h1>
+  <p class="lede">A league's saved practice field requests: how many fields of each kind to ask the city for, which nights, at what times — with daylight warnings for the league's own city. Plans belong to the league, not a season. v1 is the request only: it creates no practice slots and doesn't feed auto-assign. Pro and Elite. The public calculator stays free and unchanged.</p>
+  <nav class="toc">
+    <a href="#list">1 · Plans list</a><a href="#new">2 · New plan / Copy</a><a href="#planner">3 · The planner</a><a href="#request">4 · Copy for city request + Print</a><a href="#nocity">5 · No league city</a><a href="#free">6 · Free plan</a><a href="#notes">Notes &amp; open questions</a>
+  </nav>
+</header>
+
+<!-- ============================================================ 1 -->
+<section class="screen" id="list">
+  <h2>Screen 1</h2>
+  <h3>Plans list — <code>/dashboard/practice-plans</code></h3>
+  <p class="why">Reached from the sidebar as "Field requests" under Practices. Newest first by last edit. Each row shows the answer at a glance in the mode the plan was last left in. The "…" menu holds Open, Copy, Rename, Delete — the same items on the phone card.</p>
+  <div class="frames">
+    <div>
+      <p class="flabel">Desktop — a few plans</p>
+      <div class="desk">
+        <aside class="side"><div class="brand">Field<span>Slate</span></div>
+          <span class="nav">Overview</span><span class="nav">Seasons</span><span class="nav">Schedule</span><span class="nav">Practices</span><span class="nav sub on">Field requests</span><span class="nav">Venues</span><span class="nav">Officials</span><span class="nav">Settings</span></aside>
+        <div class="dmain">
+          <div class="topbar"><span>Example Little League</span><span>Fall 2026 ▾</span></div>
+          <div class="content" style="position:relative">
+            <div class="ph">
+              <div><h4>Field requests</h4><p>Work out how many practice fields to ask the city for, night by night. Plans belong to the league, not a season.</p></div>
+              <div class="btns"><span class="btn">Copy from a previous plan</span><span class="btn primary">+ New plan</span></div>
+            </div>
+            <div class="plist">
+              <div class="prow head"><span>Plan</span><span>Practices</span><span>Fields to request</span><span>Edited</span><span></span></div>
+              <div class="prow"><span class="nm">Spring 2027<small>7 divisions · Spread across the week</small></span><span>Feb 22 – May 29, 2027</span><span class="ans">6 60-ft diamonds · 2 50/70 · 2 90-ft</span><span class="upd">Today</span><span class="dots">⋯</span></div>
+              <div class="prow"><span class="nm">Spring 2027 — if Juniors adds a team<small>7 divisions · Same nights</small></span><span>Feb 22 – May 29, 2027</span><span class="ans">14 60-ft diamonds · 4 50/70 · 3 90-ft</span><span class="upd">Oct 19</span><span class="dots" style="background:var(--soft)">⋯</span></div>
+              <div class="prow"><span class="nm">Fall Ball 2026<small>4 divisions · Spread across the week</small></span><span>Aug 31 – Nov 7, 2026</span><span class="ans">3 60-ft diamonds · 1 50/70</span><span class="upd">Aug 4</span><span class="dots">⋯</span></div>
+              <div class="menu" style="right:30px;top:198px"><div class="on">Open</div><div>Copy</div><div>Rename</div><div class="del">Delete…</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="flabel" style="margin-top:22px">Desktop — empty</p>
+      <div class="desk" style="min-height:330px">
+        <aside class="side"><div class="brand">Field<span>Slate</span></div>
+          <span class="nav">Overview</span><span class="nav">Seasons</span><span class="nav">Schedule</span><span class="nav">Practices</span><span class="nav sub on">Field requests</span><span class="nav">Venues</span><span class="nav">Settings</span></aside>
+        <div class="dmain">
+          <div class="topbar"><span>Example Little League</span><span>Fall 2026 ▾</span></div>
+          <div class="content">
+            <div class="ph"><div><h4>Field requests</h4></div></div>
+            <div class="empty">
+              <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 5v14M3 12h18"/></svg></div>
+              <h5>No field requests yet</h5>
+              <p>Enter your divisions and practice nights, and FieldSlate works out how many fields of each kind to ask the city for — night by night, with sunset times for your city. Starts from your divisions and team counts in Fall 2026.</p>
+              <span class="btn primary">+ New plan</span>
+            </div>
+            <p class="muted" style="font-size:12.5px;margin-top:10px">"Copy from a previous plan" is hidden until there is a plan to copy.</p>
+          </div>
+        </div>
+      </div>
+
+      <p class="flabel" style="margin-top:22px">Delete confirm (shared ConfirmDialog)</p>
+      <div class="modal" style="margin:0">
+        <div class="mh"><h4>Delete "Fall Ball 2026"?</h4><span class="x">✕</span></div>
+        <p class="sub">The plan and its settings are deleted. Nothing else changes — no season, schedule or practice is touched. This can't be undone.</p>
+        <div class="mact" style="margin-top:6px"><span class="btn">Cancel</span><span class="btn" style="background:#b42318;border-color:#912018;color:#fff">Delete plan</span></div>
+      </div>
+    </div>
+
+    <div>
+      <p class="flabel">375px — a few plans</p>
+      <div class="phone"><div class="scr">
+        <div class="ptop"><b>Field<span>Slate</span></b><span>☰</span></div>
+        <div class="content">
+          <h4 style="margin:0 0 4px;font-size:19px">Field requests</h4>
+          <p class="muted" style="margin:0 0 12px;font-size:13px">How many practice fields to ask the city for. Plans belong to the league, not a season.</p>
+          <div class="btns" style="margin-bottom:14px"><span class="btn primary" style="flex:1;justify-content:center;min-height:44px">+ New plan</span><span class="btn" style="flex:1;justify-content:center;min-height:44px">Copy a plan</span></div>
+          <div class="pcard"><div><div class="nm">Spring 2027</div><div class="meta">Feb 22 – May 29, 2027 · edited today</div><div class="ans">6 60-ft · 2 50/70 · 2 90-ft</div></div><span class="dots">⋯</span></div>
+          <div class="pcard"><div><div class="nm">Spring 2027 — if Juniors adds a team</div><div class="meta">Feb 22 – May 29, 2027 · Oct 19</div><div class="ans">14 60-ft · 4 50/70 · 3 90-ft · same nights</div></div><span class="dots">⋯</span></div>
+          <div class="pcard"><div><div class="nm">Fall Ball 2026</div><div class="meta">Aug 31 – Nov 7, 2026 · Aug 4</div><div class="ans">3 60-ft · 1 50/70</div></div><span class="dots">⋯</span></div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 2 -->
+<section class="screen" id="new">
+  <h2>Screen 2</h2>
+  <h3>New plan · Copy from a previous plan</h3>
+  <p class="why"><b>New plan</b> asks for a name only and opens the planner with one row per division of the league's most recent season (by start date, archived or not), team counts prefilled from that season's live teams. <b>Copy</b> duplicates every setting of an earlier plan, team counts included — it does not re-read the season. No season and no purchase is created either way.</p>
+  <div class="frames">
+    <div>
+      <p class="flabel">Desktop — New plan</p>
+      <div class="modal" style="margin:0 0 22px">
+        <div class="mh"><h4>New field request</h4><span class="x">✕</span></div>
+        <p class="sub">Starts with your divisions and team counts from <b>Fall 2026</b>, your most recent season. You can change anything.</p>
+        <div class="f"><label>Plan name</label><div class="in">Spring 2027</div><div class="help">Any name — "Spring 2027", "Spring 2027 — two new fields".</div></div>
+        <div class="mact"><span class="btn">Cancel</span><span class="btn primary">Create plan</span></div>
+      </div>
+
+      <p class="flabel">Desktop — Copy from a previous plan</p>
+      <div class="modal" style="margin:0">
+        <div class="mh"><h4>Copy a plan</h4><span class="x">✕</span></div>
+        <p class="sub">Copies everything — dates, divisions, team counts, field types, lit fields. Team counts are NOT refreshed from your latest season.</p>
+        <div class="choice on"><span class="radio"></span><div><b>Spring 2027</b><span>Feb 22 – May 29, 2027 · 7 divisions · edited today</span></div></div>
+        <div class="choice"><span class="radio"></span><div><b>Spring 2027 — if Juniors adds a team</b><span>Feb 22 – May 29, 2027 · 7 divisions · Oct 19</span></div></div>
+        <div class="choice"><span class="radio"></span><div><b>Fall Ball 2026</b><span>Aug 31 – Nov 7, 2026 · 4 divisions · Aug 4</span></div></div>
+        <div class="f" style="margin-top:14px"><label>New plan name</label><div class="in">Copy of Spring 2027</div></div>
+        <div class="mact"><span class="btn">Cancel</span><span class="btn primary">Copy plan</span></div>
+      </div>
+      <p class="muted" style="font-size:12.5px;margin-top:8px">"Copy" in a row's "…" menu opens the same modal with that plan already picked.</p>
+    </div>
+    <div>
+      <p class="flabel">375px — New plan (bottom sheet)</p>
+      <div class="phone"><div class="scr">
+        <div class="ptop"><b>Field<span>Slate</span></b><span>☰</span></div>
+        <div class="scrim"></div>
+        <div class="modal sheet" style="width:auto">
+          <div class="mh"><h4>New field request</h4><span class="x">✕</span></div>
+          <p class="sub">Starts with your divisions and team counts from <b>Fall 2026</b>, your most recent season. You can change anything.</p>
+          <div class="f"><label>Plan name</label><div class="in">Spring 2027</div></div>
+          <div class="mact"><span class="btn">Cancel</span><span class="btn primary">Create plan</span></div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 3 -->
+<section class="screen" id="planner">
+  <h2>Screen 3</h2>
+  <h3>The planner — <code>/dashboard/practice-plans/&lt;id&gt;</code></h3>
+  <p class="why">One page, three cards: Practices (name, dates, minutes between), Divisions (one row each, editable), Fields to request (the answer). Saves as you go ("Saved"), like Settings. Majors is switched to "On lit fields", so it is left out of the daylight warnings — compare the last warning with the calculator's "Minors AA, Minors AAA, Majors". Lit fields do not change the field count. Click the two mode buttons — the results swap between the module's two real answers.</p>
+  <div class="frames">
+    <div>
+      <p class="flabel">Desktop</p>
+      <div class="desk">
+        <aside class="side"><div class="brand">Field<span>Slate</span></div>
+          <span class="nav">Overview</span><span class="nav">Seasons</span><span class="nav">Schedule</span><span class="nav">Practices</span><span class="nav sub on">Field requests</span><span class="nav">Venues</span><span class="nav">Officials</span><span class="nav">Settings</span></aside>
+        <div class="dmain">
+          <div class="topbar"><span>Example Little League</span><span>Fall 2026 ▾</span></div>
+          <div class="content">
+            <div class="crumb"><a href="#list">← Field requests</a></div>
+            <div class="ph">
+              <div><h4>Spring 2027</h4><p class="saved">Saved · edited today at 2:41 PM</p></div>
+              <div class="btns"><span class="btn">Copy for city request</span><span class="btn">Print</span><span class="btn ghost">⋯</span></div>
+            </div>
+
+            <div class="card">
+              <h5>Practices</h5>
+              <p class="hint">Dates set the season totals and the daylight check.</p>
+              <div class="grid3">
+                <div class="f"><label>Plan name</label><div class="in">Spring 2027</div></div>
+                <div class="f"><label>Practices start</label><div class="in">Feb 22, 2027</div></div>
+                <div class="f"><label>Practices end</label><div class="in">May 29, 2027</div></div>
+              </div>
+              <div class="grid3" style="margin-top:12px">
+                <div class="f"><label>Minutes between practices</label><div class="in sel">0</div></div>
+                <div class="f" style="grid-column:span 2"><label>Sunset times for</label><div class="in" style="background:var(--soft)">Santa Rosa, CA <a class="link" style="font-size:12.5px">Change in Settings</a></div><div class="help">Your league city, from Settings → Daylight flags. Every plan uses it.</div></div>
+              </div>
+            </div>
+
+            <div class="card" style="overflow-x:auto">
+              <h5>Divisions</h5>
+              <p class="hint">From Fall 2026. "Teams per field" lets younger divisions share a field. Switch on "On lit fields" for a division that practices under lights — it gets no daylight warnings.</p>
+              <table class="dtable">
+                <thead><tr><th>Division</th><th>Teams</th><th>Per week</th><th>Length</th><th>Days</th><th>Window</th><th>Field</th><th>Per field</th><th>On lit fields</th><th></th></tr></thead>
+                <tbody>
+                  <tr><td><div class="in nm-in">T-Ball</div></td><td><div class="in num">6</div><div class="pre">6 in Fall 2026</div></td><td><div class="in num sel">1</div></td><td><div class="in sel">60 min</div></td><td><div class="days"><i class="on">M</i><i class="on">T</i><i class="on">W</i><i class="on">T</i><i class="on">F</i><i>S</i><i>S</i></div></td><td><div class="in" style="white-space:nowrap">5:00–7:00pm</div></td><td><div class="in sel" style="white-space:nowrap">60-ft diamond</div></td><td><div class="in num sel">2</div></td><td><span class="sw"><span class="t"></span>Off</span></td><td><span class="x">✕</span></td></tr>
+                  <tr><td><div class="in nm-in">Rookie</div></td><td><div class="in num">6</div><div class="pre">6 in Fall 2026</div></td><td><div class="in num sel">2</div></td><td><div class="in sel">75 min</div></td><td><div class="days"><i class="on">M</i><i class="on">T</i><i class="on">W</i><i class="on">T</i><i class="on">F</i><i>S</i><i>S</i></div></td><td><div class="in" style="white-space:nowrap">5:00–7:30pm</div></td><td><div class="in sel" style="white-space:nowrap">60-ft diamond</div></td><td><div class="in num sel">2</div></td><td><span class="sw"><span class="t"></span>Off</span></td><td><span class="x">✕</span></td></tr>
+                  <tr><td><div class="in nm-in">Minors AA</div></td><td><div class="in num">8</div><div class="pre">8 in Fall 2026</div></td><td><div class="in num sel">2</div></td><td><div class="in sel">90 min</div></td><td><div class="days"><i class="on">M</i><i class="on">T</i><i class="on">W</i><i class="on">T</i><i class="on">F</i><i>S</i><i>S</i></div></td><td><div class="in" style="white-space:nowrap">5:00–8:00pm</div></td><td><div class="in sel" style="white-space:nowrap">60-ft diamond</div></td><td><div class="in num sel">1</div></td><td><span class="sw"><span class="t"></span>Off</span></td><td><span class="x">✕</span></td></tr>
+                  <tr><td><div class="in nm-in">Minors AAA</div></td><td><div class="in num">8</div><div class="pre">8 in Fall 2026</div></td><td><div class="in num sel">2</div></td><td><div class="in sel">90 min</div></td><td><div class="days"><i class="on">M</i><i class="on">T</i><i class="on">W</i><i class="on">T</i><i class="on">F</i><i>S</i><i>S</i></div></td><td><div class="in" style="white-space:nowrap">5:00–8:00pm</div></td><td><div class="in sel" style="white-space:nowrap">60-ft diamond</div></td><td><div class="in num sel">1</div></td><td><span class="sw"><span class="t"></span>Off</span></td><td><span class="x">✕</span></td></tr>
+                  <tr><td><div class="in nm-in">Majors</div></td><td><div class="in num">6</div><div class="pre">6 in Fall 2026</div></td><td><div class="in num sel">2</div></td><td><div class="in sel">90 min</div></td><td><div class="days"><i class="on">M</i><i class="on">T</i><i class="on">W</i><i class="on">T</i><i class="on">F</i><i>S</i><i>S</i></div></td><td><div class="in" style="white-space:nowrap">5:00–8:00pm</div></td><td><div class="in sel" style="white-space:nowrap">60-ft diamond</div></td><td><div class="in num sel">1</div></td><td><span class="sw on"><span class="t"></span>On</span></td><td><span class="x">✕</span></td></tr>
+                  <tr><td><div class="in nm-in">50/70</div></td><td><div class="in num">4</div><div class="pre">4 in Fall 2026</div></td><td><div class="in num sel">2</div></td><td><div class="in sel">90 min</div></td><td><div class="days"><i class="on">M</i><i class="on">T</i><i class="on">W</i><i class="on">T</i><i class="on">F</i><i>S</i><i>S</i></div></td><td><div class="in" style="white-space:nowrap">5:30–8:00pm</div></td><td><div class="in sel" style="white-space:nowrap">50/70 diamond</div></td><td><div class="in num sel">1</div></td><td><span class="sw"><span class="t"></span>Off</span></td><td><span class="x">✕</span></td></tr>
+                  <tr><td><div class="in nm-in">Juniors</div></td><td><div class="in num">3</div><div class="pre">3 in Fall 2026</div></td><td><div class="in num sel">2</div></td><td><div class="in sel">120 min</div></td><td><div class="days"><i class="on">M</i><i>T</i><i class="on">W</i><i>T</i><i class="on">F</i><i>S</i><i>S</i></div></td><td><div class="in" style="white-space:nowrap">5:30–8:30pm</div></td><td><div class="in sel" style="white-space:nowrap">90-ft diamond</div></td><td><div class="in num sel">1</div></td><td><span class="sw"><span class="t"></span>Off</span></td><td><span class="x">✕</span></td></tr>
+                </tbody>
+              </table>
+              <div class="addrow"><span class="btn sm">+ Add a division</span></div>
+            </div>
+
+            <div class="card" id="results-desk">
+              <div class="resbar">
+                <div><h5>Fields to request</h5><p class="hint" style="margin:0">The most fields in use at the same time on your busiest night, by field type.</p></div>
+                <div class="seg" role="group" aria-label="Practice spread" data-seg="desk"><button aria-pressed="true" data-mode="spread">Spread across the week</button><button aria-pressed="false" data-mode="same">Everyone wants the same nights</button></div>
+              </div>
+              <div class="answers" data-answers></div>
+              <table class="nights" data-nights></table>
+              <div style="margin-top:14px">
+                <p class="sunline">Sunset in Santa Rosa on Feb 22 is 5:57pm. Majors is on lit fields and isn't checked.</p>
+                <div data-warnings></div>
+              </div>
+              <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
+                <div class="totals"><div><b>76</b>team practices a week</div><div><b>101</b>field hours a week</div><div><b>14</b>weeks</div><div><b>1,407</b>field hours this season</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="flabel" style="margin-top:22px">Desktop — a division with no team count to copy</p>
+      <div class="card" style="overflow-x:auto">
+        <table class="dtable">
+          <thead><tr><th>Division</th><th>Teams</th><th>Per week</th><th>Length</th><th>Days</th><th>Window</th><th>Field</th><th>Per field</th><th>On lit fields</th></tr></thead>
+          <tbody><tr class="newdiv"><td><div class="in nm-in">Seniors</div></td><td><div class="in num" style="color:var(--muted)">—</div><div class="needs">No Seniors in Fall 2026. Not counted until you enter teams.</div></td><td><div class="in num sel">2</div></td><td><div class="in sel">90 min</div></td><td><div class="days"><i class="on">M</i><i class="on">T</i><i class="on">W</i><i class="on">T</i><i class="on">F</i><i>S</i><i>S</i></div></td><td><div class="in" style="white-space:nowrap">5:30–8:00pm</div></td><td><div class="in sel" style="white-space:nowrap">90-ft diamond</div></td><td><div class="in num sel">1</div></td><td><span class="sw"><span class="t"></span>Off</span></td></tr></tbody>
+        </table>
+        <p class="muted" style="font-size:12.5px;margin:10px 0 0">A division renamed in the planner, or added with "+ Add a division", starts the same way — FieldSlate never guesses a team count for a field request. (The module already leaves a 0-team division out of every number.)</p>
+      </div>
+    </div>
+
+    <div>
+      <p class="flabel">375px — divisions collapse to cards; results stack</p>
+      <div class="phone"><div class="scr" style="min-height:auto">
+        <div class="ptop"><b>Field<span>Slate</span></b><span>☰</span></div>
+        <div class="content">
+          <div class="crumb"><a href="#list">← Field requests</a></div>
+          <h4 style="margin:0;font-size:19px">Spring 2027</h4>
+          <p class="saved" style="margin:2px 0 12px">Saved</p>
+          <div class="card">
+            <h5>Practices</h5>
+            <div class="grid3" style="margin-top:8px">
+              <div class="f wide"><label>Plan name</label><div class="in">Spring 2027</div></div>
+              <div class="f"><label>Start</label><div class="in">Feb 22, 2027</div></div>
+              <div class="f"><label>End</label><div class="in">May 29, 2027</div></div>
+              <div class="f wide"><label>Minutes between practices</label><div class="in sel">0</div></div>
+            </div>
+            <p class="help muted" style="font-size:12.5px;margin:8px 0 0">Sunset times for Santa Rosa, CA · <a class="link">Change in Settings</a></p>
+          </div>
+          <div class="card">
+            <h5>Divisions</h5>
+            <p class="hint">From Fall 2026. Tap a division to edit.</p>
+            <div class="dcard"><div class="top"><b>T-Ball</b><span class="chev">▸</span></div><div class="sum">6 teams · 1×/wk · 60 min · Mon–Fri 5–7pm · 60-ft · 2 per field</div></div>
+            <div class="dcard"><div class="top"><b>Rookie</b><span class="chev">▸</span></div><div class="sum">6 teams · 2×/wk · 75 min · Mon–Fri 5–7:30pm · 60-ft · 2 per field</div></div>
+            <div class="dcard open"><div class="top"><b>Majors</b><span class="chev">▾</span></div>
+              <div class="body">
+                <div class="grid2"><div class="f"><label>Teams</label><div class="in">6</div><div class="help">6 in Fall 2026</div></div><div class="f"><label>Per week</label><div class="in sel">2</div></div></div>
+                <div class="grid2"><div class="f"><label>Length</label><div class="in sel">90 min</div></div><div class="f"><label>Teams per field</label><div class="in sel">1</div></div></div>
+                <div class="f"><label>Days</label><div class="days"><i class="on">M</i><i class="on">T</i><i class="on">W</i><i class="on">T</i><i class="on">F</i><i>S</i><i>S</i></div></div>
+                <div class="grid2"><div class="f"><label>From</label><div class="in">5:00pm</div></div><div class="f"><label>Until</label><div class="in">8:00pm</div></div></div>
+                <div class="f"><label>Field</label><div class="in sel">60-ft diamond</div></div>
+                <div style="display:flex;justify-content:space-between;align-items:center"><span class="sw on" style="font-size:14px"><span class="t"></span>On lit fields</span><span class="btn sm ghost" style="color:#b42318">Remove</span></div>
+                <div class="help muted" style="font-size:12px">No daylight warnings for Majors.</div>
+              </div></div>
+            <div class="dcard"><div class="top"><b>Minors AA</b><span class="chev">▸</span></div><div class="sum">8 teams · 2×/wk · 90 min · Mon–Fri 5–8pm · 60-ft</div></div>
+            <p class="muted" style="font-size:12px;margin:8px 0 0">+ 3 more · <span class="link">+ Add a division</span></p>
+          </div>
+          <div class="card" id="results-phone">
+            <h5>Fields to request</h5>
+            <div class="seg" role="group" aria-label="Practice spread" data-seg="phone" style="margin-top:8px"><button aria-pressed="true" data-mode="spread">Spread out</button><button aria-pressed="false" data-mode="same">Same nights</button></div>
+            <div class="answers" data-answers></div>
+            <div class="nlist" data-nlist></div>
+            <p class="sunline" style="margin-top:12px">Sunset in Santa Rosa on Feb 22 is 5:57pm. Majors is on lit fields and isn't checked.</p>
+            <div data-warnings></div>
+            <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+              <div class="totals"><div><b>76</b>team practices a week</div><div><b>101</b>field hours a week</div><div><b>14</b>weeks</div><div><b>1,407</b>field hours this season</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="sticky"><span class="btn">Copy for city</span><span class="btn">Print</span></div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 4 -->
+<section class="screen" id="request">
+  <h2>Screen 4</h2>
+  <h3>Copy for city request · Print</h3>
+  <p class="why"><b>Copy</b> puts the module's <code>requestText</code> on the clipboard verbatim, for the mode on screen, and says "Copied". If the clipboard is refused, a modal shows the same text selected so it can be copied by hand. <b>Print</b> uses the app's <code>.fieldslate-print-region</code> mechanism with a new app component (not the marketing one): league and plan name in the header, a "Lit fields" column, and no "Made with the free calculator" line. Notes list the warnings as shown. Safari print check owed when built.</p>
+  <div class="frames">
+    <div>
+      <p class="flabel">Desktop — clipboard refused fallback (spread)</p>
+      <div class="modal" style="margin:0 0 22px;width:100%;max-width:560px">
+        <div class="mh"><h4>Copy for city request</h4><span class="x">✕</span></div>
+        <p class="sub">Your browser didn't allow copying. The text is selected — press ⌘C (Ctrl+C) to copy it.</p>
+<pre class="req">Practice field request: Feb 22 to May 29, 2027
+
+60-ft diamonds: 6 at the busiest time
+  Monday: 6 fields, 5pm to 8pm
+  Tuesday: 6 fields, 5pm to 8pm
+  Wednesday: 6 fields, 5pm to 8pm
+  Thursday: 6 fields, 5pm to 8pm
+  Friday: 6 fields, 5pm to 8pm
+
+50/70 diamonds: 2 at the busiest time
+  Monday: 2 fields, 5:30pm to 7pm
+  Tuesday: 2 fields, 5:30pm to 7pm
+  Wednesday: 2 fields, 5:30pm to 7pm
+  Thursday: 1 field, 5:30pm to 7pm
+  Friday: 1 field, 5:30pm to 7pm
+
+90-ft diamonds: 2 at the busiest time
+  Monday: 2 fields, 5:30pm to 7:30pm
+  Wednesday: 2 fields, 5:30pm to 7:30pm
+  Friday: 2 fields, 5:30pm to 7:30pm
+
+Based on: T-Ball (6 teams, 1x/week, 60 min); Rookie (6 teams, 2x/week, 75 min); Minors AA (8 teams, 2x/week, 90 min); Minors AAA (8 teams, 2x/week, 90 min); Majors (6 teams, 2x/week, 90 min); 50/70 (4 teams, 2x/week, 90 min); Juniors (3 teams, 2x/week, 120 min).</pre>
+        <div class="mact"><span class="btn primary">Done</span></div>
+      </div>
+
+      <p class="flabel">Print — US Letter, portrait (spread)</p>
+      <div class="paper">
+        <div class="wm">Field<span>Slate</span></div>
+        <div class="lg">Example Little League — Spring 2027 practice field request</div>
+        <div class="mt">Feb 22 to May 29, 2027 · Near Santa Rosa, CA · Practices spread across the week · Printed Oct 21, 2026</div>
+        <h6>Fields to request</h6>
+        <table><thead><tr><th>Field type</th><th>Fields</th><th>Busiest night</th><th>If everyone wants the same nights</th></tr></thead>
+          <tbody><tr><td>60-ft diamond</td><td>6</td><td>Mon–Fri</td><td>14</td></tr><tr><td>50/70 diamond</td><td>2</td><td>Mon–Wed</td><td>4</td></tr><tr><td>90-ft diamond</td><td>2</td><td>Mon, Wed, Fri</td><td>3</td></tr></tbody></table>
+        <h6>Night by night</h6>
+        <table><thead><tr><th>Night</th><th>60-ft diamond</th><th>50/70 diamond</th><th>90-ft diamond</th></tr></thead>
+          <tbody>
+            <tr><td>Monday</td><td>6 fields, 5pm to 8pm</td><td>2 fields, 5:30pm to 7pm</td><td>2 fields, 5:30pm to 7:30pm</td></tr>
+            <tr><td>Tuesday</td><td>6 fields, 5pm to 8pm</td><td>2 fields, 5:30pm to 7pm</td><td>—</td></tr>
+            <tr><td>Wednesday</td><td>6 fields, 5pm to 8pm</td><td>2 fields, 5:30pm to 7pm</td><td>2 fields, 5:30pm to 7:30pm</td></tr>
+            <tr><td>Thursday</td><td>6 fields, 5pm to 8pm</td><td>1 field, 5:30pm to 7pm</td><td>—</td></tr>
+            <tr><td>Friday</td><td>6 fields, 5pm to 8pm</td><td>1 field, 5:30pm to 7pm</td><td>2 fields, 5:30pm to 7:30pm</td></tr>
+          </tbody></table>
+        <h6>Notes</h6>
+        <ul>
+          <li>Daylight: T-Ball runs until 6pm, but sunset on Feb 22 is 5:57pm. Without lights, a 6pm finish works from Feb 26.</li>
+          <li>Daylight: 50/70 runs until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7pm finish works from Mar 14.</li>
+          <li>Daylight: Rookie runs until 7:15pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7:15pm finish works from Mar 14.</li>
+          <li>Daylight: Juniors runs until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7:30pm finish works from Mar 28.</li>
+          <li>Daylight: Minors AA, Minors AAA run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, an 8pm finish works from Apr 29.</li>
+        </ul>
+        <h6>Divisions</h6>
+        <table><thead><tr><th>Division</th><th>Teams</th><th>Practices a week</th><th>Length</th><th>Days</th><th>Window</th><th>Field</th><th>Teams per field</th><th>Lit fields</th></tr></thead>
+          <tbody>
+            <tr><td>T-Ball</td><td>6</td><td>1</td><td>60 min</td><td>Mon–Fri</td><td>5pm–7pm</td><td>60-ft diamond</td><td>2</td><td></td></tr>
+            <tr><td>Rookie</td><td>6</td><td>2</td><td>75 min</td><td>Mon–Fri</td><td>5pm–7:30pm</td><td>60-ft diamond</td><td>2</td><td></td></tr>
+            <tr><td>Minors AA</td><td>8</td><td>2</td><td>90 min</td><td>Mon–Fri</td><td>5pm–8pm</td><td>60-ft diamond</td><td>1</td><td></td></tr>
+            <tr><td>Minors AAA</td><td>8</td><td>2</td><td>90 min</td><td>Mon–Fri</td><td>5pm–8pm</td><td>60-ft diamond</td><td>1</td><td></td></tr>
+            <tr><td>Majors</td><td>6</td><td>2</td><td>90 min</td><td>Mon–Fri</td><td>5pm–8pm</td><td>60-ft diamond</td><td>1</td><td>Yes</td></tr>
+            <tr><td>50/70</td><td>4</td><td>2</td><td>90 min</td><td>Mon–Fri</td><td>5:30pm–8pm</td><td>50/70 diamond</td><td>1</td><td></td></tr>
+            <tr><td>Juniors</td><td>3</td><td>2</td><td>120 min</td><td>Mon, Wed, Fri</td><td>5:30pm–8:30pm</td><td>90-ft diamond</td><td>1</td><td></td></tr>
+          </tbody></table>
+        <p class="mt" style="margin-top:10px">76 team practices a week · 101 field hours a week · 14 weeks · 1,407 field hours this season</p>
+      </div>
+    </div>
+    <div>
+      <p class="flabel">375px — after Copy</p>
+      <div class="phone"><div class="scr">
+        <div class="ptop"><b>Field<span>Slate</span></b><span>☰</span></div>
+        <div class="content">
+          <div class="crumb"><a>← Field requests</a></div>
+          <h4 style="margin:0 0 12px;font-size:19px">Spring 2027</h4>
+          <div class="card"><h5>Fields to request</h5>
+            <div class="answers">
+              <div class="ans-card"><div class="n">6</div><div class="z">60-ft diamonds</div><div class="alt">Busiest: Mon–Fri. 14 if everyone wants the same nights.</div></div>
+              <div class="ans-card"><div class="n">2</div><div class="z">50/70 diamonds</div><div class="alt">Busiest: Mon–Wed. 4 if everyone wants the same nights.</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="toast">Copied — paste it into your request to the city</div>
+      </div></div>
+      <p class="muted" style="font-size:12.5px;margin-top:8px">Print from a phone opens the share sheet's print, same document.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 5 -->
+<section class="screen" id="nocity">
+  <h2>Screen 5</h2>
+  <h3>No league city set</h3>
+  <p class="why">The planner reads the city with <code>cityByIdOrNull(profiles.sunset_city)</code>. No city, or a stored id that no longer exists → no daylight section, no sunset line, nothing about Sacramento. Field counts, the request text and totals are unchanged (they never depend on the city). The print leaves out "Near …" and the daylight notes.</p>
+  <div class="frames">
+    <div>
+      <p class="flabel">Desktop — results card</p>
+      <div class="card">
+        <div class="resbar">
+          <div><h5>Fields to request</h5><p class="hint" style="margin:0">The most fields in use at the same time on your busiest night, by field type.</p></div>
+          <div class="seg"><button aria-pressed="true">Spread across the week</button><button aria-pressed="false">Everyone wants the same nights</button></div>
+        </div>
+        <div class="answers">
+          <div class="ans-card"><div class="n">6</div><div class="z">60-ft diamonds</div><div class="alt">Busiest: Mon–Fri. 14 if everyone wants the same nights.</div></div>
+          <div class="ans-card"><div class="n">2</div><div class="z">50/70 diamonds</div><div class="alt">Busiest: Mon–Wed. 4 if everyone wants the same nights.</div></div>
+          <div class="ans-card"><div class="n">2</div><div class="z">90-ft diamonds</div><div class="alt">Busiest: Mon, Wed, Fri. 3 if everyone wants the same nights.</div></div>
+        </div>
+        <div class="note info" style="margin-top:14px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2"/></svg>
+          <div><b>No daylight check yet.</b> Set your league city to see when practices finish after sunset. <a class="link">Set your league city</a></div>
+        </div>
+      </div>
+      <p class="muted" style="font-size:12.5px;margin-top:8px">The Practices card's "Sunset times for" field reads "Not set · <span class="link">Set your league city</span>". The link goes to Settings → Daylight flags (the one place the city is written, <code>set_org_daylight</code>). The "On lit fields" switches stay visible and saved.</p>
+    </div>
+    <div>
+      <p class="flabel">375px</p>
+      <div class="phone"><div class="scr" style="min-height:560px">
+        <div class="ptop"><b>Field<span>Slate</span></b><span>☰</span></div>
+        <div class="content">
+          <div class="card"><h5>Fields to request</h5>
+            <div class="answers">
+              <div class="ans-card"><div class="n">6</div><div class="z">60-ft diamonds</div><div class="alt">Busiest: Mon–Fri.</div></div>
+              <div class="ans-card"><div class="n">2</div><div class="z">50/70 diamonds</div><div class="alt">Busiest: Mon–Wed.</div></div>
+            </div>
+            <div class="note info" style="margin-top:12px"><div><b>No daylight check yet.</b> Set your league city to see when practices finish after sunset. <a class="link">Set your league city</a></div></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 6 -->
+<section class="screen" id="free">
+  <h2>Screen 6</h2>
+  <h3>Free plan — upsell</h3>
+  <p class="why">Server-gated like the other paid pages: a Free league sees the nav item with the Pro tag and, on the page, the shared <code>FeatureLockedCard</code> pattern. It points to the free public calculator so the league isn't stuck — that tool saves nothing and doesn't know the league's divisions or city. Plans saved while paid stay stored after a downgrade (tier-blind data, gated UI, same as officials).</p>
+  <div class="frames">
+    <div>
+      <p class="flabel">Desktop</p>
+      <div class="desk" style="min-height:380px">
+        <aside class="side"><div class="brand">Field<span>Slate</span></div>
+          <span class="nav">Overview</span><span class="nav">Seasons</span><span class="nav">Schedule</span><span class="nav">Practices</span><span class="nav sub on">Field requests<span class="pro">PRO</span></span><span class="nav">Venues</span><span class="nav">Settings</span></aside>
+        <div class="dmain">
+          <div class="topbar"><span>Example Little League · Free</span><span>Fall 2026 ▾</span></div>
+          <div class="content">
+            <div class="ph"><div><h4>Field requests</h4></div></div>
+            <div class="empty" style="border-style:solid">
+              <div class="ic" style="background:var(--violet-bg);color:var(--violet)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+              <h5>Field requests are on Pro and Elite</h5>
+              <p>Save practice field plans for your league: starts from your divisions and team counts, checks daylight for your city, and keeps every plan so next season starts from this one.</p>
+              <div class="btns" style="justify-content:center"><span class="btn primary">See plans</span><span class="btn">Use the free calculator ↗</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="flabel">375px</p>
+      <div class="phone"><div class="scr" style="min-height:560px">
+        <div class="ptop"><b>Field<span>Slate</span></b><span>☰</span></div>
+        <div class="content">
+          <h4 style="margin:0 0 12px;font-size:19px">Field requests</h4>
+          <div class="empty" style="border-style:solid;padding:24px 16px">
+            <div class="ic" style="background:var(--violet-bg);color:var(--violet)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+            <h5>Field requests are on Pro and Elite</h5>
+            <p>Save practice field plans for your league: starts from your divisions and team counts, checks daylight for your city, and keeps every plan.</p>
+            <span class="btn primary" style="width:100%;justify-content:center;min-height:44px">See plans</span>
+            <span class="btn" style="width:100%;justify-content:center;min-height:44px;margin-top:8px">Use the free calculator ↗</span>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ notes -->
+<section class="notes" id="notes">
+  <h2>Notes for the build</h2>
+  <h3>Module — unchanged, and how the app uses it</h3>
+  <ul>
+    <li><b>No edits to <code>src/lib/practice-planner/</code> or <code>src/lib/sun/</code>.</b> The app calls <code>computeMode</code>, <code>divisionWarnings</code>, <code>daylightWarnings</code>, <code>seasonTotals</code>, <code>requestText</code>, <code>busiestLabel</code>, <code>seasonRangeLabel</code> directly — <b>not <code>computePlan</code></b>, whose daylight warnings and sunset line go through <code>cityById</code> (the Sacramento fallback). Daylight is computed only when <code>cityByIdOrNull</code> returns a city; the city id handed to the module is then always a real one.</li>
+    <li><b>Lit fields without touching the module:</b> <code>daylightWarnings</code> is called with a copy of the input where each lit division's <code>days</code> is <code>[]</code>. <code>divisionIsActive</code> then skips it, while the mode result (computed from the real input) keeps its division indexes. Field counts, totals and the request text use the real input. The numbers on this page were produced exactly that way.</li>
+    <li>All sentences on screen are the module's, verbatim. App-only words (lit-fields line, prefill hints, empty states, no-city note, upsell) live in one new pure file in <code>src/lib/practice-planner-app/</code> or similar — not inside the calculator module.</li>
+  </ul>
+  <h3>Storage (needs a migration — not part of this mockup)</h3>
+  <ul>
+    <li>One table, e.g. <code>practice_plans</code>: org-scoped (<code>owner_id</code>), <code>name</code>, <code>input jsonb</code> (a <code>PlannerInput</code> minus <code>cityId</code>, each division plus <code>lit</code>), <code>mode</code>, timestamps, <code>updated_by</code>. No <code>league_id</code>, no FK to divisions — a plan is a snapshot the admin edits. RLS the 0049 <code>is_org_member</code> form; Pro/Elite enforced in writes, not just the page.</li>
+    <li>The city is NOT stored per plan; every plan reads the league's <code>profiles.sunset_city</code> at render time.</li>
+  </ul>
+  <h3>Prefill</h3>
+  <ul>
+    <li>"Most recent season" = the org's season with the latest <code>start_date</code>, archived or not. One row per division of that season, name copied, team count = that division's live <code>teams</code> rows (never <code>teams.practices_per_week</code>, never <code>divisions.team_count</code>). Other fields start from the calculator's <code>NEW_DIVISION</code> defaults.</li>
+    <li>The "6 in Fall 2026" hint matches by case-insensitive trimmed name; a division with no match starts at 0 teams (not counted) with the amber line.</li>
+    <li>A league with no seasons yet: the planner opens with no rows and "+ Add a division".</li>
+  </ul>
+  <h3>Open questions for Whit</h3>
+  <ul>
+    <li><b>Nav placement:</b> "Field requests" under Practices (shown), or a tab on the Practices page?</li>
+    <li><b>Daylight toggle:</b> if Settings → Daylight flags is switched OFF but a city is set, should the planner still show daylight warnings? Mockup assumes yes (the toggle is about game flags).</li>
+    <li><b>Copy + teams:</b> should Copy offer "Refresh team counts from Fall 2026"? Mockup says no — Copy is an exact duplicate.</li>
+    <li><b>Request text and lit fields:</b> <code>requestText</code> (unchanged) doesn't mention lights. Fine for v1, or does the city need to know which requests are for lit fields? That would mean an app-side line after the module's text, or a module change.</li>
+    <li><b>"See plans"</b> on the upsell goes to the existing plan-choice screen — confirm the target.</li>
+  </ul>
+</section>
+</div>
+
+<script>
+// Two real answers from the unchanged module (Santa Rosa, Majors lit).
+const DATA = {
+  spread: {
+    answers: [
+      { n: 6, z: "60-ft diamonds", alt: "Busiest: Mon–Fri. 14 if everyone wants the same nights." },
+      { n: 2, z: "50/70 diamonds", alt: "Busiest: Mon–Wed. 4 if everyone wants the same nights." },
+      { n: 2, z: "90-ft diamonds", alt: "Busiest: Mon, Wed, Fri. 3 if everyone wants the same nights." },
+    ],
+    nights: {
+      "60-ft diamond": [[6,"5pm–8pm"],[6,"5pm–8pm"],[6,"5pm–8pm"],[6,"5pm–8pm"],[6,"5pm–8pm"],null,null],
+      "50/70 diamond": [[2,"5:30–7pm"],[2,"5:30–7pm"],[2,"5:30–7pm"],[1,"5:30–7pm"],[1,"5:30–7pm"],null,null],
+      "90-ft diamond": [[2,"5:30–7:30pm"],null,[2,"5:30–7:30pm"],null,[2,"5:30–7:30pm"],null,null],
+    },
+    warnings: [
+      "Daylight: T-Ball runs until 6pm, but sunset on Feb 22 is 5:57pm. Without lights, a 6pm finish works from Feb 26.",
+      "Daylight: 50/70 runs until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7pm finish works from Mar 14.",
+      "Daylight: Rookie runs until 7:15pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7:15pm finish works from Mar 14.",
+      "Daylight: Juniors runs until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7:30pm finish works from Mar 28.",
+      "Daylight: Minors AA, Minors AAA run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, an 8pm finish works from Apr 29.",
+    ],
+  },
+  same: {
+    answers: [
+      { n: 14, z: "60-ft diamonds", alt: "Busiest: Tuesday. 6 if spread across the week." },
+      { n: 4, z: "50/70 diamonds", alt: "Busiest: Tue, Thu. 2 if spread across the week." },
+      { n: 3, z: "90-ft diamonds", alt: "Busiest: Mon, Wed. 2 if spread across the week." },
+    ],
+    nights: {
+      "60-ft diamond": [null,[14,"5pm–8pm"],null,[13,"5pm–8pm"],null,null,null],
+      "50/70 diamond": [null,[4,"5:30–7pm"],null,[4,"5:30–7pm"],null,null,null],
+      "90-ft diamond": [[3,"5:30–7:30pm"],null,[3,"5:30–7:30pm"],null,null,null,null],
+    },
+    warnings: [
+      "Daylight: T-Ball, 50/70 run until 7pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7pm finish works from Mar 14.",
+      "Daylight: Rookie, Juniors run until 7:30pm, but sunset on Feb 22 is 5:57pm. Without lights, a 7:30pm finish works from Mar 28.",
+      "Daylight: Minors AA, Minors AAA run until 8pm, but sunset on Feb 22 is 5:57pm. Without lights, an 8pm finish works from Apr 29.",
+    ],
+  },
+};
+const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const LONG = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2"/></svg>';
+function render(card, mode) {
+  const d = DATA[mode];
+  card.querySelector("[data-answers]").innerHTML = d.answers.map(a =>
+    `<div class="ans-card"><div class="n">${a.n}</div><div class="z">${a.z}</div><div class="alt">${a.alt}</div></div>`).join("");
+  const t = card.querySelector("[data-nights]");
+  if (t) {
+    const used = DAYS.map((_, k) => Object.values(d.nights).some(r => r[k]));
+    t.innerHTML = `<thead><tr><th>Field</th>${DAYS.map((x,k)=>used[k]?`<th>${x}</th>`:"").join("")}</tr></thead><tbody>` +
+      Object.entries(d.nights).map(([z, row]) => `<tr><td class="z">${z}</td>${row.map((c,k)=>!used[k]?"":c?`<td class="c"><b>${c[0]}</b><small>${c[1]}</small></td>`:`<td class="c none">—</td>`).join("")}</tr>`).join("") + "</tbody>";
+  }
+  const l = card.querySelector("[data-nlist]");
+  if (l) {
+    l.innerHTML = Object.entries(d.nights).map(([z, row]) => `<div class="z">${z}s</div>` +
+      row.map((c,k)=>c?`<div class="r"><span>${LONG[k]}</span><span>${c[0]} field${c[0]>1?"s":""} · ${c[1]}</span></div>`:"").join("")).join("");
+  }
+  card.querySelector("[data-warnings]").innerHTML = d.warnings.map(w => `<div class="note warn">${SUN}<div>${w}</div></div>`).join("");
+  card.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+}
+for (const id of ["results-desk", "results-phone"]) {
+  const card = document.getElementById(id);
+  render(card, "spread");
+  card.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => render(card, b.dataset.mode)));
+}
+</script>
+</body>
+</html>
