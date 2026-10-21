@@ -26,15 +26,46 @@ import {
   groupHeight,
   groupedTreeLayout,
   singleElimLayout,
+  type GroupDims,
   type PlacedItem,
+  type TreeDims,
 } from "@/lib/playoffs/bracket-print";
-import { SeriesGroup } from "@/components/playoffs/series-card";
-import { seriesChampionLine, seriesGamesOf, seriesGroupTitle, seriesHeadline } from "@/lib/playoffs/series";
+import { SeriesGroup, TONE_CHIP } from "@/components/playoffs/series-card";
+import {
+  NOT_NEEDED,
+  SERIES_TAG_TEXT,
+  gameHasResult,
+  seriesChampionLine,
+  seriesGameActions,
+  seriesGameTag,
+  seriesGamesOf,
+  seriesGroupTitle,
+  seriesHeadline,
+} from "@/lib/playoffs/series";
+import { gameLabel } from "@/lib/playoffs/bracket-labels";
 import { isSeriesGame, isSeriesRound, roundTitle, seriesLengthOf } from "@/lib/playoffs/series-names";
 import type { PlayoffGame } from "@/types/database";
 
-/** A playoff game as the pieces read it: the stored row plus names. */
-export interface BracketGame extends PlayoffGame {
+/** A playoff game as the pieces read it: the stored columns they use, plus
+ *  names. The public page builds these from its reader (no ids beyond the
+ *  teams', no timestamps). */
+export interface BracketGame
+  extends Pick<
+    PlayoffGame,
+    | "id"
+    | "playoff_id"
+    | "round"
+    | "game_number"
+    | "series_game"
+    | "status"
+    | "winner_id"
+    | "home_team_id"
+    | "away_team_id"
+    | "scheduled_date"
+    | "start_time"
+    | "seed_home"
+    | "seed_away"
+  > {
   home_team_name: string | null;
   away_team_name: string | null;
   venue_name: string | null;
@@ -72,8 +103,13 @@ const roundLabel = playoffRoundLabel;
 
 // The card's geometry is SCREEN_TREE (bracket-print.ts): the tree layout
 // places cards and lines with those numbers, so the bands below have fixed
-// heights that match them — h-10 when/where, h-8 rows, h-8 actions.
+// heights that match them — h-10 when/where, h-8 rows, h-8 actions. A card
+// with no action row (the public page) is PUBLIC_TREE's height instead.
 const CARD_W = SCREEN_TREE.cardW;
+
+/** The admin's words for a game with no date; the public page says
+ *  "Date TBD" (public-bracket/view.ts). */
+const UNDATED_ADMIN = "No date yet";
 
 function GameCard<G extends BracketGame>({
   game,
@@ -83,6 +119,8 @@ function GameCard<G extends BracketGame>({
   chipOf,
   onEnterResult,
   onEdit,
+  cardH = SCREEN_TREE.cardH,
+  undatedText = UNDATED_ADMIN,
 }: {
   game: G;
   isChampionship: boolean;
@@ -92,6 +130,9 @@ function GameCard<G extends BracketGame>({
   /** Both or neither: without them the card has no action row. */
   onEnterResult?: () => void;
   onEdit?: () => void;
+  /** The card's height: SCREEN_TREE's, or PUBLIC_TREE's without actions. */
+  cardH?: number;
+  undatedText?: string;
 }) {
   const homeWon = slotWon(game.winner_id, game.home_team_id);
   const awayWon = slotWon(game.winner_id, game.away_team_id);
@@ -103,10 +144,10 @@ function GameCard<G extends BracketGame>({
     <div style={{ width: CARD_W }}>
       <div
         className="flex flex-col overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm"
-        style={{ height: SCREEN_TREE.cardH }}
+        style={{ height: cardH }}
       >
         {/* When and where — shown for every game, so an unplaced (TBD) game
-            reads "No date yet" instead of hiding the gap. */}
+            reads "No date yet" (public: "Date TBD") instead of hiding the gap. */}
         <div className="h-10 flex-none border-b border-gray-100 px-2.5 py-1 text-[10px] leading-4">
           {game.scheduled_date ? (
             <p className="truncate text-gray-500">
@@ -114,7 +155,7 @@ function GameCard<G extends BracketGame>({
               {game.start_time ? ` · ${fmtTime(game.start_time)}` : ""}
             </p>
           ) : (
-            <p className="truncate italic text-amber-600">Game {numberOf(game)} · No date yet</p>
+            <p className="truncate italic text-amber-600">Game {numberOf(game)} · {undatedText}</p>
           )}
           <p className="truncate text-gray-500">{game.venue_name ?? ""}</p>
         </div>
@@ -241,6 +282,30 @@ export type ListSeries = {
   actions: { result: boolean; edit: boolean; move: boolean };
 } | null;
 
+/** A game's series info for the list (0114): its name, its chip — the
+ *  series' standing on its latest result, else Next / If needed / Not needed —
+ *  and what it offers. Null for a single game. Shared by the Playoffs page and
+ *  the public bracket page (which passes no callbacks, so `actions` is moot). */
+export function seriesListInfo<G extends BracketGame>(g: G, games: G[], teamName: (id: string) => string): ListSeries {
+  if (!isSeriesGame(g, games)) return null;
+  const sgames = seriesGamesOf(g, games);
+  const tag = seriesGameTag(g, sgames);
+  const latest = [...sgames].reverse().find(gameHasResult);
+  let chip: { text: string; className: string } | null = null;
+  if (latest && latest.id === g.id) {
+    const h = seriesHeadline(sgames, teamName);
+    chip = { text: h.text, className: TONE_CHIP[h.tone] };
+  } else if (tag === "next" || tag === "if_needed" || tag === "not_needed") {
+    chip = { text: SERIES_TAG_TEXT[tag], className: tag === "if_needed" ? TONE_CHIP.amber : TONE_CHIP.gray };
+  }
+  return {
+    label: gameLabel(g, games),
+    chip,
+    notNeeded: g.status === NOT_NEEDED || tag === "not_needed",
+    actions: seriesGameActions(g, sgames),
+  };
+}
+
 export function ListGameRow<G extends BracketGame>({
   game,
   isChampionship,
@@ -251,6 +316,7 @@ export function ListGameRow<G extends BracketGame>({
   roundName,
   onEnterResult,
   onEdit,
+  undatedText = UNDATED_ADMIN,
 }: {
   game: G;
   isChampionship: boolean;
@@ -263,6 +329,7 @@ export function ListGameRow<G extends BracketGame>({
   /** Without them the row offers no buttons. */
   onEnterResult?: () => void;
   onEdit?: () => void;
+  undatedText?: string;
 }) {
   const bothTeams = !!game.home_team_id && !!game.away_team_id;
   const isDone = game.status === "completed";
@@ -323,7 +390,7 @@ export function ListGameRow<G extends BracketGame>({
             {fmtDate(game.scheduled_date)}
           </span>
         ) : (
-          <span className="text-xs font-medium text-amber-600">No date yet</span>
+          <span className="text-xs font-medium text-amber-600">{undatedText}</span>
         )}
         {game.start_time && (
           <span className="flex items-center gap-1 text-xs text-gray-400">
@@ -387,6 +454,10 @@ export function BracketTree<G extends BracketGame>({
   teamName,
   onEnterResult,
   onEdit,
+  tree = SCREEN_TREE,
+  group = SCREEN_GROUP,
+  undatedText = UNDATED_ADMIN,
+  hideNotNeeded = false,
 }: {
   games: G[];
   championshipRound: string | null;
@@ -397,6 +468,14 @@ export function BracketTree<G extends BracketGame>({
   /** Both or neither: without them no card or group offers a button. */
   onEnterResult?: (game: G) => void;
   onEdit?: (game: G) => void;
+  /** SCREEN_TREE / SCREEN_GROUP, or PUBLIC_TREE / PUBLIC_GROUP (no actions). */
+  tree?: TreeDims;
+  group?: GroupDims;
+  undatedText?: string;
+  /** The public page: a series' not-needed games count toward its length and
+   *  standing but get no card (the reader never sends them; the page rebuilds
+   *  them as not-needed rows only so the series rules see the full series). */
+  hideNotNeeded?: boolean;
 }) {
   if (games.length === 0) return null;
 
@@ -408,15 +487,17 @@ export function BracketTree<G extends BracketGame>({
   // placed by its middle, where its lines leave and enter (groupedTreeLayout).
   const withSeries = games.some((g) => (g.series_game ?? 1) >= 2);
   const L = withSeries
-    ? groupedTreeLayout(games, SCREEN_TREE, (first, series) =>
+    ? groupedTreeLayout(games, tree, (first, series) =>
         groupHeight(
-          SCREEN_GROUP,
+          group,
           seriesGroupTitle(first, games),
           seriesHeadline(series, teamName).text,
-          groupCardTexts(series).map((t, i) => ({ ...t, flagged: !!chipOf?.(series[i]) })),
+          groupCardTexts(series)
+            .map((t, i) => ({ ...t, flagged: !!chipOf?.(series[i]) }))
+            .filter((_, i) => !hideNotNeeded || series[i].status !== NOT_NEEDED),
           first.round === championshipRound && seriesChampionLine(series, teamName) !== null,
         ))
-    : singleElimLayout(games, SCREEN_TREE);
+    : singleElimLayout(games, tree);
   const header = (round: string) => {
     if (!withSeries) return playoffRoundTitle(round, games);
     const title = roundTitle(round, games);
@@ -445,7 +526,7 @@ export function BracketTree<G extends BracketGame>({
       {L.rounds.map((round, rIdx) => (
         <div
           key={`hdr-${round}`}
-          style={{ position: "absolute", top: 0, left: rIdx * (SCREEN_TREE.cardW + SCREEN_TREE.gap), width: SCREEN_TREE.cardW, textAlign: "center" }}
+          style={{ position: "absolute", top: 0, left: rIdx * (tree.cardW + tree.gap), width: tree.cardW, textAlign: "center" }}
         >
           <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
             {header(round)}
@@ -462,7 +543,8 @@ export function BracketTree<G extends BracketGame>({
           <SeriesGroup
             games={seriesGamesOf(c.game, games)}
             bracket={games}
-            width={SCREEN_TREE.cardW}
+            hideNotNeeded={hideNotNeeded}
+            width={tree.cardW}
             isFinal={c.game.round === championshipRound}
             labelOf={labelOf}
             teamName={teamName}
@@ -482,6 +564,8 @@ export function BracketTree<G extends BracketGame>({
             chipOf={chipOf}
             onEnterResult={onEnterResult && (() => onEnterResult(c.game))}
             onEdit={onEdit && (() => onEdit(c.game))}
+            cardH={tree.cardH}
+            undatedText={undatedText}
           />
         </div>
       ))}
@@ -499,6 +583,8 @@ export function ColumnView<G extends BracketGame>({
   chipOf,
   onEnterResult,
   onEdit,
+  cardH = SCREEN_TREE.cardH,
+  undatedText = UNDATED_ADMIN,
 }: {
   rounds: [string, G[]][];
   championshipRound: string | null;
@@ -508,6 +594,9 @@ export function ColumnView<G extends BracketGame>({
   /** Both or neither: without them no card offers a button. */
   onEnterResult?: (game: G) => void;
   onEdit?: (game: G) => void;
+  /** SCREEN_TREE.cardH, or PUBLIC_TREE.cardH without actions. */
+  cardH?: number;
+  undatedText?: string;
 }) {
   return (
     <div className="flex items-start gap-8">
@@ -527,6 +616,8 @@ export function ColumnView<G extends BracketGame>({
                 chipOf={chipOf}
                 onEnterResult={onEnterResult && (() => onEnterResult(g))}
                 onEdit={onEdit && (() => onEdit(g))}
+                cardH={cardH}
+                undatedText={undatedText}
               />
             ))}
           </div>

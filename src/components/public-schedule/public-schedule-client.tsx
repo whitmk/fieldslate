@@ -23,6 +23,7 @@ import { findOrgTimezone } from "@/lib/calendar/timezones";
 import { SITE_TAG, type Site } from "@/lib/public-schedule/classify";
 import { SERIES_TAG_TEXT } from "@/lib/playoffs/series";
 import { publicScheduleFeedUrls, publicScheduleUrl } from "@/lib/public-schedule/links";
+import { BRACKET_LINK_TEXT, bracketPath } from "@/lib/public-bracket/share";
 import type { PublicScheduleOk, PublicScheduleResponse } from "@/lib/public-schedule/types";
 import {
   buildRows,
@@ -290,8 +291,8 @@ export function PublicScheduleView({ data, token, embed }: { data: PublicSchedul
                 </h2>
                 {g.rows.map((r) => (
                   <div key={r.key}>
-                    {!embed && <DesktopRow row={r} />}
-                    <Card row={r} embed={embed} />
+                    {!embed && <DesktopRow row={r} token={token} />}
+                    <Card row={r} embed={embed} token={token} />
                   </div>
                 ))}
               </section>
@@ -460,7 +461,7 @@ function Address({ address, small = false }: { address: string; small?: boolean 
 }
 
 /** Wide screens: one line per game. */
-function DesktopRow({ row }: { row: ScheduleRow }) {
+function DesktopRow({ row, token }: { row: ScheduleRow; token: string }) {
   return (
     <div
       className={`mb-1.5 hidden grid-cols-[110px_1fr_1.2fr_auto] items-center gap-4 rounded-lg border border-l-[5px] border-gray-200 px-3 py-2.5 md:grid ${rowTone(row)}`}
@@ -481,16 +482,33 @@ function DesktopRow({ row }: { row: ScheduleRow }) {
           row.address && <div className="text-xs"><Address address={row.address} small /></div>
         )}
       </div>
-      <div className="flex flex-wrap justify-end gap-1.5">
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
         <Tags row={row} />
+        <BracketLink row={row} token={token} embed={false} />
       </div>
     </div>
   );
 }
 
+/** 0116: "Bracket →" on a playoff row whose bracket can be shared — to that
+ *  division's public bracket page. Inside a website's frame it opens a new tab. */
+function BracketLink({ row, token, embed }: { row: ScheduleRow; token: string; embed: boolean }) {
+  if (!row.bracketDivisionId) return null;
+  return (
+    <a
+      href={bracketPath(token, row.bracketDivisionId)}
+      target={embed ? "_blank" : undefined}
+      rel={embed ? "noopener" : undefined}
+      className="whitespace-nowrap text-xs font-semibold text-[#16a34a] hover:underline print:hidden"
+    >
+      {BRACKET_LINK_TEXT}
+    </a>
+  );
+}
+
 /** Narrow screens and the embed: a card with a FIXED line order — field,
  *  address if known, "division · until time" (cardLines). */
-function Card({ row, embed }: { row: ScheduleRow; embed: boolean }) {
+function Card({ row, embed, token }: { row: ScheduleRow; embed: boolean; token: string }) {
   const lines = cardLines(row);
   const hasAddress = row.address !== null;
   return (
@@ -513,6 +531,11 @@ function Card({ row, embed }: { row: ScheduleRow; embed: boolean }) {
       <div className="text-xs text-gray-500">
         {row.struck ? `${row.divisionName} · new date to be announced` : lines[hasAddress ? 2 : 1]}
       </div>
+      {row.bracketDivisionId && (
+        <div className="mt-1">
+          <BracketLink row={row} token={token} embed={embed} />
+        </div>
+      )}
     </div>
   );
 }

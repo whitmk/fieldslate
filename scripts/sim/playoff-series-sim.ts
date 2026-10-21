@@ -1245,7 +1245,8 @@ section("FN the last round is the Final", () => {
   const pieces = readFileSync("src/components/playoffs/bracket-pieces.tsx", "utf8");
   ok(pieces.includes("if (!withSeries) return playoffRoundTitle(round, games);")
      && view.includes("roundName={playoffRoundTitle(g.round, games)}")
-     && view.includes("isFinalRound(lastRound, games)")
+     && readFileSync("src/lib/playoffs/bracket-rounds.ts", "utf8").includes("isFinalRound(lastRound, games)")
+     && view.includes("championshipRoundOf(rounds, games)")
      && view.includes(": playoffRoundTitle(editingGame.round, games)}"), "FN11", "the tree, list, banner and edit modal name rounds by the bracket");
   const modal = readFileSync("src/components/playoffs/enter-result-modal.tsx", "utf8");
   ok(modal.includes("roundName: (round) => playoffRoundTitle(round, allGames)") && modal.includes("isFinalRound(game.round, allGames)"), "FN11", "the result modal names rounds by the bracket");

@@ -125,6 +125,7 @@ function render(c: ReturnType<typeof cases>[number], admin: boolean) {
     if (seen.has(f)) continue;
     seen.add(f);
     for (const m of readFileSync(f, "utf8").matchAll(IMPORT)) {
+      if (/^(import|export)\s+type\s/.test(m[0])) continue; // types carry no code
       const r = resolve(f, m[1]);
       if (r) queue.push(r);
     }

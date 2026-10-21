@@ -75,6 +75,8 @@ interface Props {
   onEdit: (stage1HasResults: boolean) => void;
   onDelete: () => void;
   onExport: () => void;
+  /** The "Public page" strip (playoffs-page-client), under the header. */
+  publicStrip?: React.ReactNode;
 }
 
 const PILL: Record<Pill["tone"], string> = {
@@ -108,7 +110,7 @@ function rowsToGames(data: unknown[]): GameWithTeams[] {
   }));
 }
 
-export function TwoStageCard({ stage1, stage2, counting, onEdit, onDelete, onExport }: Props) {
+export function TwoStageCard({ stage1, stage2, counting, onEdit, onDelete, onExport, publicStrip }: Props) {
   const [s1Games, setS1Games] = useState<GameWithTeams[]>([]);
   const [s2Games, setS2Games] = useState<GameWithTeams[]>([]);
   const [today, setToday] = useState<string | null>(null);
@@ -309,6 +311,8 @@ export function TwoStageCard({ stage1, stage2, counting, onEdit, onDelete, onExp
           </button>
         </div>
       </div>
+
+      {publicStrip}
 
       {loading ? (
         <div className="flex justify-center border-t border-gray-50 py-8">

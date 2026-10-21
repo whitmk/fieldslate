@@ -12,27 +12,20 @@ import { EnterResultModal } from "@/components/playoffs/enter-result-modal";
 import { EditPlayoffGameModal } from "@/components/playoffs/edit-playoff-game-modal";
 import { playoffRoundTitle } from "@/lib/playoffs/playoff-result";
 import { gameLabel, gameNumbering, slotName } from "@/lib/playoffs/bracket-labels";
-import { TONE_CHIP } from "@/components/playoffs/series-card";
 import {
   BracketTree,
   ColumnView,
   ListGameRow,
+  seriesListInfo,
   type BracketGame,
   type ChipOf,
   type LabelOf,
   type ListSeries,
   type NumberOf,
 } from "@/components/playoffs/bracket-pieces";
-import {
-  NOT_NEEDED,
-  SERIES_TAG_TEXT,
-  gameHasResult,
-  seriesGameActions,
-  seriesGameTag,
-  seriesGamesOf,
-  seriesHeadline,
-} from "@/lib/playoffs/series";
-import { isFinalRound, isSeriesGame } from "@/lib/playoffs/series-names";
+import { NOT_NEEDED } from "@/lib/playoffs/series";
+import { isSeriesGame } from "@/lib/playoffs/series-names";
+import { championshipRoundOf, sortedRounds } from "@/lib/playoffs/bracket-rounds";
 import { useDaylight } from "@/components/daylight/use-daylight";
 import { DaylightChip, DaylightStatusLine } from "@/components/daylight/daylight-pieces";
 import type { DaylightFlag } from "@/lib/daylight/flags";
@@ -41,7 +34,9 @@ import type { PlayoffGame } from "@/types/database";
 /** A game's daylight flag (admin-only; the print never reads this). */
 type FlagOf = (game: GameWithTeams) => DaylightFlag | null;
 
-export interface GameWithTeams extends BracketGame {
+/** The admin's game: the WHOLE stored row (the modals read every column),
+ *  the names, and the field's lights. */
+export interface GameWithTeams extends BracketGame, Omit<PlayoffGame, keyof BracketGame> {
   /** The field's lights (0109); null when the game has no field. */
   venue_has_lights: boolean | null;
 }
@@ -60,28 +55,6 @@ interface Props {
    *  two-stage card) can reload what depends on it. */
   onChanged?: () => void;
 }
-
-// ─── Round ordering / labelling ───────────────────────────────────────────────
-
-const ROUND_ORDER: Record<string, number> = {
-  "WB-R1": 10, "WB-R2": 11, "WB-R3": 12, "WB-R4": 13,
-  "WB-F": 20,
-  "LB-R1": 30, "LB-R2": 31, "LB-R3": 32, "LB-R4": 33,
-  "LB-R5": 34, "LB-R6": 35, "LB-R7": 36, "LB-R8": 37,
-  "LB-F": 40,
-  "GF": 50, "GF-R": 51,
-};
-
-function getRoundOrder(round: string): number {
-  if (round in ROUND_ORDER) return ROUND_ORDER[round];
-  const m = round.match(/^(RR|R|SF|F)(\d*)/);
-  if (!m) return 99;
-  if (m[1] === "F") return 50;
-  if (m[1] === "SF") return 40;
-  return parseInt(m[2] || "0");
-}
-
-const CHAMPIONSHIP_ROUNDS = new Set(["F", "GF"]);
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -159,28 +132,8 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
   }
   const teamName = (id: string) => names.get(id) ?? "TBD";
 
-  /** A series game's list info (0114): its name, its chip — the series'
-   *  standing on its latest result, else Next / If needed / Not needed — and
-   *  what it offers. Null for a single game. */
-  const seriesInfo = (g: GameWithTeams): ListSeries => {
-    if (!isSeriesGame(g, games)) return null;
-    const sgames = seriesGamesOf(g, games);
-    const tag = seriesGameTag(g, sgames);
-    const latest = [...sgames].reverse().find(gameHasResult);
-    let chip: { text: string; className: string } | null = null;
-    if (latest && latest.id === g.id) {
-      const h = seriesHeadline(sgames, teamName);
-      chip = { text: h.text, className: TONE_CHIP[h.tone] };
-    } else if (tag === "next" || tag === "if_needed" || tag === "not_needed") {
-      chip = { text: SERIES_TAG_TEXT[tag], className: tag === "if_needed" ? TONE_CHIP.amber : TONE_CHIP.gray };
-    }
-    return {
-      label: gameLabel(g, games),
-      chip,
-      notNeeded: g.status === NOT_NEEDED || tag === "not_needed",
-      actions: seriesGameActions(g, sgames),
-    };
-  };
+  /** A series game's list info (0114) — bracket-pieces' seriesListInfo. */
+  const seriesInfo = (g: GameWithTeams): ListSeries => seriesListInfo(g, games, teamName);
 
   const labelOf: LabelOf<GameWithTeams> = (g, side) => {
     // Two-stage Stage 2: a seeded team reads "4 · Mets".
@@ -210,20 +163,9 @@ export function BracketView({ playoffId, leagueId, divisionId, divisionName, for
     );
   }
 
-  // Group and sort by round
-  const roundMap = new Map<string, GameWithTeams[]>();
-  for (const g of games) {
-    if (!roundMap.has(g.round)) roundMap.set(g.round, []);
-    roundMap.get(g.round)!.push(g);
-  }
-  const rounds = [...roundMap.entries()].sort(([a], [b]) => getRoundOrder(a) - getRoundOrder(b));
-
-  // The last round is the championship for SE/DE formats
-  const lastRound = rounds[rounds.length - 1]?.[0] ?? null;
-  // A single elimination's last round is its Final whatever it is stored as
-  // (a 2-team bracket's only round is "R1").
-  const championshipRound =
-    CHAMPIONSHIP_ROUNDS.has(lastRound ?? "") || (lastRound !== null && isFinalRound(lastRound, games)) ? lastRound : null;
+  // Group and sort by round; the last round is the championship (bracket-rounds.ts).
+  const rounds = sortedRounds(games);
+  const championshipRound = championshipRoundOf(rounds, games);
 
   const useBracketTree = format === "single_elimination";
   const unplaced = games.filter((g) => !g.scheduled_date && g.status !== NOT_NEEDED).length;

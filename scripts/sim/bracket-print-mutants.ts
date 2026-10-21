@@ -130,7 +130,7 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "BP21", what: "the on-screen tree laid out with the PRINT dimensions", file: "src/components/playoffs/bracket-pieces.tsx",
-    find: "    : singleElimLayout(games, SCREEN_TREE);",
+    find: "    : singleElimLayout(games, tree);",
     replace: "    : singleElimLayout(games);",
     expect: "S7",
   },

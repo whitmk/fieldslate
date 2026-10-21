@@ -58,6 +58,7 @@ export function SeriesGroup<G extends BracketGame>({
   onResult,
   onEditResult,
   onMove,
+  hideNotNeeded = false,
 }: {
   /** The games of this series, any order. */
   games: G[];
@@ -72,6 +73,9 @@ export function SeriesGroup<G extends BracketGame>({
   onResult?: (game: G) => void;
   onEditResult?: (game: G) => void;
   onMove?: (game: G) => void;
+  /** Draw no card for a not-needed game (the public page); it still counts
+   *  toward the series' length and standing. */
+  hideNotNeeded?: boolean;
 }) {
   const sorted = [...games].sort((a, b) => (a.series_game ?? 1) - (b.series_game ?? 1));
   const first = sorted[0];
@@ -92,7 +96,7 @@ export function SeriesGroup<G extends BracketGame>({
         <span className={`rounded-full px-1.5 text-[10px] font-semibold ${TONE_CHIP[headline.tone]}`}>{headline.text}</span>
       </div>
 
-      {sorted.map((g, i) => (
+      {sorted.filter((g) => !hideNotNeeded || g.status !== NOT_NEEDED).map((g, i) => (
         <SeriesGameCard
           key={g.id}
           game={g}

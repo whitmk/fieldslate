@@ -7,9 +7,14 @@
 //
 // WHAT IT CHECKS, IN THIS ORDER (a mutant must die FIRST at its own tag):
 //   F1  IMPORT FENCE — no outbound file imports src/lib/daylight or
-//       src/components/daylight (directly). Outbound = every file under the
-//       token / public / API routes, the public-schedule and calendar libs,
-//       the interleague and email libs, and each print / export file by name.
+//       src/components/daylight, directly OR THROUGH ANY CHAIN of @/ and
+//       relative imports (2026-10-20: the public bracket page renders the
+//       Playoffs page's pieces, so a direct-only check would pass a public
+//       file that imports an admin component which imports daylight).
+//       Outbound = every file under the token / public / API routes, the
+//       public-schedule, public-bracket and calendar libs, the interleague and
+//       email libs, the shared bracket pieces, and each print / export file by
+//       name.
 //   W1  WORD SCAN — no outbound file mentions a daylight field or word
 //       (has_lights, sunset, .daylight, daylightLit, daylight_flags, …).
 //       Plain "daylight" alone is allowed: the timezone files describe
@@ -77,12 +82,17 @@ const OUTBOUND_DIRS = [
   "src/app/api", // every route: emails, feeds, token actions
   "src/lib/public-schedule",
   "src/components/public-schedule",
+  "src/lib/public-bracket", // the public bracket page (0116)
+  "src/components/public-bracket",
   "src/lib/calendar",
   "src/lib/interleague", // partner emails and token-page wording
   "src/lib/orgs",
   "src/components/export",
 ];
 const OUTBOUND_FILES = [
+  // The bracket's presentation pieces — rendered by the public bracket page.
+  "src/components/playoffs/bracket-pieces.tsx",
+  "src/components/playoffs/series-card.tsx",
   "src/lib/email.ts",
   "src/components/schedule/schedule-print-region.tsx",
   "src/components/schedule/schedule-print-button.tsx",
@@ -113,7 +123,18 @@ const IMPORTS_DAYLIGHT = /from\s+["'][^"']*\/(lib|components)\/daylight(\/[^"']*
 const DAYLIGHT_WORDS =
   /has_lights|hasLights|sunset|daylight_flags|sunset_city|\.daylight(\s*(&&|\?\?|\?\.)|\.(kind|minutes|sunsetMin|startByMin|endMin)\b)|\bdaylight=\{|\bdaylight(Lit|Flag|Chip|State|Explanation|Pick|Status|View|Dot|Load|Count|Only|Today)\b|Daylight(Flag|Chip|Explanation|PickNotice|StatusLine|Filter|Card|State)\b/;
 
-// ── F1: import fence ────────────────────────────────────────────────────
+// ── F1: import fence (follows every import chain) ───────────────────────
+const IMPORT_SPEC = /(?:import|export)\s[^;]*?from\s+["']([^"']+)["']/g;
+function resolveImport(from: string, spec: string): string | null {
+  let base: string;
+  if (spec.startsWith("@/")) base = join("src", spec.slice(2));
+  else if (spec.startsWith(".")) base = join(from, "..", spec);
+  else return null; // a package
+  for (const ext of [".ts", ".tsx", "/index.ts", "/index.tsx"]) if (existsSync(join(ROOT, base + ext))) return base + ext;
+  return existsSync(join(ROOT, base)) && statSync(join(ROOT, base)).isFile() ? base : null;
+}
+const IN_DAYLIGHT = /^src\/(lib|components)\/daylight\//;
+let reachedModules = 0;
 {
   const bad: string[] = [];
   for (const f of outbound) {
@@ -122,10 +143,35 @@ const DAYLIGHT_WORDS =
       continue;
     }
     fenced++;
-    if (IMPORTS_DAYLIGHT.test(read(f))) bad.push(f);
+    if (IMPORTS_DAYLIGHT.test(read(f))) {
+      bad.push(f);
+      continue;
+    }
+    // Walk every chain from this file; report the first path into daylight.
+    const via = new Map<string, string>([[f, ""]]);
+    const queue = [f];
+    let hit: string | null = null;
+    while (queue.length && !hit) {
+      const cur = queue.shift()!;
+      for (const m of read(cur).matchAll(IMPORT_SPEC)) {
+        if (/^(import|export)\s+type\s/.test(m[0])) continue; // types carry no code
+        const r = resolveImport(cur, m[1]);
+        if (!r || via.has(r)) continue;
+        via.set(r, cur);
+        if (IN_DAYLIGHT.test(r)) { hit = r; break; }
+        queue.push(r);
+      }
+    }
+    reachedModules += via.size;
+    if (hit) {
+      const chain: string[] = [];
+      for (let x: string = hit; x; x = via.get(x) ?? "") chain.unshift(x);
+      bad.push(chain.join(" → "));
+    }
   }
-  ok(bad.length === 0, "[F1] no outbound file imports the daylight module or pieces", bad.join(", "));
+  ok(bad.length === 0, "[F1] no outbound file reaches the daylight module or pieces through any import chain", bad.join("; "));
 }
+ok(reachedModules > fenced, "[AV] the import walk went past the fenced files themselves", `${reachedModules} visits`);
 
 // ── W1: word scan ───────────────────────────────────────────────────────
 {
@@ -240,7 +286,7 @@ ok(fenced >= 60, "[COUNT-fenced] outbound files fenced", String(fenced));
 ok(tokenFns >= 6, "[COUNT-tokenFns] token functions scanned", String(tokenFns));
 ok(wired >= 10, "[COUNT-wired] admin surfaces wired", String(wired));
 
-console.log(`daylight-leaks: ${checks} checks, ${failures} failed (fenced ${fenced} files, ${tokenFns} token functions, ${wired} surfaces)`);
+console.log(`daylight-leaks: ${checks} checks, ${failures} failed (fenced ${fenced} files, ${reachedModules} module visits through their imports, ${tokenFns} token functions, ${wired} surfaces)`);
 process.exit(failures ? 1 : 0);
 
 // MUTATION LOG: see daylight-leaks-mutants.ts runs (bottom of this file).

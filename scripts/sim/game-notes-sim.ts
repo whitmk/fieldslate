@@ -179,6 +179,16 @@ function partO() {
     ["public schedule types", ["lib", "public-schedule", "types.ts"]],
     ["public schedule view", ["lib", "public-schedule", "view.ts"]],
     ["public schedule feed builder", ["lib", "public-schedule", "league-ics.ts"]],
+    // 0116 — the public bracket page and the pieces it renders.
+    ["public bracket page", ["app", "s", "[token]", "bracket", "[division]", "page.tsx"]],
+    ["public bracket data route", ["app", "s", "[token]", "bracket", "[division]", "data", "route.ts"]],
+    ["public bracket client", ["components", "public-bracket", "public-bracket-client.tsx"]],
+    ["public bracket read", ["lib", "public-bracket", "read.ts"]],
+    ["public bracket types", ["lib", "public-bracket", "types.ts"]],
+    ["public bracket view", ["lib", "public-bracket", "view.ts"]],
+    ["public bracket share", ["lib", "public-bracket", "share.ts"]],
+    ["bracket pieces", ["components", "playoffs", "bracket-pieces.tsx"]],
+    ["series card", ["components", "playoffs", "series-card.tsx"]],
   ];
   for (const [name, p] of publicOutbound) {
     counters.omissionFilesChecked++;
@@ -211,6 +221,26 @@ function partO() {
   const emitted = ifStart >= 0 && ifEnd > ifStart ? body.slice(0, ifStart) + body.slice(ifEnd) : body;
   ok(!mentionsNotes(emitted) && !/to_jsonb\s*\(/.test(emitted) && !/\b[a-z]+\.\*/.test(emitted) && !/contact|admin_email|score|winner/.test(emitted),
     "[O1-public-reader] get_league_schedule_by_token never selects notes, scores, contacts or a whole row");
+
+  // 0116 — the public BRACKET reader, the latest migration defining it. It is
+  // the one anonymous path to results, so scores are allowed — but ONLY behind
+  // the bracket's public_scores — and notes, contacts, the seeding list, the
+  // Stage 1 change list and whole rows never.
+  const bracketFile = readdirSync(migDir).filter((f) => f.endsWith(".sql")).sort()
+    .filter((f) => readFileSync(join(migDir, f), "utf8").includes("create or replace function public.get_league_bracket_by_token"))
+    .pop() ?? "";
+  const bmig = bracketFile ? readFileSync(join(migDir, bracketFile), "utf8") : "";
+  const bs = bmig.indexOf("create or replace function public.get_league_bracket_by_token");
+  const bb = bmig.indexOf("$$", bs) + 2;
+  const be = bmig.indexOf("$$", bb);
+  ok(bs > 0 && be > bb, `[O1-bracket-reader] the bracket reader body was found (${bracketFile || "none"})`);
+  const bbody = bmig.slice(bb, be).replace(/--[^\n]*/g, "");
+  const scoreLines = bbody.split("\n").filter((l) => /_score\b/.test(l));
+  ok(scoreLines.length === 2 && scoreLines.every((l) => /case when po\.public_scores then pg\.(home|away)_score else null end/.test(l)),
+    "[O1-bracket-reader] scores leave only behind the bracket's public_scores", scoreLines.join(" | "));
+  ok(!mentionsNotes(bbody) && !/to_jsonb\s*\(\s*[a-z]+\s*\)/.test(bbody) && !/\b[a-z]+\.\*/.test(bbody)
+     && !/contact|admin_email|seeding|stage1_changes|seeded_by|has_lights|address/.test(bbody),
+    "[O1-bracket-reader] get_league_bracket_by_token never selects notes, contacts, seeding, Stage 1 changes, lights, an address or a whole row");
 
   // 0104 — the snack shack's outbound paths: two email routes, the Teams page
   // button (its own select + print region), and the page client's TWO print

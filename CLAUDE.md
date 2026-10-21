@@ -290,6 +290,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   service_role, PUBLIC false; dashboard_readonly true as before — the backlog
   item); leak check clean, no bracket has a cross-division setting. See
   "Division deletion".
+- **0116 (public bracket page) WRITTEN AND PROVEN, NOT APPLIED** (branch
+  `feat/public-bracket`). Rolled-back proof first-run green, 12/12 mutants at
+  their own tag; expected md5(prosrc) after apply:
+  `set_playoff_public_scores` `9ccc674a87e094870bf9b42ad47b8930`,
+  `get_league_bracket_by_token` `368f441841a3baffe120e94a815d523c` — re-run
+  the proof if either body changes. **Deploy order: apply 0116 BEFORE this
+  code reaches `main`** — the Playoffs page selects `playoffs.public_scores`.
+  See "Public bracket page (0116)".
 - **0114 (playoff series) APPLIED 2026-10-20 22:38 UTC, catalog
   `20261020223859`**, verbatim from the repo file on Whit's go (after the
   Safari print check), following its rolled-back proof (24/24) and the
@@ -4291,6 +4299,86 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   for `notes`** (2026-10-08): the 0099 and 0105 readers both SAY in a comment
   that they must not emit notes, which made the old scan fire on the rule it
   checks. That harness has not been re-run since the edit.
+
+## Public bracket page (`/s/<token>/bracket/<division>`) — 0116 (branch `feat/public-bracket`)
+
+- **What it is.** A read-only page per division's playoffs, shared from the
+  Playoffs card ("Public page" strip: Copy public link, Open ↗, "Show scores
+  publicly"). The link is the public schedule's token plus the DIVISION ID, so
+  the schedule's on/off switch and Reset govern it (Settings says so). One
+  link per season (a new season = new division ids). Approved mockup:
+  `docs/mockups/public-bracket.html` (2026-10-20). Framable and noindex like
+  every `/s/…` path; outside the middleware matcher.
+- **ITS OWN READER, `get_league_bracket_by_token(p_token, p_division_id)` —
+  the schedule reader stays score-free** (sim:game-notes O1-public-reader,
+  0114's KY1, sim:playoff-series S12). Gates in order: token → link enabled →
+  plan Pro/Elite (a league that drops from Elite to Pro KEEPS its public
+  bracket, decided 2026-10-20) → the division belongs to a season THE TOKEN'S
+  ORG owns, unarchived, within the schedule's 7-day window → LOCKED → a
+  non-draft bracket → not double elimination (not shareable yet). **The
+  division id is the one input the token doesn't vouch for**: unknown,
+  deleted, another org's, archived or out-of-window all answer the SAME
+  `unavailable` (proof U1–U5). Unlocked → `unpublished` with the name;
+  draft/none → `no_bracket`; double elim → `not_shareable`.
+- **What leaves:** named keys only. Per game: position, series game and
+  length, date, time, status, seeds, both teams (id + name), `winner_id`, the
+  field (name + park), and the two scores ONLY when `playoffs.public_scores`
+  is on (`case when po.public_scores …` — sim:game-notes O1-bracket-reader
+  holds it to exactly that). Never notes, seeding, `stage1_changes`,
+  `seeded_by`, lights, an address, contacts, or anything from `games`.
+  Not-needed games never leave.
+- **`playoffs.public_scores`** (default TRUE) is written only by
+  `set_playoff_public_scores(id, show)` — member + Pro/Elite, either stage of
+  a pair sets BOTH, logged `playoff_public_scores_changed`, a repeat changes
+  nothing. Scores off = winners and advancement only; the page never says
+  scores are hidden. Series standing in games won ("Braves lead 1–0") still
+  shows — the trophies reveal it anyway (decided).
+- **Rules and words: `src/lib/public-bracket/`** (`view.ts` page rules and
+  every state card, `share.ts` the card's copy rule — plan → link → draft →
+  format → lock, one "why" line — the www URL, the switch words, the
+  schedule's "Bracket →" rule, the Settings sentences; `read.ts` fails
+  closed). Render verbatim.
+- **THE PAGE RENDERS THE PLAYOFFS PAGE'S OWN PIECES** —
+  `src/components/playoffs/bracket-pieces.tsx` (card, team rows, list row,
+  tree, column view, `seriesListInfo`) and `series-card.tsx` (the series
+  group), split out of `bracket-view.tsx` 2026-10-20. **No data access,
+  modals or daylight in either file:** buttons arrive as optional callbacks
+  (absent = no action row), the daylight chip as `chipOf`. `BracketView`
+  stays the admin wrapper. Public geometry: `PUBLIC_TREE` / `PUBLIC_GROUP`
+  (bracket-print.ts) = SCREEN_* without the 32px action row (and chip).
+  Round order and the championship round live in
+  `src/lib/playoffs/bracket-rounds.ts` (shared). The admin render is pinned
+  BYTE-IDENTICAL to a golden recorded from the pre-split tree
+  (`scripts/sim/fixtures/bracket-pieces-golden.json`) — re-record only on
+  Whit's decision.
+- **A series' not-needed games are rebuilt on the page** (`toRows`) from the
+  reader's `series_length` as not-needed rows with no teams/date/field, so the
+  shared series rules count a 2–0 best-of-3 as best of 3; the page draws no
+  card (`hideNotNeeded`) or list row (`shown`) for them. Found on the scratch
+  check: without it the page read "best of 2".
+- **Freshness:** the data route is edge-cached 60s (the schedule's
+  `links.ts` answers; errors 503 + no-store; no-store client; `force-dynamic`
+  + `fetchCache = "force-no-store"`), and the page refetches every 60s while
+  visible and on return to the tab. A failed BACKGROUND refresh keeps the
+  bracket with "Couldn't refresh. Showing results as of 2:41 PM."; a failed
+  first load is the "couldn't load" card. The opening view (phone < 640px →
+  list) is read AFTER mount (`openingMode`), never in render.
+- **Records stay admin-only** (display choice): no public file names
+  `roundRobinRecords` / `recordsFootnote` / "Records" (sim:public-bracket F).
+  Stage 1 shows its games by round with scores and "Sits out:" lines.
+- **"Bracket →" on the public schedule's playoff rows** when the format is
+  shareable (`ScheduleRow.bracketDivisionId`); the schedule reader already
+  lists only locked, non-draft brackets, so it needed no change.
+- **Fences:** `sim:daylight-leaks` F1 now FOLLOWS IMPORT CHAINS (type-only
+  imports skipped) from every outbound file, and fences
+  `src/lib/public-bracket`, `src/components/public-bracket` and the two
+  pieces files (LK9: the public page importing the admin bracket, daylight
+  two hops away). `sim:bracket-pieces` and `sim:public-bracket` walk their
+  own imports too.
+- **Harnesses:** `scripts/sim/public-bracket-sim.sql` (+ build script; 0116
+  rolled back in "test", "Test 2" as the other league; 12 mutants);
+  `npm run sim:bracket-pieces` (+ `:mutants`, 8); `npm run sim:public-bracket`
+  (+ `:mutants`, 15); sim:game-notes GM15/GM16; sim:daylight-leaks LK9/LK10.
 
 ## Interleague Case A — a signed-in league accepts onto its own schedule (2026-09-28)
 

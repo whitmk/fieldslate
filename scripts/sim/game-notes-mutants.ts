@@ -55,6 +55,21 @@ const MUTANTS: Mutant[] = [
     replace: "                     'home_score', pg.home_score,\n                     'if_needed',      public.playoff_if_needed(",
     expect: "O1-public-reader",
   },
+  {
+    // 0116 — the public BRACKET reader: scores only behind public_scores.
+    id: "GM15", what: "(0116) the bracket reader sends a score whatever the setting",
+    file: "supabase/migrations/0116_public_bracket.sql",
+    find: "'home_score',     case when po.public_scores then pg.home_score else null end,",
+    replace: "'home_score',     pg.home_score,",
+    expect: "O1-bracket-reader",
+  },
+  {
+    id: "GM16", what: "(0116) the bracket reader emits the seeding list",
+    file: "supabase/migrations/0116_public_bracket.sql",
+    find: "           'show_scores',   po.public_scores,",
+    replace: "           'show_scores',   po.public_scores,\n           'seeding',       po.seeding,",
+    expect: "O1-bracket-reader",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/game-notes-sim.ts", timezones: ["UTC"], mutants: MUTANTS });

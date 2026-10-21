@@ -19,6 +19,7 @@ import Link from "next/link";
 import { AlertTriangle, Check, Copy, ExternalLink, Loader2, Lock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { SETTINGS_OFF_ALSO_BRACKETS, SETTINGS_RESET_ALSO_BRACKETS } from "@/lib/public-bracket/share";
 import { SeasonUpgradeModal } from "@/components/plan/UpgradeModal";
 import { createClient } from "@/lib/supabase/client";
 import type { Plan } from "@/lib/plan/limits";
@@ -174,7 +175,7 @@ function PaidBody({
           <p className="text-sm font-semibold text-gray-900">Public page is {enabled ? "on" : "off"}</p>
           <p className="mt-0.5 text-xs text-gray-500">
             Turning it off shows visitors &ldquo;This schedule isn&apos;t available.&rdquo; Turning it back on brings
-            back the same link, so your website keeps working.
+            back the same link, so your website keeps working. {SETTINGS_OFF_ALSO_BRACKETS}
           </p>
         </div>
         <button
@@ -316,7 +317,7 @@ function PaidBody({
       {confirmReset && (
         <ConfirmDialog
           title="Reset your public schedule link?"
-          detail="The current link stops working. Any website that embeds your schedule, and anyone who saved the link or subscribed to the all-games calendar, will see “This schedule link isn't recognized” until you paste the new link and embed code."
+          detail={`The current link stops working. Any website that embeds your schedule, and anyone who saved the link or subscribed to the all-games calendar, will see “This schedule link isn't recognized” until you paste the new link and embed code. ${SETTINGS_RESET_ALSO_BRACKETS}`}
           confirmLabel="Reset link"
           tone="danger"
           busy={busy === "reset"}

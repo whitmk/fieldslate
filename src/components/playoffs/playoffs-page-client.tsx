@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
 import { PlayoffWizard, type TwoStageEdit } from "@/components/playoffs/playoff-wizard";
 import { TwoStageCard } from "@/components/playoffs/two-stage-card";
+import { PublicPageStrip } from "@/components/playoffs/public-page-strip";
+import { scoresSwitchShown, shareState, type ShareInput } from "@/lib/public-bracket/share";
 import { BracketView } from "@/components/playoffs/bracket-view";
 import { PlayoffExportModal } from "@/components/playoffs/playoff-export-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -40,7 +42,9 @@ type PlayoffRow = {
   venue_assignments: VenueAssignment[];
   cross_division_enabled: boolean;
   cross_division_opponent_id: string | null;
-  division: { id: string; name: string } | null;
+  division: { id: string; name: string; locked: boolean } | null;
+  // 0116 — the public bracket page's "Show scores publicly".
+  public_scores: boolean;
   // 0113 — two-stage playoffs.
   stage: number;
   parent_playoff_id: string | null;
@@ -149,6 +153,9 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [exportingPlayoff, setExportingPlayoff] = useState<PlayoffRow | null>(null);
   const [exportingStage2, setExportingStage2] = useState<PlayoffRow | null>(null);
+  // The org's public schedule link — bracket links are that link plus the
+  // division (0116), so its on/off governs them.
+  const [publicLink, setPublicLink] = useState<ShareInput["link"]>(null);
 
   const seasonId = season?.id ?? null;
 
@@ -165,8 +172,8 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
            seeding, playing_days, day_windows, venue_assignments,
            cross_division_enabled, cross_division_opponent_id,
            stage, parent_playoff_id, advance_count, games_per_team_per_day,
-           seeded_at, seeded_by, stage1_changed_at, series_by_round,
-           division:divisions!playoffs_division_id_fkey(id, name)`
+           seeded_at, seeded_by, stage1_changed_at, series_by_round, public_scores,
+           division:divisions!playoffs_division_id_fkey(id, name, locked)`
         )
         .eq("league_id", seasonId)
         .order("division_id");
@@ -174,12 +181,18 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
       if (!error) {
         setPlayoffs((playoffData as unknown as PlayoffRow[]) ?? []);
       }
+      const { data: linkRow, error: linkError } = await supabase
+        .from("public_schedule_links" as never)
+        .select("token, enabled")
+        .eq("org_id" as never, currentOrgId as never)
+        .maybeSingle();
+      setPublicLink(linkError ? "unreadable" : ((linkRow as { token: string; enabled: boolean } | null) ?? null));
     } else {
       setPlayoffs([]);
     }
 
     setLoading(false);
-  }, [seasonId]);
+  }, [seasonId, currentOrgId]);
 
   useEffect(() => {
     load();
@@ -207,6 +220,35 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
     setEditPlayoffId(stage1.id);
     setTwoStageEdit({ stage1Id: stage1.id, stage2Id: stage2.id, stage1HasResults });
     setWizardOpen(true);
+  }
+
+  // The card's "Public page" strip. The page is Elite-gated on the server, so
+  // the plan is Elite here; the reader itself accepts Pro too (decided
+  // 2026-10-20: a league that drops to Pro keeps its public bracket).
+  function strip(row: PlayoffRow) {
+    const share = shareState(
+      {
+        plan: "elite",
+        link: publicLink,
+        status: row.status,
+        format: row.format,
+        divisionName: row.division?.name ?? "This division",
+        divisionLocked: row.division ? row.division.locked === true : null,
+      },
+      row.division_id,
+      row.league_id,
+    );
+    return (
+      <PublicPageStrip
+        share={share}
+        playoffId={row.id}
+        showScores={row.public_scores !== false}
+        switchShown={scoresSwitchShown(row.status, row.format)}
+        onScoresSaved={(show) =>
+          setPlayoffs((ps) => ps.map((p) => (p.id === row.id || p.parent_playoff_id === row.id ? { ...p, public_scores: show } : p)))
+        }
+      />
+    );
   }
 
   // A Stage 2 row belongs to its Stage 1's card; it never gets a card of its own.
@@ -370,6 +412,7 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
                             setExportingStage2(pairStage2);
                             setExportingPlayoff(playoff);
                           }}
+                          publicStrip={strip(playoff)}
                         />
                       );
                     }
@@ -462,6 +505,8 @@ export function PlayoffsPageClient({ currentOrgId, season, showSetupLink }: Prop
                             </button>
                           </div>
                         </div>
+
+                        {strip(playoff)}
 
                         {/* Expandable bracket */}
                         {isExpanded && hasGames && (

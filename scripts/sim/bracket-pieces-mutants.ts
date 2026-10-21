@@ -10,8 +10,8 @@ const SERIES = "src/components/playoffs/series-card.tsx";
 const MUTANTS: Mutant[] = [
   {
     id: "BPC1", what: "the admin card's wording changes", file: PIECES,
-    find: "Game {numberOf(game)} · No date yet",
-    replace: "Game {numberOf(game)} · Date not set",
+    find: "const UNDATED_ADMIN = \"No date yet\";",
+    replace: "const UNDATED_ADMIN = \"Date not set\";",
     expect: "G",
   },
   {

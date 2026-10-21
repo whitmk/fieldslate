@@ -349,11 +349,13 @@ section("S", () => {
   // 0114 (revised 2026-10-20, approved sketch): a bracket with a series round
   // lays out one GROUP per series (stacked game cards) by groupedTreeLayout; a
   // bracket of single games is laid out exactly as before, with SCREEN_TREE.
-  ok(pieces.includes("? groupedTreeLayout(games, SCREEN_TREE, (first, series) =>")
-     && pieces.includes(": singleElimLayout(games, SCREEN_TREE);")
+  ok(pieces.includes("? groupedTreeLayout(games, tree, (first, series) =>")
+     && pieces.includes(": singleElimLayout(games, tree);")
+     && pieces.includes("  tree = SCREEN_TREE,\n  group = SCREEN_GROUP,") && pieces.includes("  cardH = SCREEN_TREE.cardH,")
+     && pieces.includes("cardH={tree.cardH}")
      && pieces.includes('top: (c as PlacedItem<G>).centre, transform: "translateY(-50%)"')
      && !pieces.includes("function gameTop(") && !pieces.includes("V_SLOT")
-     && pieces.includes("style={{ height: SCREEN_TREE.cardH }}") && pieces.includes('className="h-10 flex-none border-b')
+     && pieces.includes("style={{ height: cardH }}") && pieces.includes('className="h-10 flex-none border-b')
      && pieces.includes("flex h-8 flex-none items-center gap-2 px-2.5") && pieces.includes("flex h-8 flex-none items-center border-t"),
     "[S7]", "the on-screen tree uses the shared layout, a group placed by its middle, and the card keeps the bands SCREEN_TREE measures");
   // The group's numbers ARE SCREEN_GROUP's: groupHeight estimates from them.

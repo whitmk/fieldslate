@@ -56,6 +56,21 @@ const MUTANTS: Mutant[] = [
     replace: 'import { useDayOccupancy } from "@/components/divisions/use-day-occupancy";\nimport { DaylightPickNotice } from "@/components/daylight/daylight-pieces";',
     expect: "N1",
   },
+  {
+    // 2026-10-20: F1 follows import chains. The public bracket page importing
+    // the ADMIN bracket (which imports daylight) has no daylight import of its
+    // own — only the chain shows it.
+    id: "LK9", what: "the public bracket page imports the admin bracket (daylight two hops away)", file: "src/components/public-bracket/public-bracket-client.tsx",
+    find: 'import { BracketTree, ColumnView, ListGameRow, seriesListInfo } from "@/components/playoffs/bracket-pieces";',
+    replace: 'import { BracketTree, ColumnView, ListGameRow, seriesListInfo } from "@/components/playoffs/bracket-pieces";\nimport { BracketView as _AdminBracket } from "@/components/playoffs/bracket-view";\nvoid _AdminBracket;',
+    expect: "F1",
+  },
+  {
+    id: "LK10", what: "a public bracket file imports the daylight flags directly", file: "src/lib/public-bracket/view.ts",
+    find: 'import { qualifiedVenueLabel } from "@/lib/venues/venue-label";',
+    replace: 'import { qualifiedVenueLabel } from "@/lib/venues/venue-label";\nimport { daylightFlag as _df } from "@/lib/daylight/flags";\nvoid _df;',
+    expect: "F1",
+  },
 ];
 
 runMutants({

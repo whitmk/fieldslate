@@ -408,6 +408,20 @@ export const SCREEN_TREE: TreeDims = {
   rowTop: 41, rowH: 32, divider: 1, sourceY: 41 + 32 + 0.5,
 };
 
+/** The public bracket page's card (bracket-pieces GameCard with no callbacks):
+ *  SCREEN_TREE without the h-8 action row — the rows and their lines sit
+ *  exactly where they do on the admin card, and the 17px gap below a card is
+ *  kept (slotH − cardH). */
+export const PUBLIC_TREE: TreeDims = {
+  ...SCREEN_TREE,
+  cardH: SCREEN_TREE.cardH - 32,
+  slotH: SCREEN_TREE.slotH - 32,
+};
+
+/** The public page's series group: no action row under a card and no
+ *  daylight chip. */
+export const PUBLIC_GROUP: GroupDims = { ...SCREEN_GROUP, footH: 0, flagH: 0 };
+
 /** Room kept between two series groups (or a group and a card) in a column. */
 export const GROUP_MARGIN = 10;
 

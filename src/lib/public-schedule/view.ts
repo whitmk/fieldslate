@@ -15,6 +15,7 @@ import { rrGameLabel } from "@/lib/playoffs/two-stage";
 import { NOT_NEEDED, outboundMatchup, seriesGameName } from "@/lib/playoffs/series";
 import { isSeriesGame, isSingleElimRoundLabel, roundKind, seriesLengthOf, seriesName } from "@/lib/playoffs/series-names";
 import { qualifiedVenueLabel } from "@/lib/venues/venue-label";
+import { formatShareable } from "@/lib/public-bracket/share";
 import {
   gameStatusDisplay,
   playoffStatusDisplay,
@@ -50,6 +51,11 @@ export type ScheduleRow = {
   ifNeeded: boolean;
   /** The series a playoff row belongs to (0114), else null. */
   series: { name: string; k: number; length: number } | null;
+  /** 0116: the division whose public bracket page this playoff row links to
+   *  ("Bracket →"), or null — a regular game, or a format not shareable yet
+   *  (share.ts `formatShareable`). The schedule only lists locked, non-draft
+   *  brackets, so nothing else is checked. */
+  bracketDivisionId: string | null;
   struck: boolean;
   /** Replaces the site tag on a struck row ("Rained out"), or a note beside
    *  it ("Time may change"). */
@@ -220,6 +226,7 @@ export function buildRows(season: PublicSeason): ScheduleRow[] {
       playoffLabel: null,
       ifNeeded: false,
       series: null,
+      bracketDivisionId: null,
       struck: status.struck,
       statusLabel: status.label,
       statusIsNote: status.note,
@@ -289,6 +296,7 @@ export function buildRows(season: PublicSeason): ScheduleRow[] {
       playoffLabel: playoffLabelOf(p),
       ifNeeded: series !== null && p.if_needed === true,
       series,
+      bracketDivisionId: formatShareable(p.format) ? p.division_id : null,
       struck: status.struck,
       statusLabel: status.label,
       statusIsNote: status.note,
