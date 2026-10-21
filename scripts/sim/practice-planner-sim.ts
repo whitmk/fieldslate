@@ -41,6 +41,8 @@
 //   T   totals; too-long practices left out                   ← PP14 (T2)
 //   R   city-request text, incl. a season across New Year
 //   N   day lists ("Mon–Fri", "Mon, Wed, Fri") and busiest-night ties ← PP18 (N1), PP17 (N8)
+//   G   the public calculator's output equals the golden recorded before
+//       the in-app planner's module change (14 cases + first render)
 // then ANTI-VACUITY COUNTERS — a zero counter fails the run.
 //
 // MUTATION LOG: see the bottom of this file.
@@ -55,6 +57,7 @@ import { join } from "node:path";
 import { EXAMPLE_LEAGUE } from "@/lib/practice-planner/example-league";
 import { fmtDate, formatDayList, parseIsoDate } from "@/lib/practice-planner/format";
 import type { DivisionInput, ModeResult, PlannerInput } from "@/lib/practice-planner/types";
+import { captureGolden, GOLDEN_CASES, type Golden } from "./practice-planner-golden";
 
 let failures = 0;
 let checks = 0;
@@ -408,7 +411,33 @@ section("N", () => {
   ok(busiestLabel(computeMode(league([]), "spread").need.diamond60) === "—", "[N11] no practices → dash");
 });
 
+// ── G: the public calculator's output is byte-identical to the golden ───
+// Recorded 2026-10-21 from the tree before the in-app planner's module
+// change (practice-planner-golden.ts says what is captured). Runs LAST so
+// every mutant above still dies first at its own assertion. A red G means the
+// calculator's output changed — fix the change; re-record only on Whit's
+// decision.
+let goldenCases = 0;
+section("G", () => {
+  const golden = JSON.parse(readFileSync(join(process.cwd(), "scripts/sim/fixtures/practice-planner-golden.json"), "utf8")) as Golden;
+  const now = captureGolden();
+  ok(eq(Object.keys(golden.cases), GOLDEN_CASES.map((c) => c.name)), "[G0] the golden holds every case, in order",
+    `${Object.keys(golden.cases).join(", ")}`);
+  for (const c of GOLDEN_CASES) {
+    const want = golden.cases[c.name];
+    const got = now.cases[c.name];
+    if (!want) continue;
+    goldenCases++;
+    ok(JSON.stringify(got.plan) === JSON.stringify(want.plan), `[G1-${c.name}] computePlan unchanged`);
+    ok(got.requestSpread === want.requestSpread && got.requestSameNights === want.requestSameNights,
+      `[G2-${c.name}] request text unchanged`);
+  }
+  ok(now.calculatorFirstRender === golden.calculatorFirstRender, "[G3] calculator first render unchanged",
+    `${now.calculatorFirstRender.length} vs ${golden.calculatorFirstRender.length} chars`);
+});
+
 // ── anti-vacuity ────────────────────────────────────────────────────────
+ok(goldenCases >= 14, "[C5] the golden compared every case", `${goldenCases}`);
 ok(counters.sharedFieldBlocks > 0, "[C1] a shared-field block was placed");
 ok(counters.fieldReused > 0, "[C2] a field held more than one block");
 ok(counters.skippedBlocks > 0, "[C3] a too-long practice was skipped");

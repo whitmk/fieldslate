@@ -10,6 +10,7 @@ const SUNSET = "src/lib/sun/sunset.ts";
 const REPORT = "src/lib/practice-planner/report.ts";
 const FORMAT = "src/lib/practice-planner/format.ts";
 const CITIES = "src/lib/sun/us-cities.ts";
+const CALCULATOR = "src/components/marketing/practice-calculator/calculator.tsx";
 
 const MUTANTS: Mutant[] = [
   {
@@ -137,6 +138,21 @@ const MUTANTS: Mutant[] = [
     find: '    case -7: return city.dst ? "America/Denver" : "America/Phoenix";',
     replace: '    case -7: return "America/Denver";',
     expect: "S10",
+  },
+  // Section G (2026-10-21): the golden of the public calculator's output.
+  // Each of these changes something no earlier assertion reads, so only G
+  // can catch it — proof the golden bites.
+  {
+    id: "PP22", what: "the calculator's markup changes (a mode hint reworded)", file: CALCULATOR,
+    find: '  spread: "Assumes the league assigns practice nights so no night is overloaded.",',
+    replace: '  spread: "Assumes the league spreads practice nights so no night is overloaded.",',
+    expect: "G3",
+  },
+  {
+    id: "PP23", what: "the sunset shown for the season reads the end date, not the start", file: REPORT,
+    find: "    sunsetAtStart: err ? null : sunsetMinutes(parseIsoDate(input.seasonStart), cityById(input.cityId)),",
+    replace: "    sunsetAtStart: err ? null : sunsetMinutes(parseIsoDate(input.seasonEnd), cityById(input.cityId)),",
+    expect: "G1-example-sacramento",
   },
 ];
 

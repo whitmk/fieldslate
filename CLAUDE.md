@@ -601,6 +601,16 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `:mutants` (21, each killed first at
   its own assertion). Every F fixture states its real AND mutated answer by
   hand — confirm a new fixture separates them before trusting its mutant.
+- **THE CALCULATOR'S OUTPUT IS PINNED BY A GOLDEN (2026-10-21)** —
+  `scripts/sim/fixtures/practice-planner-golden.json`, recorded by
+  `practice-planner-golden-record.ts` (refuses without `RECORD_GOLDEN=1`)
+  from the tree BEFORE the in-app planner's additive module change: 14 input
+  cases through `computePlan` + `requestText`, plus the calculator's first
+  render. `sim:practice-planner` section G compares it (runs LAST; mutants
+  PP22 → G3 and PP23 → G1 change only what G reads). The in-app planner
+  (branch `feat/practice-planner`) may ADD options to the module; it may not
+  change what the calculator gets. A red G is fixed in the change, never by
+  re-recording — re-record only on Whit's decision.
 
 ## Daylight flags (admin-only, branch `feat/daylight-flags`, 2026-10-14)
 
@@ -5234,6 +5244,25 @@ Still open:
   ordering faults, and the section order now exists because of them.
 
 ## Open items
+
+- **Calculator fall sunset label (left unchanged by decision, 2026-10-21).**
+  The public calculator's "Sunset 7:42pm on Aug 31" line and the night
+  board's sunset marker read `computePlan`'s `sunsetAtStart` — the FIRST day
+  of the season. For a fall season that is the brightest day (Santa Rosa,
+  Aug 31 – Nov 7: 7:42pm on the label, 5:05pm by Nov 7), so the label looks
+  safer than the season is. The daylight WARNINGS are right: `daylightFor`
+  checks every day, the November clock change included. The in-app planner
+  shows the earliest sunset in the season instead; switching the calculator
+  to it would change the calculator's output for fall seasons only (for a
+  spring season the first day is the earliest sunset).
+
+- **Officials' writes are not gated on the server (found 2026-10-21; not part
+  of the practice planner build).** `/dashboard/umpires` refuses a non-Elite
+  league in the page (`getOrgPlan` + `isElite` → `FeatureLockedCard`), but
+  the roster, roles, availability, blackouts, conflicts and assignments are
+  browser writes under RLS (`is_org_member`), so a Free or Pro league's
+  member can still write officials data directly. Same class as the plan
+  LIMITS gap under the `profiles` bullet: the gate is in the UI only.
 
 - **PLANNED FOLLOW-UP — pools for a round-robin Stage 1 (needed for soccer).**
   Two-stage playoffs ("Round robin, then bracket", mockup
