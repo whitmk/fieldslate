@@ -314,6 +314,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (`series_by_round` `{}`, `series_game` 1); the migration's own verify block
   passed; leak check clean (no temp functions, no activity-log writes,
   triggers enabled). See "Playoff series".
+- **0117 (saved practice plans) WRITTEN AND PROVEN, NOT APPLIED (2026-10-21,
+  branch `feat/practice-planner`).** First free number, checked with
+  `list_migrations` right before writing it. Rolled-back proof green on its
+  first run after a compile fix (14/14 mutants at their own tag; md5s
+  printed — expected after apply: `practice_plan_input_problem`
+  `fc9ad6da607acc9d7ec80ca22e16e7f1`, `create_practice_plan`
+  `1ef653c9eb5fbccf09e7e4e604e34250`, `copy_practice_plan`
+  `31a4a78d7ad7d7dd3299f7f6a9ed84dd`, `save_practice_plan`
+  `eb327a8f31123181978482d08a13287a`, `delete_practice_plan`
+  `f0c8d4197e4e9074a698a6462be550d2`); leak check clean. **Apply it right
+  before the planner's screens ship** — the code reads `practice_plans`. See
+  "Saved practice plans (0117)".
 - **`is_org_member` IS the admin gate, because every org member is an admin
   today.** If a non-admin member role (e.g. coach) is ever added,
   `set_org_timezone`, `regenerate_team_calendar_link` and
@@ -628,6 +640,49 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   over any city id ← PP27, P2 a null city never falls back ← PP26, P3 lit
   skips daylight ← PP24, P4 lit still counted ← PP25 (the city checks run
   first — read the sim's mutation log).
+
+## Saved practice plans (0117, written and proven, NOT applied — branch `feat/practice-planner`)
+
+- **What it stores.** `practice_plans`: one row per saved field-request plan.
+  The LEAGUE's (owner_id), not a season's — no league_id, no link to
+  divisions or teams. `input` is the practice-planner `PlanCore` (dates,
+  minutes between, divisions) with an optional `lit` and `id` per division.
+  NO city: every plan reads `profiles.sunset_city` (cityByIdOrNull) when it
+  opens, so a `cityId` key is refused by name and any other unknown key is
+  refused. `input_version` (1 today) lets old plans open after the module
+  gains fields; the app upgrades on open, the database saves version 1 only.
+- **Writes are four SECURITY DEFINER functions, each pinning
+  `search_path = public, pg_temp`; the table has NO write grant to any role**
+  (SELECT for authenticated members under RLS, the 0049 form; service_role
+  nothing). create / copy / save: member + Pro/Elite (`plan_required`).
+  **delete: member only**, so a league that dropped to Free can still delete
+  its plans (decided 2026-10-21). Copy is an exact duplicate — input, version
+  and mode; only the name is new; team counts are never refreshed.
+- **Two admins, one plan:** `save_practice_plan` takes the `updated_at` the
+  browser loaded. Stale → writes NOTHING, answers `{committed:false,
+  status:'stale', updated_at, updated_by_id, updated_by_name}`. "Keep mine"
+  is an explicit SECOND call carrying that newer updated_at — never automatic.
+  updated_at is stored at MILLISECOND precision so a JS Date round-trips it
+  (pass it back as the server sent it).
+- **ONE INPUT RULE, TWO LANGUAGES, ONE TABLE.** `practice_plan_input_problem`
+  (SQL, callable by no role) and `practicePlanInputProblem`
+  (`src/lib/practice-plans/plan-input.ts`, with `INPUT_LIMITS`) return the
+  same problem key in the same order. The table is the block between the
+  `PLANINPUT-TABLE-BEGIN` / `-END` lines in `scripts/sim/practice-plans-sim.sql`
+  (105 rows; each row is a patch on the `base` row — raw / top / topdel / div
+  / divdel / divs / adddiv, built identically in both): the SQL proof runs it
+  through the function (XV1); `npm run sim:practice-plan-input` parses the
+  same block, runs it through the twin (XT1), requires every INPUT_LIMITS
+  edge — just inside and just outside — to be a row (E), and holds the public
+  calculator's own form inside the limits (L). A planner-valid input can
+  never be refused on save. Each marker alone on its line; never a second
+  copy.
+- **Proof:** `scripts/sim/practice-plans-sim.sql` (+ `practice-plans-build.ts`;
+  `--md5` prints the function and table md5s the run must print). Rolled back
+  in "test", with "Test 2" as the other league; SHARE ROW EXCLUSIVE on
+  `profiles` for the run (three FKs). 14 mutants. Read its RUN LOG.
+- **Harness:** `npm run sim:practice-plan-input` (177 checks × 3 zones) +
+  `:mutants` (5, each killed at its own assertion).
 
 ## Daylight flags (admin-only, branch `feat/daylight-flags`, 2026-10-14)
 
