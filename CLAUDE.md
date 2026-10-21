@@ -290,14 +290,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   service_role, PUBLIC false; dashboard_readonly true as before — the backlog
   item); leak check clean, no bracket has a cross-division setting. See
   "Division deletion".
-- **0116 (public bracket page) WRITTEN AND PROVEN, NOT APPLIED** (branch
-  `feat/public-bracket`). Rolled-back proof first-run green, 12/12 mutants at
-  their own tag; expected md5(prosrc) after apply:
-  `set_playoff_public_scores` `9ccc674a87e094870bf9b42ad47b8930`,
-  `get_league_bracket_by_token` `368f441841a3baffe120e94a815d523c` — re-run
-  the proof if either body changes. **Deploy order: apply 0116 BEFORE this
-  code reaches `main`** — the Playoffs page selects `playoffs.public_scores`.
-  See "Public bracket page (0116)".
+- **0116 (public bracket page) APPLIED 2026-10-21 05:05 UTC, catalog
+  `20261021050508`**, verbatim from the repo file on Whit's go, after its
+  first-run-green rolled-back proof (12/12 mutants at their own tag).
+  md5(prosrc) verified: `set_playoff_public_scores`
+  `9ccc674a87e094870bf9b42ad47b8930`, `get_league_bracket_by_token`
+  `368f441841a3baffe120e94a815d523c`; one overload each, both SECURITY
+  DEFINER; EXECUTE exactly as stated (reader anon + authenticated, setter
+  authenticated only; PUBLIC, service_role and dashboard_readonly false); the
+  6 existing brackets and 23 games byte-identical apart from the new column,
+  `public_scores` true on all 6; leak check clean. **Deploy order (met): 0116
+  was applied BEFORE the code reached `main`.** See "Public bracket page
+  (0116)".
 - **0114 (playoff series) APPLIED 2026-10-20 22:38 UTC, catalog
   `20261020223859`**, verbatim from the repo file on Whit's go (after the
   Safari print check), following its rolled-back proof (24/24) and the
@@ -4300,7 +4304,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   that they must not emit notes, which made the old scan fire on the rule it
   checks. That harness has not been re-run since the edit.
 
-## Public bracket page (`/s/<token>/bracket/<division>`) — 0116 (branch `feat/public-bracket`)
+## Public bracket page (`/s/<token>/bracket/<division>`) — 0116, applied 2026-10-21
 
 - **What it is.** A read-only page per division's playoffs, shared from the
   Playoffs card ("Public page" strip: Copy public link, Open ↗, "Show scores

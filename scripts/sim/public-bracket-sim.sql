@@ -399,3 +399,9 @@ end $h$;
 --   Leak check: 0 leagues/divisions/locations/teams named ZZ116, no link row
 --   for "test", no public_scores column, both functions absent, "test" plan
 --   still elite, 0 log rows, 0 temp functions. 0116 NOT applied.
+-- 2026-10-21 05:05 UTC — 0116 APPLIED verbatim (catalog 20261021050508) on
+--   Whit's go. md5(prosrc) 9ccc674a… / 368f4418… verified live, one overload
+--   each; privileges per role as stated; 6 brackets + 23 games fingerprinted
+--   before and after — identical apart from public_scores (true on all 6);
+--   leak check clean (0 log rows, 0 temp functions, no ZZ116 rows, no "test"
+--   link row).
