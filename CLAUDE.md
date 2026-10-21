@@ -39,6 +39,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **Production-only.** Every push to `main` auto-deploys to production via
   Vercel. There is no staging environment. `npx tsc --noEmit` and
   `npx eslint <touched paths>` must pass before every commit.
+- **`npm run sim:mutant-targets` runs before every merge to `main`, alongside
+  `npx tsc --noEmit` and `npx eslint`** (2026-10-20). It fails if ANY mutant in
+  ANY `scripts/sim/*-mutants.ts` has find text that doesn't match its file
+  exactly once (a stale mutant mutates nothing). Fast — no sim runs, no source
+  is written (`MUTANT_TARGETS_ONLY=1` makes `runMutants` check and exit). Why:
+  seven mutants went stale with the playoff-series step 3/4 commits and reached
+  `main` unnoticed, because nothing looks at a mutant until its pass runs.
 - **Check the queue before every push.** Run
   `git log origin/main..main --oneline` and push only approved commits —
   held commits from earlier sessions (or worktree/chip sessions) can be
@@ -904,7 +911,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   bracket read "Round 1, Final" — the wizard's lone "Round 1" row looked like
   one setting for the whole bracket. ONE rule, `roundKind`
   (`series-names.ts`): the last round present is "final", the one before it
-  "semifinal", by position, never by stored label; `isFinalRound` (champion
+  "semifinal" when it holds TWO matchups (a 3-team bracket — 2 vs 3, seed 1
+  on a bye — reads Round 1, Final), by position, never by stored label; `isFinalRound` (champion
   banner, result modal) and `singleElimRoundTitle` (single-game brackets: no
   Quarterfinals, as before) sit on it. Surfaces: wizard titles
   (`wizardRounds`), tree header + list + edit modal (`playoffRoundTitle`,
@@ -920,6 +928,16 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `roundsFromTeamsLine` ("Rounds come from the number of teams (8 teams →
   Round 1, Semifinals, Final). Set each round separately — e.g. single
   games, then a best-of-3 Final.").
+- **"Games in each round" lists one row per round with a real game, for every
+  team count — pinned 2–16** (`sim:playoff-series` FN2: a hand-written table
+  of labels, titles and matchups, checked against the generator; FN12: a
+  best-of-3 Final makes 3 Final games at every count; FN13 + the live twin
+  `scripts/sim/three-team-final-check.sql`: a 3-team best-of-3 Final planned,
+  dated, advanced and played, rolled back in the "test" org). The control
+  gets the count of teams IN the bracket (`data.seeding.length`, or Stage 2's
+  advancing count), so a single row means it was handed 2 — Whit's 3-team
+  one-row report (2026-10-20) did not reproduce from the code on `main` or
+  the branch: both list Round 1 and Final for 3.
 - **Home (decided 2026-10-20):** home for every game of a series is decided
   once BOTH teams are set (seeding or a result): the higher TRUE seed (the
   seeding list; Stage 2's given seed) is home in games 1, 3, 5, 7. Until then
@@ -1107,12 +1125,12 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   range" (that count depends on fields and the per-day limit); the two-stage
   seed confirm keeps today's "Game 1: Mets (4) vs …" for single games (the
   mockup showed "Round 1 · Game 1:").
-- **Harness: `npm run sim:playoff-series`** (3,413 checks × 3 zones, 13
+- **Harness: `npm run sim:playoff-series`** (3,496 checks × 3 zones, 15
   counters; S0 nothing changes without series … S10 confirms, S11 screens,
   S12 outside the app, FN the last round is the Final, IX the shared
   if-needed table, then 300 seeded
   playthroughs through the TypeScript twin, incl. clear round trips) +
-  `:mutants` (55, each killed at its own assertion — read the RUN LOG).
+  `:mutants` (59, each killed at its own assertion — read the RUN LOG).
 
 ## Printable playoff bracket + slot labels (2026-10-13)
 

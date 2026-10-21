@@ -153,6 +153,10 @@ const counters = {
   csvIfNeededFromResults: 0,
   /** FN: a 2-team bracket's only round named "Final" on a surface. */
   twoTeamFinals: 0,
+  /** FN2: team counts 2–16 whose wizard rows equal the generated rounds. */
+  teamCountsListed: 0,
+  /** FN13: the real 3-team best-of-3 Final played to a champion. */
+  threeTeamFinalsPlayed: 0,
 };
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -1058,11 +1062,43 @@ section("FN the last round is the Final", () => {
   const titles = (n: number) => wizardRounds(n).map((r) => r.title);
   eq(titles(2), ["Final"], "FN1", "wizard, 2 teams: the only round is the Final");
   if (titles(2)[0] === "Final") counters.twoTeamFinals++;
-  eq(titles(3), ["Semifinals", "Final"], "FN2", "wizard, 3 teams: Semifinals, Final");
-  eq(titles(4), ["Semifinals", "Final"], "FN2", "wizard, 4 teams: Semifinals, Final");
-  eq(titles(5), ["Round 1", "Semifinals", "Final"], "FN2", "wizard, 5 teams: Round 1, Semifinals, Final");
-  eq(titles(8), ["Round 1", "Semifinals", "Final"], "FN2", "wizard, 8 teams: Round 1, Semifinals, Final");
-  eq(titles(16), ["Round 1", "Quarterfinals", "Semifinals", "Final"], "FN2", "wizard, 16 teams unchanged");
+
+  // Every team count 2–16 (Whit's acceptance test: 3 teams showed one row).
+  // Written by hand: label, title, matchups (real games) for every round that
+  // has at least one real game — a bye pair is not a game. The last is always
+  // the Final; the round before it is the Semifinals only with two matchups.
+  const TABLE: Record<number, [string, string, number][]> = {
+    2: [["R1", "Final", 1]],
+    3: [["R1", "Round 1", 1], ["F", "Final", 1]],
+    4: [["R1", "Semifinals", 2], ["F", "Final", 1]],
+    5: [["R1", "Round 1", 1], ["SF", "Semifinals", 2], ["F", "Final", 1]],
+    6: [["R1", "Round 1", 2], ["SF", "Semifinals", 2], ["F", "Final", 1]],
+    7: [["R1", "Round 1", 3], ["SF", "Semifinals", 2], ["F", "Final", 1]],
+    8: [["R1", "Round 1", 4], ["SF", "Semifinals", 2], ["F", "Final", 1]],
+    9: [["R1", "Round 1", 1], ["R2", "Quarterfinals", 4], ["SF", "Semifinals", 2], ["F", "Final", 1]],
+    10: [["R1", "Round 1", 2], ["R2", "Quarterfinals", 4], ["SF", "Semifinals", 2], ["F", "Final", 1]],
+    11: [["R1", "Round 1", 3], ["R2", "Quarterfinals", 4], ["SF", "Semifinals", 2], ["F", "Final", 1]],
+    12: [["R1", "Round 1", 4], ["R2", "Quarterfinals", 4], ["SF", "Semifinals", 2], ["F", "Final", 1]],
+    13: [["R1", "Round 1", 5], ["R2", "Quarterfinals", 4], ["SF", "Semifinals", 2], ["F", "Final", 1]],
+    14: [["R1", "Round 1", 6], ["R2", "Quarterfinals", 4], ["SF", "Semifinals", 2], ["F", "Final", 1]],
+    15: [["R1", "Round 1", 7], ["R2", "Quarterfinals", 4], ["SF", "Semifinals", 2], ["F", "Final", 1]],
+    16: [["R1", "Round 1", 8], ["R2", "Quarterfinals", 4], ["SF", "Semifinals", 2], ["F", "Final", 1]],
+  };
+  for (let n = 2; n <= 16; n++) {
+    const want = TABLE[n];
+    const rows = wizardRounds(n).map((r) => [r.label, r.title, r.matchups]);
+    eq(rows, want, "FN2", `wizard, ${n} teams: every round with a real game, in order`);
+    // The control lists exactly the rounds the generator makes, each with as
+    // many matchups as it has real games.
+    const gen = buildSingleElimination(teams(n), IDS, noSlots());
+    const genRounds = [...new Set([...gen].sort((a, b) => a.game_number - b.game_number).map((g) => g.round))];
+    const genRows = genRounds.map((r) => [r, new Set(gen.filter((g) => g.round === r).map((g) => g.game_number)).size]);
+    eq(genRows, want.map(([l, , m]) => [l, m]), "FN2", `${n} teams: the generated bracket has exactly those rounds and games`);
+    ok(rows.length > 0 && rows[rows.length - 1][1] === "Final", "FN2", `${n} teams: the last row is the Final`);
+    if (JSON.stringify(rows) === JSON.stringify(want) && JSON.stringify(genRows) === JSON.stringify(want.map(([l, , m]) => [l, m]))) {
+      counters.teamCountsListed++;
+    }
+  }
   eq(titles(32), ["Round 1", "Round 2", "Quarterfinals", "Semifinals", "Final"], "FN2", "wizard, 32 teams unchanged");
 
   eq(roundsFromTeamsLine(2),
@@ -1081,6 +1117,7 @@ section("FN the last round is the Final", () => {
   };
   eq(names(2), ["Final"], "FN4", "tree, 2 teams");
   if (names(2)[0] === "Final") counters.twoTeamFinals++;
+  eq(names(3), ["Round 1", "Final"], "FN4", "tree, 3 teams: Round 1 (2 vs 3, seed 1 on a bye), Final");
   eq(names(4), ["Semifinals", "Final"], "FN4", "tree, 4 teams");
   eq(names(6), ["Round 1", "Semifinals", "Final"], "FN4", "tree, 6 teams (byes)");
   eq(names(8), ["Round 1", "Semifinals", "Final"], "FN4", "tree, 8 teams unchanged");
@@ -1140,9 +1177,66 @@ section("FN the last round is the Final", () => {
   ok(roundsOf(de).every((r) => playoffRoundTitle(r, de) !== "Final" || r === "F"), "FN10", "double elimination: no round renamed Final");
   eq(bracketRoundName(rr[0].round, rr), "Round robin", "FN10", "public round robin unchanged");
 
+  // A best-of-3 Final makes 3 Final games, for every count 2–16 (the Final is
+  // stored "R1" in a 2-team bracket); every other round is unchanged.
+  for (let n = 2; n <= 16; n++) {
+    const last = TABLE[n][TABLE[n].length - 1][0];
+    const gen = buildSingleElimination(teams(n), IDS, noSlots(), { [last]: 3 });
+    const finals = gen.filter((g) => g.round === last).map((g) => g.series_game ?? 1).sort();
+    eq(finals, [1, 2, 3], "FN12", `${n} teams: a best-of-3 Final is Final games 1, 2 and 3`);
+    eq(gen.filter((g) => g.round !== last).length, TABLE[n].slice(0, -1).reduce((t, [, , m]) => t + m, 0), "FN12", `${n} teams: the other rounds keep one game per matchup`);
+  }
+
+  // A real 3-team bracket with a best-of-3 Final: planned onto the calendar,
+  // then played through the advancement twin (series.ts), with an upset.
+  const three = withIds(planBracket({ ...mockupInput({ F: 3 }), seeds: teams(3), gamesPerTeamPerDay: 1 }).games);
+  eq(three.map((g) => `${g.round}:${g.game_number}.${g.series_game ?? 1} ${g.home_team_id ?? "-"}/${g.away_team_id ?? "-"}`),
+    ["R1:2.1 t2/t3", "F:3.1 t1/-", "F:3.2 t1/-", "F:3.3 t1/-"],
+    "FN13", "3 teams, best-of-3 Final: 2 vs 3 in Round 1, seed 1 waits in every Final game");
+  const when = (id: string) => { const g = three.find((r) => r.id === id)!; return `${g.scheduled_date} ${g.start_time}`; };
+  ok(three.every((g) => g.scheduled_date && g.start_time && g.venue_id), "FN13", "every game has a date, a time and a field", JSON.stringify(three.map((g) => when(g.id))));
+  ok(when("R1-2-1") < when("F-3-1") && when("F-3-1") < when("F-3-2") && when("F-3-2") < when("F-3-3"), "FN13", "Round 1 first, then Final games 1, 2, 3 in order",
+    JSON.stringify(three.map((g) => when(g.id))));
+  ok(new Set(three.map((g) => g.scheduled_date)).size === 4, "FN13", "one game per team per day: four different dates", JSON.stringify(three.map((g) => g.scheduled_date)));
+  // Round 1: Pirates (3) upset Bears (2).
+  result(three, "R1-2-1", 2, 5);
+  const adv = seriesAdvanceWrites(three.find((r) => r.id === "R1-2-1")!, "t3", null, three, seedOfPlain);
+  ok("writes" in adv, "FN13", "the Round 1 winner moves into the Final", JSON.stringify(adv));
+  if ("writes" in adv) applyWrites(three, adv.writes);
+  eq(three.filter((g) => g.round === "F").map((g) => `${g.home_team_id}/${g.away_team_id}`), ["t1/t3", "t1/t3", "t1/t3"].map((x, i) => (i === 1 ? "t3/t1" : x)),
+    "FN13", "the Final: seed 1 home in games 1 and 3, seed 3 home in game 2");
+  // The Final: seed 1 wins game 1, seed 3 game 2, seed 1 game 3.
+  for (const [id, home, away] of [["F-3-1", 4, 1], ["F-3-2", 6, 2], ["F-3-3", 3, 2]] as const) {
+    const before = JSON.parse(JSON.stringify(three)) as SeriesGame[];
+    result(three, id, home, away);
+    const change = seriesChange(three.find((r) => r.id === id)!, before, home, away);
+    for (const c of change.cancels) three.find((r) => r.id === c.id)!.status = NOT_NEEDED;
+  }
+  const fin = seriesState(three.filter((g) => g.round === "F"));
+  eq([fin.winnerId, fin.wins.get("t1"), fin.wins.get("t3")], ["t1", 2, 1], "FN13", "seed 1 wins the Final 2–1");
+  eq(seriesChampionLine(three.filter((g) => g.round === "F"), teamName), "Expos win the Final 2–1", "FN13", "the champion banner");
+  if (fin.winnerId === "t1") counters.threeTeamFinalsPlayed++;
+  // And decided in two: game 3 is not needed.
+  const three2 = withIds(planBracket({ ...mockupInput({ F: 3 }), seeds: teams(3), gamesPerTeamPerDay: 1 }).games);
+  result(three2, "R1-2-1", 5, 2);
+  const adv2 = seriesAdvanceWrites(three2.find((r) => r.id === "R1-2-1")!, "t2", null, three2, seedOfPlain);
+  if ("writes" in adv2) applyWrites(three2, adv2.writes);
+  const cancels: string[] = [];
+  for (const [id, home, away] of [["F-3-1", 4, 1], ["F-3-2", 1, 3]] as const) {
+    const before = JSON.parse(JSON.stringify(three2)) as SeriesGame[];
+    result(three2, id, home, away);
+    for (const c of seriesChange(three2.find((r) => r.id === id)!, before, home, away).cancels) {
+      three2.find((r) => r.id === c.id)!.status = NOT_NEEDED;
+      cancels.push(c.id);
+    }
+  }
+  eq(cancels, ["F-3-3"], "FN13", "seed 1 wins games 1 and 2: Final game 3 is not needed");
+
   // Wiring (source greps — weak by nature).
   const control = readFileSync("src/components/playoffs/steps/series-lengths-control.tsx", "utf8");
   ok(control.includes("{roundsFromTeamsLine(teamCount)}"), "FN11", "the control renders the line");
+  ok(control.includes("const rounds = wizardRounds(teamCount);") && control.includes("{rounds.map((r) => {"),
+    "FN11", "the control renders one row for EVERY round wizardRounds lists");
   const view = readFileSync("src/components/playoffs/bracket-view.tsx", "utf8");
   ok(view.includes("if (!withSeries) return playoffRoundTitle(round, games);")
      && view.includes("roundName={playoffRoundTitle(g.round, games)}")

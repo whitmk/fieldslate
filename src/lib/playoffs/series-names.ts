@@ -10,9 +10,11 @@
 //
 // Names (approved mockup docs/mockups/playoff-series.html, D2, revised
 // 2026-10-20 after Whit's acceptance test): a round is named by its POSITION,
-// never by its stored label. The LAST round is always the Final and the one
-// before it the Semifinals — so a 2-team bracket's only round (stored "R1")
-// is the Final, and a 4-team bracket reads Semifinals, Final. A later round
+// never by its stored label. The LAST round is always the Final, and the one
+// before it is the Semifinals when it holds two matchups — so a 2-team
+// bracket's only round (stored "R1") is the Final, a 4-team bracket reads
+// Semifinals, Final, and a 3-team bracket (2 vs 3, seed 1 on a bye) reads
+// Round 1, Final. A later round
 // with four bracket positions is a Quarterfinal; anything else — the first
 // round of a bracket of 8 or more included — is "Round k" ("Round k · Series
 // i"). The series number is the rank of its bracket position among the
@@ -47,6 +49,11 @@ function roundNumber(round: string, bracket: ReadonlyArray<SeriesRow>): number {
   return rounds.indexOf(round) + 1;
 }
 
+/** Matchups (bracket positions with a game) in a round of this bracket. */
+function roundMatchups(round: string, bracket: ReadonlyArray<SeriesRow>): number {
+  return new Set(bracket.filter((g) => g.round === round).map((g) => g.game_number)).size;
+}
+
 /** Bracket positions in a round = 2^(rounds after it). */
 function roundPositions(round: string, bracket: ReadonlyArray<SeriesRow>): number {
   const rounds = new Set(bracket.map((g) => g.round)).size;
@@ -59,7 +66,7 @@ export function roundKind(round: string, bracket: ReadonlyArray<SeriesRow>): Rou
   const rounds = new Set(bracket.map((g) => g.round)).size;
   const k = roundNumber(round, bracket);
   if (round === "F" || k === rounds) return "final";
-  if (round === "SF" || k === rounds - 1) return "semifinal";
+  if (round === "SF" || (k === rounds - 1 && roundMatchups(round, bracket) === 2)) return "semifinal";
   if (k > 1 && roundPositions(round, bracket) === 4) return "quarterfinal";
   return "round";
 }

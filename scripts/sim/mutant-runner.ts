@@ -31,6 +31,30 @@ export function runMutants(opts: {
 }): never {
   const zones = opts.timezones ?? [undefined];
 
+  // `npm run sim:mutant-targets` sets this: check that every mutant's find text
+  // is in its file exactly once, then stop — no sim is run and nothing is
+  // written. A stale target is a mutant that would mutate nothing.
+  if (process.env.MUTANT_TARGETS_ONLY === "1") {
+    let stale = 0;
+    for (const m of opts.mutants) {
+      let src: string;
+      try {
+        src = readFileSync(join(ROOT, m.file), "utf8");
+      } catch {
+        console.error(`  STALE ${m.id}: ${m.file} does not exist`);
+        stale++;
+        continue;
+      }
+      const n = src.split(m.find).length - 1;
+      if (n !== 1) {
+        console.error(`  STALE ${m.id}: find text matches ${n} time(s) in ${m.file}, not exactly once`);
+        stale++;
+      }
+    }
+    console.log(`MUTANT-TARGETS ${opts.mutants.length} checked, ${stale} stale`);
+    process.exit(stale ? 1 : 0);
+  }
+
   function runSim(): { code: number; fails: string[] } {
     let code = 0;
     const fails: string[] = [];

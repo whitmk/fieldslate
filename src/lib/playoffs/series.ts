@@ -581,11 +581,14 @@ export function wizardRounds(teamCount: number): WizardRound[] {
     const games = B / Math.pow(2, r + 1);
     labels.push(r === 0 ? "R1" : games === 1 ? "F" : games === 2 ? "SF" : `R${r + 1}`);
   }
-  const fake = labels.map((label) => ({ round: label, game_number: 0 }));
+  const matchups = labels.map((_, r) => (r === 0 ? teamCount - B / 2 : B / Math.pow(2, r + 1)));
+  // A stand-in bracket with one row per matchup: names count a round's real
+  // games (a 3-team bracket's first round holds one, so it is Round 1).
+  const fake = labels.flatMap((label, r) => Array.from({ length: matchups[r] }, (_, i) => ({ round: label, game_number: i })));
   return labels.map((label, r) => ({
     label,
     title: roundTitle(label, fake),
-    matchups: r === 0 ? teamCount - B / 2 : B / Math.pow(2, r + 1),
+    matchups: matchups[r],
   }));
 }
 

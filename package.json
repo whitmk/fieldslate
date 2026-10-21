@@ -100,7 +100,8 @@
     "sim:daylight": "TZ=UTC npx tsx scripts/sim/daylight-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/daylight-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/daylight-sim.ts",
     "sim:daylight:mutants": "npx tsx scripts/sim/daylight-mutants.ts",
     "sim:daylight-leaks": "npx tsx scripts/sim/daylight-leaks-sim.ts",
-    "sim:daylight-leaks:mutants": "npx tsx scripts/sim/daylight-leaks-mutants.ts"
+    "sim:daylight-leaks:mutants": "npx tsx scripts/sim/daylight-leaks-mutants.ts",
+    "sim:mutant-targets": "npx tsx scripts/sim/mutant-targets.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

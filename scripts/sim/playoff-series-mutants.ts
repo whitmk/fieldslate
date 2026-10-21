@@ -293,7 +293,7 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "SM46", what: "the round before the Final is named by its stored label only (4 teams read Round 1, Final)", file: "src/lib/playoffs/series-names.ts",
-    find: 'if (round === "SF" || k === rounds - 1) return "semifinal";',
+    find: 'if (round === "SF" || (k === rounds - 1 && roundMatchups(round, bracket) === 2)) return "semifinal";',
     replace: 'if (round === "SF") return "semifinal";',
     expect: "FN2",
   },
@@ -345,6 +345,30 @@ const MUTANTS: Mutant[] = [
     replace: "",
     expect: "FN11",
   },
+  {
+    id: "SM55", what: "the wizard drops a round with a single real game (3 teams show one row)", file: SERIES,
+    find: "    matchups: matchups[r],\n  }));",
+    replace: "    matchups: matchups[r],\n  })).filter((w, r, all) => r === all.length - 1 || w.matchups > 1);",
+    expect: "FN2",
+  },
+  {
+    id: "SM56", what: "the round before the Final is Semifinals even with one real game (3 teams)", file: "src/lib/playoffs/series-names.ts",
+    find: "(k === rounds - 1 && roundMatchups(round, bracket) === 2)",
+    replace: "(k === rounds - 1)",
+    expect: "FN2",
+  },
+  {
+    id: "SM57", what: "a 2-team Final ignores its series length (one game, not three)", file: PLAN,
+    find: "  const r1Length = seriesLengthFor(series, r1);",
+    replace: "  const r1Length = roundCount > 1 ? seriesLengthFor(series, r1) : 1;",
+    expect: "FN12",
+  },
+  {
+    id: "SM58", what: "the control shows only the last round", file: "src/components/playoffs/steps/series-lengths-control.tsx",
+    find: "{rounds.map((r) => {",
+    replace: "{rounds.slice(-1).map((r) => {",
+    expect: "FN11",
+  },
 ];
 
 runMutants({
@@ -391,3 +415,12 @@ runMutants({
 // 55/55 KILLED at their own tag on the first run (SM45 → FN1, SM46 → FN2,
 // SM47 → FN4, SM48 → FN6, SM49 → FN7, SM50 → FN8, SM51 → FN9, SM52 → FN5,
 // SM53 → FN10, SM54 → FN11). Source restored and re-verified green.
+// 2026-10-20 — every team count 2–16 (Whit: 3 teams showed one row). FN2 now
+// a hand-written table of the rounds with a real game, their labels, titles
+// and matchups, matched against the generator; FN12 a best-of-3 Final makes 3
+// Final games for every count; FN13 a real 3-team bracket planned and played
+// (live twin: scripts/sim/three-team-final-check.sql). A second-to-last round
+// is the Semifinals only with two matchups (3 teams: Round 1, Final). SM46
+// re-anchored to the new rule (npm run sim:mutant-targets flagged it); SM55–
+// SM58 added. 59/59 KILLED at their own tag (SM55 → FN2, SM56 → FN2, SM57 →
+// FN12, SM58 → FN11). Source restored and re-verified green.
