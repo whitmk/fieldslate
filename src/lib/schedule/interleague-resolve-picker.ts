@@ -27,8 +27,13 @@
 //     `scheduled_at` and never `venue_id`, and both server gates read the venue
 //     off the stored row — offering another field would save the time while the
 //     gates tested the old field. It is also the field the partner was told.
-//   * NO MAKEUP DAYS. `makeup` means "a rained-out game may move here"; a
-//     counter-proposal is not a rainout. Flags are stripped before the build.
+//   * NO MAKEUP DAYS — EXCEPT a makeup request for a rained-out game.
+//     `makeup` means "a rained-out game may move here"; a counter-proposal is
+//     not a rainout, and neither is a request to move an accepted game, so
+//     flags are stripped before the build. The ONE exception is the "request"
+//     purpose on a CANCELLED game (Propose a makeup time, 2026-11-02): that IS
+//     a rainout, so its flags are kept, exactly as the rainout picker keeps
+//     them. `keepsMakeupFlags` is the one place that decides.
 //   * NO PICKER WITHOUT A FIELD. `venue_id` null (every away game in production)
 //     means the field is the partner's, whose hours and bookings we do not have.
 //     Offering "available" times there would be a guess wearing a label. Keyed
@@ -83,6 +88,25 @@ export function resolveEditMode(game: {
 }): ResolveEditMode {
   if (game.venue_id) return "picker";
   return game.is_away ? "away_free_typed" : "no_venue_free_typed";
+}
+
+// ── Purpose ──────────────────────────────────────────────────────────────────
+
+/** What the modal does with the time it is given:
+ *  "edit"    — sets it and confirms a counter-proposed game (resolve route);
+ *  "propose" — sends it back on a counter-proposed game (0091);
+ *  "request" — sends a reschedule / makeup request on an accepted or rained-
+ *              out game (POST /api/interleague/games/[id]/reschedule). */
+export type ResolveEditPurpose = "edit" | "propose" | "request";
+
+/** Makeup days are offered ONLY for a request on a rained-out game. A
+ *  counter-proposal (edit / propose) and a request to move an accepted game
+ *  are not rainouts, so their flags are stripped. */
+export function keepsMakeupFlags(
+  purpose: ResolveEditPurpose,
+  status: string | null | undefined,
+): boolean {
+  return purpose === "request" && status === "cancelled";
 }
 
 // ── Reads ────────────────────────────────────────────────────────────────────
@@ -141,6 +165,9 @@ export type PickerContext = {
    *  lines correctly (a day the override EVALUATED must not be reported as a
    *  day the division doesn't play). */
   overrides?: SlotOverrides;
+  /** Keep the field's makeup flags (from `keepsMakeupFlags`). Absent = strip,
+   *  so every existing caller builds exactly as before. */
+  keepMakeup?: boolean;
 };
 
 export type AssembleResult =
@@ -154,7 +181,8 @@ export type AssembleResult =
   | { ok: false; reason: "venue_unconfigured"; fieldName: string }
   | { ok: false; reason: "division_dates_missing"; divisionName: string };
 
-/** Clear every `makeup` flag. A counter-proposal is not a rainout. */
+/** Clear every `makeup` flag. A counter-proposal is not a rainout (nor is a
+ *  request to move an accepted game — see keepsMakeupFlags). */
 export function stripMakeup(av: VenueAvailability): VenueAvailability {
   const out: VenueAvailability = {};
   for (const [day, w] of Object.entries(av) as [DayKey, NonNullable<VenueAvailability[DayKey]>][]) {
@@ -240,7 +268,11 @@ export function assemblePickerInputs(reads: PickerReads, ctx: PickerContext): As
     maxPerTeamDay: Math.max(1, Number(s.max_games_per_team_per_day ?? 1) || 1),
     venueIds: [venue.id],
     venueNames: { [venue.id]: fieldName },
-    venueAvailability: { [venue.id]: stripMakeup(parseAvailability(venue.availability)) },
+    venueAvailability: {
+      [venue.id]: ctx.keepMakeup
+        ? parseAvailability(venue.availability)
+        : stripMakeup(parseAvailability(venue.availability)),
+    },
     blackoutDates: new Set(reads.blackouts.data.map((b) => b.date)),
     venueBookings,
     homeTeamSpans,
@@ -377,8 +409,9 @@ export function emptyDayLines(
 
     if (d.kind === "no_field") {
       // The builder records no_field at the day gate for a day the division
-      // does not play, and for a playing day the one field is shut. With
-      // makeup flags stripped, playing-day membership is what separates them.
+      // does not play, and for a playing day the one field is shut. Playing-
+      // day membership separates them — with makeup flags kept, a flagged open
+      // field on a non-playing day is evaluated, so it never reaches here.
       if (!plays.has(day) && !ctx.includeNonPlayingDays) { notPlaying.push(day); continue; }
       lines.push({
         ...base, kind: "field_closed", tone: "config", venuesLink: true,

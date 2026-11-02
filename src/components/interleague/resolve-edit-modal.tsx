@@ -22,6 +22,11 @@
 //
 // Assembly, fail-closed decisions and every empty-day sentence live in
 // src/lib/schedule/interleague-resolve-picker.ts so the sim drives them.
+//
+// THIRD PURPOSE, "request" (2026-11-02): a reschedule or makeup REQUEST on an
+// accepted or rained-out game, sent to POST /api/interleague/games/[id]/
+// reschedule. Opened only by InterleagueRequestModal, which decides home vs
+// away; makeup days are kept only for a rained-out game (keepsMakeupFlags).
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -37,7 +42,9 @@ import { sunsetLabel } from "@/lib/daylight/flags";
 import {
   NOT_ATTEMPTED,
   buildResolvePicker,
+  keepsMakeupFlags,
   resolveEditMode,
+  type ResolveEditPurpose,
   type PickerBuild,
   type PickerDivisionRow,
   type PickerGameRow,
@@ -46,9 +53,12 @@ import {
   type ReadResult,
 } from "@/lib/schedule/interleague-resolve-picker";
 import type { TeamGameConstraintRow } from "@/lib/schedule/team-constraints";
+import { requestModalLabels } from "@/lib/schedule/panel-reschedule-route";
 
 export type ResolveEditGame = {
   id: string;
+  /** Read by the "request" purpose only (title and makeup flags). */
+  status?: string;
   league_id: string;
   home_team_id: string;
   venue_id: string | null;
@@ -69,14 +79,19 @@ interface ResolveEditModalProps {
   /** "edit" (default) SETS the time and confirms the game.
    *  "propose" SENDS the time to the partner league; the game stays
    *  unconfirmed until they answer (0091). Same picker, same fallbacks —
-   *  only the framing and the destination differ. */
-  purpose?: "edit" | "propose";
+   *  only the framing and the destination differ.
+   *  "request" SENDS a reschedule or makeup request on an accepted or rained-
+   *  out game (only InterleagueRequestModal opens it). */
+  purpose?: ResolveEditPurpose;
+  /** "request" only: the line under the matchup saying why this is a
+   *  request (makeupIntro, or the panel's accepted-game intro). */
+  intro?: string;
   game: ResolveEditGame;
   busy: boolean;
   /** The resolve route's refusal, shown INSIDE the modal so a gate rejection
    *  (which names what is in the way) is visible where the admin is looking. */
   error: string | null;
-  onSave: (payload: { scheduled_at: string; venue_name?: string }) => void;
+  onSave: (payload: { scheduled_at: string; venue_name?: string; note?: string }) => void;
   onClose: () => void;
   /** Sim/scratch seam: supply the picker result instead of querying. */
   initialBuild?: PickerBuild;
@@ -197,6 +212,7 @@ async function loadPickerReads(game: ResolveEditGame): Promise<PickerReads> {
 
 export function ResolveEditModal({
   purpose = "edit",
+  intro,
   game,
   busy,
   error,
@@ -207,8 +223,22 @@ export function ResolveEditModal({
   const mode = resolveEditMode(game);
   const orgName = game.interleague_org?.name ?? "the other league";
   const proposing = purpose === "propose";
-  const submitLabel = proposing ? `Send to ${orgName}` : "Confirm game";
+  const requesting = purpose === "request";
+  // Both send the time to the partner; "edit" sets it.
+  const sending = proposing || requesting;
+  const requestLabels = requestModalLabels(game.status ?? "scheduled");
+  const submitLabel = requesting
+    ? requestLabels.submitLabel
+    : proposing ? `Send to ${orgName}` : "Confirm game";
   const teamName = game.home_team?.name ?? "Your team";
+  const keepMakeup = keepsMakeupFlags(purpose, game.status);
+  // A request carries an optional note to the partner, as the free-typed
+  // request form does.
+  const [note, setNote] = useState("");
+  // The request route checks venue hours only for a venue_name it can match
+  // to one of our fields, and the free-typed form pre-fills the field's name.
+  // Send the same name so that check still runs for a picked or typed time.
+  const requestVenueName = game.venue?.name ?? undefined;
 
   // Free-typed state, seeded from the proposal if there is one, else original.
   const [datetime, setDatetime] = useState<string>(
@@ -255,9 +285,10 @@ export function ResolveEditModal({
         homeTeamId: game.home_team_id,
         homeTeamName: teamName,
         ...(o.includeNonPlayingDays || o.allowSecondGameSameDay ? { overrides: o } : {}),
+        ...(keepMakeup ? { keepMakeup: true } : {}),
       }),
     );
-  }, [game.id, game.home_team_id, teamName]);
+  }, [game.id, game.home_team_id, teamName, keepMakeup]);
 
   const load = useCallback(async (nextOverrides: SlotOverrides) => {
     setLoading(true);
@@ -272,6 +303,7 @@ export function ResolveEditModal({
           ...(nextOverrides.includeNonPlayingDays || nextOverrides.allowSecondGameSameDay
             ? { overrides: nextOverrides }
             : {}),
+          ...(keepMakeup ? { keepMakeup: true } : {}),
         }),
       );
     } catch (e) {
@@ -284,7 +316,7 @@ export function ResolveEditModal({
     } finally {
       setLoading(false);
     }
-  }, [game, teamName]);
+  }, [game, teamName, keepMakeup]);
 
   useEffect(() => {
     if (mode === "picker" && !initialBuild) void load(overrides);
@@ -311,11 +343,43 @@ export function ResolveEditModal({
 
   function submitTyped() {
     if (!canSaveTyped) return;
+    if (requesting) {
+      onSave({
+        scheduled_at: datetimeLocalToWallClockIso(datetime),
+        venue_name: isAway ? venueName.trim() : requestVenueName,
+        note: note.trim() || undefined,
+      });
+      return;
+    }
     onSave({
       scheduled_at: datetimeLocalToWallClockIso(datetime),
       venue_name: isAway ? venueName.trim() : undefined,
     });
   }
+
+  function submitPicked(slot: SlotOption) {
+    const scheduled_at = `${slot.isoString}+00:00`;
+    if (requesting) {
+      onSave({ scheduled_at, venue_name: requestVenueName, note: note.trim() || undefined });
+      return;
+    }
+    onSave({ scheduled_at });
+  }
+
+  const noteField = requesting && (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-medium text-gray-600">
+        Note <span className="text-gray-400">(optional)</span>
+      </label>
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={2}
+        placeholder="Why are you proposing this change?"
+        className="resize-none rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-[#0C1F3F] placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+      />
+    </div>
+  );
 
   const grouped = new Map<string, SlotOption[]>();
   if (build?.ok) {
@@ -355,7 +419,9 @@ export function ResolveEditModal({
         <div className="flex flex-shrink-0 items-start justify-between border-b border-gray-100 px-6 py-4">
           <div>
             <h2 className="text-base font-semibold text-[#0C1F3F]">
-              {proposing ? "Propose a different time" : "Edit and confirm"}
+              {requesting
+                ? requestLabels.title
+                : proposing ? "Propose a different time" : "Edit and confirm"}
             </h2>
             <p className="mt-0.5 text-xs text-gray-500">
               {teamName}{" "}
@@ -373,7 +439,9 @@ export function ResolveEditModal({
               </p>
             )}
             <p className="mt-1 text-xs text-gray-500">
-              {proposing
+              {requesting
+                ? intro ?? `${orgName} gets an email to accept it, suggest another time, or decline.`
+                : proposing
                 ? `${orgName} gets an email to accept it, suggest another time, or decline. The game stays unconfirmed until they answer.`
                 : `This confirms the game at the time you choose. ${orgName} is emailed the new time; they aren't asked to agree. To ask them instead, use "Propose a different time".`}
             </p>
@@ -397,7 +465,7 @@ export function ResolveEditModal({
               <p className="text-sm text-gray-600">
                 This game is at {orgName}&rsquo;s field. We don&rsquo;t have their
                 hours or bookings, so enter the date, time and field{" "}
-                {proposing ? "you want to suggest" : "you\u2019ve agreed with them"}.
+                {sending ? "you want to suggest" : "you\u2019ve agreed with them"}.
               </p>
             )}
             {mode === "no_venue_free_typed" && (
@@ -429,6 +497,8 @@ export function ResolveEditModal({
                 Use the time as it will appear on the schedule (no timezone conversion).
               </p>
             </div>
+
+            {noteField}
 
             {isAway && (
               <div className="flex flex-col gap-1.5">
@@ -476,7 +546,7 @@ export function ResolveEditModal({
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
                 >
                   {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {busy ? (proposing ? "Sending…" : "Saving…") : submitLabel}
+                  {busy ? (sending ? "Sending…" : "Saving…") : submitLabel}
                 </button>
               </div>
             </div>
@@ -485,7 +555,7 @@ export function ResolveEditModal({
           <div className="flex flex-col gap-5 px-6 py-6">
             <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                {proposing ? `Send this time to ${orgName}` : "Confirm this time"}
+                {sending ? `Send this time to ${orgName}` : "Confirm this time"}
               </p>
               <p className="mt-2 text-base font-semibold text-[#0C1F3F]">
                 {fmtGameDate(picked.isoString)} at {fmtGameTime(picked.isoString)}
@@ -496,6 +566,7 @@ export function ResolveEditModal({
               const f = slotDaylight(picked);
               return f ? <DaylightPickNotice flag={f} fieldLabel={picked.venueName} /> : null;
             })()}
+            {noteField}
             {errorBox}
             <div className="flex gap-3">
               <button
@@ -508,11 +579,11 @@ export function ResolveEditModal({
               </button>
               <button
                 type="button"
-                onClick={() => onSave({ scheduled_at: `${picked.isoString}+00:00` })}
+                onClick={() => submitPicked(picked)}
                 disabled={busy}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#22C55E] py-2.5 text-sm font-semibold text-white hover:bg-[#16a34a] disabled:opacity-60"
               >
-                {busy ? <><Loader2 className="h-4 w-4 animate-spin" />{proposing ? "Sending…" : "Saving…"}</> : submitLabel}
+                {busy ? <><Loader2 className="h-4 w-4 animate-spin" />{sending ? "Sending…" : "Saving…"}</> : submitLabel}
               </button>
             </div>
           </div>

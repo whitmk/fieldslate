@@ -23,6 +23,7 @@ import {
   buildResolvePicker,
   emptyDayLines,
   headlineBlame,
+  keepsMakeupFlags,
   resolveEditMode,
   stripMakeup,
   type EmptyDayLine,
@@ -67,6 +68,9 @@ const counters = {
   noVenueBranch: 0,
   failClosedReads: 0,
   makeupFlagStripped: 0,
+  requestMakeupKept: 0,           // cancelled + request offered a makeup Friday
+  requestMakeupStripped: 0,       // accepted + request offered none
+  counterMakeupStripped: 0,       // cancelled + edit/propose offered none
   seasonOver: 0,
   multiReasonWeekday: 0,
   headlineField: 0,
@@ -156,8 +160,8 @@ const CTX: PickerContext = {
   today: "2026-09-14",
 };
 
-function build(o: Over = {}) {
-  const b = buildResolvePicker(reads(o), CTX);
+function build(o: Over = {}, ctx: PickerContext = CTX) {
+  const b = buildResolvePicker(reads(o), ctx);
   if (!b.ok) throw new Error(`fixture unexpectedly refused: ${b.reason}`);
   counters.slotsOffered += b.slots.length;
   for (const l of b.lines) counters[`line_${l.kind}`]++;
@@ -402,6 +406,38 @@ async function main() {
     if (fridays.length === 0) counters.makeupFlagStripped++;
   }
 
+  // ══ REQUEST — makeup flags kept only for a request on a rained-out game ══════
+  // The modal passes keepsMakeupFlags(purpose, game.status) into the build, so
+  // these drive the same two steps it takes. Each assertion is the target of
+  // one mutant in interleague-picker-mutants.ts (RQ1–RQ3); read its log.
+  console.log("REQUEST  makeup days: rained-out request keeps them, everything else strips");
+  {
+    const flagged = { ...JENNINGS_HOURS, Fr: { start: "17:00", end: "21:00", makeup: true } };
+    const fridaysFor = (purpose: "edit" | "propose" | "request", status: string) => {
+      const b = build({ hours: flagged }, { ...CTX, keepMakeup: keepsMakeupFlags(purpose, status) });
+      return b.slots.filter((s) => new Date(`${s.date}T00:00:00`).getDay() === 5);
+    };
+
+    const kept = fridaysFor("request", "cancelled");
+    assert(
+      kept.length > 0 && kept.every((s) => s.isoString.substring(11, 16) >= "17:00"),
+      `[RQ1] rained-out game + request: the makeup Friday is offered inside the field's hours (got ${kept.length})`,
+    );
+    if (kept.length > 0) counters.requestMakeupKept++;
+
+    const accepted = fridaysFor("request", "scheduled");
+    assert(accepted.length === 0, `[RQ2] accepted game + request: makeup flags stripped, no Friday (got ${accepted.length})`);
+    if (accepted.length === 0) counters.requestMakeupStripped++;
+
+    const edit = fridaysFor("edit", "cancelled");
+    const propose = fridaysFor("propose", "cancelled");
+    assert(
+      edit.length === 0 && propose.length === 0,
+      `[RQ3] edit and propose strip makeup flags whatever the status (edit ${edit.length}, propose ${propose.length})`,
+    );
+    if (edit.length === 0 && propose.length === 0) counters.counterMakeupStripped++;
+  }
+
   // ══ MODE — the away branch, keyed on venue_id ════════════════════════════════
   console.log("MODE  away games are free-typed; keyed on venue_id");
   {
@@ -631,6 +667,13 @@ void main();
 // model the projected-key embed or `.or()` on games; the embed was validated
 // against live PostgREST (42501, not PGRST100/PGRST200) and the component only
 // shapes each query's {data, error} into the reads this sim drives.
+//
+// Addendum 2026-11-02 — the "request" purpose (makeup / reschedule requests).
+// +3 assertions ([RQ1]–[RQ3]) and 3 counters. Mutants are repeatable now:
+// `npm run sim:interleague-picker:mutants` (interleague-picker-mutants.ts).
+//  RQ1 assembly ignores keepMakeup (always strips)    → [RQ1]
+//  RQ2 keepsMakeupFlags ignores the status            → [RQ2]
+//  RQ3 keepsMakeupFlags ignores the purpose           → [RQ3]
 //
 // Addendum 2026-09-15 — honest weekday roll-up + reason-derived header.
 // +19 assertions ([MR1–MR6], [H1–H6]) and 6 counters; baseline 103 PASS.
