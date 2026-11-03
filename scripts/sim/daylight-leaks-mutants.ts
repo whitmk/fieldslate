@@ -71,6 +71,14 @@ const MUTANTS: Mutant[] = [
     replace: 'import { qualifiedVenueLabel } from "@/lib/venues/venue-label";\nimport { daylightFlag as _df } from "@/lib/daylight/flags";\nvoid _df;',
     expect: "F1",
   },
+  {
+    // 2026-11-02: the partner's token page swaps in the ADMIN request modal,
+    // which opens the daylight-wired interleague picker — two hops away.
+    id: "LK11", what: "the partner page's request button imports the admin request modal", file: "src/components/interleague/schedule-game-actions.tsx",
+    find: 'import { RescheduleRequestModal } from "./reschedule-request-modal";',
+    replace: 'import { RescheduleRequestModal } from "./reschedule-request-modal";\nimport { InterleagueRequestModal as _Admin } from "./interleague-request-modal";\nvoid _Admin;',
+    expect: "F1",
+  },
 ];
 
 runMutants({

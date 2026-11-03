@@ -168,6 +168,43 @@ async function partM() {
     withIntro.replace(/<p class="rounded-lg border border-purple-100[^"]*">[^<]*<\/p>/, "") === golden,
     "[M3] intro adds its one line and changes nothing else",
   );
+
+  // The wrapper both request render sites use (2026-11-02). No field of ours →
+  // it must render exactly the modal above; a field of ours → the picker.
+  const { InterleagueRequestModal } = await import(
+    "@/components/interleague/interleague-request-modal"
+  );
+  const wrapperGame = {
+    id: "g1",
+    status: "scheduled",
+    scheduled_at: base.game.scheduled_at,
+    league_id: "l1",
+    home_team_id: "t1",
+    venue_id: null as string | null,
+    is_away: base.game.is_away,
+    external_team_name: base.game.external_team_name,
+    proposed_venue_name: base.game.proposed_venue_name,
+    home_team: { name: "Mets", division: { id: "d1", name: "AA" } },
+    venue: base.game.venue,
+    interleague_org: base.game.interleague_org,
+  };
+  const wrapProps = { intro, busy: false, error: null, onSubmit: () => {}, onClose: () => {} };
+  const wrappedFree = renderToStaticMarkup(
+    React.createElement(InterleagueRequestModal, { ...wrapProps, game: wrapperGame }),
+  );
+  ok(
+    wrappedFree === withIntro,
+    "[M4] no field of ours → the wrapper renders the free-typed modal byte-identically",
+  );
+  const wrappedPicker = renderToStaticMarkup(
+    React.createElement(InterleagueRequestModal, { ...wrapProps, game: { ...wrapperGame, venue_id: "v1" } }),
+  );
+  ok(
+    wrappedPicker.includes("Finding available times") &&
+      !wrappedPicker.includes('type="datetime-local"') &&
+      wrappedPicker.includes(intro),
+    "[M5] a field of ours → the wrapper opens the picker (no typed time first), with the intro",
+  );
 }
 
 async function partR() {
@@ -552,6 +589,10 @@ function partS() {
   ok(
     src.includes("submitInterleagueRescheduleRequest("),
     "[S4] the panel submits requests through the shared helper",
+  );
+  ok(
+    (src.match(/<InterleagueRequestModal/g) ?? []).length === 1 && !src.includes("<RescheduleRequestModal"),
+    "[S10] the panel renders requests through InterleagueRequestModal only (one site, both doors)",
   );
   ok(
     /\{rowNotice\?\.gameId === game\.id[^}]*&& \(\s*<MoveNoticeLine\s+message=\{rowNotice\.message\}/.test(src),

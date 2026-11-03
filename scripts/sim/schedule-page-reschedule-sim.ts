@@ -234,6 +234,11 @@ function partS() {
     "[S3] the hook routes through the shared wrapper",
   );
   ok(
+    (hook.match(/<InterleagueRequestModal/g) ?? []).length === 1 && !hook.includes("<RescheduleRequestModal") &&
+      hook.includes("venue_id: request.game.venue_id ?? null"),
+    "[S8] the hook renders requests through InterleagueRequestModal (which decides picker vs typed from venue_id)",
+  );
+  ok(
     [list, cal].every((f) => f.includes("<MoveNoticeLine")),
     "[S4] both surfaces render a refusal with MoveNoticeLine",
   );

@@ -113,6 +113,22 @@ function partS() {
     "[S3] the picker is rendered in exactly three places (hook, panel ×2), each naming its surface",
     `sites=${sites} withSource=${withSource}`,
   );
+  // Exactly two REQUEST render sites (2026-11-02), both through the wrapper
+  // that decides picker vs free-typed; neither renders a request form itself.
+  const reqSites =
+    (hook.match(/<InterleagueRequestModal/g) ?? []).length + (panel.match(/<InterleagueRequestModal/g) ?? []).length;
+  const directForm = [hook, panel].some((f) => f.includes("<RescheduleRequestModal") || f.includes("<ResolveEditModal"));
+  ok(
+    reqSites === 2 && !directForm,
+    "[S5] the request modal is rendered in exactly two places (hook, panel), both through InterleagueRequestModal",
+    `sites=${reqSites} directForm=${directForm}`,
+  );
+  const wrap = read("components", "interleague", "interleague-request-modal.tsx");
+  ok(
+    wrap.includes("resolveEditMode(game)") && wrap.includes('purpose="request"') &&
+      !wrap.includes("<RainoutRescheduleModal"),
+    "[S6] the wrapper decides by resolveEditMode, opens the picker with the request purpose, never the rainout picker",
+  );
   const manual = read("components", "divisions", "manual-move-form.tsx");
   ok(
     read("components", "divisions", "rainout-reschedule-modal.tsx").includes("logSource={logSource}") &&

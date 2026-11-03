@@ -24,13 +24,12 @@ import {
 import { CoachConflictNotice } from "@/components/schedule/coach-conflict-notice";
 import { fmtGameDate, fmtGameTime } from "@/lib/utils/game-time";
 import { RainoutRescheduleModal } from "./rainout-reschedule-modal";
-import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
+import { InterleagueRequestModal } from "@/components/interleague/interleague-request-modal";
 import { UpgradeModal } from "@/components/plan/upgrade-cta";
 import { submitInterleagueRescheduleRequest } from "@/lib/interleague/request-reschedule";
 import {
   routeMoveTarget,
   makeupIntro,
-  requestModalLabels,
   MOVE_UPGRADE_FEATURE,
 } from "@/lib/schedule/panel-reschedule-route";
 import { AddGameModal } from "@/components/schedule/add-game-modal";
@@ -1843,17 +1842,25 @@ export function DivisionSchedulePanel({
         />
       )}
 
-      {/* ── Row "Reschedule game" icon: interleague → request the partner's consent ── */}
+      {/* ── Interleague request (row icon on an accepted game, "Propose makeup
+          time" on a rained-out row): picker on our field, free-typed on the
+          partner's — the modal decides. ── */}
       {requestTarget && (
-        <RescheduleRequestModal
-          {...requestModalLabels(requestTarget.game.status)}
+        <InterleagueRequestModal
           intro={requestTarget.intro}
           game={{
+            id: requestTarget.game.id,
+            status: requestTarget.game.status,
             scheduled_at: requestTarget.game.scheduled_at,
+            league_id: leagueId,
+            home_team_id: requestTarget.game.home_team_id,
+            venue_id: requestTarget.game.venue_id,
             is_away: !!requestTarget.game.is_away,
             external_team_name: requestTarget.game.external_team_name,
             proposed_venue_name: requestTarget.game.proposed_venue_name,
-            home_team: requestTarget.game.home_team,
+            home_team: requestTarget.game.home_team
+              ? { name: requestTarget.game.home_team.name, division: { id: divisionId, name: divisionName } }
+              : null,
             venue: requestTarget.game.venue,
             interleague_org: requestTarget.game.interleague_org,
           }}

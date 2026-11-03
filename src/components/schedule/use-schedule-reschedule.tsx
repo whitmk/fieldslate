@@ -15,10 +15,10 @@
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { RainoutRescheduleModal } from "@/components/divisions/rainout-reschedule-modal";
-import { RescheduleRequestModal } from "@/components/interleague/reschedule-request-modal";
+import { InterleagueRequestModal } from "@/components/interleague/interleague-request-modal";
 import { UpgradeModal } from "@/components/plan/upgrade-cta";
 import { submitInterleagueRescheduleRequest } from "@/lib/interleague/request-reschedule";
-import { MOVE_UPGRADE_FEATURE, requestModalLabels } from "@/lib/schedule/panel-reschedule-route";
+import { MOVE_UPGRADE_FEATURE } from "@/lib/schedule/panel-reschedule-route";
 import {
   pickerFor,
   routeScheduleReschedule,
@@ -165,15 +165,27 @@ export function useScheduleReschedule({
         />
       )}
       {request && (
-        <RescheduleRequestModal
-          {...requestModalLabels(request.game.status)}
+        // Picker on our field, free-typed on the partner's — the modal decides.
+        <InterleagueRequestModal
           intro={request.intro}
           game={{
+            id: request.game.id,
+            status: request.game.status,
             scheduled_at: request.game.scheduled_at,
+            league_id: request.game.league_id,
+            home_team_id: request.game.home_team_id,
+            venue_id: request.game.venue_id ?? null,
             is_away: !!request.game.is_away,
             external_team_name: request.game.external_team_name ?? null,
             proposed_venue_name: request.game.proposed_venue_name ?? null,
-            home_team: request.game.home_team ? { name: request.game.home_team.name } : null,
+            home_team: request.game.home_team
+              ? {
+                  name: request.game.home_team.name,
+                  division: request.game.home_team.division_id
+                    ? { id: request.game.home_team.division_id, name: request.game.home_team.division?.name ?? "" }
+                    : null,
+                }
+              : null,
             venue: request.game.venue ?? null,
             interleague_org: request.game.interleague_org ?? null,
           }}

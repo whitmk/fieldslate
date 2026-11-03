@@ -105,6 +105,12 @@ const OUTBOUND_FILES = [
   "src/components/practices/practice-export-modal.tsx",
   "src/components/interleague/reschedule-form.tsx",
   "src/components/interleague/invite-form.tsx",
+  // The partner's "Request reschedule" on their token schedule page, and the
+  // free-typed form it renders (2026-11-02). The ADMIN request modal
+  // (interleague-request-modal.tsx) opens the daylight-wired picker, so the
+  // partner page must keep the plain form — the chain walk catches a swap.
+  "src/components/interleague/schedule-game-actions.tsx",
+  "src/components/interleague/reschedule-request-modal.tsx",
   "src/app/(dashboard)/dashboard/umpires/print-all/page.tsx",
   "src/app/(dashboard)/dashboard/umpires/[id]/page.tsx",
   "src/components/umpires/auto-print-on-load.tsx",

@@ -10,6 +10,7 @@ const ROUTE = "src/lib/schedule/panel-reschedule-route.ts";
 const VARIANT = "src/lib/schedule/reschedule-variant.ts";
 const ROW = "src/components/divisions/move-game-row.tsx";
 const PANEL = "src/components/divisions/division-schedule-panel.tsx";
+const WRAP = "src/components/interleague/interleague-request-modal.tsx";
 
 const MUTANTS: Mutant[] = [
   {
@@ -24,6 +25,18 @@ const MUTANTS: Mutant[] = [
   {
     id: "PM1", what: "intro rendered even when absent (empty box)", file: REQUEST,
     find: "{intro && (", replace: "{(intro || true) && (", expect: "M1",
+  },
+  {
+    id: "PM2", what: "request wrapper never opens the picker (free-typed on our field)", file: WRAP,
+    find: 'if (resolveEditMode(game) === "picker") {', replace: "if (false) {", expect: "M5",
+  },
+  {
+    id: "PM3", what: "request wrapper opens the picker without a field of ours", file: WRAP,
+    find: 'if (resolveEditMode(game) === "picker") {', replace: "if (true) {", expect: "M4",
+  },
+  {
+    id: "PM4", what: "panel goes back to rendering the free-typed modal itself", file: PANEL,
+    find: "        <InterleagueRequestModal\n", replace: "        <InterleagueRequestModal\n          key={<RescheduleRequestModal /> && undefined}\n", expect: "S10",
   },
   {
     id: "RM1", what: "interleague branch skipped", file: ROUTE,
