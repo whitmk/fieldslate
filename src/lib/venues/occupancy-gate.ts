@@ -189,7 +189,10 @@ export async function gateRescheduleOccupancy(
     body: {
       error:
         `${venue} is already booked at that time — ${first.label} is scheduled there at ${first.time}${extra}. ` +
-        `Games at the same field need ${buffer} minutes between them. Pick a different time or field.`,
+        // "a different time", never "or field": no caller can change the
+        // field — every route writes scheduled_at only and this gate reads the
+        // field off the stored row (2026-11-02).
+        `Games at the same field need ${buffer} minutes between them. Pick a different time.`,
       venue,
       conflicts: clashes,
     },

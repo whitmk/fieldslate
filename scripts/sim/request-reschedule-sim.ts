@@ -25,6 +25,16 @@
 //   RR4  network catch returns a fixed string, not err.message           → [D-network]
 // RESULT: 4/4 killed, each FIRST at its own assertion (RR3 and RR4 also trip a
 // sibling case, but the named assertion is among the first failures).
+//
+// ── ADDENDUM 2026-11-02: the hours refusal is no longer discarded ───────────
+// One DELIBERATE divergence from the golden: an hours refusal (body carrying
+// venue + day + venue_hours) now reads "… jennings is open 8:00 AM – 7:00 PM
+// on Saturdays, …". No D case carries those keys, so the differential above
+// is unchanged; part H pins the new sentence against literals.
+//   RR5  requestErrorMessage never appends the hours       → [H-open]
+//   RR6  the Closed case says "open Closed"                 → [H-closed]
+//   RR7  hours appended when `day` is missing                → [H-noDay]
+// Applied by hand, run, reverted: each killed first at its own assertion.
 
 import {
   submitInterleagueRescheduleRequest,
@@ -121,6 +131,7 @@ const counters = {
   networkError: 0,
   nonJson: 0,
   nonErrorThrow: 0,
+  hoursRefusalDetailed: 0,
 };
 
 async function main() {
@@ -175,6 +186,50 @@ async function main() {
   ok(
     calls[0]?.init.body === JSON.stringify(payload),
     "[R-body] payload sent verbatim",
+  );
+
+  // ── H: hours refusals carry the field's hours ─────────────────────────────
+  const hoursOutcome = async (body: unknown) =>
+    submitInterleagueRescheduleRequest("g1", payload, fakeFetch({ kind: "respond", ok: false, body }, []));
+  const open = await hoursOutcome({
+    error: "Venue is not open at the proposed time.",
+    venue: "jennings", day: "Sat", proposed_time: "7:30 PM", venue_hours: "8:00 AM – 7:00 PM",
+  });
+  ok(
+    !open.ok && open.error ===
+      "Venue is not open at the proposed time. jennings is open 8:00 AM – 7:00 PM on Saturdays, and the game has to start and finish inside those hours.",
+    "[H-open] an hours refusal names the field, the day and its hours",
+    JSON.stringify(open),
+  );
+  if (!open.ok && open.error.includes("8:00 AM")) counters.hoursRefusalDetailed++;
+  const closed = await hoursOutcome({
+    error: "Venue is not open at the proposed time.",
+    venue: "jennings", day: "Tue", proposed_time: "9:00 AM", venue_hours: "Closed",
+  });
+  ok(
+    !closed.ok && closed.error === "Venue is not open at the proposed time. jennings is closed on Tuesdays.",
+    "[H-closed] a closed day says the field is closed that day",
+    JSON.stringify(closed),
+  );
+  const occupancy = await hoursOutcome({
+    error: "jennings is already booked at that time — Braves vs Mets is scheduled there at 9:00 AM. Games at the same field need 60 minutes between them. Pick a different time.",
+    venue: "jennings",
+    conflicts: [{ label: "Braves vs Mets", time: "9:00 AM" }],
+  });
+  ok(
+    !occupancy.ok && occupancy.error.endsWith("Pick a different time."),
+    "[H-partial] a refusal without day + hours (occupancy) is the route's sentence, verbatim",
+    JSON.stringify(occupancy),
+  );
+  // Each of the three keys is required on its own: a body missing only the day
+  // must not print "on undefineds".
+  const noDay = await hoursOutcome({
+    error: "Venue is not open at the proposed time.", venue: "jennings", venue_hours: "8:00 AM – 7:00 PM",
+  });
+  ok(
+    !noDay.ok && noDay.error === "Venue is not open at the proposed time.",
+    "[H-noDay] hours without a day add nothing",
+    JSON.stringify(noDay),
   );
 
   for (const [name, n] of Object.entries(counters)) {

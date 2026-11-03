@@ -34,6 +34,8 @@
  *       route. Dies at [C-reschedule-lock] (the weak check — see above).
  *   M5  The occupancy gate deleted from the scheduled branch. Dies at
  *       [C-reschedule-occupancy] (same caveat).
+ *   M6  (2026-11-02) "or field" restored to the occupancy refusal. Dies at
+ *       [D-no-field-advice].
  *
  * BOTH C MUTANTS WERE WRONG ON THE FIRST PASS, and the fix is worth knowing.
  * The branch slice ran to END OF FILE, so it also covered proposeOnPendingGame
@@ -46,6 +48,7 @@
  */
 
 import { gateRescheduleVenue } from "../../src/lib/venues/reschedule-gate";
+import { gateRescheduleOccupancy } from "../../src/lib/venues/occupancy-gate";
 import { lockedReason } from "../../src/lib/schedule/division-lock";
 import { lockRefusal } from "../../src/lib/interleague/lock-gate";
 import { readFileSync } from "node:fs";
@@ -66,6 +69,7 @@ const seen = {
   gateAllowed: 0,       // a legitimate shape still passes
   lockRefused: 0,       // the lock helper refused something
   lockAllowed: 0,       // and allowed an unlocked division
+  occupancyRefused: 0,  // a real occupancy clash produced the refusal sentence
 };
 
 /** Minimal client: gateRescheduleVenue only ever calls .rpc(). */
@@ -241,10 +245,36 @@ function groupC() {
   );
 }
 
+// D — the occupancy refusal's wording (2026-11-02). Every caller of the gate
+// changes the TIME only (no route writes venue_id; the gate reads the field
+// off the stored row), so the sentence must not offer a different field.
+async function groupD() {
+  const ctx = {
+    game_id: "g1", venue_id: "v1", venue_name: "jennings",
+    scheduled_at: "2026-10-03T09:30:00", game_duration: 90, buffer_minutes: 60,
+    occupied: [{ game_id: "g2", scheduled_at: "2026-10-03T09:00:00", game_duration: 90, label: "Braves vs Mets" }],
+  };
+  const r = await gateRescheduleOccupancy(
+    client({ data: ctx }) as unknown as Parameters<typeof gateRescheduleOccupancy>[0],
+    { gameId: "g1", scheduledAtIso: "2026-10-03T09:30:00+00:00" },
+  );
+  assert(!r.ok, "[D-occupancy-refused] a clash refuses");
+  if (!r.ok) {
+    seen.occupancyRefused++;
+    assert(
+      r.body.error ===
+        "jennings is already booked at that time — Braves vs Mets is scheduled there at 9:00 AM. Games at the same field need 60 minutes between them. Pick a different time.",
+      "[D-no-field-advice] the refusal says pick a different time, never a different field",
+      r.body.error,
+    );
+  }
+}
+
 async function main() {
   await groupA();
   groupB();
   groupC();
+  await groupD();
 
   console.log("\nCoverage counters:");
   for (const [k, v] of Object.entries(seen)) {
