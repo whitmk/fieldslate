@@ -8,7 +8,10 @@ import { MarketingNavbar } from "@/components/marketing/navbar";
 import { Footer } from "@/components/marketing/footer";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/site";
-import { softwareApplicationJsonLd } from "@/lib/marketing/structured-data";
+import {
+  organizationJsonLd,
+  softwareApplicationJsonLd,
+} from "@/lib/marketing/structured-data";
 
 // The homepage's own title and description. They live HERE, not in the root
 // layout: the layout's are inherited by every page that sets none (login,
@@ -49,6 +52,10 @@ export default function HomePage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
       />
       <MarketingNavbar />
       <main className="flex-1">

@@ -35,3 +35,14 @@ export const softwareApplicationJsonLd = {
     seasonOffer("Elite", SEASON_PRICE_USD.elite, "Priced per season."),
   ],
 };
+
+// sameAs lists only profiles FieldSlate runs itself.
+export const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "FieldSlate",
+  alternateName: "Field Slate",
+  url: `${SITE_URL}/`,
+  logo: `${SITE_URL}/brand/lockup-email-2x.png`,
+  sameAs: ["https://www.instagram.com/thefieldslate/"],
+};
