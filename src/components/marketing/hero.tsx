@@ -13,7 +13,7 @@ export function Hero() {
   return (
     <section className="bg-[#0C1F3F] pb-24 pt-20 sm:pb-32 sm:pt-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-2xl text-center">
+        <div className="mx-auto max-w-3xl text-center">
 
           {/* Pill tag */}
           <div className="mb-6 inline-flex items-center rounded-full border border-[#22C55E]/30 bg-[#22C55E]/10 px-4 py-1.5">
@@ -23,15 +23,15 @@ export function Hero() {
           </div>
 
           {/* Headline */}
-          <h1 className="text-5xl font-bold leading-tight tracking-tight text-white sm:text-6xl">
-            Schedule your entire season in{" "}
+          <h1 className="text-balance text-4xl font-bold leading-tight tracking-tight text-white sm:text-6xl">
+            Schedule your youth sports season in{" "}
             <span className="text-[#22C55E]">minutes.</span>
           </h1>
 
           {/* Subheadline */}
-          <p className="mt-6 text-lg leading-8 text-white/60">
-            Per-division parameters, automatic field conflict detection, and cross-season
-            scheduling — all in one place. No spreadsheets. No phone calls.
+          <p className="mt-6 text-balance text-lg leading-8 text-white/60">
+            Built by your rules, not AI. Automatic field-conflict checks, rainout makeups and
+            playoffs. No spreadsheets, no phone calls.
           </p>
 
           {/* CTAs */}
