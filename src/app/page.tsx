@@ -36,7 +36,9 @@ const videoJsonLd = {
   description:
     "Four teams, one field, no plan — see how FieldSlate replaces scheduling chaos with conflict-free season schedules for volunteer-run youth sports leagues.",
   thumbnailUrl: `${SITE_URL}/promo-poster.jpg`,
-  uploadDate: "2026-07-15",
+  // A full date-time with a zone: Google rejects a date-only uploadDate
+  // ("Invalid datetime value", "missing a timezone").
+  uploadDate: "2026-07-15T00:00:00-07:00",
   duration: "PT1M17S",
   embedUrl: "https://www.youtube-nocookie.com/embed/yKggoZaAHYo",
   contentUrl: "https://www.youtube.com/watch?v=yKggoZaAHYo",

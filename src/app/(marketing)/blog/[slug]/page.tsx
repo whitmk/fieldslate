@@ -101,13 +101,18 @@ export default function BlogPostPage({ params }: { params: { slug: string } }) {
   if (!post) notFound();
 
   const url = `${SITE_URL}/blog/${post.slug}`;
+  // Frontmatter dates are date-only ("2026-07-09"); the index's formatDate and
+  // the sitemap read them that way, so they stay as written. Only the JSON-LD
+  // gets a full date-time with a zone, which Google's structured-data checks
+  // require (a date-only value is flagged as missing a timezone).
+  const jsonLdDate = (isoDate: string) => `${isoDate}T00:00:00-07:00`;
   const articleJsonLd = {
     "@context": "https://schema.org",
     "@type": "Article",
     headline: post.title,
     description: post.description,
-    datePublished: post.datePublished,
-    dateModified: post.dateModified,
+    datePublished: jsonLdDate(post.datePublished),
+    dateModified: jsonLdDate(post.dateModified),
     author: { "@type": "Organization", name: "FieldSlate", url: SITE_URL },
     mainEntityOfPage: url,
     url,
