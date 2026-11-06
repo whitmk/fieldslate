@@ -1,0 +1,37 @@
+// Homepage structured data (JSON-LD). Pure objects — the page only
+// serializes them.
+//
+// Prices come from the ONE price config (src/lib/billing/prices.ts), the same
+// numbers the checkout verifies against Stripe. Never type a price here.
+// Free has no entry in that config; its price is an explicit 0. The one-time
+// Pro→Elite upgrade is not a plan and is deliberately not an offer.
+
+import { PRICE_CURRENCY, SEASON_PRICE_USD } from "@/lib/billing/prices";
+import { SITE_URL } from "@/lib/site";
+
+const CURRENCY = PRICE_CURRENCY.toUpperCase();
+
+function seasonOffer(name: string, price: number, description: string) {
+  return {
+    "@type": "Offer",
+    name,
+    price: String(price),
+    priceCurrency: CURRENCY,
+    description,
+    url: `${SITE_URL}/#pricing`,
+  };
+}
+
+export const softwareApplicationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "FieldSlate",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  url: `${SITE_URL}/`,
+  offers: [
+    seasonOffer("Free", 0, "Free tier: one active season at a time."),
+    seasonOffer("Pro", SEASON_PRICE_USD.pro, "Priced per season."),
+    seasonOffer("Elite", SEASON_PRICE_USD.elite, "Priced per season."),
+  ],
+};
