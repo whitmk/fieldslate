@@ -13,7 +13,7 @@ export function Footer() {
               <FieldSlateLockup height={28} variant="dark" />
             </Link>
             <p className="text-sm font-medium text-white/40">
-              No player data. No coach data. Ever.
+              No player data. Ever.
             </p>
           </div>
 
