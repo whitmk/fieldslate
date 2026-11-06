@@ -69,7 +69,7 @@ export const COMPETITORS: readonly CompareColumn[] = [
     ],
   },
   {
-    name: "SportsEngine",
+    name: "SportsEngine (PlayMetrics)",
     values: [
       "no", "partial", "partial", "yes", "no",
       "no", "partial", "yes", "yes", "no",
