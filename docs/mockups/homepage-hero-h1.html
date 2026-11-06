@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homepage hero — H1 option 2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Mockup only. Mirrors src/components/marketing/hero.tsx sizes:
+     H1 text-5xl (48px) / sm:text-6xl (60px), bold, leading-tight;
+     subheadline text-lg (18px) leading-8, white at 60%; column max-w-2xl today,
+     max-w-3xl (768px) in the proposed desktop frame. */
+  :root { --navy:#0C1F3F; --green:#22C55E; --green-dk:#16a34a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#e5e7eb; font-family: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color:#111827; }
+  .page { max-width: 1400px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1.doc { font-size: 22px; margin: 0 0 4px; }
+  p.doc { margin: 0 0 6px; color:#374151; font-size: 14px; line-height: 1.5; max-width: 900px; }
+  .label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color:#4b5563; margin: 28px 0 8px; }
+  .frames { display:flex; gap: 32px; align-items:flex-start; flex-wrap: wrap; }
+  .frame { background: var(--navy); border-radius: 10px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.18); flex: none; }
+  .desktop { width: 1280px; max-width: 100%; }
+  .phone { width: 375px; }
+
+  .nav { height: 64px; display:flex; align-items:center; justify-content:space-between; padding: 0 32px; }
+  .phone .nav { padding: 0 16px; }
+  .logo { font-weight: 800; font-size: 20px; color:#fff; }
+  .logo b { color: var(--green); font-weight: 800; }
+  .links { display:flex; gap:32px; font-size:14px; color: rgba(255,255,255,.7); }
+  .phone .links { display:none; }
+  .burger { display:none; width:24px; height:2px; background:#fff; box-shadow: 0 7px 0 #fff, 0 -7px 0 #fff; }
+  .phone .burger { display:block; }
+
+  .hero { padding: 112px 32px 128px; }
+  .phone .hero { padding: 80px 16px 96px; }
+  .col { max-width: 672px; margin: 0 auto; text-align:center; }
+  .pill { display:inline-flex; border:1px solid rgba(34,197,94,.3); background: rgba(34,197,94,.1); color: var(--green); border-radius: 999px; padding: 6px 16px; font-size:14px; font-weight:500; margin-bottom: 24px; }
+  .h1 { margin:0; color:#fff; font-weight:700; letter-spacing:-0.025em; line-height:1.25; font-size:60px; }
+  .phone .h1 { font-size:48px; }
+  .phone.small .h1 { font-size:36px; }
+  .wide .col { max-width: 768px; }
+  .bal .h1, .bal .sub { text-wrap: balance; }
+  .note { font-size:13px; color:#374151; margin: 8px 0 0; max-width: 375px; line-height:1.5; }
+  .phonecol { display:flex; flex-direction:column; }
+  .h1 span { color: var(--green); }
+  .sub { margin: 24px 0 0; font-size:18px; line-height:32px; color: rgba(255,255,255,.6); }
+  .ctas { margin-top:40px; display:flex; gap:12px; justify-content:center; }
+  .phone .ctas { flex-direction:column; align-items:center; }
+  .btn { height:44px; padding: 0 32px; border-radius:6px; display:inline-flex; align-items:center; font-weight:600; font-size:15px; color:#fff; border:1px solid rgba(255,255,255,.2); }
+  .btn.primary { background: var(--green); border-color: var(--green); }
+  .proof { margin: 32px 0 0; padding:0; list-style:none; display:flex; gap:24px; justify-content:center; font-size:14px; color: rgba(255,255,255,.5); }
+  .phone .proof { flex-direction:column; align-items:center; gap:8px; }
+  .proof li::before { content:"✓"; color: var(--green); margin-right:8px; font-weight:700; }
+  .video { margin: 64px auto 0; max-width: 900px; aspect-ratio: 16/9; border-radius: 12px; background: rgba(255,255,255,.06); border:1px dashed rgba(255,255,255,.2); display:flex; align-items:center; justify-content:center; color: rgba(255,255,255,.4); font-size:14px; }
+  .phone .video { margin-top:48px; }
+
+  .old { opacity:.9; }
+  .compare { display:grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size:14px; background:#fff; border-radius:8px; padding:14px 18px; max-width: 900px; }
+  .compare b { color:#111827; }
+  .compare s { color:#6b7280; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1 class="doc">Homepage hero — H1 option 2, "rules, not AI" subheadline (placement A)</h1>
+  <p class="doc">Approved 2026-11-05 with the 36px phone H1; built in commit 3a0e677. Changes: the H1 text, the subheadline, the desktop text column (max-w-2xl → max-w-3xl), text-balance on both, and optionally 36px for the phone H1. The pill, buttons, proof points, video, colours and the 60px desktop H1 are today's.</p>
+  <div class="compare">
+    <span>H1 today</span><s>Schedule your entire season in minutes.</s>
+    <span>H1 proposed</span><b>Schedule your youth sports season in <span style="color:var(--green-dk)">minutes.</span></b>
+    <span>Sub today</span><s>Per-division parameters, automatic field conflict detection, and cross-season scheduling — all in one place. No spreadsheets. No phone calls.</s>
+    <span>Sub proposed</span><b>Built by your rules, not AI. Automatic field-conflict checks, rainout makeups and playoffs. No spreadsheets, no phone calls.</b>
+  </div>
+
+  <div class="label">Desktop — 1280px</div>
+  <p class="doc">Text column widened to 768px (Tailwind max-w-3xl, from max-w-2xl 672px) and text-balance on the H1 and subheadline. At 60px the H1 now fits in 2 lines — "Schedule your youth / sports season in minutes." — the same count as today, so 56px isn't needed. Subheadline: 2 lines, split at "checks," with nothing left alone. Measured on the real page in Geist.</p>
+  <div class="frames">
+    <div class="frame desktop wide bal">
+      <div class="nav"><div class="logo">Field<b>Slate</b></div><div class="links"><span>Features</span><span>How it works</span><span>Compare</span><span>Pricing</span><span>Sign in</span></div><div class="burger"></div></div>
+      <div class="hero"><div class="col">
+        <div class="pill">Retire the scheduling spreadsheet</div>
+        <h2 class="h1">Schedule your youth sports season in <span>minutes.</span></h2>
+        <p class="sub">Built by your rules, not AI. Automatic field-conflict checks, rainout makeups and playoffs. No spreadsheets, no phone calls.</p>
+        <div class="ctas"><span class="btn primary">Start free →</span><span class="btn">Request a demo</span><span class="btn">See how it works</span></div>
+        <ul class="proof"><li>No credit card required</li><li>Any sport</li><li>Structured CSV export for league data migration</li></ul>
+      </div>
+      <div class="video">Promo video (unchanged)</div></div>
+    </div>
+  </div>
+
+  <div class="label">Phone — 375px</div>
+  <div class="frames">
+    <div class="phonecol">
+    <div class="frame phone">
+      <div class="nav"><div class="logo">Field<b>Slate</b></div><div class="links"></div><div class="burger"></div></div>
+      <div class="hero"><div class="col">
+        <div class="pill">Retire the scheduling spreadsheet</div>
+        <h2 class="h1">Schedule your entire season in <span>minutes.</span></h2>
+        <p class="sub">Per-division parameters, automatic field conflict detection, and cross-season scheduling — all in one place. No spreadsheets. No phone calls.</p>
+        <div class="ctas"><span class="btn primary">Start free →</span><span class="btn">Request a demo</span><span class="btn">See how it works</span></div>
+        <ul class="proof"><li>No credit card required</li><li>Any sport</li><li>Structured CSV export for league data migration</li></ul>
+      </div>
+      <div class="video">Promo video (unchanged)</div></div>
+    </div>
+    <p class="note"><b>Today</b> — H1 48px, 3 lines; no text-balance, so its subheadline wraps as it does live.</p></div>
+    <div class="phonecol">
+    <div class="frame phone bal">
+      <div class="nav"><div class="logo">Field<b>Slate</b></div><div class="links"></div><div class="burger"></div></div>
+      <div class="hero"><div class="col">
+        <div class="pill">Retire the scheduling spreadsheet</div>
+        <h2 class="h1">Schedule your youth sports season in <span>minutes.</span></h2>
+        <p class="sub">Built by your rules, not AI. Automatic field-conflict checks, rainout makeups and playoffs. No spreadsheets, no phone calls.</p>
+        <div class="ctas"><span class="btn primary">Start free →</span><span class="btn">Request a demo</span><span class="btn">See how it works</span></div>
+        <ul class="proof"><li>No credit card required</li><li>Any sport</li><li>Structured CSV export for league data migration</li></ul>
+      </div>
+      <div class="video">Promo video (unchanged)</div></div>
+    </div>
+    <p class="note"><b>Option 2 at 48px</b> (today's phone size), text-balance — H1 4 lines, one more than today, with "Schedule" alone on the first line. Subheadline 4 lines, last line "No spreadsheets, no phone calls." (no orphan).</p></div>
+    <div class="phonecol">
+    <div class="frame phone small bal">
+      <div class="nav"><div class="logo">Field<b>Slate</b></div><div class="links"></div><div class="burger"></div></div>
+      <div class="hero"><div class="col">
+        <div class="pill">Retire the scheduling spreadsheet</div>
+        <h2 class="h1">Schedule your youth sports season in <span>minutes.</span></h2>
+        <p class="sub">Built by your rules, not AI. Automatic field-conflict checks, rainout makeups and playoffs. No spreadsheets, no phone calls.</p>
+        <div class="ctas"><span class="btn primary">Start free →</span><span class="btn">Request a demo</span><span class="btn">See how it works</span></div>
+        <ul class="proof"><li>No credit card required</li><li>Any sport</li><li>Structured CSV export for league data migration</li></ul>
+      </div>
+      <div class="video">Promo video (unchanged)</div></div>
+    </div>
+    <p class="note"><b>Option 2 at 36px on phones only</b> (text-4xl; desktop stays 60px), text-balance — H1 3 lines, the same as today and 45px shorter. Subheadline as in the 48px frame.</p></div>
+  </div>
+</div>
+</body>
+</html>
