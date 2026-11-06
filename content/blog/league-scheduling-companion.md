@@ -82,7 +82,7 @@ FieldSlate was built by a Little League board member who spent too many seasons 
 
 A focused tool can be shaped around how a league actually thinks: fields, divisions, coaches, neighbors, weather. It doesn't need a support ticket to set up, and it doesn't ask you to change the rest of how you run your league.
 
-If you're evaluating any scheduling tool, including ours, our [six-step demo script](/blog/little-league-scheduling-software) walks through how to test it against your real season.
+If you're evaluating any scheduling tool, including ours, our [guide to Little League scheduling software](/blog/little-league-scheduling-software) includes a six-step demo script that walks through how to test it against your real season.
 
 ## Pricing
 
