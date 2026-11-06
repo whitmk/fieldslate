@@ -9,11 +9,18 @@ import { Footer } from "@/components/marketing/footer";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/site";
 
-// Title and description come from the root layout. The canonical is set here,
-// absolute and on www: without one, Google Search Console reported the
-// homepage as "Duplicate without user-selected canonical" and left it out of
-// the index.
+// The homepage's own title and description. They live HERE, not in the root
+// layout: the layout's are inherited by every page that sets none (login,
+// signup, the dashboard), so a search-facing title there would rename them
+// all. The layout's title is a plain string, not a template, so this one
+// renders as written. Keep the description to 160 characters or less.
+// The canonical is absolute and on www: without one, Google Search Console
+// reported the homepage as "Duplicate without user-selected canonical" and
+// left it out of the index.
 export const metadata: Metadata = {
+  title: "FieldSlate | Little League & Youth Sports Scheduling Software",
+  description:
+    "FieldSlate is scheduling software for Little League and youth sports leagues: field-conflict checks, rainout makeups and playoffs. Start on the free tier.",
   alternates: { canonical: `${SITE_URL}/` },
 };
 
