@@ -2,7 +2,8 @@
 // (src/components/marketing/faq.tsx) and the FAQPage JSON-LD (homeFaqJsonLd in
 // structured-data.ts) both render from HOME_FAQ, so what readers see and what
 // search engines see cannot drift (the blog's two-copies problem — see
-// CLAUDE.md "Blog").
+// CLAUDE.md "Blog"). `npm run sim:home-faq` checks the JSON-LD against this
+// list.
 //
 // Answers are PLAIN TEXT: no markdown, no HTML. Prices come from priceLabel
 // and plan limits from PLAN_LIMITS — never type either here (sim:season-purchase

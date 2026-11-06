@@ -10,6 +10,7 @@ import { Footer } from "@/components/marketing/footer";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/site";
 import {
+  homeFaqJsonLd,
   organizationJsonLd,
   softwareApplicationJsonLd,
 } from "@/lib/marketing/structured-data";
@@ -59,6 +60,10 @@ export default function HomePage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(homeFaqJsonLd) }}
       />
       <MarketingNavbar />
       <main className="flex-1">
