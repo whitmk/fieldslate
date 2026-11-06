@@ -6,6 +6,9 @@ It is built for the volunteer admins who run Little League and other rec leagues
 and it stores no player or coach personal data — ever. Season scheduling only;
 it is not a registration platform.
 
+FieldSlate builds schedules with rule-based logic from each league's own
+settings; it does not use AI.
+
 ## Links
 
 - Homepage: https://www.thefieldslate.com/
@@ -19,3 +22,14 @@ it is not a registration platform.
 - Sports Connect Alternatives in 2026 — what the PlayMetrics transition does and
   doesn't solve for Little League admins:
   https://www.thefieldslate.com/blog/sports-connect-alternatives-little-league
+- Little League Scheduling Software: an honest guide for volunteer boards —
+  what makes Little League scheduling hard and how to choose a tool:
+  https://www.thefieldslate.com/blog/little-league-scheduling-software
+- Keep Your League Software. Fix Your Schedule. — FieldSlate as a scheduling
+  companion alongside a league's registration platform and website:
+  https://www.thefieldslate.com/blog/league-scheduling-companion
+- Why I Built FieldSlate — a Little League board member on why the tool exists:
+  https://www.thefieldslate.com/blog/why-i-built-fieldslate
+- How Many Practice Fields Does Your League Need? — a guide for volunteer
+  boards, companion to the practice field calculator:
+  https://www.thefieldslate.com/blog/how-many-practice-fields
