@@ -4,6 +4,7 @@ import { Features } from "@/components/marketing/features";
 import { HowItWorks } from "@/components/marketing/how-it-works";
 import { Compare } from "@/components/marketing/compare";
 import { Pricing } from "@/components/marketing/pricing";
+import { Faq } from "@/components/marketing/faq";
 import { MarketingNavbar } from "@/components/marketing/navbar";
 import { Footer } from "@/components/marketing/footer";
 import type { Metadata } from "next";
@@ -67,6 +68,7 @@ export default function HomePage() {
         <HowItWorks />
         <Compare />
         <Pricing />
+        <Faq />
       </main>
       <Footer />
     </div>
