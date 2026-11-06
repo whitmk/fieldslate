@@ -24,6 +24,9 @@ export function MarketingNavbar() {
           <Link href="/#pricing" className="text-sm text-white/70 transition-colors hover:text-white">
             Pricing
           </Link>
+          <Link href="/#faq" className="text-sm text-white/70 transition-colors hover:text-white">
+            FAQ
+          </Link>
         </nav>
 
         <div className="flex items-center gap-3">

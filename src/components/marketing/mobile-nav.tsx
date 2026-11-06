@@ -24,6 +24,7 @@ const LINKS: { href: string; label: string }[] = [
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#compare", label: "Compare" },
   { href: "/#pricing", label: "Pricing" },
+  { href: "/#faq", label: "FAQ" },
   { href: "/demo", label: "Request a demo" },
   { href: "/login", label: "Sign in" },
 ];
