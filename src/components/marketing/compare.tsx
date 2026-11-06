@@ -180,6 +180,17 @@ export function Compare() {
             .
           </p>
 
+          <p className="mt-4 text-sm text-gray-600">
+            Still weighing your options?{" "}
+            <Link
+              href="/blog/little-league-scheduling-software"
+              className="font-medium text-[#16a34a] underline underline-offset-2 hover:text-[#0C1F3F]"
+            >
+              Read our honest guide to Little League scheduling software
+            </Link>
+            .
+          </p>
+
           <p className="mt-4 text-xs text-gray-400">
             Based on each vendor&apos;s publicly available information as of September 2026. See
             something out of date?{" "}
