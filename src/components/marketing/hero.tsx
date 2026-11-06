@@ -30,8 +30,8 @@ export function Hero() {
 
           {/* Subheadline */}
           <p className="mt-6 text-balance text-lg leading-8 text-white/60">
-            Built by your rules, not AI. Automatic field-conflict checks, rainout makeups and
-            playoffs. No spreadsheets, no phone calls.
+            Built by your rules, not AI. Game and field scheduling with automatic conflict checks,
+            rainout makeups and playoffs. No spreadsheets, no phone calls.
           </p>
 
           {/* CTAs */}

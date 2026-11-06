@@ -26,7 +26,7 @@ import {
 export const metadata: Metadata = {
   title: "FieldSlate | Little League & Youth Sports Scheduling Software",
   description:
-    "FieldSlate is scheduling software for Little League and youth sports leagues: field-conflict checks, rainout makeups and playoffs. Start on the free tier.",
+    "FieldSlate is game and field scheduling software for Little League and youth sports leagues: conflict checks, rainout makeups and playoffs. Start free.",
   alternates: { canonical: `${SITE_URL}/` },
 };
 
