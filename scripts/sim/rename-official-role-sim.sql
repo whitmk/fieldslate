@@ -84,7 +84,7 @@ declare
   v_org uuid := 'bbf9afe1-9e62-41e0-becc-895085bfc9d6';
   v_s uuid := gen_random_uuid(); v_o uuid := gen_random_uuid();
   v_d1 uuid := gen_random_uuid(); v_d2 uuid := gen_random_uuid(); v_do uuid := gen_random_uuid();
-  v_t1 uuid := gen_random_uuid(); v_t2 uuid := gen_random_uuid(); v_to uuid := gen_random_uuid();
+  v_t1 uuid := gen_random_uuid(); v_t2 uuid := gen_random_uuid(); v_to uuid := gen_random_uuid(); v_to2 uuid := gen_random_uuid();
   v_g1 uuid := gen_random_uuid(); v_g2 uuid := gen_random_uuid(); v_g3 uuid := gen_random_uuid();
   v_u1 uuid := gen_random_uuid(); v_u2 uuid := gen_random_uuid(); v_uo uuid := gen_random_uuid();
   v_p uuid := gen_random_uuid(); v_b uuid := gen_random_uuid(); v_po uuid := gen_random_uuid();
@@ -100,11 +100,11 @@ begin
     (v_d2, v_s, 'ZZ118 D2', '{}', '["Plate "]'),
     (v_do, v_o, 'ZZ118 DO', '{}', '["Plate"]');
   insert into public.teams (id, league_id, division_id, name) values
-    (v_t1, v_s, v_d1, 'ZZ118 A'), (v_t2, v_s, v_d1, 'ZZ118 B'), (v_to, v_o, v_do, 'ZZ118 O');
+    (v_t1, v_s, v_d1, 'ZZ118 A'), (v_t2, v_s, v_d1, 'ZZ118 B'), (v_to, v_o, v_do, 'ZZ118 O'), (v_to2, v_o, v_do, 'ZZ118 O2');
   insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status) values
     (v_g1, v_s, v_t1, v_t2, '2026-10-10 17:00:00+00', 'scheduled'),
     (v_g2, v_s, v_t2, v_t1, '2026-10-17 17:00:00+00', 'scheduled'),
-    (v_g3, v_o, v_to, null, '2026-10-10 17:00:00+00', 'scheduled');
+    (v_g3, v_o, v_to, v_to2, '2026-10-10 17:00:00+00', 'scheduled');
   -- Lock and post D1 AFTER its games exist (a locked division refuses inserts).
   update public.divisions set locked = true, posted = true, posted_at = v_posted_at where id = v_d1;
   insert into public.umpires (id, season_id, name, designation) values
@@ -364,4 +364,27 @@ end $h$;
 --        has_column_privilege('authenticated', 'public.official_roles', 'name', 'UPDATE');
 
 -- ── RUN LOG ──────────────────────────────────────────────────────────────────
--- (not yet run — waiting for Whit's go on the locks)
+-- 2026-11-07 — Whit's go (backup confirmed). Run 1 against production, "test"
+--   proof org, rolled back: a HARNESS FAULT — g3 had no away team and the
+--   `games_opponent_required` CHECK refused the fixture, so BASELINE and every
+--   mutant stopped at setup (all "KILLED AT THE WRONG TAG" on that error).
+--   The migration itself ran: md5 f0bdf45d839d17ac462b6ef91bc089cc; L1 locks
+--   on official_roles: ShareLock (the index build; the REVOKE/GRANT took none
+--   of its own); P1 exactly as intended (authenticated exec=true name=false
+--   sort=true; anon, service_role, dashboard_readonly all false); V1 both
+--   grant mutants refused by the verify block. Leak check clean. Fixed: g3
+--   plays a second season-O team.
+-- Run 2, same batch with the fixture fixed: GREEN. md5
+--   f0bdf45d839d17ac462b6ef91bc089cc (= the repo file's function body); L1
+--   ShareLock; P1 as intended; BASELINE pass; MU1–MU12 all KILLED at their
+--   own tag (MU7 died at R1 through the new index — the duplicate was refused
+--   by official_roles_season_name_ci_uniq before the function's own check
+--   mattered: two layers, one assertion); V1 both grant mutants refused by
+--   the verify block. Leak check clean (0 ZZ118 rows, 0 log rows, no
+--   function, no index, authenticated still held UPDATE on name).
+-- 2026-11-07 20:51 UTC — 0118 APPLIED verbatim (catalog 20261107205104).
+--   Verified live: md5(prosrc) f0bdf45d839d17ac462b6ef91bc089cc, SECURITY
+--   DEFINER, search_path=public, pg_temp; EXECUTE authenticated only (public,
+--   anon, service_role, dashboard_readonly false); UPDATE on name held by no
+--   role; sort_order UPDATE authenticated only; authenticated INSERT/DELETE/
+--   SELECT kept; index official_roles_season_name_ci_uniq present; 24 roles.

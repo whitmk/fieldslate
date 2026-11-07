@@ -314,6 +314,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (`series_by_round` `{}`, `series_game` 1); the migration's own verify block
   passed; leak check clean (no temp functions, no activity-log writes,
   triggers enabled). See "Playoff series".
+- **0118 (rename official role) APPLIED 2026-11-07 20:51 UTC, catalog
+  `20261107205104`** — see "RENAMING A ROLE CARRIES ITS ASSIGNMENTS" under
+  Officials. The latest migration applied; 0102 is still reserved.
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -4980,8 +4983,11 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   own assertion; one read failed at a time via `FakeClient.failRead` in
   `officials-fake.ts`, which also gained `maybeSingle`). Not checked in the
   browser (error branches behind sign-in).
-- **RENAMING A ROLE CARRIES ITS ASSIGNMENTS (0118, WRITTEN 2026-11-07, NOT
-  APPLIED — branch `feat/role-rename-cascade`).** Assignments
+- **RENAMING A ROLE CARRIES ITS ASSIGNMENTS (0118, APPLIED 2026-11-07 20:51
+  UTC, catalog `20261107205104`, verbatim after a rolled-back proof — run 2
+  green, 12/12 mutants at their own tag; md5(prosrc) `rename_official_role`
+  `f0bdf45d839d17ac462b6ef91bc089cc` verified; EXECUTE authenticated only;
+  UPDATE on `official_roles.name` held by no role; the index present).** Assignments
   (`game_umpires.role`), pay rates (`umpire_role_rates.role`) and
   `divisions.umpire_roles` name a role by TEXT, so a bare rename of
   `official_roles.name` orphaned them (slots read Open and could be filled
