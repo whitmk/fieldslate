@@ -16,6 +16,12 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getOfficialTitle } from "@/lib/utils/official-title";
+import {
+  ROLE_NAME_TAKEN,
+  renameClash,
+  renameOutcome,
+  renamedLine,
+} from "@/lib/umpires/role-rename";
 
 export type SeasonRole = { id: string; name: string; sort_order: number };
 
@@ -55,6 +61,7 @@ export function OfficialRolesManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [renaming, setRenaming] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [movingId, setMovingId] = useState<string | null>(null);
 
@@ -104,24 +111,30 @@ export function OfficialRolesManager({
       setEditingId(null);
       return;
     }
-    if (roles.some((r) => r.id !== editingId && r.name === name)) {
-      setError("That role already exists for this season.");
+    if (renameClash(roles, editingId, name)) {
+      setError(ROLE_NAME_TAKEN);
       return;
     }
     setRenaming(true);
     setError(null);
+    setNotice(null);
     const supabase = createClient();
-    const { error: updateErr } = await supabase
-      .from("official_roles")
-      .update({ name } as never)
-      .eq("id", editingId);
+    // 0118: the ONLY way to rename — it carries the role's assignments, pay
+    // rates and division role lists with it, in one transaction. Browser
+    // roles hold no UPDATE on official_roles.name.
+    const { data, error: rpcErr } = await supabase.rpc(
+      "rename_official_role" as never,
+      { p_role_id: editingId, p_new_name: name } as never,
+    );
     setRenaming(false);
-    if (updateErr) {
-      setError(humanizeRoleError(updateErr.message));
+    const outcome = renameOutcome(data, rpcErr, editingId, name);
+    if (!outcome.ok) {
+      setError(outcome.message);
       return;
     }
+    setNotice(renamedLine(outcome));
     setRoles((prev) =>
-      prev.map((r) => (r.id === editingId ? { ...r, name } : r)).sort(bySort),
+      prev.map((r) => (r.id === editingId ? { ...r, name: outcome.name } : r)).sort(bySort),
     );
     setEditingId(null);
     router.refresh();
@@ -212,8 +225,8 @@ export function OfficialRolesManager({
       </div>
       <p className="mb-4 text-xs text-gray-400">
         The {titleLower} roles available for this season&apos;s game slots,
-        auto-assign, and per-role pay rates. Renaming a role doesn&apos;t
-        relabel past game assignments.
+        auto-assign, and per-role pay rates. Renaming a role renames its game
+        assignments and pay rates too.
       </p>
 
       {sorted.length === 0 ? (
@@ -352,6 +365,10 @@ export function OfficialRolesManager({
           <AlertTriangle className="mt-0.5 h-3 w-3 flex-shrink-0" />
           <span>{error}</span>
         </div>
+      )}
+
+      {notice && !error && (
+        <p className="mt-2 text-xs text-gray-500">{notice}</p>
       )}
 
       {deleting && (

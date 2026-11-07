@@ -16,6 +16,8 @@
     "sim:umpire-reads:mutants": "npx tsx scripts/sim/umpire-reads-failclosed-mutants.ts",
     "sim:assignment-loss": "TZ=UTC npx tsx scripts/sim/assignment-loss-sim.ts",
     "sim:assignment-loss:mutants": "npx tsx scripts/sim/assignment-loss-mutants.ts",
+    "sim:role-rename": "npx tsx scripts/sim/role-rename-sim.ts",
+    "sim:role-rename:mutants": "npx tsx scripts/sim/role-rename-mutants.ts",
     "sim:game-constraints": "TZ=UTC npx tsx scripts/sim/team-game-constraints-sim.ts",
     "sim:round-order": "TZ=UTC npx tsx scripts/sim/round-order-sim.ts",
     "sim:practice-days": "TZ=UTC npx tsx scripts/sim/practice-game-days-sim.ts",

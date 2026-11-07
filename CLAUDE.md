@@ -4980,6 +4980,37 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   own assertion; one read failed at a time via `FakeClient.failRead` in
   `officials-fake.ts`, which also gained `maybeSingle`). Not checked in the
   browser (error branches behind sign-in).
+- **RENAMING A ROLE CARRIES ITS ASSIGNMENTS (0118, WRITTEN 2026-11-07, NOT
+  APPLIED — branch `feat/role-rename-cascade`).** Assignments
+  (`game_umpires.role`), pay rates (`umpire_role_rates.role`) and
+  `divisions.umpire_roles` name a role by TEXT, so a bare rename of
+  `official_roles.name` orphaned them (slots read Open and could be filled
+  twice, the role paid $0, the wizard re-created the old name).
+  `rename_official_role(p_role_id, p_new_name)` (SECURITY DEFINER,
+  `search_path = public, pg_temp`, EXECUTE authenticated only) renames the
+  role and, in the SAME season, every assignment and rate pointing at it (by
+  `role_id`, or the old text where `role_id` is null), setting `role_id` on
+  each, plus the old name in each division's list (matched trimmed, order
+  kept); logs `official_role_renamed`. Refusals: `role_not_found`,
+  `not_authorized`, `name_required`, `name_taken` (trimmed +
+  case-insensitive, the role itself excluded), `assignment_role_conflict` /
+  `rate_role_conflict` (a leftover row already carries the new text — never
+  a raw unique-violation). **THE DATABASE IS THE GUARD: UPDATE on
+  `official_roles` is revoked from PUBLIC and every browser role and granted
+  back for `sort_order` only**, so the function is the only rename path.
+  Lock and "Sent to parents" are untouched (their triggers are on `games`;
+  the divisions update can't fire the calendar-link trigger, which is `UPDATE
+  OF locked`). App: `src/lib/umpires/role-rename.ts` (words every reply,
+  `renameClash` with the same trimmed/case rule); the roles manager calls the
+  RPC. **Deploy order: apply 0118, THEN push** — the code calls the function.
+  Between apply and deploy the OLD page's rename gets a permission error
+  (nothing is written). **Known, not fixed:** a page left open across a
+  rename still holds the old name, and its next assignment or wizard save
+  re-creates it via `ensureSeasonRoleIds`; adding a role still checks
+  duplicates case-sensitively. Proof: `scripts/sim/rename-official-role-sim.sql`
+  (+ build script; rolled back in "test", 11 mutants). App harness: `npm run
+  sim:role-rename` (11 checks) + `:mutants` (5, each killed at its own
+  assertion).
 - **DESTRUCTIVE CONFIRMS SAY HOW MANY OFFICIAL ASSIGNMENTS GO (2026-11-06,
   branch `feat/assignment-loss-counts`; warn only).** Every game delete
   cascades its `game_umpires` rows. The panel's Regenerate confirm, the
