@@ -100,6 +100,7 @@
     "sim:snack-shifts": "TZ=UTC npx tsx scripts/sim/snack-shifts-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/snack-shifts-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/snack-shifts-sim.ts",
     "sim:snack-shifts:mutants": "npx tsx scripts/sim/snack-shifts-mutants.ts",
     "sim:snack-print": "TZ=UTC npx tsx scripts/sim/snack-print-sim.tsx",
+    "sim:snack-print:mutants": "npx tsx scripts/sim/snack-print-mutants.ts",
     "sim:week-grid": "TZ=UTC npx tsx scripts/sim/week-grid-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/week-grid-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/week-grid-sim.ts",
     "sim:stripe-checkout-auth": "npx tsx scripts/sim/stripe-checkout-auth-sim.ts",
     "sim:stripe-checkout-auth:mutants": "npx tsx scripts/sim/stripe-checkout-auth-mutants.ts",

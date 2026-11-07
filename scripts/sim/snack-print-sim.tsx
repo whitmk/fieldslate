@@ -107,6 +107,19 @@ async function main() {
   // ── N: a note never prints ──────────────────────────────────────────────
   ok(!full.includes(NOTE) && !doc.includes(NOTE), "N1", "no shift note appears on either print");
 
+  // ── R: the page's shift read is complete-or-throw (source wiring — weak by
+  // nature, stated). The full print and its "N shifts" header are built from
+  // this read, so a short list must never reach the page.
+  const page = readFileSync(join(__dirname, "..", "..", "src", "app", "(dashboard)", "dashboard", "snack-shack", "page.tsx"), "utf8");
+  const blocksAt = page.indexOf('.from("snack_shack_blocks")');
+  const readSlice = blocksAt > 0 ? page.slice(Math.max(0, blocksAt - 200), page.indexOf(".range(from, to)", blocksAt) + 20) : "";
+  ok(readSlice.includes('fetchAllRows<') && readSlice.includes('exactCount ? { count: "exact" } : undefined') && readSlice.includes('.order("id"') && !readSlice.includes(".limit("),
+    "R1", "the page's shift read goes through fetchAllRows with an exact count and an id tiebreak, and no .limit");
+  ok(/if \(cashRes\.error\) throw /.test(page), "R2", "a failed cash-people read fails the page's read");
+  const errAt = page.indexOf("if (readError) {");
+  const clientAt = page.indexOf("<SnackShackPageClient");
+  ok(errAt > 0 && clientAt > errAt && page.startsWith("if (readError) {\n    return (", errAt) && page.slice(errAt, clientAt).includes("Couldn&apos;t load the snack shack shifts."), "R3", "a failed read returns the error card before the page client (and its print) can render");
+
   if (RECORD) {
     console.log(`RECORDED goldens in ${DIR}`);
     return;

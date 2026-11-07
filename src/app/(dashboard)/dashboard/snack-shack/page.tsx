@@ -11,6 +11,7 @@ import { isElite } from "@/lib/plan/limits";
 import { FeatureLockedCard } from "@/components/plan/upgrade-cta";
 import { isSetupIncomplete } from "@/lib/setup/derive-step";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
+import { fetchAllRows, type PagedResult } from "@/lib/supabase/fetch-all";
 import { SHIFT_NOTE_SELECT_FIELDS, type ShiftNoteFields, type CashPerson } from "@/lib/snack-shack/shift-notes";
 
 type TeamRow = { id: string; name: string; league_id: string };
@@ -125,23 +126,55 @@ export default async function SnackShackPage() {
   })[] = [];
   let allCashPeople: (CashPerson & { snack_shack_id: string })[] = [];
 
+  // COMPLETE OR NOTHING (2026-11-07): the full-schedule print and its
+  // "N shifts" header are built from this list, so a short or failed read
+  // must never reach the page. fetchAllRows returns every row or throws; the
+  // cash people (printed on the full schedule) are checked too. On a failure
+  // the page shows an error instead of a schedule that could print short.
+  let readError: string | null = null;
   if (settingIds.length > 0) {
-    const [{ data: blocksRaw }, { data: cashRaw }] = await Promise.all([
-      supabase
-        .from("snack_shack_blocks")
-        .select(`id, snack_shack_id, date, start_time, end_time, assigned_team_id, is_recurring, team:teams(name), ${SHIFT_NOTE_SELECT_FIELDS}`)
-        .in("snack_shack_id", settingIds)
-        .order("date", { ascending: true })
-        .order("start_time", { ascending: true }),
-      supabase
-        .from("snack_shack_cash_people")
-        .select("id, snack_shack_id, name")
-        .in("snack_shack_id", settingIds)
-        .order("name", { ascending: true }),
-    ]);
+    try {
+      const [blocks, cashRes] = await Promise.all([
+        fetchAllRows<(typeof allBlocks)[number]>("snack shack shifts", ({ from, to, exactCount }) =>
+          supabase
+            .from("snack_shack_blocks")
+            .select(`id, snack_shack_id, date, start_time, end_time, assigned_team_id, is_recurring, team:teams(name), ${SHIFT_NOTE_SELECT_FIELDS}`, exactCount ? { count: "exact" } : undefined)
+            .in("snack_shack_id", settingIds)
+            .order("date", { ascending: true })
+            .order("start_time", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to) as unknown as PromiseLike<PagedResult<(typeof allBlocks)[number]>>,
+        ),
+        supabase
+          .from("snack_shack_cash_people")
+          .select("id, snack_shack_id, name")
+          .in("snack_shack_id", settingIds)
+          .order("name", { ascending: true }),
+      ]);
+      if (cashRes.error) throw new Error(`Could not read the cash people: ${cashRes.error.message}`);
+      allBlocks = blocks;
+      allCashPeople = (cashRes.data as unknown as typeof allCashPeople) ?? [];
+    } catch (err) {
+      readError = err instanceof Error ? err.message : "Could not read the snack shack shifts.";
+    }
+  }
 
-    allBlocks = (blocksRaw as unknown as typeof allBlocks) ?? [];
-    allCashPeople = (cashRaw as unknown as typeof allCashPeople) ?? [];
+  if (readError) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Snack Shack</h1>
+        </div>
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p className="font-medium">Couldn&apos;t load the snack shack shifts.</p>
+          <p className="mt-1">{readError}</p>
+          <p className="mt-2 text-red-600">
+            Nothing is shown rather than a partial list, so a printed schedule
+            can&apos;t be missing shifts without saying so. Reload to try again.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (

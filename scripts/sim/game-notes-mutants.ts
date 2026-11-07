@@ -29,8 +29,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "GM11", what: "the Snack Shack page select drops the internal fields", file: SERVER_PAGE,
-    find: ", team:teams(name), ${SHIFT_NOTE_SELECT_FIELDS}`)",
-    replace: ", team:teams(name)`)",
+    find: ", team:teams(name), ${SHIFT_NOTE_SELECT_FIELDS}`, exactCount",
+    replace: ", team:teams(name)`, exactCount",
     expect: "O3-snack",
   },
   {
