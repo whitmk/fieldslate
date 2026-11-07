@@ -6,6 +6,7 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   DEFAULT_GAME_DURATION_MINS,
+  assignmentPrecheckMessage,
   bookingsFromRows,
   findConflictInBookings,
   findUmpireBlackout,
@@ -232,25 +233,15 @@ export function UmpireSlots({
     // Conflict + blackout checks before persisting.
     const nextUmpire = umpires.find((u) => u.id === nextUmpireId);
     const umpName = nextUmpire?.name ?? "This umpire";
-    const conflict = await findUmpireConflict(nextUmpireId, candidate);
-    if (conflict) {
-      setErrorByRole({
-        [role]: `${umpName} is already assigned to ${conflict.home_team_name} vs ${conflict.away_team_name} at ${formatConflictTime(conflict.scheduled_at)}.`,
-      });
-      setPendingRole(null);
-      return;
-    }
-    const blackout = await findUmpireBlackout(nextUmpireId, game.scheduled_at);
-    if (blackout) {
-      const day = new Date(blackout.date + "T00:00:00").toLocaleDateString(
-        "en-US",
-        { month: "short", day: "numeric" },
-      );
-      setErrorByRole({
-        [role]: `${umpName} has a blackout date on ${day}${
-          blackout.note ? ` (${blackout.note})` : ""
-        }.`,
-      });
+    // A check whose read fails refuses the save (2026-11-06) — it used to
+    // read as "no conflict" and save. Wording: assignmentPrecheckMessage.
+    const [conflictCheck, blackoutCheck] = await Promise.all([
+      findUmpireConflict(nextUmpireId, candidate),
+      findUmpireBlackout(nextUmpireId, game.scheduled_at),
+    ]);
+    const refusal = assignmentPrecheckMessage(umpName, conflictCheck, blackoutCheck);
+    if (refusal) {
+      setErrorByRole({ [role]: refusal });
       setPendingRole(null);
       return;
     }

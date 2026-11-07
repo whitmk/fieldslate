@@ -290,6 +290,10 @@ export function DivisionSchedulePanel({
   const [umpiresPerGame, setUmpiresPerGame] = useState(0);
   const [umpireRoles, setUmpireRoles] = useState<string[]>([]);
   const [umpireRoster, setUmpireRoster] = useState<UmpireOption[]>([]);
+  // Set when the officials, their assignments or the season's roles couldn't
+  // be read (2026-11-06). The slots are then NOT shown: an unread assignment
+  // list renders every slot as Open and invites a second official onto it.
+  const [officialsReadFailed, setOfficialsReadFailed] = useState(false);
   const [assignmentsByGame, setAssignmentsByGame] = useState<
     Map<string, SlotAssignment[]>
   >(new Map());
@@ -320,7 +324,7 @@ export function DivisionSchedulePanel({
       return;
     }
 
-    const [{ data: divDataRaw }, { data: seasonRolesRaw }] = await Promise.all([
+    const [{ data: divDataRaw }, { data: seasonRolesRaw, error: seasonRolesErr }] = await Promise.all([
       supabase
         .from("divisions")
         .select("settings, umpires_per_game, intra_division_games_per_team, locked, posted")
@@ -388,7 +392,10 @@ export function DivisionSchedulePanel({
     setGames(rows);
 
     // Umpire roster for this season and assignments for these games
-    const [{ data: umpiresRaw }, { data: assignsRaw }] = await Promise.all([
+    const [
+      { data: umpiresRaw, error: umpiresErr },
+      { data: assignsRaw, error: assignsErr },
+    ] = await Promise.all([
       supabase
         .from("umpires")
         .select(
@@ -410,8 +417,9 @@ export function DivisionSchedulePanel({
               "game_id",
               rows.map((g) => g.id),
             )
-        : Promise.resolve({ data: [] as unknown[] }),
+        : Promise.resolve({ data: [] as unknown[], error: null }),
     ]);
+    setOfficialsReadFailed(!!(seasonRolesErr || umpiresErr || assignsErr));
     setUmpireRoster((umpiresRaw ?? []) as UmpireOption[]);
     type AssignRow = {
       id: string;
@@ -1610,7 +1618,11 @@ export function DivisionSchedulePanel({
                         onClick={(e) => e.stopPropagation()}
                         className="ml-[80px] mr-2 mt-1"
                       >
-                        {umpireRoster.length === 0 ? (
+                        {officialsReadFailed ? (
+                          <p className="text-[11px] text-red-600">
+                            Couldn&apos;t load {officialsPluralLower} for this game. Refresh to try again.
+                          </p>
+                        ) : umpireRoster.length === 0 ? (
                           <p className="text-[11px] text-gray-400">
                             Add {officialsPluralLower} on the Officials tab to assign them here.
                           </p>

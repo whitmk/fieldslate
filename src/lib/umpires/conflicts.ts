@@ -81,20 +81,31 @@ export function findConflictInBookings(
   return null;
 }
 
+/** A check whose read failed is "couldn't check" — NEVER "no conflict"
+ *  (2026-11-06). A failed read used to come back as an empty booking list,
+ *  so the save went through on a check that never ran. */
+export type ConflictCheck =
+  | { ok: true; conflict: GameTimeInfo | null }
+  | { ok: false };
+
 /**
- * Returns the first existing game that conflicts with the candidate slot for
- * this umpire, or null if there is no conflict.
+ * The first existing game that conflicts with the candidate slot for this
+ * umpire (`conflict: null` when there is none), or `{ ok: false }` when the
+ * bookings could not be read.
  *
  * Excludes the candidate game itself so re-assigning an umpire from one role
  * to another on the same game doesn't trigger a false positive.
+ *
+ * `client` is for the simulation harnesses ONLY; production callers omit it.
  */
 export async function findUmpireConflict(
   umpireId: string,
   candidate: GameTimeInfo,
-): Promise<GameTimeInfo | null> {
-  const supabase = createClient();
+  client?: ReturnType<typeof createClient>,
+): Promise<ConflictCheck> {
+  const supabase = client ?? createClient();
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("game_umpires")
     .select(
       `game:games(
@@ -106,30 +117,76 @@ export async function findUmpireConflict(
     )
     .eq("umpire_id", umpireId)
     .neq("game_id", candidate.id);
+  if (error) return { ok: false };
 
   const rows = (data as unknown as UmpireBookingRow[] | null) ?? [];
-  return findConflictInBookings(candidate, bookingsFromRows(rows));
+  return { ok: true, conflict: findConflictInBookings(candidate, bookingsFromRows(rows)) };
 }
 
 export type BlackoutInfo = { date: string; note: string | null };
 
+/** Same rule as ConflictCheck: an unreadable blackout list is "couldn't
+ *  check", never "no blackout". */
+export type BlackoutCheck =
+  | { ok: true; blackout: BlackoutInfo | null }
+  | { ok: false };
+
 /**
- * Returns the official's blackout entry covering the game's (local) date, or
- * null. official_blackouts.date is a plain date — compared against the game's
- * local calendar day, the same day the schedule UI shows.
+ * The official's blackout entry covering the game's (local) date
+ * (`blackout: null` when there is none), or `{ ok: false }` when it could not
+ * be read. official_blackouts.date is a plain date — compared against the
+ * game's local calendar day, the same day the schedule UI shows.
+ *
+ * `client` is for the simulation harnesses ONLY; production callers omit it.
  */
 export async function findUmpireBlackout(
   umpireId: string,
   scheduledAt: string,
-): Promise<BlackoutInfo | null> {
-  const supabase = createClient();
-  const { data } = await supabase
+  client?: ReturnType<typeof createClient>,
+): Promise<BlackoutCheck> {
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
     .from("official_blackouts")
     .select("date, note")
     .eq("umpire_id", umpireId)
     .eq("date", localDateKey(new Date(scheduledAt)))
     .maybeSingle();
-  return (data as BlackoutInfo | null) ?? null;
+  if (error) return { ok: false };
+  return { ok: true, blackout: (data as BlackoutInfo | null) ?? null };
+}
+
+/**
+ * The refusal shown at the slot before a manual assignment is saved, or null
+ * when the save may go ahead. The ONE place these sentences are written.
+ * Order: an unreadable check refuses first (nothing else can be trusted),
+ * then a real conflict, then a blackout.
+ */
+export function assignmentPrecheckMessage(
+  umpName: string,
+  conflictCheck: ConflictCheck,
+  blackoutCheck: BlackoutCheck,
+): string | null {
+  if (!conflictCheck.ok) {
+    return `Couldn't check ${umpName}'s other games, so nothing was saved. Try again.`;
+  }
+  if (!blackoutCheck.ok) {
+    return `Couldn't check ${umpName}'s blackout dates, so nothing was saved. Try again.`;
+  }
+  const conflict = conflictCheck.conflict;
+  if (conflict) {
+    return `${umpName} is already assigned to ${conflict.home_team_name} vs ${conflict.away_team_name} at ${formatConflictTime(conflict.scheduled_at)}.`;
+  }
+  const blackout = blackoutCheck.blackout;
+  if (blackout) {
+    const day = new Date(blackout.date + "T00:00:00").toLocaleDateString(
+      "en-US",
+      { month: "short", day: "numeric" },
+    );
+    return `${umpName} has a blackout date on ${day}${
+      blackout.note ? ` (${blackout.note})` : ""
+    }.`;
+  }
+  return null;
 }
 
 export function formatConflictTime(scheduled_at: string): string {

@@ -4911,7 +4911,12 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   `official_certifications` + nullable `role_id` + `toggle_assignment_paid`
   RPC (0062); `umpires.team_id` coach link + `divisions.priority` (0063);
   `official_conflicts` non-coach conflict-of-interest links, UNIQUE(umpire_id,
-  team_id) (0073). `official_roles` (not `divisions.umpire_roles`) is the
+  team_id) (0073). **The two `game_umpires` uniques are unique INDEXES
+  (`game_umpires_unique_role_per_game` on (game_id, role) and
+  `game_umpires_unique_umpire_per_game` on (game_id, umpire_id)), not table
+  constraints** — they don't appear in `pg_constraint` (verified 2026-11-06).
+  The role one is on the role TEXT, so two different role names on one game
+  are two rows. `official_roles` (not `divisions.umpire_roles`) is the
   source of truth for slot labels — the two diverging once made assigned
   slots read "Open".
 - **Zero availability windows = available anytime** (enforced in
@@ -4954,6 +4959,27 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   forms, so without it, adding a window/blackout also fires the modal's
   profile save and closes it. Verify event handling any time a component
   with a form is reused inside another form.
+- **EVERY OFFICIALS READ THAT DECIDES ELIGIBILITY FAILS CLOSED (2026-11-06,
+  branch `fix/umpire-checks-fail-closed`).** Before, each discarded its error:
+  the manual double-booking and blackout checks read a failed read as "no
+  conflict" and saved; auto-assign read a failed availability list as "no
+  windows = available anytime" (breaking the never-outside-availability rule),
+  failed bookings as "everyone free", failed blackouts as "none", and a failed
+  read of the division's assignments as "every slot open". Now:
+  `findUmpireConflict` / `findUmpireBlackout` return `{ ok: false }` on a read
+  error, and `assignmentPrecheckMessage` (conflicts.ts, the ONE place the
+  manual refusal sentences live) refuses with "Couldn't check {name}'s other
+  games / blackout dates, so nothing was saved. Try again." Auto-assign
+  refuses the whole run, nothing written, on a failed read of the season, its
+  roles, the division's teams, games, the officials' other games,
+  availability, blackouts, or the division's assignments ("Couldn't read …,
+  so no officials were assigned."). The division panel and the game detail
+  modal show an error in place of the slots when the roster, assignments or
+  roles can't be read — an unread assignment list renders every slot Open.
+  Harness: `npm run sim:umpire-reads` (+ `:mutants`, 12, each killed at its
+  own assertion; one read failed at a time via `FakeClient.failRead` in
+  `officials-fake.ts`, which also gained `maybeSingle`). Not checked in the
+  browser (error branches behind sign-in).
 - **Conflict overlap/blackout logic is shared.** `findUmpireConflict`
   (`src/lib/umpires/conflicts.ts`) is a thin fetch over the exported pure
   functions `bookingsFromRows` / `findConflictInBookings`, and the picker's

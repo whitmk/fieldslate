@@ -134,6 +134,14 @@ export async function autoAssignUmpires(
 ): Promise<AutoAssignResult> {
   const supabase = client ?? createClient();
   let pastGamesSkipped = 0;
+  // EVERY READ THAT DECIDES WHO MAY TAKE A SLOT FAILS CLOSED (2026-11-06).
+  // Before, a failed bookings read meant "everyone is free" (double-booking),
+  // a failed availability read meant "no windows = available anytime"
+  // (assigning outside stated availability), a failed blackouts read meant
+  // "no blackouts", and a failed read of this division's assignments made
+  // every slot look open. Each now refuses the whole run with nothing written.
+  const unreadable = (what: string) =>
+    none(`Couldn't read ${what}, so no officials were assigned. Try again.`);
   const none = (error?: string): AutoAssignResult => ({
     success: !error,
     filled: 0,
@@ -149,8 +157,8 @@ export async function autoAssignUmpires(
   //    and the season's normalized role list.
   const [
     { data: divisionRaw, error: divisionErr },
-    { data: leagueRaw },
-    { data: seasonRolesRaw },
+    { data: leagueRaw, error: leagueErr },
+    { data: seasonRolesRaw, error: seasonRolesErr },
   ] = await Promise.all([
     supabase
       .from("divisions")
@@ -176,6 +184,10 @@ export async function autoAssignUmpires(
   if (division.umpires_per_game === 0) {
     return none();
   }
+  if (leagueErr) return unreadable("this season");
+  // A failed role read would otherwise pad to "Umpire 1"… and write those
+  // labels as the slots' role text.
+  if (seasonRolesErr) return unreadable("this season's official roles");
 
   const league = leagueRaw as { sport: string | null; owner_id: string } | null;
   const sport = league?.sport ?? null;
@@ -209,10 +221,11 @@ export async function autoAssignUmpires(
   const divisionDuration = gameDuration(division.settings);
 
   // 2. Load teams in this division so we can target games whose home_team belongs to it.
-  const { data: teamData } = await supabase
+  const { data: teamData, error: teamsErr } = await supabase
     .from("teams")
     .select("id")
     .eq("division_id", divisionId);
+  if (teamsErr) return unreadable("this division's teams");
   const teamIds = ((teamData ?? []) as { id: string }[]).map((t) => t.id);
 
   if (teamIds.length === 0) {
@@ -220,7 +233,7 @@ export async function autoAssignUmpires(
   }
 
   // 3. Load every game in this division (active only).
-  const { data: gamesRaw } = await supabase
+  const { data: gamesRaw, error: gamesErr } = await supabase
     .from("games")
     .select(
       `id, scheduled_at, status, home_team_id, away_team_id,
@@ -230,6 +243,7 @@ export async function autoAssignUmpires(
     .in("home_team_id", teamIds)
     .neq("status", "cancelled")
     .order("scheduled_at", { ascending: true });
+  if (gamesErr) return unreadable("this division's games");
 
   // Division priority (0063): lower number = assigned first, so
   // higher-priority divisions get first pick of officials. Within a
@@ -296,9 +310,9 @@ export async function autoAssignUmpires(
     } | null;
   };
   const [
-    { data: existingRaw },
-    { data: availabilityRaw },
-    { data: blackoutsRaw },
+    { data: existingRaw, error: existingErr },
+    { data: availabilityRaw, error: availabilityErr },
+    { data: blackoutsRaw, error: blackoutsErr },
     roleIdByName,
   ] = await Promise.all([
     supabase
@@ -321,6 +335,10 @@ export async function autoAssignUmpires(
       .in("umpire_id", umpireIds),
     ensureSeasonRoleIds(supabase, seasonId, roles),
   ]);
+
+  if (existingErr) return unreadable("the officials' other games");
+  if (availabilityErr) return unreadable("the officials' availability");
+  if (blackoutsErr) return unreadable("the officials' blackout dates");
 
   const existing = ((existingRaw as unknown as ExistingRow[] | null) ?? []).filter(
     (r) => r.game && r.game.status !== "cancelled",
@@ -364,10 +382,11 @@ export async function autoAssignUmpires(
   // 6. Per-game slot occupancy across the division being assigned.
   type DivAssignment = AssignmentRow;
   const divisionGameIds = divisionGames.map((g) => g.id);
-  const { data: divAssignsRaw } = await supabase
+  const { data: divAssignsRaw, error: divAssignsErr } = await supabase
     .from("game_umpires")
     .select("id, game_id, umpire_id, role")
     .in("game_id", divisionGameIds);
+  if (divAssignsErr) return unreadable("this division's current assignments");
   const divAssigns = (divAssignsRaw ?? []) as DivAssignment[];
 
   const filledRolesByGame = new Map<string, Set<string>>();

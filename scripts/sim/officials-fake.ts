@@ -117,6 +117,8 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }> {
   private filters: ((r: Row) => boolean)[] = [];
   private orderBy: { column: string; ascending: boolean } | null = null;
   private singleMode = false;
+  private maybeSingleMode = false;
+  private selectText = "";
   private embeds: EmbedNode[] = [];
 
   constructor(
@@ -126,6 +128,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }> {
   ) {}
 
   select(cols: string): this {
+    this.selectText = cols.replace(/\s+/g, " ").trim();
     this.embeds = parseEmbeds(cols);
     return this;
   }
@@ -152,6 +155,12 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }> {
 
   single(): this {
     this.singleMode = true;
+    return this;
+  }
+
+  /** zero rows → data null; one row → that row; more → error (PostgREST). */
+  maybeSingle(): this {
+    this.maybeSingleMode = true;
     return this;
   }
 
@@ -184,6 +193,13 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }> {
   private execute(): { data: unknown; error: DbError } {
     if (this.write) return this.executeWrite();
 
+    // fault injection (2026-11-06): any read the predicate names errors, with
+    // NO data — the shape a failed PostgREST read has. Added for
+    // umpire-reads-failclosed-sim.ts; `select` is whitespace-normalised.
+    if (this.fake.failRead?.(this.table, this.selectText)) {
+      return { data: null, error: { message: `injected read failure: ${this.table}` } };
+    }
+
     // fault injection: division-detail read for a marked division errors,
     // exercising "a division errors mid-sequence, the run continues".
     if (this.table === "divisions" && this.singleMode) {
@@ -208,6 +224,12 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }> {
       });
     }
     const projected = rows.map((r) => this.resolveEmbeds(r, this.embeds));
+    if (this.maybeSingleMode) {
+      if (projected.length > 1) {
+        return { data: null, error: { message: `expected 0 or 1 row in ${this.table}` } };
+      }
+      return { data: projected[0] ?? null, error: null };
+    }
     if (this.singleMode) {
       if (projected.length !== 1) {
         return {
@@ -277,6 +299,8 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }> {
 export class FakeClient {
   private idCounter = 0;
   failDivisionIds = new Set<string>();
+  /** Reads for which this returns true fail (see execute). */
+  failRead: ((table: string, select: string) => boolean) | null = null;
 
   constructor(public db: Db) {}
 

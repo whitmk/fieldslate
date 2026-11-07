@@ -78,11 +78,14 @@ type AssignRow = {
 async function fetchAssignments(
   supabase: ReturnType<typeof createClient>,
   gameId: string,
-): Promise<SlotAssignment[]> {
-  const { data } = await supabase
+): Promise<SlotAssignment[] | null> {
+  const { data, error } = await supabase
     .from("game_umpires")
     .select("id, role, umpire:umpires(id, name)")
     .eq("game_id", gameId);
+  // null = couldn't read. An unread assignment list would render every slot
+  // as Open and invite a second official onto it (2026-11-06).
+  if (error) return null;
   return ((data as unknown as AssignRow[] | null) ?? [])
     .filter((r) => r.umpire)
     .map<SlotAssignment>((r) => ({
@@ -92,6 +95,9 @@ async function fetchAssignments(
       role: r.role,
     }));
 }
+
+const OFFICIALS_READ_FAILED =
+  "Couldn't load this game's officials. Close and reopen to try again.";
 
 type OverrideRow = {
   id: string;
@@ -157,6 +163,10 @@ export function GameDetailModal({ game, onClose }: Props) {
   // UmpireSlots selects reflect the write immediately.
   async function reloadAssignments() {
     const assignments = await fetchAssignments(createClient(), game.id);
+    if (!assignments) {
+      setError(OFFICIALS_READ_FAILED);
+      return;
+    }
     setLoaded((prev) => (prev ? { ...prev, assignments } : prev));
   }
 
@@ -193,7 +203,7 @@ export function GameDetailModal({ game, onClose }: Props) {
       const [
         { data: umpiresRaw, error: umpiresErr },
         { data: leagueRaw },
-        { data: seasonRolesRaw },
+        { data: seasonRolesRaw, error: seasonRolesErr },
         { data: overridesRaw },
       ] = await Promise.all([
         supabase
@@ -227,6 +237,15 @@ export function GameDetailModal({ game, onClose }: Props) {
       ]);
       if (umpiresErr) {
         if (!cancelled) setError(umpiresErr.message);
+      }
+      // A failed assignments or roles read shows the error in place of the
+      // slots (the render's `error` branch) — never slots built on a guess.
+      if (!assignments || seasonRolesErr) {
+        if (!cancelled) {
+          setError(OFFICIALS_READ_FAILED);
+          setLoading(false);
+        }
+        return;
       }
       const umpires = (umpiresRaw ?? []) as UmpireOption[];
       const sport = (leagueRaw as { sport: string | null } | null)?.sport ?? null;
