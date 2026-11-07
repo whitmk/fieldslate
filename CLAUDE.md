@@ -5006,9 +5006,15 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   Between apply and deploy the OLD page's rename gets a permission error
   (nothing is written). **Known, not fixed:** a page left open across a
   rename still holds the old name, and its next assignment or wizard save
-  re-creates it via `ensureSeasonRoleIds`; adding a role still checks
-  duplicates case-sensitively. Proof: `scripts/sim/rename-official-role-sim.sql`
-  (+ build script; rolled back in "test", 11 mutants). App harness: `npm run
+  re-creates it via `ensureSeasonRoleIds` (backlogged under "Open items").
+  **0118 also adds `official_roles_season_name_ci_uniq` on (season_id,
+  lower(btrim(name)))** (zero collisions live, 2026-11-07), so a
+  case/space variant of an existing role is refused (23505); the add form
+  words it "That role already exists", and `ensureSeasonRoleIds` — whose
+  `on conflict (season_id, name)` doesn't cover this index — fails soft
+  (text-only assignment, no role_id). The only browser UPDATEs of
+  `official_roles` are the reorder's two `sort_order` writes. Proof: `scripts/sim/rename-official-role-sim.sql`
+  (+ build script; rolled back in "test", 12 mutants). App harness: `npm run
   sim:role-rename` (11 checks) + `:mutants` (5, each killed at its own
   assertion).
 - **DESTRUCTIVE CONFIRMS SAY HOW MANY OFFICIAL ASSIGNMENTS GO (2026-11-06,
@@ -5535,6 +5541,18 @@ Still open:
   ordering faults, and the section order now exists because of them.
 
 ## Open items
+
+- **A page left open across a role rename re-creates the old role (found
+  2026-11-07, with 0118).** The slot labels, the division wizard and auto-assign
+  read the season's role names when the page loads; after a rename elsewhere,
+  the next assignment from a stale page (UmpireSlots), a wizard save
+  (`step-review.tsx`, from its loaded `umpire_roles`) or an auto-assign run
+  passes the OLD name to `ensureSeasonRoleIds`, which inserts it as a new role —
+  the renamed role and its old name then both exist, and the new assignment
+  carries the old text. Pre-existing (any rename did it); 0118 narrows it (the
+  wizard's stored list is renamed too) but doesn't close it. Lever: write slots
+  by `role_id` (option A from the 2026-11-06 report) or make
+  `ensureSeasonRoleIds` refuse to create a name a rename just retired.
 
 - **Calculator fall sunset label (left unchanged by decision, 2026-10-21).**
   The public calculator's "Sunset 7:42pm on Aug 31" line and the night

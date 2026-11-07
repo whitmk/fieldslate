@@ -29,7 +29,21 @@
 --      back for `sort_order` only, which the role reordering writes. So this
 --      function is the ONLY way to change a role's name. INSERT, SELECT and
 --      DELETE are unchanged (adding a role, and ensureSeasonRoleIds'
---      `on conflict do nothing` upsert, need no UPDATE).
+--      `on conflict do nothing` upsert, need no UPDATE). Every browser-side
+--      UPDATE of `official_roles` was listed before this (2026-11-07): the
+--      roles manager's two `sort_order` writes (reorder) and the rename this
+--      function replaces; nothing else, and no database function, updates it.
+--   3. "Plate" and "plate " can never be two roles of one season: a unique
+--      index on (season_id, lower(btrim(name))), beside the existing
+--      case-sensitive UNIQUE(season_id, name). Checked first, read-only
+--      (2026-11-07): 24 roles, zero collisions in any org, zero names with
+--      stray spaces. Building it takes a SHARE lock on `official_roles` (writes
+--      wait, reads don't) for the moment it takes to index 24 rows.
+--      CONSEQUENCE: ensureSeasonRoleIds' `on conflict (season_id, name) do
+--      nothing` does not cover THIS index, so inserting a case-variant of an
+--      existing role raises 23505 — it fails soft there (no role_id, the
+--      assignment still saves by text), and the roles manager's add shows
+--      "That role already exists for this season." (humanizeRoleError).
 --
 -- NOT TOUCHED. The lock and "Sent to parents" triggers are on `games` only;
 -- `game_umpires`, `umpire_role_rates` and `official_roles` have no triggers.
@@ -193,6 +207,10 @@ revoke update on table public.official_roles from public;
 revoke update on table public.official_roles from anon, authenticated, service_role, dashboard_readonly;
 grant update (sort_order) on table public.official_roles to authenticated;
 
+-- One role per name per season, ignoring case and outer spaces.
+create unique index official_roles_season_name_ci_uniq
+  on public.official_roles (season_id, lower(btrim(name)));
+
 -- Verify, or the whole migration rolls back.
 do $v$
 declare
@@ -213,6 +231,13 @@ begin
   end loop;
   if not has_column_privilege('authenticated', 'public.official_roles', 'sort_order', 'UPDATE') then
     raise exception '0118 verify: authenticated cannot update official_roles.sort_order';
+  end if;
+  if not exists (
+    select 1 from pg_indexes
+     where schemaname = 'public' and tablename = 'official_roles'
+       and indexname = 'official_roles_season_name_ci_uniq'
+  ) then
+    raise exception '0118 verify: official_roles_season_name_ci_uniq missing';
   end if;
   if not has_table_privilege('authenticated', 'public.official_roles', 'INSERT')
      or not has_table_privilege('authenticated', 'public.official_roles', 'DELETE')

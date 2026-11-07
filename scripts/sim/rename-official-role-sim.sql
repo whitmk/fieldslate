@@ -7,8 +7,12 @@
 -- (bbf9afe1…) only — never Santa Rosa American's data.
 --
 -- LOCKS for the run (a few seconds; lock_timeout 3s): the migration's
--- REVOKE/GRANT on `official_roles` and CREATE FUNCTION; row locks on the
--- fixture rows only. The batch prints the locks it holds on official_roles
+-- REVOKE/GRANT on `official_roles`, CREATE FUNCTION, and CREATE UNIQUE INDEX
+-- (SHARE on `official_roles` — role writes wait, reads don't — held to the
+-- end of the batch); each mutant DROPs and rebuilds the index inside its own
+-- rolled-back sub-transaction, which takes ACCESS EXCLUSIVE on
+-- `official_roles` (role READS wait too) for that sub-run only — released
+-- when it rolls back; row locks on the fixture rows only. The batch prints the locks it holds on official_roles
 -- (L1) so the apply's lock is known, not guessed.
 --
 -- Fixture: season S (test org) with roles Plate (p) and Base (b); season O
@@ -40,8 +44,11 @@
 --   G1  as authenticated: UPDATE of name refused (42501); sort_order allowed
 --   G2  EXECUTE: authenticated only (public, anon, service_role, dashboard_readonly false)
 --   G3  as authenticated: insert … on conflict (season_id, name) do nothing still works
+--   G4  as authenticated: inserting " base " beside "Base" → 23505 (the
+--       case-insensitive index)
 -- Mutants (each must die at its own tag; each run first restores the pre-0118
--- grant so a GRANT mutant is measured from the real starting point):
+-- grant and drops the index, so a GRANT or INDEX mutant is measured from the
+-- real starting point):
 --   MU1  assignments not renamed                         → A3
 --   MU2  assignment rename not limited to the season     → A4
 --   MU3  role_id not synced on assignments               → A9
@@ -53,6 +60,7 @@
 --   MU9  assignment conflict check removed               → R5
 --   MU10 the UPDATE revoke left out                      → G1
 --   MU11 EXECUTE granted to anon                         → G2
+--   MU12 the case-insensitive unique index left out      → G4
 select set_config('lock_timeout', '3s', true), set_config('statement_timeout', '60s', true);
 
 create or replace function pg_temp.h118_as(p_sub uuid, p_sql text) returns text language plpgsql as $f$
@@ -177,6 +185,12 @@ begin
     v_s, 'Base'));
   if v_r is distinct from '0' then return 'G3 ensureSeasonRoleIds upsert broke: ' || coalesce(v_r, 'null'); end if;
 
+  -- G4: a case/space variant of an existing role is refused by the index.
+  v_r := pg_temp.h118_as(v_org, format(
+    'with i as (insert into public.official_roles (season_id, name, sort_order) values (%L, %L, 9) returning 1) select count(*)::text from i',
+    v_s, ' base '));
+  if v_r not like 'ERR 23505%' then return 'G4 case variant not refused: ' || coalesce(v_r, 'null'); end if;
+
   -- ── the rename ──────────────────────────────────────────────────────────
   v_r := pg_temp.h118_as(v_org, format('select public.rename_official_role(%L, %L)::text', v_p, '  Plate umpire '));
   if v_r like 'ERR%' then return 'A1 refused: ' || v_r; end if;
@@ -291,7 +305,9 @@ begin
 grant update (sort_order) on table public.official_roles to authenticated;$r10$,
                    $r10b$select 1;$r10b$),
     ('MU11', 'G2', $r11$grant execute on function public.rename_official_role(uuid, text) to authenticated;$r11$,
-                   $r11b$grant execute on function public.rename_official_role(uuid, text) to authenticated, anon;$r11b$)
+                   $r11b$grant execute on function public.rename_official_role(uuid, text) to authenticated, anon;$r11b$),
+    ('MU12', 'G4', $r12$create unique index official_roles_season_name_ci_uniq
+  on public.official_roles (season_id, lower(btrim(name)));$r12$, $r12b$select 1;$r12b$)
   ) as t(id, expect, find, repl)
   loop
     if (length(v_body) - length(replace(v_body, m.find, ''))) / length(m.find) <> 1 then
@@ -302,6 +318,7 @@ grant update (sort_order) on table public.official_roles to authenticated;$r10$,
       -- Back to the pre-0118 grant first, so a mutant that leaves a GRANT or
       -- REVOKE out is measured from the real starting point.
       grant update on table public.official_roles to authenticated;
+      drop index public.official_roles_season_name_ci_uniq;
       execute replace(v_body, m.find, m.repl);
       v_res := pg_temp.h118_case();
       raise exception 'H118CASE:%', v_res;
@@ -325,6 +342,7 @@ grant update (sort_order) on table public.official_roles to authenticated;$v10$,
   loop
     begin
       grant update on table public.official_roles to authenticated;
+      drop index public.official_roles_season_name_ci_uniq;
       execute replace(v_mig, m.find, m.repl);
       raise exception 'V1MISS';
     exception when others then
