@@ -4980,6 +4980,28 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   own assertion; one read failed at a time via `FakeClient.failRead` in
   `officials-fake.ts`, which also gained `maybeSingle`). Not checked in the
   browser (error branches behind sign-in).
+- **DESTRUCTIVE CONFIRMS SAY HOW MANY OFFICIAL ASSIGNMENTS GO (2026-11-06,
+  branch `feat/assignment-loss-counts`; warn only).** Every game delete
+  cascades its `game_umpires` rows. The panel's Regenerate confirm, the
+  division wizard's "delete all existing games" confirm, the division delete
+  and the season delete each show `assignmentLossLine`
+  (`src/lib/umpires/assignment-loss.ts`, the ONE wording): "This removes N
+  umpire assignments." (sport-aware; nothing at 0; "Counting…" while loading;
+  "Couldn't count how many … assignments this removes." on any failed read —
+  never 0). Counts are exact head counts, chunked (`countAssignmentsOnGames`);
+  a failed chunk fails the whole count. **The regenerate's games come from
+  `regenerateRemovalIds` (`src/lib/schedule/regenerate-removal.ts`), built
+  ONLY from the generator's own `isProtectedInterleagueGame` +
+  `willBeClearedByRegenerate` — never restate the delete's WHERE there.**
+  Division delete counts games naming a division team home OR away (the RPC's
+  scope); season delete counts every game of the season. **Playoff rebuild and
+  bracket delete remove NO assignments** — `game_umpires` references `games`
+  only, so playoff games can't carry officials. Harness: `npm run
+  sim:assignment-loss` (26 checks, incl. the prediction against the REAL
+  generateSchedule's deletions) + `:mutants` (7, each killed at its own
+  assertion; section order R, W, C, F, D is load-bearing). The generator fake
+  (`fake-supabase.ts`) gained head/exact counts, `range` and `or` with `in.(…)`.
+  Not checked in the browser (behind sign-in).
 - **Conflict overlap/blackout logic is shared.** `findUmpireConflict`
   (`src/lib/umpires/conflicts.ts`) is a thin fetch over the exported pure
   functions `bookingsFromRows` / `findConflictInBookings`, and the picker's

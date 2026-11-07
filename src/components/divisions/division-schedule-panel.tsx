@@ -42,6 +42,12 @@ import {
 import { AutoAssignUmpiresButton } from "@/components/umpires/auto-assign-button";
 import { ROW_ICON_REVEAL } from "@/components/ui/row-icon-reveal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  lossCount,
+  regenerateAssignmentLoss,
+  type RegenerateLoss,
+} from "@/lib/schedule/regenerate-removal";
+import { assignmentLossLine } from "@/lib/umpires/assignment-loss";
 import { rainoutConfirmCopy } from "@/lib/schedule/rainout-confirm";
 import { markGameRainedOut, markGamesRainedOut, bulkRainoutMessage } from "@/lib/schedule/rainout-write";
 import { MoveGameIcon, MoveNoticeLine } from "./move-game-row";
@@ -198,6 +204,9 @@ export function DivisionSchedulePanel({
   const [finishing, setFinishing] = useState(false);
   const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [confirmRegenOpen, setConfirmRegenOpen] = useState(false);
+  // Official assignments the regenerate will delete with its games — counted
+  // when the confirm opens (null = still counting). Warn only (2026-11-06).
+  const [regenLoss, setRegenLoss] = useState<RegenerateLoss | null>(null);
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
   const [coachConflicts, setCoachConflicts] = useState<CoachConflict[]>([]);
   const [rainoutId, setRainoutId] = useState<string | null>(null);
@@ -523,7 +532,9 @@ export function DivisionSchedulePanel({
       return;
     }
     if (games.length > 0) {
+      setRegenLoss(null);
       setConfirmRegenOpen(true);
+      void regenerateAssignmentLoss(divisionId).then(setRegenLoss);
     } else {
       void handleGenerate();
     }
@@ -1792,6 +1803,12 @@ export function DivisionSchedulePanel({
                 <p className="mt-1 text-sm text-gray-500">
                   Regenerating will wipe pending interleague games but preserve accepted ones. Continue?
                 </p>
+                {(() => {
+                  const line = assignmentLossLine(lossCount(regenLoss), leagueSport);
+                  return line ? (
+                    <p className="mt-2 text-sm font-medium text-amber-700">{line}</p>
+                  ) : null;
+                })()}
               </div>
             </div>
             <div className="flex gap-2 px-6 py-5">

@@ -18,6 +18,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Archive, Loader2, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  assignmentLossLine,
+  countAssignmentsForSeason,
+  type AssignmentCount,
+} from "@/lib/umpires/assignment-loss";
 
 interface BaseProps {
   seasonId: string;
@@ -322,6 +327,7 @@ export function DeleteSeasonModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [counts, setCounts] = useState<DeleteCounts | null>(null);
+  const [assignmentLoss, setAssignmentLoss] = useState<AssignmentCount | "pending">("pending");
   const [confirmText, setConfirmText] = useState("");
 
   useEsc(() => !busy && onClose());
@@ -357,6 +363,9 @@ export function DeleteSeasonModal({
           .not("interleague_org_id", "is", null),
       ]);
       if (cancelled) return;
+      void countAssignmentsForSeason(supabase, seasonId).then((r) => {
+        if (!cancelled) setAssignmentLoss(r);
+      });
       setCounts({
         divisions: div.count ?? 0,
         teams: team.count ?? 0,
@@ -424,6 +433,11 @@ export function DeleteSeasonModal({
             <li>
               {counts.officials} official{counts.officials !== 1 ? "s" : ""},
               their availability, blackouts, and assignments
+              {(() => {
+                // Sport-neutral wording: this modal has no sport (2026-11-06).
+                const line = assignmentLossLine(assignmentLoss, null);
+                return line ? <span className="block font-semibold">{line}</span> : null;
+              })()}
             </li>
             <li>
               Practices, playoffs, snack shack schedules, pay settings, and

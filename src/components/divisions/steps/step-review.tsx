@@ -25,6 +25,12 @@ import {
 import { CoachConflictNotice } from "@/components/schedule/coach-conflict-notice";
 import { fetchDivisionLocks, lockedReason } from "@/lib/schedule/division-lock";
 import { getOfficialTitlePlural } from "@/lib/utils/official-title";
+import {
+  lossCount,
+  regenerateAssignmentLoss,
+  type RegenerateLoss,
+} from "@/lib/schedule/regenerate-removal";
+import { assignmentLossLine } from "@/lib/umpires/assignment-loss";
 import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
 import { UpgradeModal, type CapName } from "@/components/plan/upgrade-cta";
 import type { Plan } from "@/lib/plan/limits";
@@ -152,6 +158,20 @@ export function StepReview({
   const [savingRegen, setSavingRegen] = useState(false);
   const [regenKind, setRegenKind] = useState<GenerateKind | null>(null);
   const [confirmingKind, setConfirmingKind] = useState<GenerateKind | null>(null);
+  // Official assignments the regenerate will delete with its games, counted
+  // while the confirm is open (null = still counting). Warn only (2026-11-06).
+  const [regenLoss, setRegenLoss] = useState<RegenerateLoss | null>(null);
+  useEffect(() => {
+    if (!confirmingKind || !divisionId) return;
+    let cancelled = false;
+    setRegenLoss(null);
+    void regenerateAssignmentLoss(divisionId).then((r) => {
+      if (!cancelled) setRegenLoss(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [confirmingKind, divisionId]);
   const [error, setError] = useState("");
   const [regenResult, setRegenResult] = useState<RegenResult | null>(null);
   const [coachConflicts, setCoachConflicts] = useState<CoachConflict[]>([]);
@@ -1086,9 +1106,15 @@ export function StepReview({
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
           <div className="flex items-start gap-2.5 mb-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
-            <p className="text-sm text-amber-800">
-              This will delete all existing games and rebuild the game schedule from scratch. Are you sure?
-            </p>
+            <div className="flex flex-col gap-1">
+              <p className="text-sm text-amber-800">
+                This will delete all existing games and rebuild the game schedule from scratch. Are you sure?
+              </p>
+              {(() => {
+                const line = assignmentLossLine(lossCount(regenLoss), sport);
+                return line ? <p className="text-sm font-medium text-amber-900">{line}</p> : null;
+              })()}
+            </div>
           </div>
           <div className="flex gap-2">
             <button

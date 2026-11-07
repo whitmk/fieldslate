@@ -27,6 +27,9 @@ export type Db = {
    *  pending/reschedule_pending interleague game to check. FakeClient defaults
    *  it to [] so existing sims need no edit. */
   interleague_reschedule_requests?: Row[];
+  /** Optional: official assignments, for the regenerate loss count
+   *  (assignment-loss-sim.ts). Defaulted to [] like the requests table. */
+  game_umpires?: Row[];
 };
 
 export type DbError = { message: string } | null;
@@ -141,10 +144,34 @@ const RELATIONS: Record<string, Relation> = {
 
 /** Parse a PostgREST `.or()` disjunction of `col.op.value` terms — exactly
  *  the two patterns the engine issues (eq/neq plus `is.null`). */
+/** Split on commas OUTSIDE parentheses, so `col.in.(a,b)` stays one term. */
+function splitTopLevel(expr: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of expr) {
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+    if (ch === "," && depth === 0) {
+      out.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
 function parseOr(expr: string): (r: Row) => boolean {
-  const terms = expr.split(",").map((t) => {
+  const terms = splitTopLevel(expr).map((t) => {
     const [col, op, ...rest] = t.split(".");
     const value = rest.join(".");
+    // `col.in.(a,b)` — the division-delete game read (assignment-loss.ts).
+    if (op === "in") {
+      const set = new Set(value.replace(/^\(/, "").replace(/\)$/, "").split(",").map((v) => v.trim()));
+      return (r: Row) => set.has(String(r[col]));
+    }
     if (op === "eq") return (r: Row) => String(r[col]) === value;
     if (op === "neq") return (r: Row) => String(r[col]) !== value;
     if (op === "is" && value === "null") return (r: Row) => r[col] == null;
@@ -161,6 +188,9 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
   private embeds: EmbedNode[] = [];
   private selectCols = "";
   private maybeSingleMode = false;
+  private headCount = false;
+  private wantCount = false;
+  private rangeBounds: { from: number; to: number } | null = null;
 
   constructor(
     private fake: FakeClient,
@@ -168,7 +198,18 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
     private write?: { kind: "insert" | "delete"; rows?: Row[] },
   ) {}
 
-  select(cols: string): this {
+  select(cols: string, opts?: { count?: "exact"; head?: boolean }): this {
+    // `{ count: "exact", head: true }` → no rows, an exact count (the shape
+    // assignment-loss.ts reads). Any other option is not modelled.
+    // `{ count: "exact" }` alone → rows plus the exact total (fetchAllRows'
+    // first page).
+    if (opts) {
+      if (opts.count !== "exact") {
+        throw new Error(`fake client: unsupported select options ${JSON.stringify(opts)}`);
+      }
+      this.wantCount = true;
+      this.headCount = opts.head === true;
+    }
     this.selectCols = cols;
     this.embeds = parseEmbeds(cols);
     return this;
@@ -250,6 +291,12 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
     return this;
   }
 
+  /** Inclusive row range, applied after filters and order (PostgREST). */
+  range(from: number, to: number): this {
+    this.rangeBounds = { from, to };
+    return this;
+  }
+
   /** Zero rows -> {data: null, error: null}; more than one -> error. */
   maybeSingle(): this {
     this.maybeSingleMode = true;
@@ -322,6 +369,19 @@ export class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }>
         return embedded != null && embedded[ef.field] === ef.value;
       });
     }
+    if (this.headCount) {
+      return { data: null, error: null, count: projected.length } as { data: unknown; error: DbError };
+    }
+    if (this.rangeBounds || this.wantCount) {
+      const total = projected.length;
+      const page = this.rangeBounds
+        ? projected.slice(this.rangeBounds.from, this.rangeBounds.to + 1)
+        : projected;
+      return { data: page, error: null, count: this.wantCount ? total : null } as {
+        data: unknown;
+        error: DbError;
+      };
+    }
     if (this.maybeSingleMode) {
       if (projected.length === 0) return { data: null, error: null };
       if (projected.length > 1) {
@@ -364,6 +424,7 @@ export class FakeClient {
 
   constructor(public db: Db) {
     this.db.interleague_reschedule_requests ??= [];
+    this.db.game_umpires ??= [];
   }
 
   /** Returns the fault that should fail this read, or null. */
@@ -397,14 +458,15 @@ export class FakeClient {
   }
 
   from(table: string): {
-    select: (cols: string) => FakeQuery;
+    select: (cols: string, opts?: { count?: "exact"; head?: boolean }) => FakeQuery;
     insert: (rows: Row[]) => FakeQuery;
     delete: () => FakeQuery;
   } {
     const t = table as keyof Db;
     if (!(t in this.db)) throw new Error(`fake client: unknown table ${table}`);
     return {
-      select: (cols: string) => new FakeQuery(this, t).select(cols),
+      select: (cols: string, opts?: { count?: "exact"; head?: boolean }) =>
+        new FakeQuery(this, t).select(cols, opts),
       insert: (rows: Row[]) => new FakeQuery(this, t, { kind: "insert", rows }),
       delete: () => new FakeQuery(this, t, { kind: "delete" }),
     };

@@ -26,6 +26,11 @@ import { UpgradeModal } from "@/components/plan/upgrade-cta";
 import { planLabel } from "@/lib/plan/labels";
 import { isProPlus } from "@/lib/plan/limits";
 import {
+  assignmentLossLine,
+  countAssignmentsForTeams,
+  type AssignmentCount,
+} from "@/lib/umpires/assignment-loss";
+import {
   mergeLiveTeamsWithJsonb,
   detectTeamJsonbDrift,
   type LiveTeam,
@@ -281,6 +286,9 @@ export function DivisionSection({
   const [deleteTeamCount, setDeleteTeamCount] = useState(0);
   const [deleteGameCount, setDeleteGameCount] = useState(0);
   const [deleteCountsFailed, setDeleteCountsFailed] = useState(false);
+  // Official assignments on the games that go (2026-11-06). Its own state, so
+  // a failed assignment count says so without hiding the team/game counts.
+  const [deleteAssignmentLoss, setDeleteAssignmentLoss] = useState<AssignmentCount | "pending">("pending");
   const [loadingDeleteContext, setLoadingDeleteContext] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteBlockedReasons, setDeleteBlockedReasons] = useState<string[] | null>(null);
@@ -412,6 +420,7 @@ export function DivisionSection({
     setDeleteTeamCount(0);
     setDeleteGameCount(0);
     setDeleteCountsFailed(false);
+    setDeleteAssignmentLoss("pending");
     setDeleteBlockedReasons(null);
     setLoadingDeleteContext(true);
 
@@ -426,19 +435,25 @@ export function DivisionSection({
       // on a destructive confirm is the worst possible failure mode. Say the
       // count is unknown and let the RPC report the truth after the fact.
       setDeleteCountsFailed(true);
+      setDeleteAssignmentLoss({ ok: false });
       setLoadingDeleteContext(false);
       return;
     }
 
     const teamIds = ((teamRows ?? []) as { id: string }[]).map((t) => t.id);
     setDeleteTeamCount(teamIds.length);
+    if (teamIds.length === 0) setDeleteAssignmentLoss({ ok: true, count: 0 });
 
     if (teamIds.length > 0) {
       // Total games about to go — both team columns, matching what the RPC
       // deletes. PostgREST has no `.or` with `.in` shorthand here, so this is
       // the same or-filter string the RPC's WHERE clause mirrors.
       const orFilter = `home_team_id.in.(${teamIds.join(",")}),away_team_id.in.(${teamIds.join(",")})`;
-      const [{ count: gameCount, error: gameErr }, { count: ilCount, error: ilErr }] =
+      const [
+        { count: gameCount, error: gameErr },
+        { count: ilCount, error: ilErr },
+        assignmentLoss,
+      ] =
         await Promise.all([
           supabase
             .from("games")
@@ -452,7 +467,9 @@ export function DivisionSection({
             .in("home_team_id", teamIds)
             .eq("status", "scheduled")
             .not("interleague_org_id", "is", null),
+          countAssignmentsForTeams(supabase, teamIds),
         ]);
+      setDeleteAssignmentLoss(assignmentLoss);
 
       if (gameErr || ilErr) {
         setDeleteCountsFailed(true);
@@ -917,6 +934,8 @@ export function DivisionSection({
           teamCount={deleteTeamCount}
           gameCount={deleteGameCount}
           countsFailed={deleteCountsFailed}
+          assignmentLoss={deleteAssignmentLoss}
+          sport={leagueSport}
           blockedReasons={deleteBlockedReasons}
           loadingContext={loadingDeleteContext}
           deleting={deleteLoading}
@@ -959,6 +978,8 @@ function DeleteDivisionDialog({
   teamCount,
   gameCount,
   countsFailed,
+  assignmentLoss,
+  sport,
   blockedReasons,
   deleting,
   onCancel,
@@ -969,6 +990,8 @@ function DeleteDivisionDialog({
   teamCount: number;
   gameCount: number;
   countsFailed: boolean;
+  assignmentLoss: AssignmentCount | "pending";
+  sport: string | null;
   blockedReasons: string[] | null;
   loadingContext: boolean;
   deleting: boolean;
@@ -1028,6 +1051,11 @@ function DeleteDivisionDialog({
                 {gameCount === 1 ? "" : "s"}
               </p>
             )}
+            {!loadingContext &&
+              (() => {
+                const line = assignmentLossLine(assignmentLoss, sport);
+                return line ? <p className="mt-1 text-sm font-semibold text-red-700">{line}</p> : null;
+              })()}
             <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-red-700">
               <li>All teams in this division</li>
               <li>All scheduled and rained-out games for those teams</li>
