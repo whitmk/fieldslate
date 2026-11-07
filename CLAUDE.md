@@ -5013,9 +5013,16 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   words it "That role already exists", and `ensureSeasonRoleIds` — whose
   `on conflict (season_id, name)` doesn't cover this index — fails soft
   (text-only assignment, no role_id). The only browser UPDATEs of
-  `official_roles` are the reorder's two `sort_order` writes. Proof: `scripts/sim/rename-official-role-sim.sql`
+  `official_roles` are the reorder's two `sort_order` writes.
+  **`ensureSeasonRoleIds` resolves a requested name trimmed +
+  case-insensitively to an existing role (`resolveRequestedRoles`, `roleKey`
+  in `roles.ts`) and returns `{ id, name }` with the CANONICAL name;
+  UmpireSlots (insert and reassign), auto-assign and pay settings write that
+  name, so a case variant never becomes text that matches no role.** Two
+  requests with one key create one role and both resolve to it (E4 — red on
+  its first run, fixed). Proof: `scripts/sim/rename-official-role-sim.sql`
   (+ build script; rolled back in "test", 12 mutants). App harness: `npm run
-  sim:role-rename` (11 checks) + `:mutants` (5, each killed at its own
+  sim:role-rename` (16 checks) + `:mutants` (9, each killed at its own
   assertion).
 - **DESTRUCTIVE CONFIRMS SAY HOW MANY OFFICIAL ASSIGNMENTS GO (2026-11-06,
   branch `feat/assignment-loss-counts`; warn only).** Every game delete
