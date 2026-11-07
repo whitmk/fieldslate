@@ -258,18 +258,23 @@ function partO() {
     ok(!mentionsNotes(src), `[O1-snack] ${name} never references notes`);
     ok(!mentionsCash(src), `[O1-snack-cash] ${name} never references a cash person`);
   }
+  // The two page prints were lifted out of the page client (2026-11-07):
+  // the full-schedule region is its own component file, the print-all
+  // document is teamSchedulesDocument in lib/snack-shack/print.ts, and the
+  // page's printAllTeamSchedules only hands it date + time per team.
+  const snackRegion = read("components", "snack-shack", "snack-shack-print-region.tsx");
+  ok(!mentionsNotes(snackRegion) && !mentionsCash(snackRegion), "[O1-snack-print] the snack shack full-schedule print region never references notes or a cash person");
+  const snackPrintLib = read("lib", "snack-shack", "print.ts");
+  const docStart = snackPrintLib.indexOf("export function teamSchedulesDocument(");
+  const docEnd = snackPrintLib.indexOf("\n}\n", docStart);
+  ok(docStart > 0 && docEnd > docStart, "[O1-snack-print-all] the teamSchedulesDocument slice was found");
+  const docSlice = snackPrintLib.slice(docStart, docEnd);
   const snackPage = read("components", "snack-shack", "snack-shack-page-client.tsx");
-  const snackPrintStart = snackPage.indexOf('className="fieldslate-snack-print-ready"');
-  const snackPrintEnd = snackPage.indexOf("</div>\n\n    </>", snackPrintStart);
-  ok(snackPrintStart > 0 && snackPrintEnd > snackPrintStart, "[O1-snack-print] the snack shack print region slice was found");
-  const snackPrintSlice = snackPage.slice(snackPrintStart, snackPrintEnd);
-  ok(!mentionsNotes(snackPrintSlice) && !mentionsCash(snackPrintSlice), "[O1-snack-print] the snack shack full-schedule print region never references notes or a cash person");
-  const docStart = snackPage.indexOf("w.document.write(`<!doctype html>");
-  const docEnd = snackPage.indexOf("w.document.close();", docStart);
-  const pagesStart = snackPage.indexOf("const pages = teamsWithBlocks");
-  ok(docStart > 0 && docEnd > docStart && pagesStart > 0 && pagesStart < docStart, "[O1-snack-print-all] the print-all-team-schedules slice was found");
-  const docSlice = snackPage.slice(pagesStart, docEnd);
-  ok(!mentionsNotes(docSlice) && !mentionsCash(docSlice), "[O1-snack-print-all] the print-all-team-schedules template never references notes or a cash person");
+  const callStart = snackPage.indexOf("  function printAllTeamSchedules() {");
+  const callEnd = snackPage.indexOf("w.document.close();", callStart);
+  ok(callStart > 0 && callEnd > callStart && snackPage.slice(callStart, callEnd).includes("teamSchedulesDocument("), "[O1-snack-print-all] the page's print-all call site was found and uses teamSchedulesDocument");
+  const callSlice = snackPage.slice(callStart, callEnd);
+  ok(!mentionsNotes(docSlice) && !mentionsCash(docSlice) && !mentionsNotes(callSlice) && !mentionsCash(callSlice), "[O1-snack-print-all] the print-all-team-schedules document and its call site never reference notes or a cash person");
   counters.omissionFilesChecked += 2;
   const snackPageServer = read("app", "(dashboard)", "dashboard", "snack-shack", "page.tsx");
   // The SELECT STRING must interpolate the constant — the import line alone

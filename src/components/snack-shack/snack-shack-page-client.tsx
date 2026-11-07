@@ -30,6 +30,8 @@ import { CashPeopleCard } from "./cash-people-card";
 import { useShiftNoteEditor } from "./use-shift-note-editor";
 import type { ShiftNoteFields, CashPerson } from "@/lib/snack-shack/shift-notes";
 import { blockFlagView, type BlockFlagView } from "@/lib/snack-shack/shift-flags";
+import { teamSchedulesDocument } from "@/lib/snack-shack/print";
+import { SnackShackPrintRegion } from "./snack-shack-print-region";
 
 type ViewMode = "list" | "calendar";
 
@@ -238,68 +240,16 @@ export function SnackShackPageClient({
     if (teamsWithBlocks.length === 0) return;
     const w = window.open("", "_blank");
     if (!w) return;
-
-    function esc(s: string) {
-      return s
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-    }
-
-    const pages = teamsWithBlocks
-      .map((team) => {
-        const teamBlocks = blocks.filter((b) => b.assigned_team_id === team.id);
-        const rows = teamBlocks
-          .map(
-            (b) =>
-              `<tr><td>${esc(fmtDate(b.date))}</td><td>${esc(fmtTime(b.start_time))} – ${esc(fmtTime(b.end_time))}</td></tr>`,
-          )
-          .join("");
-        return `<div class="team-page">
-  <div class="header">
-    <div class="wordmark">Field<span>Slate</span></div>
-    <div class="league">Snack Shack — ${esc(team.name)}</div>
-    <div class="meta">${esc(seasonLabel)}</div>
-  </div>
-  <table><thead><tr><th>Date</th><th>Time</th></tr></thead><tbody>${rows}</tbody></table>
-</div>`;
-      })
-      .join("\n");
-
-    w.document.write(`<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Snack Shack — All Team Schedules</title>
-<style>
-  *{box-sizing:border-box}
-  body{font-family:-apple-system,"Segoe UI",Roboto,sans-serif;margin:0;padding:0;color:#0c1f3f}
-  .team-page{padding:.75in;page-break-before:always;break-before:page}
-  .team-page:first-child{page-break-before:auto;break-before:auto}
-  .header{border-bottom:2pt solid #000;padding-bottom:12pt;margin-bottom:16pt}
-  .wordmark{font-size:20pt;font-weight:800;color:#0c1f3f;letter-spacing:-.3pt;line-height:1}
-  .wordmark span{color:#16a34a}
-  .league{font-size:13pt;font-weight:700;color:#000;margin-top:8pt}
-  .meta{font-size:8.5pt;color:#666;margin-top:6pt}
-  table{width:100%;border-collapse:collapse;font-size:9.5pt;color:#000;margin-top:12pt}
-  th{border:1pt solid #999;padding:4pt 8pt;background:#ebebeb;font-weight:700;text-align:left}
-  td{border:1pt solid #ccc;padding:3pt 8pt}
-  tbody tr:nth-child(even) td{background:#f7f7f7}
-  @page{margin:0;size:letter portrait}
-</style>
-</head>
-<body>
-${pages}
-<script>
-  window.onload=function(){
-    window.print();
-    window.onafterprint=function(){window.close()};
-  };
-</script>
-</body>
-</html>`);
+    // The document is built by teamSchedulesDocument (lib/snack-shack/print.ts):
+    // Date and Time only — never a cash person, never a note.
+    const teamPages = teamsWithBlocks.map((team) => ({
+      id: team.id,
+      name: team.name,
+      blocks: blocks
+        .filter((b) => b.assigned_team_id === team.id)
+        .map((b) => ({ date: b.date, start_time: b.start_time, end_time: b.end_time })),
+    }));
+    w.document.write(teamSchedulesDocument(teamPages, seasonLabel));
     w.document.close();
   }
 
@@ -690,44 +640,8 @@ ${pages}
 
       {/* ── Hidden print regions ───────────────────────────────────────────── */}
 
-      {/* Full season schedule print region */}
-      <div ref={fullPrintRef} className="fieldslate-snack-print-ready" aria-hidden>
-        <div className="fieldslate-print-header">
-          <div className="fieldslate-print-wordmark">
-            Field<span>Slate</span>
-          </div>
-          <div className="fieldslate-print-league">
-            Snack Shack Schedule — {seasonLabel}
-          </div>
-          <div className="fieldslate-print-meta">
-            Full season · {blocks.length} shift{blocks.length !== 1 ? "s" : ""}
-          </div>
-        </div>
-        {blocks.length === 0 ? (
-          <p style={{ fontSize: "10pt", color: "#666" }}>No shifts scheduled.</p>
-        ) : (
-          <table className="fieldslate-print-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Time</th>
-                <th>Assigned Team</th>
-              </tr>
-            </thead>
-            <tbody>
-              {blocks.map((b) => (
-                <tr key={b.id}>
-                  <td>{fmtDate(b.date)}</td>
-                  <td>
-                    {fmtTime(b.start_time)} – {fmtTime(b.end_time)}
-                  </td>
-                  <td>{b.team_name ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {/* Full season schedule print region (snack-shack-print-region.tsx) */}
+      <SnackShackPrintRegion ref={fullPrintRef} seasonLabel={seasonLabel} blocks={blocks} />
 
     </>
   );

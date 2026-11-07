@@ -3,13 +3,14 @@
 // killed only if the FIRST failing assertion is the one written for it.
 import { runMutants, type Mutant } from "./mutant-runner";
 
-const PAGE = "src/components/snack-shack/snack-shack-page-client.tsx";
 const TEAM_ROUTE = "src/app/api/snack-shack/team/[teamId]/email/route.ts";
 const SERVER_PAGE = "src/app/(dashboard)/dashboard/snack-shack/page.tsx";
+const REGION = "src/components/snack-shack/snack-shack-print-region.tsx";
+const PRINT_LIB = "src/lib/snack-shack/print.ts";
 
 const MUTANTS: Mutant[] = [
   {
-    id: "GM8", what: "the full-schedule print region renders the note", file: PAGE,
+    id: "GM8", what: "the full-schedule print region renders the note", file: REGION,
     find: "                  <td>{b.team_name ?? \"—\"}</td>",
     replace: "                  <td>{b.team_name ?? \"—\"} {b.notes}</td>",
     expect: "O1-snack-print",
@@ -21,9 +22,9 @@ const MUTANTS: Mutant[] = [
     expect: "O1-snack",
   },
   {
-    id: "GM10", what: "the print-all template renders the cash person", file: PAGE,
-    find: "              `<tr><td>${esc(fmtDate(b.date))}</td><td>${esc(fmtTime(b.start_time))} – ${esc(fmtTime(b.end_time))}</td></tr>`,",
-    replace: "              `<tr><td>${esc(fmtDate(b.date))}</td><td>${esc(fmtTime(b.start_time))} – ${esc(fmtTime(b.end_time))}</td><td>${esc(b.cash_person?.name ?? \"\")}</td></tr>`,",
+    id: "GM10", what: "the print-all document renders the cash person", file: PRINT_LIB,
+    find: "            `<tr><td>${esc(fmtPrintDate(b.date))}</td><td>${esc(fmtPrintTime(b.start_time))} – ${esc(fmtPrintTime(b.end_time))}</td></tr>`,",
+    replace: "            `<tr><td>${esc(fmtPrintDate(b.date))}</td><td>${esc(fmtPrintTime(b.start_time))} – ${esc(fmtPrintTime(b.end_time))}</td><td>${esc((b as { cash_person?: { name: string } }).cash_person?.name ?? \"\")}</td></tr>`,",
     expect: "O1-snack-print-all",
   },
   {
