@@ -4994,12 +4994,18 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   ONLY from the generator's own `isProtectedInterleagueGame` +
   `willBeClearedByRegenerate` — never restate the delete's WHERE there.**
   Division delete counts games naming a division team home OR away (the RPC's
-  scope); season delete counts every game of the season. **Playoff rebuild and
+  scope); season delete counts every game of the season. **The season delete
+  modal's own counts (divisions, teams, games, officials, accepted
+  interleague) go through `seasonDeleteCountsFrom`
+  (`src/lib/seasons/delete-counts.ts`)**: one errored or count-less reply
+  makes the whole set unknown — `SEASON_COUNTS_FAILED` in the box and
+  `SEASON_INTERLEAGUE_UNKNOWN` in place of the interleague warning — never 0
+  (they used to read `count ?? 0`). **Playoff rebuild and
   bracket delete remove NO assignments** — `game_umpires` references `games`
   only, so playoff games can't carry officials. Harness: `npm run
-  sim:assignment-loss` (26 checks, incl. the prediction against the REAL
-  generateSchedule's deletions) + `:mutants` (7, each killed at its own
-  assertion; section order R, W, C, F, D is load-bearing). The generator fake
+  sim:assignment-loss` (31 checks, incl. the prediction against the REAL
+  generateSchedule's deletions) + `:mutants` (11, each killed at its own
+  assertion; section order R, W, C, F, D, S is load-bearing). The generator fake
   (`fake-supabase.ts`) gained head/exact counts, `range` and `or` with `in.(…)`.
   Not checked in the browser (behind sign-in).
 - **Conflict overlap/blackout logic is shared.** `findUmpireConflict`

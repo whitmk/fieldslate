@@ -19,6 +19,12 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, Archive, Loader2, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
+  SEASON_COUNTS_FAILED,
+  SEASON_INTERLEAGUE_UNKNOWN,
+  seasonDeleteCountsFrom,
+  type SeasonDeleteCounts,
+} from "@/lib/seasons/delete-counts";
+import {
   assignmentLossLine,
   countAssignmentsForSeason,
   type AssignmentCount,
@@ -296,13 +302,6 @@ export function UnarchiveSeasonModal({
 
 // ── Permanent delete ─────────────────────────────────────────────────────────
 
-type DeleteCounts = {
-  divisions: number;
-  teams: number;
-  games: number;
-  officials: number;
-  interleague: number;
-};
 
 function friendlyDeleteError(msg: string): string {
   if (msg.includes("league_not_archived")) {
@@ -326,7 +325,7 @@ export function DeleteSeasonModal({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [counts, setCounts] = useState<DeleteCounts | null>(null);
+  const [counts, setCounts] = useState<SeasonDeleteCounts | null>(null);
   const [assignmentLoss, setAssignmentLoss] = useState<AssignmentCount | "pending">("pending");
   const [confirmText, setConfirmText] = useState("");
 
@@ -366,13 +365,16 @@ export function DeleteSeasonModal({
       void countAssignmentsForSeason(supabase, seasonId).then((r) => {
         if (!cancelled) setAssignmentLoss(r);
       });
-      setCounts({
-        divisions: div.count ?? 0,
-        teams: team.count ?? 0,
-        games: game.count ?? 0,
-        officials: ump.count ?? 0,
-        interleague: il.count ?? 0,
-      });
+      // A failed count is "couldn't count", never 0 (2026-11-06).
+      setCounts(
+        seasonDeleteCountsFrom({
+          divisions: div,
+          teams: team,
+          games: game,
+          officials: ump,
+          interleague: il,
+        }),
+      );
     }
     void load();
     return () => {
@@ -423,6 +425,18 @@ export function DeleteSeasonModal({
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             Counting season data…
           </div>
+        ) : !counts.ok ? (
+          <>
+            <p className="mt-2 text-sm text-red-700">{SEASON_COUNTS_FAILED}</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-red-700">
+              <li>Every division, team and game in this season</li>
+              <li>Its officials, their availability, blackouts, and assignments</li>
+              <li>
+                Practices, playoffs, snack shack schedules, pay settings, and
+                activity history
+              </li>
+            </ul>
+          </>
         ) : (
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-red-700">
             <li>
@@ -447,7 +461,14 @@ export function DeleteSeasonModal({
         )}
       </div>
 
-      {counts !== null && counts.interleague > 0 && (
+      {counts !== null && !counts.ok && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+          <p className="text-xs text-amber-800">{SEASON_INTERLEAGUE_UNKNOWN}</p>
+        </div>
+      )}
+
+      {counts !== null && counts.ok && counts.interleague > 0 && (
         <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
           <p className="text-xs text-amber-800">

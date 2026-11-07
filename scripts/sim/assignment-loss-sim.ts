@@ -32,6 +32,10 @@
  *   D1  division delete: every game naming a division team, home OR away
  *   D2  season delete: every game of the season, none from another
  *   W1–W6 the sentences
+ *   S1–S5 the season delete modal's own counts: real numbers when every read
+ *       succeeds; an errored read (S2), a count-less reply (S3) or the
+ *       interleague read alone (S4) → "couldn't count", never 0; S5 the
+ *       modal renders it (source grep — weak by nature)
  * ANTI-VACUITY: a protected game kept, an ordinary game deleted, a fault
  * fired, a multi-chunk count.
  *
@@ -49,6 +53,10 @@
  *   AL5 division count reads home games only               → [D1]
  *   AL6 zero assignments worded as a line                  → [W3]
  *   AL7 couldn't-count worded as zero (no line)            → [W2]
+ *   AL8 season counts ignore a read's error                → [S2]
+ *   AL9 season counts accept a reply with no count         → [S3]
+ *   AL10 season counts skip the interleague read           → [S4]
+ *   AL11 the modal's couldn't-count branch removed         → [S5]
  */
 
 process.env.TZ = "UTC";
@@ -68,6 +76,9 @@ import {
   countAssignmentsOnGames,
 } from "../../src/lib/umpires/assignment-loss";
 import { FakeClient, type Db, type Row } from "./fake-supabase";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { seasonDeleteCountsFrom } from "../../src/lib/seasons/delete-counts";
 
 if (new Date("2026-03-07T00:00:00Z").getTimezoneOffset() !== 0) {
   console.error("Run with TZ=UTC: npm run sim:assignment-loss");
@@ -268,6 +279,29 @@ async function main() {
     const season = await countAssignmentsForSeason(fake.asClient() as never, LEAGUE_ID);
     // league-1 games: all but other-league → 8 − 1 = 7.
     ok(season.ok && season.count === 7, "[D2]", `season delete: expected 7, got ${JSON.stringify(season)}`);
+  });
+
+  // ── S: the season delete modal's OWN counts — a failed read is never 0 ─────
+  await section("S", () => {
+    const good = { count: 3, error: null };
+    const base = { divisions: good, teams: good, games: good, officials: good, interleague: { count: 0, error: null } };
+    const all = seasonDeleteCountsFrom(base);
+    ok(all.ok && all.divisions === 3 && all.games === 3 && all.interleague === 0, "[S1]", JSON.stringify(all));
+    const keys = ["divisions", "teams", "games", "officials"] as const;
+    const errored = keys.map((k) => seasonDeleteCountsFrom({ ...base, [k]: { count: null, error: { message: "x" } } }));
+    ok(errored.every((r) => r.ok === false), "[S2]", `an errored read must make the counts unknown: ${JSON.stringify(errored)}`);
+    if (errored.some((r) => !r.ok)) counters.faultFired++;
+    // A reply with no error AND no count (what an error-less failure looks like).
+    const noCount = seasonDeleteCountsFrom({ ...base, games: { count: null, error: null } });
+    ok(noCount.ok === false, "[S3]", `a reply without a count must be unknown: ${JSON.stringify(noCount)}`);
+    // The interleague read alone failing — its warning is the loudest line.
+    const il = seasonDeleteCountsFrom({ ...base, interleague: { count: null, error: { message: "x" } } });
+    ok(il.ok === false, "[S4]", `a failed interleague count must be unknown: ${JSON.stringify(il)}`);
+    // Wiring (source grep — weak by nature): the modal renders the failed state.
+    const src = readFileSync(join(__dirname, "../../src/components/seasons/archive-modals.tsx"), "utf8");
+    ok(src.includes(") : !counts.ok ? (") && src.includes("{SEASON_COUNTS_FAILED}")
+      && src.includes("{SEASON_INTERLEAGUE_UNKNOWN}") && !/count \?\? 0/.test(src), "[S5]",
+      "the season delete modal must render SEASON_COUNTS_FAILED / SEASON_INTERLEAGUE_UNKNOWN and never default a count to 0");
   });
 
   for (const [k, v] of Object.entries(counters)) ok(v > 0, `[V-${k}] counter ${k} must be non-zero`, String(v));
