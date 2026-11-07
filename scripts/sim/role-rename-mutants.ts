@@ -4,6 +4,8 @@ import { runMutants, type Mutant } from "./mutant-runner";
 
 const LIB = "src/lib/umpires/role-rename.ts";
 const MANAGER = "src/components/umpires/official-roles-manager.tsx";
+const ROLES = "src/lib/umpires/roles.ts";
+const SLOTS = "src/components/umpires/umpire-slots.tsx";
 
 const MUTANTS: Mutant[] = [
   { id: "RR1", what: "name compare loses toLowerCase", file: LIB,
@@ -22,6 +24,18 @@ const MUTANTS: Mutant[] = [
     find: "    const { data, error: rpcErr } = await supabase.rpc(",
     replace: '    await supabase.from("official_roles").update({ name } as never).eq("id", editingId);\n    const { data, error: rpcErr } = await supabase.rpc(',
     expect: "S1" },
+  { id: "RR6", what: "roleKey loses toLowerCase (case variants miss)", file: ROLES,
+    find: "  return name.trim().toLowerCase();",
+    replace: "  return name.trim();", expect: "E1" },
+  { id: "RR7", what: "a name requested twice is created twice", file: ROLES,
+    find: "    } else if (!creating.has(roleKey(name))) {",
+    replace: "    } else if (true) {", expect: "E2" },
+  { id: "RR8", what: "legacy tie resolved to the HIGHER sort_order", file: ROLES,
+    find: "    if (!cur || r.sort_order < cur.sort_order) byKey.set(",
+    replace: "    if (!cur || r.sort_order > cur.sort_order) byKey.set(", expect: "E3" },
+  { id: "RR9", what: "UmpireSlots inserts the slot label, not the role", file: SLOTS,
+    find: "          { game_id: game.id, umpire_id: nextUmpireId, role: roleText, role_id: roleId },",
+    replace: "          { game_id: game.id, umpire_id: nextUmpireId, role, role_id: roleId },", expect: "S3" },
 ];
 
 runMutants({ sim: "scripts/sim/role-rename-sim.ts", mutants: MUTANTS });

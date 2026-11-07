@@ -274,16 +274,19 @@ export function UmpireSlots({
       );
     }
 
-    // Resolve the normalized official_roles id for this slot's label (created
-    // on the fly if missing). Written alongside the role text on insert, and
-    // on reassign too so legacy text-only rows converge as they're touched.
-    const roleIds = await ensureSeasonRoleIds(supabase, seasonId, [role]);
-    const roleId = roleIds.get(role.trim()) ?? null;
+    // Resolve this slot's label to its season role (created on the fly if
+    // missing; a case/space variant resolves to the existing role). Its id
+    // AND canonical name are written — on insert, and on reassign so legacy
+    // text-only or case-variant rows converge as they're touched (2026-11-07).
+    const resolvedRoles = await ensureSeasonRoleIds(supabase, seasonId, [role]);
+    const resolved = resolvedRoles.get(role.trim());
+    const roleId = resolved?.id ?? null;
+    const roleText = resolved?.name ?? role;
 
     if (existing) {
       const { error } = await supabase
         .from("game_umpires")
-        .update({ umpire_id: nextUmpireId, role_id: roleId } as never)
+        .update({ umpire_id: nextUmpireId, role: roleText, role_id: roleId } as never)
         .eq("id", existing.id);
       if (error) {
         setErrorByRole({ [role]: humanizeUniqueViolation(error.message) });
@@ -294,7 +297,7 @@ export function UmpireSlots({
       const { error } = await supabase
         .from("game_umpires")
         .insert([
-          { game_id: game.id, umpire_id: nextUmpireId, role, role_id: roleId },
+          { game_id: game.id, umpire_id: nextUmpireId, role: roleText, role_id: roleId },
         ] as never[]);
       if (error) {
         setErrorByRole({ [role]: humanizeUniqueViolation(error.message) });

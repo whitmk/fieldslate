@@ -82,11 +82,12 @@ export function LeaguePaySettings({
     const supabase = createClient();
     // Dual-write the normalized official_roles id next to the role text
     // (rates stay keyed by season_id+role; role_id is the 0062 link).
-    const roleIds = await ensureSeasonRoleIds(supabase, leagueId, availableRoles);
+    // Rates are written under the role's CANONICAL name (2026-11-07).
+    const resolvedRoles = await ensureSeasonRoleIds(supabase, leagueId, availableRoles);
     const upserts = availableRoles.map((role) => ({
       season_id: leagueId,
-      role,
-      role_id: roleIds.get(role.trim()) ?? null,
+      role: resolvedRoles.get(role.trim())?.name ?? role,
+      role_id: resolvedRoles.get(role.trim())?.id ?? null,
       rate: parseFloat(roleRates[role] ?? "0") || 0,
     }));
     if (upserts.length > 0) {

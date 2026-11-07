@@ -16,6 +16,15 @@
 //   S1  no file in src writes official_roles.name directly (source scan —
 //       the database grant is the real guard; this catches our own code)
 //   S2  the roles manager renames through rename_official_role
+//   E1  ensureSeasonRoleIds' rule: " PLATE " resolves to the existing "Plate"
+//       (its id and CANONICAL name), nothing to create
+//   E2  a new name is created once even when requested in two cases
+//   E3  a legacy season with two roles of one key resolves to the lower
+//       sort_order
+//   E4  end to end through ensureSeasonRoleIds + the officials fake: no
+//       case-variant role row is created, the new one is, canonical names back
+//   S3  the three writers write the canonical name: UmpireSlots (insert AND
+//       reassign), auto-assign, pay settings (source grep — weak by nature)
 //
 // ── MUTATION LOG ────────────────────────────────────────────────────────────
 // Criterion: killed only if the assertion written for it fails FIRST
@@ -25,8 +34,18 @@
 //   RR3 a reply for another role id is accepted         → [O4]
 //   RR4 name_taken worded as the generic error          → [O1]
 //   RR5 the manager writes the name directly again      → [S1]
+//   RR6 roleKey loses toLowerCase (case variants miss)  → [E1]
+//   RR7 a name requested twice is created twice         → [E2]
+//   RR8 legacy tie resolved to the HIGHER sort_order    → [E3]
+//   RR9 UmpireSlots inserts the slot label, not the role → [S3]
+// First run (2026-11-07): E4 RED on the real code — after creating "Field",
+// ensureSeasonRoleIds re-resolved only the created spellings, so a second
+// request "FIELD" came back unresolved (text with no role). Fixed in roles.ts
+// (re-resolve every requested name); E4 is that bug's assertion.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { ensureSeasonRoleIds, resolveRequestedRoles } from "../../src/lib/umpires/roles";
+import { FakeClient } from "./officials-fake";
 import {
   ROLE_NAME_TAKEN,
   renameClash,
@@ -106,5 +125,69 @@ ok(writers.length === 0, "[S1]", `direct official_roles.name writes: ${writers.m
 const manager = readFileSync(join(ROOT, "src/components/umpires/official-roles-manager.tsx"), "utf8");
 ok(manager.includes('"rename_official_role" as never') && manager.includes("renameOutcome(data, rpcErr, editingId, name)"), "[S2]");
 
-console.log(`${checks - fails}/${checks} checks passed`);
-process.exit(fails ? 1 : 0);
+// ── E: ensureSeasonRoleIds resolves case-insensitively ──────────────────────
+const SEASON_ROLES = [
+  { id: "p", name: "Plate", sort_order: 0 },
+  { id: "b", name: "Base", sort_order: 1 },
+];
+const e1 = resolveRequestedRoles(SEASON_ROLES, [" PLATE "]);
+ok(
+  JSON.stringify([...e1.resolved]) === JSON.stringify([["PLATE", { id: "p", name: "Plate" }]]) && e1.toCreate.length === 0,
+  "[E1]",
+  JSON.stringify({ resolved: [...e1.resolved], toCreate: e1.toCreate }),
+);
+const e2 = resolveRequestedRoles(SEASON_ROLES, ["Field", " field", "", "base"]);
+ok(
+  JSON.stringify(e2.toCreate) === JSON.stringify(["Field"]) && e2.resolved.get("base")?.name === "Base",
+  "[E2]",
+  JSON.stringify({ resolved: [...e2.resolved], toCreate: e2.toCreate }),
+);
+const e3 = resolveRequestedRoles(
+  [{ id: "late", name: "plate", sort_order: 5 }, { id: "early", name: "Plate", sort_order: 0 }],
+  ["PLATE"],
+);
+ok(e3.resolved.get("PLATE")?.id === "early" && e3.resolved.get("PLATE")?.name === "Plate", "[E3]", JSON.stringify([...e3.resolved]));
+
+async function endToEnd() {
+  const fake = new FakeClient({
+    leagues: [], divisions: [], teams: [], games: [], umpires: [], official_conflicts: [],
+    official_availability: [], official_blackouts: [], game_umpires: [], profiles: [],
+    official_roles: [
+      { id: "p", season_id: "s1", name: "Plate", sort_order: 0 },
+      { id: "x", season_id: "s2", name: "field", sort_order: 0 },
+    ],
+  });
+  const map = await ensureSeasonRoleIds(fake.asClient() as never, "s1", [" PLATE ", "Field", "FIELD"]);
+  const s1 = fake.db.official_roles.filter((r) => r.season_id === "s1").map((r) => r.name).sort();
+  ok(
+    JSON.stringify(s1) === JSON.stringify(["Field", "Plate"]) &&
+      map.get("PLATE")?.name === "Plate" && map.get("PLATE")?.id === "p" &&
+      map.get("Field")?.name === "Field" && map.get("FIELD")?.name === "Field" &&
+      map.get("Field")?.id === map.get("FIELD")?.id,
+    "[E4]",
+    JSON.stringify({ s1, map: [...map] }),
+  );
+}
+
+function wiring() {
+  const slots = readFileSync(join(ROOT, "src/components/umpires/umpire-slots.tsx"), "utf8");
+  const auto = readFileSync(join(ROOT, "src/lib/umpires/auto-assign.ts"), "utf8");
+  const pay = readFileSync(join(ROOT, "src/components/umpires/league-pay-settings.tsx"), "utf8");
+  ok(
+    slots.includes("{ game_id: game.id, umpire_id: nextUmpireId, role: roleText, role_id: roleId }") &&
+      slots.includes(".update({ umpire_id: nextUmpireId, role: roleText, role_id: roleId } as never)") &&
+      auto.includes("return { text: hit?.name ?? label, id: hit?.id ?? null };") &&
+      auto.includes("        role_id: slot.id,") &&
+      pay.includes("role: resolvedRoles.get(role.trim())?.name ?? role,"),
+    "[S3]",
+    "every writer must write the role's canonical name",
+  );
+}
+
+endToEnd()
+  .then(wiring)
+  .catch((e) => ok(false, "[CRASH]", (e as Error).stack ?? String(e)))
+  .finally(() => {
+    console.log(`${checks - fails}/${checks} checks passed`);
+    process.exit(fails ? 1 : 0);
+  });

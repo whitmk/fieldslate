@@ -344,6 +344,15 @@ export async function autoAssignUmpires(
     (r) => r.game && r.game.status !== "cancelled",
   );
 
+  // Each slot label resolved to its season role — the CANONICAL name is the
+  // slot's text from here on (2026-11-07), so an assignment never carries a
+  // case variant that matches no role. Unresolved (the role read or insert
+  // failed) → the label as-is, role_id null, as before.
+  const slotRoles = roles.map((label) => {
+    const hit = roleIdByName.get(label.trim());
+    return { text: hit?.name ?? label, id: hit?.id ?? null };
+  });
+
   const availabilityByUmpire = new Map<string, AvailabilityWindow[]>();
   for (const a of (availabilityRaw ?? []) as ({ umpire_id: string } & AvailabilityWindow)[]) {
     if (!availabilityByUmpire.has(a.umpire_id)) availabilityByUmpire.set(a.umpire_id, []);
@@ -433,7 +442,8 @@ export async function autoAssignUmpires(
     const occupiedRoles = filledRolesByGame.get(g.id) ?? new Set();
     const occupiedUmpires = umpiresOnGame.get(g.id) ?? new Set();
 
-    for (const role of roles) {
+    for (const slot of slotRoles) {
+      const role = slot.text;
       // Legacy assignments may use role text outside the current season
       // list, so occupiedRoles alone can't see them — cap on total bodies
       // per game so those games don't get over-staffed.
@@ -529,7 +539,7 @@ export async function autoAssignUmpires(
         game_id: g.id,
         umpire_id: chosen.id,
         role,
-        role_id: roleIdByName.get(role.trim()) ?? null,
+        role_id: slot.id,
       });
       occupiedRoles.add(role);
       occupiedUmpires.add(chosen.id);
