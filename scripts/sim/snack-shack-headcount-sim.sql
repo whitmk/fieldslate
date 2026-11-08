@@ -31,8 +31,9 @@
 -- READ for the before/after checksum (M2) and the defaults check (H1).
 --
 -- ASSERTIONS
---   M2        pre-existing blocks (original columns) and settings (without the
---             new column) byte-identical
+--   M2        pre-existing blocks (original columns, and their notes /
+--             attribution / cash person) and settings (without the new
+--             column) byte-identical
 --   P1        privileges: the function, the trigger function, the cash table
 --   R-series  the 0103 contract, unchanged (counts now kept=1 created=3 removed=4)
 --   N1–N7     0104's rules, unchanged
@@ -58,7 +59,36 @@
 --   PM1  (0104 regression) note/cash carry-forward removed      → N2
 --   PM6  (0104 regression) lost not reported                    → N4
 --
--- RUN LOG: none yet — the proof waits for Whit's go and timing.
+-- RUN LOG (2026-11-08, on Whit's go; production, "test" org fixtures only,
+-- rolled back; no other active client backend before either run):
+--   run 1 (00:4x UTC) — HARNESS FAULT, baseline 1 failure:
+--     "M2: a pre-existing row acquired a note or cash person". The check was
+--     inherited from 0104's proof, written when those columns were new; live
+--     shifts carry notes and cash people now (4 rows). Fixed: M2 now checks
+--     every pre-existing row's note, attribution and cash person are
+--     UNCHANGED (internal_md5 snapshot). All 8 mutants KILLED at their own
+--     tag in run 1 too; md5 matched. Leak check clean.
+--   run 2 — GREEN: BASELINE failures (0); HM1→H5, HM2→H4, HM3→H3, HM4→H2,
+--     HM5→H6, HM6→H7, PM1→N2, PM6→N4, all KILLED first at their own tag;
+--     AFTER MUTANTS failures []; prosrc md5 fd94fb29d2dd64ef659ac52fae736ae8
+--     (= build --md5).
+--   LOCK MODES HELD by each run (pg_locks, this backend, before the rollback):
+--     snack_shack_blocks   AccessExclusive, RowExclusive, AccessShare
+--     snack_shack_settings AccessExclusive, RowExclusive, RowShare, AccessShare
+--     profiles             RowShare (the fixture inserts' FK checks — blocks
+--                          only ACCESS/EXCLUSIVE locks, not profile writes)
+--   Leak check after each: new columns 0, CHECKs 0, function md5 0104's
+--   7881278e…, fixture leagues/divisions 0, blocks md5 (b::text, 110 rows)
+--   14893f56c679e06295275b729d464660 and settings md5
+--   6dddd801d9a693f02c8f34ad1e0c9945 = pre-run.
+--   0119 APPLIED right after, 2026-11-08 00:47 UTC, catalog 20261108004731
+--   "snack_shack_headcount", verbatim from the repo file; its verify block
+--   passed. Verified live: md5 fd94fb29…, one overload, SECURITY DEFINER,
+--   search_path=public; EXECUTE authenticated only (PUBLIC, anon,
+--   service_role, dashboard_readonly false); authenticated may UPDATE both
+--   new columns, anon and service_role may not SELECT them; both CHECKs
+--   1–20; 3 settings rows all 1, 110 shifts all null; every row byte-identical
+--   on its original columns (same two md5s as pre-run).
 
 select set_config('lock_timeout', '3s', true),
        set_config('statement_timeout', '60s', true);
@@ -71,7 +101,13 @@ select
      from public.snack_shack_blocks b) as blocks_md5,
   (select count(*) from public.snack_shack_blocks) as blocks_n,
   (select md5(coalesce(string_agg((to_jsonb(s) - 'people_per_shift')::text, '|' order by s.id), '')) from public.snack_shack_settings s) as settings_md5,
-  (select count(*) from public.snack_shack_settings) as settings_n;
+  (select count(*) from public.snack_shack_settings) as settings_n,
+  -- 0119 run 2: live shifts carry notes and cash people now (0104 was new
+  -- when its proof said "none may"), so M2 checks they are UNCHANGED.
+  (select md5(coalesce(string_agg(
+       b.id::text || coalesce(b.notes, '-') || coalesce(b.notes_updated_at::text, '-') ||
+       coalesce(b.notes_updated_by::text, '-') || coalesce(b.cash_person_id::text, '-'), '|' order by b.id), ''))
+     from public.snack_shack_blocks b) as internal_md5;
 
 create temp table h119_fx on commit drop as
 select
@@ -432,8 +468,12 @@ $mig119$;
      or (select count(*) from public.snack_shack_blocks b where b.snack_shack_id <> fx.snack) <> (select blocks_n from h119_snap) then
     v_fails := array_append(v_fails, 'M2: pre-existing snack_shack_blocks rows changed');
   end if;
-  if (select count(*) from public.snack_shack_blocks b where b.snack_shack_id <> fx.snack and (b.notes is not null or b.cash_person_id is not null)) <> 0 then
-    v_fails := array_append(v_fails, 'M2: a pre-existing row acquired a note or cash person');
+  if (select md5(coalesce(string_agg(
+          b.id::text || coalesce(b.notes, '-') || coalesce(b.notes_updated_at::text, '-') ||
+          coalesce(b.notes_updated_by::text, '-') || coalesce(b.cash_person_id::text, '-'), '|' order by b.id), ''))
+        from public.snack_shack_blocks b where b.snack_shack_id <> fx.snack)
+     is distinct from (select internal_md5 from h119_snap) then
+    v_fails := array_append(v_fails, 'M2: a pre-existing row''s note, attribution or cash person changed');
   end if;
   if exists (select 1 from public.snack_shack_settings s where s.id <> fx.snack and s.people_per_shift <> 1)
      or exists (select 1 from public.snack_shack_blocks b where b.snack_shack_id <> fx.snack and b.people_needed is not null) then
@@ -526,6 +566,13 @@ $mig119$;
   v_out := v_out || format(E'AFTER MUTANTS failures: %s\n', v_m -> 'fails');
   v_out := v_out || format(E'prosrc md5 regenerate: %s (expected fd94fb29d2dd64ef659ac52fae736ae8 — build --md5)\n',
     (select md5(p.prosrc) from pg_proc p where p.oid = v_fn::regprocedure));
+  -- The lock modes this run holds on the two tables (and profiles), read from
+  -- pg_locks for this backend just before the rollback.
+  v_out := v_out || format(E'locks held: %s\n', (
+    select coalesce(string_agg(c.relname || '=' || l.mode, ', ' order by c.relname, l.mode), 'none')
+    from pg_locks l join pg_class c on c.oid = l.relation
+    where l.pid = pg_backend_pid() and l.granted
+      and c.relname in ('snack_shack_blocks', 'snack_shack_settings', 'profiles')));
 
   raise exception '%', v_out;
 end;

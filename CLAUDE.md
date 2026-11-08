@@ -316,15 +316,17 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   triggers enabled). See "Playoff series".
 - **0118 (rename official role) APPLIED 2026-11-07 20:51 UTC, catalog
   `20261107205104`** — see "RENAMING A ROLE CARRIES ITS ASSIGNMENTS" under
-  Officials. The latest migration applied; 0102 is still reserved.
-- **0119 (snack shack people per shift) — WRITTEN, NOT PROVEN, NOT APPLIED
-  (branch `feat/snack-shack-headcount`, 2026-11-07).** The proof run and the
-  apply wait for Whit's go and timing. Expected md5(prosrc) after apply:
-  `regenerate_snack_shack_shifts` `fd94fb29d2dd64ef659ac52fae736ae8`
-  (`snack-shack-headcount-build.ts --md5`, method self-checked against
-  0104's live md5). **Deploy order: apply 0119 BEFORE the branch reaches
-  `main`** — the page, the plan read and the wizard select and write the new
-  columns. See "People per shift (0119)" under the snack shack section.
+  Officials. 0102 is still reserved.
+- **0119 (snack shack people per shift) APPLIED 2026-11-08 00:47 UTC,
+  catalog `20261108004731`**, verbatim from the repo file on Whit's go, after
+  its rolled-back proof (run 2 green, 8/8 mutants at their own tag; run 1 a
+  harness fault — read its RUN LOG). md5(prosrc) `regenerate_snack_shack_shifts`
+  `fd94fb29d2dd64ef659ac52fae736ae8` verified, one overload, SECURITY DEFINER;
+  EXECUTE authenticated only (PUBLIC, anon, service_role, dashboard_readonly
+  false); existing rows byte-identical on their original columns, all at the
+  defaults. The latest migration applied; 0102 is still reserved. **Deploy
+  order (met): 0119 was applied BEFORE the code reached `main`.** See "People
+  per shift (0119)" under the snack shack section.
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -5578,8 +5580,8 @@ Still open:
   byte-identical on their original columns afterward; no row carries a
   note or cash person and the cash-people table is empty until an admin
   uses the feature.
-- **People per shift (0119, branch `feat/snack-shack-headcount`, NOT yet
-  applied — see the Database section).** A season number,
+- **People per shift (0119, applied 2026-11-08 — see the Database
+  section).** A season number,
   `snack_shack_settings.people_per_shift` (1–20, NOT NULL default 1, set in
   the wizard's Hours step), and an optional per-shift override,
   `snack_shack_blocks.people_needed` (1–20, null = the season's number; set
@@ -5602,7 +5604,10 @@ Still open:
   ~110 rows) for well under a second; nothing on profiles. Proof:
   `scripts/sim/snack-shack-headcount-sim.sql` (+ build script; applies 0119
   rolled back in the "test" org, re-runs 0104's R- and N-series, H1–H8, 8
-  mutants HM1–HM6 + PM1/PM6). NOT RUN YET. `sim:snack-print` (24 checks) +
+  mutants HM1–HM6 + PM1/PM6). Run 2026-11-08: run 1 a harness fault (an
+  inherited 0104 check that live notes/cash now break), run 2 green, 8/8 at
+  their own tag; it holds ACCESS EXCLUSIVE on both tables and RowShare on
+  profiles for the run. `sim:snack-print` (24 checks) +
   `:mutants` (11).
 - **Harness: `npm run sim:snack-shifts`** (108 checks × 3 zones, 16
   anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (27 mutants,
