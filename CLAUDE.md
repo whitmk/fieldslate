@@ -5578,6 +5578,20 @@ Still open:
 
 ## Open items
 
+- **Snack shack print — Safari clip risk (recorded 2026-11-07).** The snack
+  print CSS in `globals.css` (`.fieldslate-snack-print-ready.print-active`)
+  still uses `position: absolute` and `break-after: avoid`, the two causes of
+  the clipping fixed for the schedule print (see "Print path"). A long season
+  may print one page's worth in Safari while Chrome prints it all. Whit's
+  Safari check of the cash column (on production, SRALL) is where this shows.
+  Fix shape = the schedule print's normal-flow pattern, then a Safari check.
+- **Snack shack page — the settings and teams reads ignore their errors
+  (recorded 2026-11-07).** `dashboard/snack-shack/page.tsx` discards the
+  error on the `snack_shack_settings` read and the `teams` read (the shift
+  and cash-people reads fail loud since `d036490`). A failed settings read
+  reads as "no snack shack set up" (no setting ids → no shifts read → a print
+  headed "0 shifts"); a failed teams read empties the team picker and the
+  print-all list. Fix = the same `readError` card.
 - **A page left open across a role rename re-creates the old role (found
   2026-11-07, with 0118).** The slot labels, the division wizard and auto-assign
   read the season's role names when the page loads; after a rename elsewhere,
