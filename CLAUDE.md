@@ -5626,10 +5626,11 @@ Still open:
   header: the first run had five killed at the wrong line, all harness
   ordering faults, and the section order now exists because of them.
 
-## Volunteer sign-ups (planned, not built — 2026-11-08)
+## Volunteer sign-ups (in progress — 2026-11-08)
 
-- **Plan approved 2026-11-08; Phase 0 (privacy policy + help page) is the
-  only part built.** The build is four migrations on four branches (0120
+- **Plan approved 2026-11-08. Phase 0 (privacy policy + help page) is on
+  `main`. Branch A (`feat/volunteers-foundation`, 0120) is WRITTEN, its proof
+  NOT RUN, 0120 NOT APPLIED.** The build is four migrations on four branches (0120
   foundation, 0121 game roles + claims, 0122 snack shack sign-ups, 0123
   tracker), behind a per-org switch that is ON only for the two test orgs —
   "SRALL" (owner `aa21d01c…`) and "test" — and NEVER the real league.
@@ -5650,6 +5651,53 @@ Still open:
   launch: drop `robots` from its metadata and add it to `src/app/sitemap.ts`.
   Its FAQ renders from `src/lib/volunteers/help-faq.ts` (visible list + JSON-LD
   from one array, the calendar help page's rule).
+- **0120 foundation (`supabase/migrations/0120_volunteers_foundation.sql`,
+  NOT APPLIED).** `org_features` (the switch; NO role holds any privilege;
+  the migration inserts no rows — Whit turns orgs on in the SQL editor:
+  `insert into org_features (owner_id, feature, enabled) values (<owner>,
+  'volunteers', true)` for "SRALL" (`aa21d01c…`) and "test" (`bbf9afe1…`)
+  only); `volunteer_settings` (link token, on/off, CONTACT EMAIL — the
+  reply-to; link on needs Elite AND a contact email; NEVER falls back to an
+  account email); `volunteers` (moved here from 0121 — the outbox references
+  it); `volunteer_outbox` (the queue AND the email log; no address or name in
+  a payload, CHECKed; `game_moved` coalesced by `coalesce_key`);
+  `volunteer_rate_events` (hashed keys, PRUNED AT 23 HOURS by every take, so
+  with a 5-minute cron nothing outlives the policy's 24 hours — rate windows
+  must be ≤ 23 hours). service_role holds NO table privilege: its only door is
+  `volunteer_outbox_take` / `_finish` (SKIP LOCKED; finish acts only on a row
+  still `sending`; a row stuck `sending` 10 minutes is retaken, and the send's
+  idempotency key stops a double delivery). **The archive wipe** is an AFTER
+  UPDATE OF archived_at trigger on `leagues`, NULL → set only, SECURITY
+  DEFINER on purpose (archiving is a browser write by a member who holds no
+  DELETE here; as INVOKER the archive would fail) — 0121 re-creates it to
+  delete claims, roles and goals too. Auto-archive skipping seasons with
+  volunteer data (option b) and its banner come with 0121, when claims exist.
+  Proof: `scripts/sim/volunteers-foundation-sim.sql` (+ build script; rolled
+  back in "test" with "Test 2"; 16 mutants; each mutant drops and re-creates
+  the 0120 objects in its own rolled-back sub-run). NOT RUN — needs Whit's go.
+  Locks when applied: SHARE ROW EXCLUSIVE on `leagues` and `profiles`
+  (under a second).
+- **The outbox drain** (`/api/volunteers/outbox/drain`, GET): 503 without
+  `CRON_SECRET`, constant-time bearer check, counts-only reply. Pure logic in
+  `src/lib/volunteers/outbox-drain.ts`; headers in `email-headers.ts` (From =
+  `"<League> via FieldSlate" <FieldSlate's address>`, sanitized; the address
+  rule is the SAME as 0120's CHECKs, pinned by `sim:volunteer-email` [X1]);
+  templates in `email-templates.ts` (EMPTY in 0120 — an unknown kind fails,
+  never sends). `sendEmail` gained optional `from` + `idempotencyKey`; with
+  neither, the request is byte-identical ([Q3]). Harness: `npm run
+  sim:volunteer-email` (101 checks) + `:mutants` (20, each killed at its own
+  assertion — read the sim's MUTATION LOG).
+- **`vercel.json` runs the drain every 5 minutes. IT MUST NOT REACH `main`
+  BEFORE THE VERCEL PRO UPGRADE** — on Hobby a cron more frequent than daily
+  fails the deploy. `CRON_SECRET` must be set in the fieldslate PROJECT's env
+  vars (Vercel sends it as the bearer) before the route can do anything.
+- **The Settings card** (`src/components/settings/volunteers-card.tsx`, rules
+  in `src/lib/volunteers/settings-card.ts`, every sentence in `words.ts`)
+  renders ONLY when `volunteer_admin_state` says the switch is on. A failed
+  read — including the missing function before 0120 is applied — means NO
+  card (logged), so the code is safe on `main` before the apply, and a real
+  league never sees the feature. Its link line says the sign-up page isn't
+  built yet (`LINK_NOT_BUILT_YET`) — remove it with 0121.
 - **LAUNCH BLOCKERS before any real league gets the switch:**
   1. Reply-to verification: the league contact email the volunteer emails
      reply to is unverified (fine behind the switch, not for real leagues).

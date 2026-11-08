@@ -16,6 +16,8 @@
 //      recipient/reply-to/template never sent
 //   S  the route: fails closed without CRON_SECRET, constant-time bearer
 //      check, counts-only reply (source greps — weak by nature)
+//   C  the Settings card: no card unless the switch is on, the link switch
+//      needs a saved contact email, refusals in words (never the raw error)
 //
 // Every FAIL line is collected; a section that throws is recorded as
 // [CRASH-…] and the run continues.
@@ -27,6 +29,7 @@
 //     NEL, which only the strip removes. VE4 (comma allowed) died at X1 —
 //     R2's two-address case also has two @ signs; R2 gained "x,y@…".
 //   run 2 — 16/16 killed at their own tag; source restored green.
+//   run 3 (Settings card: C, S6, VE17–VE20) — 20/20 killed at their own tag.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -47,6 +50,8 @@ import {
 } from "../../src/lib/volunteers/outbox-drain";
 import { resendRequest } from "../../src/lib/email";
 import { renderVolunteerEmail } from "../../src/lib/volunteers/email-templates";
+import { cardDataFromAdminState, linkSwitchBlocked, volunteerSignupUrl } from "../../src/lib/volunteers/settings-card";
+import { LINK_NEEDS_CONTACT, settingsErrorLine } from "../../src/lib/volunteers/words";
 
 const ROOT = join(__dirname, "../..");
 const failures: string[] = [];
@@ -299,6 +304,43 @@ async function main() {
     const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as { crons?: { path: string; schedule: string }[] };
     eq(vercel.crons?.find((c) => c.path === "/api/volunteers/outbox/drain")?.schedule, "*/5 * * * *", "S5",
       "the cron runs the drain every 5 minutes");
+  });
+
+  // ── C — the Settings card ──────────────────────────────────────────────
+  await section("C", () => {
+    const tok = "a".repeat(64);
+    eq(cardDataFromAdminState({ feature: false }), null, "C1", "switch off → no card");
+    eq(cardDataFromAdminState(null), null, "C1", "no reply → no card");
+    eq(cardDataFromAdminState({ feature: "true", elite: true }), null, "C1", "a non-boolean switch → no card");
+    eq(cardDataFromAdminState({ feature: true, elite: false, settings: null }), { elite: false, settings: null }, "C1",
+      "switch on, no settings yet");
+    eq(cardDataFromAdminState({ feature: true, elite: true,
+        settings: { link_token: tok, link_enabled: true, contact_email: "board@example.org" } }),
+      { elite: true, settings: { linkToken: tok, linkEnabled: true, contactEmail: "board@example.org" } }, "C1",
+      "switch on with settings");
+    eq(cardDataFromAdminState({ feature: true, elite: true, settings: { link_token: "nope" } }), null, "C1",
+      "a malformed token → no card");
+    eq(volunteerSignupUrl(tok), `https://www.thefieldslate.com/v/${tok}`, "C1", "the link is on www, under /v/");
+
+    eq(linkSwitchBlocked({ linkEnabled: false, savedContact: null }), LINK_NEEDS_CONTACT, "C2",
+      "off with no saved contact → can't turn on, says why");
+    eq(linkSwitchBlocked({ linkEnabled: false, savedContact: "board@example.org" }), null, "C2", "off with a contact → can turn on");
+    eq(linkSwitchBlocked({ linkEnabled: true, savedContact: null }), null, "C2", "on → can always turn off");
+
+    const raw = 'new row for relation "volunteer_settings" violates check constraint';
+    ok(!settingsErrorLine(raw).includes("volunteer_settings"), "C3", "an unknown error is never shown raw", settingsErrorLine(raw));
+    ok(settingsErrorLine("invalid_email").includes("email address"), "C3", "invalid_email in words");
+    ok(settingsErrorLine("P0001: contact_required").startsWith("Turn the sign-up link off"), "C3", "contact_required in words");
+    ok(settingsErrorLine("plan_required").includes("plan"), "C3", "plan_required in words");
+  });
+
+  await section("S6", () => {
+    const page = readFileSync(join(ROOT, "src/app/(dashboard)/dashboard/settings/page.tsx"), "utf8");
+    ok(page.includes("{volunteers && <VolunteersCard orgId={currentOrgId} data={volunteers} />}"), "S6",
+      "the card renders only when the loader returned data");
+    ok(/if \(error\) \{\s*console\.error\("\[settings\] volunteer card read failed:", error\.message\);\s*return null;/.test(page),
+      "S6", "a failed read means no card");
+    ok(page.includes("return cardDataFromAdminState(data);"), "S6", "the reply goes through cardDataFromAdminState");
   });
 
   for (const [k, v] of Object.entries(counters)) ok(v > 0, "VAC", `anti-vacuity counter ${k} is zero`);

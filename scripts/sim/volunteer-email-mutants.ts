@@ -105,6 +105,30 @@ const MUTANTS: Mutant[] = [
     replace: "",
     expect: "S1",
   },
+  {
+    id: "VE17", what: "the card shows for an org with the switch off", file: "src/lib/volunteers/settings-card.ts",
+    find: "  if (r.feature !== true) return null;\n",
+    replace: "",
+    expect: "C1",
+  },
+  {
+    id: "VE18", what: "the link can be turned on with no saved contact", file: "src/lib/volunteers/settings-card.ts",
+    find: "  return state.savedContact ? null : LINK_NEEDS_CONTACT;\n",
+    replace: "  return null;\n",
+    expect: "C2",
+  },
+  {
+    id: "VE19", what: "an unknown refusal is shown raw", file: "src/lib/volunteers/words.ts",
+    find: "  return \"Couldn't save. Nothing changed — please try again.\";\n",
+    replace: "  return m || \"Couldn't save. Nothing changed — please try again.\";\n",
+    expect: "C3",
+  },
+  {
+    id: "VE20", what: "a failed read still renders the card", file: "src/app/(dashboard)/dashboard/settings/page.tsx",
+    find: "    console.error(\"[settings] volunteer card read failed:\", error.message);\n    return null;\n",
+    replace: "    console.error(\"[settings] volunteer card read failed:\", error.message);\n    return { elite: false, settings: null };\n",
+    expect: "S6",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/volunteer-email-sim.ts", timezones: [undefined], mutants: MUTANTS });
