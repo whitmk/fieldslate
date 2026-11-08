@@ -23,6 +23,8 @@ export type SnackShackWizardData = {
   open_before_min: number;
   close_after_min: number;
   max_shift_min: number;
+  /** 0119: people each shift needs (a shift may override it). */
+  people_per_shift: number;
 };
 
 export function emptyWizardData(season_id: string): SnackShackWizardData {
@@ -37,6 +39,7 @@ export function emptyWizardData(season_id: string): SnackShackWizardData {
     open_before_min: 30,
     close_after_min: 30,
     max_shift_min: 120,
+    people_per_shift: 1,
   };
 }
 

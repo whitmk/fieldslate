@@ -19,7 +19,8 @@
 //     same date with the SAME START (the window end moved); anything else is
 //     a plain removal or addition. Every assignment that would change is
 //     listed: team → team, team → unassigned, or → a team on a new shift.
-//   - 0104: a note or cash person on a CHANGED row is carried by the RPC onto
+//   - 0104 (+ 0119's headcount): a note, cash person or own headcount on a
+//     CHANGED row is carried by the RPC onto
 //     the replacement (`carried`); one on a REMOVED row is gone after Confirm
 //     (`lost`). Both are listed so nothing disappears silently.
 //   - 2026-10-06: a NEW shift the picker left unassigned (every team plays
@@ -69,8 +70,10 @@ export type CarriedItem = {
   toEnd: string;
   notes: string | null;
   cashPersonId: string | null;
+  /** 0119: the shift's own headcount, carried like a note. */
+  peopleNeeded: number | null;
 };
-export type LostItem = { date: string; start: string; end: string; notes: string | null; cashPersonId: string | null };
+export type LostItem = { date: string; start: string; end: string; notes: string | null; cashPersonId: string | null; peopleNeeded: number | null };
 
 /** A NEW shift the picker could not fill, or filled outside the preference. */
 export type FlaggedShift = { date: string; start: string; end: string; teamId: string | null; flag: AssignmentFlag };
@@ -173,18 +176,18 @@ export function buildRegeneratePlan(input: PlanInput): RegeneratePlan {
   }
 
   // 0104: what the RPC carries (same date + start) and what it cannot.
-  const hasInternal = (r: StoredShiftRow) => !!(r.notes && r.notes.trim()) || !!r.cash_person_id;
+  const hasInternal = (r: StoredShiftRow) => !!(r.notes && r.notes.trim()) || !!r.cash_person_id || r.people_needed != null;
   const carried: CarriedItem[] = [];
   const lost: LostItem[] = [];
   for (const d of dayChanges) {
     for (const c of d.changed) {
       if (hasInternal(c.from)) {
-        carried.push({ date: d.date, start: c.to.start, fromEnd: normalizeTime(c.from.end_time), toEnd: c.to.end, notes: c.from.notes ?? null, cashPersonId: c.from.cash_person_id ?? null });
+        carried.push({ date: d.date, start: c.to.start, fromEnd: normalizeTime(c.from.end_time), toEnd: c.to.end, notes: c.from.notes ?? null, cashPersonId: c.from.cash_person_id ?? null, peopleNeeded: c.from.people_needed ?? null });
       }
     }
     for (const r of d.removed) {
       if (hasInternal(r)) {
-        lost.push({ date: d.date, start: normalizeTime(r.start_time), end: normalizeTime(r.end_time), notes: r.notes ?? null, cashPersonId: r.cash_person_id ?? null });
+        lost.push({ date: d.date, start: normalizeTime(r.start_time), end: normalizeTime(r.end_time), notes: r.notes ?? null, cashPersonId: r.cash_person_id ?? null, peopleNeeded: r.people_needed ?? null });
       }
     }
   }

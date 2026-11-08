@@ -1245,6 +1245,7 @@ export type Database = {
           id: string
           max_shift_min: number
           open_before_min: number
+          people_per_shift: number
           scheduling_preference: string
           season_id: string
           shifts_generated_at: string | null
@@ -1261,6 +1262,7 @@ export type Database = {
           id?: string
           max_shift_min?: number
           open_before_min?: number
+          people_per_shift?: number
           scheduling_preference?: string
           season_id: string
           shifts_generated_at?: string | null
@@ -1277,6 +1279,7 @@ export type Database = {
           id?: string
           max_shift_min?: number
           open_before_min?: number
+          people_per_shift?: number
           scheduling_preference?: string
           season_id?: string
           shifts_generated_at?: string | null
@@ -1385,6 +1388,7 @@ export type Database = {
           notes: string | null
           notes_updated_at: string | null
           notes_updated_by: string | null
+          people_needed: number | null
           snack_shack_id: string
           start_time: string
         }
@@ -1399,6 +1403,7 @@ export type Database = {
           notes?: string | null
           notes_updated_at?: string | null
           notes_updated_by?: string | null
+          people_needed?: number | null
           snack_shack_id: string
           start_time: string
         }
@@ -1413,6 +1418,7 @@ export type Database = {
           notes?: string | null
           notes_updated_at?: string | null
           notes_updated_by?: string | null
+          people_needed?: number | null
           snack_shack_id?: string
           start_time?: string
         }

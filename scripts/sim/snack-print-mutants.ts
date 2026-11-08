@@ -6,6 +6,8 @@ import { runMutants, type Mutant } from "./mutant-runner";
 const SERVER_PAGE = "src/app/(dashboard)/dashboard/snack-shack/page.tsx";
 const PRINT_LIB = "src/lib/snack-shack/print.ts";
 const REGION = "src/components/snack-shack/snack-shack-print-region.tsx";
+const HEADCOUNT = "src/lib/snack-shack/headcount.ts";
+const FULL_ROUTE = "src/app/api/snack-shack/[id]/email/route.ts";
 
 const MUTANTS: Mutant[] = [
   {
@@ -49,6 +51,31 @@ const MUTANTS: Mutant[] = [
     find: "  <table><thead><tr><th>Date</th><th>Time</th></tr></thead><tbody>${rows}</tbody></table>",
     replace: "  <table><thead><tr><th>Date</th><th>Time</th><th>Cash / questions</th></tr></thead><tbody>${rows}</tbody></table>",
     expect: "G3",
+  },
+  // 0119 — the headcount.
+  {
+    id: "SP8", what: "a count of 1 is printed (\"1 person\" on every shift)", file: HEADCOUNT,
+    find: "  return n > 1 ? peopleLabel(n) : \"\";\n",
+    replace: "  return n >= 1 ? peopleLabel(n) : \"\";\n",
+    expect: "H1",
+  },
+  {
+    id: "SP9", what: "a shift's own number is ignored (the season's always wins)", file: HEADCOUNT,
+    find: "  return own != null && isValidPeople(Number(own)) ? Number(own) : seasonPeople(seasonDefault);\n",
+    replace: "  return seasonPeople(seasonDefault);\n",
+    expect: "H1",
+  },
+  {
+    id: "SP10", what: "the print region adds the headcount whether or not it is above 1", file: REGION,
+    find: "                      {people ? ` · ${people}` : null}\n",
+    replace: "                      {` · ${people || \"1 person\"}`}\n",
+    expect: "H2",
+  },
+  {
+    id: "SP11", what: "the full-schedule email selects the headcount", file: FULL_ROUTE,
+    find: " .select(\"date, start_time, end_time, team:teams(name)\")",
+    replace: " .select(\"date, start_time, end_time, people_needed, team:teams(name)\")",
+    expect: "H4",
   },
 ];
 

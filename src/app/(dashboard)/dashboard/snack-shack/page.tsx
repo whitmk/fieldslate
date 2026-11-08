@@ -98,6 +98,7 @@ export default async function SnackShackPage() {
     open_before_min: number;
     close_after_min: number;
     max_shift_min: number;
+    people_per_shift: number;
     shifts_generated_at: string | null;
   }[];
 
@@ -123,6 +124,7 @@ export default async function SnackShackPage() {
     end_time: string;
     assigned_team_id: string | null;
     is_recurring: boolean;
+    people_needed: number | null;
     team: { name: string } | null;
   })[] = [];
   let allCashPeople: (CashPerson & { snack_shack_id: string })[] = [];
@@ -139,7 +141,7 @@ export default async function SnackShackPage() {
         fetchAllRows<(typeof allBlocks)[number]>("snack shack shifts", ({ from, to, exactCount }) =>
           supabase
             .from("snack_shack_blocks")
-            .select(`id, snack_shack_id, date, start_time, end_time, assigned_team_id, is_recurring, team:teams(name), ${SHIFT_NOTE_SELECT_FIELDS}`, exactCount ? { count: "exact" } : undefined)
+            .select(`id, snack_shack_id, date, start_time, end_time, assigned_team_id, is_recurring, people_needed, team:teams(name), ${SHIFT_NOTE_SELECT_FIELDS}`, exactCount ? { count: "exact" } : undefined)
             .in("snack_shack_id", settingIds)
             .order("date", { ascending: true })
             .order("start_time", { ascending: true })

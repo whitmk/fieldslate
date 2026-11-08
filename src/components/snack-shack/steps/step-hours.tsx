@@ -8,6 +8,7 @@
 import { ORDERED_DAYS } from "@/components/divisions/wizard-types";
 import { MAX_SHIFT_OPTIONS_MIN, OFFSET_OPTIONS_MIN } from "@/lib/snack-shack/derive-shifts";
 import { maxShiftHelpText } from "@/lib/snack-shack/regenerate-plan";
+import { PEOPLE_OPTIONS, peopleLabel } from "@/lib/snack-shack/headcount";
 import type { SnackShackWizardData, DayCode } from "../wizard-types";
 
 interface Props {
@@ -101,6 +102,22 @@ export function StepHours({ data, update }: Props) {
             onPick={(v) => update({ max_shift_min: v })}
           />
           <p className="text-xs text-gray-500">{maxShiftHelpText(data.max_shift_min)}</p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="snack-people-per-shift" className="text-sm font-medium text-gray-700">People per shift</label>
+          <select
+            id="snack-people-per-shift"
+            value={data.people_per_shift}
+            onChange={(e) => update({ people_per_shift: Number(e.target.value) })}
+            className="h-10 w-40 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+          >
+            {PEOPLE_OPTIONS.map((n) => (
+              <option key={n} value={n}>{peopleLabel(n)}</option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500">
+            How many volunteers each shift needs. You can change it for a single shift on the Snack Shack page.
+          </p>
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ORDERED_DAYS } from "@/components/divisions/wizard-types";
 import { fmtDuration } from "./step-hours";
+import { peopleLabel } from "@/lib/snack-shack/headcount";
 import type { SnackShackWizardData, DayCode } from "../wizard-types";
 
 interface Props {
@@ -87,6 +88,7 @@ export function StepReview({
       open_before_min: data.open_before_min,
       close_after_min: data.close_after_min,
       max_shift_min: data.max_shift_min,
+      people_per_shift: data.people_per_shift,
       updated_at: new Date().toISOString(),
     };
 
@@ -158,6 +160,7 @@ export function StepReview({
         <Row label="Opens" value={data.open_before_min === 0 ? "When the first game starts" : `${data.open_before_min} min before the first game`} />
         <Row label="Closes" value={data.close_after_min === 0 ? "When the last game ends" : `${data.close_after_min} min after the last game ends`} />
         <Row label="Longest shift" value={`${fmtDuration(data.max_shift_min)} (a leftover under an hour can extend a shift)`} />
+        <Row label="People per shift" value={peopleLabel(data.people_per_shift)} />
         <Row label="Days open" value={activeDayLabels || "None selected"} />
       </ReviewSection>
 

@@ -15,6 +15,8 @@ interface Props {
   teams: TeamOption[];
   /** 0104 — internal; the calendar is an admin screen. */
   cashPeople?: CashPerson[];
+  /** 0119: the season's people per shift, for the edit modal's default. */
+  peoplePerShift?: number;
   /** Snack shack open-range start (YYYY-MM-DD). Cells outside are dimmed. */
   startDate: string;
   /** Snack shack open-range end (YYYY-MM-DD). Cells outside are dimmed. */
@@ -86,7 +88,7 @@ function initialMonth(startDate: string, endDate: string): string {
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-export function SnackShackCalendar({ blocks, teams, cashPeople = [], startDate, endDate }: Props) {
+export function SnackShackCalendar({ blocks, teams, cashPeople = [], peoplePerShift = 1, startDate, endDate }: Props) {
   const today = todayLocal();
   const [month, setMonth] = useState(() => initialMonth(startDate, endDate));
   const [editingBlock, setEditingBlock] = useState<BlockRow | null>(null);
@@ -218,6 +220,7 @@ export function SnackShackCalendar({ blocks, teams, cashPeople = [], startDate, 
           block={editingBlock}
           teams={teams}
           cashPeople={cashPeople}
+          peoplePerShift={peoplePerShift}
           onClose={() => setEditingBlock(null)}
           onSaved={() => setEditingBlock(null)}
         />

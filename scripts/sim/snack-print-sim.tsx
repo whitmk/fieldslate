@@ -19,6 +19,12 @@
 // the only thing that moved; C0–C2 pin the column itself. The print-all
 // document (G3) and the empty print (G2) stay byte-identical.
 //
+// HEADCOUNT (0119, 2026-11-07): the full-schedule print shows "N people" after
+// the time ONLY when the shift's effective count (its own, else the season's)
+// is above 1. H1 pins the rule in headcount.ts, H2/H3 the print, H4 fences
+// the team prints and both emails. G1 also takes the headcount out before
+// comparing, so the golden still proves nothing else moved.
+//
 // FIXTURES: a long team name, an 80-character cash name (the limit), a day with
 // four shifts, an unassigned shift, a manual shift, a shift carrying a NOTE
 // (which must never print), HTML-special characters, and an empty season.
@@ -59,15 +65,16 @@ export type Fixture = {
   notes: string | null;
   cash_person_id: string | null;
   cash_person: { name: string } | null;
+  people_needed: number | null;
 };
 
 export const FIXTURE_BLOCKS: Fixture[] = [
-  { id: "b1", date: "2026-10-03", start_time: "08:30:00", end_time: "10:30:00", team_name: "Expos", assigned_team_id: "t-expos", is_recurring: true, notes: null, cash_person_id: "c-pat", cash_person: { name: "Pat Lee" } },
-  { id: "b2", date: "2026-10-03", start_time: "10:30:00", end_time: "12:30:00", team_name: TEAM_LONG, assigned_team_id: "t-royals", is_recurring: true, notes: NOTE, cash_person_id: "c-long", cash_person: { name: CASH_LONG } },
-  { id: "b3", date: "2026-10-03", start_time: "12:30:00", end_time: "14:30:00", team_name: null, assigned_team_id: null, is_recurring: true, notes: null, cash_person_id: null, cash_person: null },
-  { id: "b4", date: "2026-10-03", start_time: "14:30:00", end_time: "16:15:00", team_name: "Mets & <Friends>", assigned_team_id: "t-mets", is_recurring: true, notes: NOTE, cash_person_id: null, cash_person: null },
-  { id: "b5", date: "2026-10-10", start_time: "09:00:00", end_time: "11:00:00", team_name: "Expos", assigned_team_id: "t-expos", is_recurring: false, notes: null, cash_person_id: "c-pat", cash_person: { name: "Pat Lee" } },
-  { id: "b6", date: "2026-10-17", start_time: "17:30:00", end_time: "00:00:00", team_name: TEAM_LONG, assigned_team_id: "t-royals", is_recurring: true, notes: null, cash_person_id: null, cash_person: null },
+  { id: "b1", date: "2026-10-03", start_time: "08:30:00", end_time: "10:30:00", team_name: "Expos", assigned_team_id: "t-expos", is_recurring: true, notes: null, cash_person_id: "c-pat", cash_person: { name: "Pat Lee" }, people_needed: 3 },
+  { id: "b2", date: "2026-10-03", start_time: "10:30:00", end_time: "12:30:00", team_name: TEAM_LONG, assigned_team_id: "t-royals", is_recurring: true, notes: NOTE, cash_person_id: "c-long", cash_person: { name: CASH_LONG }, people_needed: null },
+  { id: "b3", date: "2026-10-03", start_time: "12:30:00", end_time: "14:30:00", team_name: null, assigned_team_id: null, is_recurring: true, notes: null, cash_person_id: null, cash_person: null, people_needed: null },
+  { id: "b4", date: "2026-10-03", start_time: "14:30:00", end_time: "16:15:00", team_name: "Mets & <Friends>", assigned_team_id: "t-mets", is_recurring: true, notes: NOTE, cash_person_id: null, cash_person: null, people_needed: null },
+  { id: "b5", date: "2026-10-10", start_time: "09:00:00", end_time: "11:00:00", team_name: "Expos", assigned_team_id: "t-expos", is_recurring: false, notes: null, cash_person_id: "c-pat", cash_person: { name: "Pat Lee" }, people_needed: null },
+  { id: "b6", date: "2026-10-17", start_time: "17:30:00", end_time: "00:00:00", team_name: TEAM_LONG, assigned_team_id: "t-royals", is_recurring: true, notes: null, cash_person_id: null, cash_person: null, people_needed: null },
 ];
 const SEASON = "Test League · Fall 2026";
 
@@ -98,7 +105,7 @@ async function main() {
   ok(CASH_LONG.length === CASH_NAME_MAX_CHARS, "F0", `the long cash name fixture is exactly the ${CASH_NAME_MAX_CHARS}-character limit`, String(CASH_LONG.length));
 
   // ── G: goldens ──────────────────────────────────────────────────────────
-  const full = renderToStaticMarkup(<SnackShackPrintRegion seasonLabel={SEASON} blocks={FIXTURE_BLOCKS} />);
+  const full = renderToStaticMarkup(<SnackShackPrintRegion seasonLabel={SEASON} blocks={FIXTURE_BLOCKS} peoplePerShift={1} />);
   const empty = renderToStaticMarkup(<SnackShackPrintRegion seasonLabel={SEASON} blocks={[]} />);
   // ── C: the cash column (2026-11-07) — header "Cash / questions", the cash
   // person's name, a BLANK cell when there is none. Checked first so a wrong
@@ -112,9 +119,44 @@ async function main() {
     rows.map(lastCell).join(" | "));
   ok(FIXTURE_BLOCKS.every((b, i) => b.cash_person || lastCell(rows[i] ?? "") === ""), "C2", "a shift with no cash person prints a blank cell", rows.map(lastCell).join(" | "));
 
-  // G1 — ONLY the intended column changed: take the cash header and each row's
-  // last cell out, and what remains is the golden recorded before the change.
-  const withoutCash = full.replace("<th>Cash / questions</th>", "").replace(/<td>[^<]*<\/td><\/tr>/g, "</tr>");
+  // ── H: the headcount (0119) ─────────────────────────────────────────────
+  const hc = await import("@/lib/snack-shack/headcount");
+  ok(hc.effectivePeople({ people_needed: 3 }, 1) === 3 && hc.effectivePeople({ people_needed: null }, 4) === 4
+     && hc.effectivePeople({ people_needed: 1 }, 4) === 1 && hc.effectivePeople({}, 0) === 1,
+     "H1", "effective count = the shift's own number, else the season's (an unusable season number reads as 1)");
+  ok(hc.headcountPrintLine({ people_needed: null }, 1) === "" && hc.headcountPrintLine({ people_needed: 2 }, 1) === "2 people"
+     && hc.headcountPrintLine({ people_needed: 1 }, 5) === "" && hc.peopleLabel(1) === "1 person",
+     "H1", "the print line is \"N people\" only above 1");
+  const mig = readFileSync(join(__dirname, "..", "..", "supabase", "migrations", "0119_snack_shack_headcount.sql"), "utf8");
+  ok(hc.PEOPLE_MIN === 1 && hc.PEOPLE_MAX === 20 && (mig.match(/between 1 and 20/g) ?? []).length === 2
+     && hc.PEOPLE_OPTIONS.length === 20 && hc.PEOPLE_OPTIONS[0] === 1 && hc.PEOPLE_OPTIONS[19] === 20,
+     "H1", "the 1–20 bounds match 0119's two CHECKs");
+  const timeCell = (r: string) => (r.match(/^<tr><td>[^<]*<\/td><td>(.*?)<\/td>/) ?? [])[1] ?? "";
+  ok(timeCell(rows[0] ?? "").endsWith(" · 3 people") && rows.slice(1).every((r) => !/people|person/.test(r)),
+     "H2", "season at 1: only the shift needing 3 shows \"3 people\", after its time", rows.map(timeCell).join(" | "));
+  const two = FIXTURE_BLOCKS.map((b) => (b.id === "b3" ? { ...b, people_needed: 1 } : b));
+  const full2 = renderToStaticMarkup(<SnackShackPrintRegion seasonLabel={SEASON} blocks={two} peoplePerShift={2} />);
+  const rows2 = [...full2.matchAll(/<tr><td>[^]*?<\/tr>/g)].map((m) => m[0]);
+  ok(two.every((b, i) => {
+       const t = timeCell(rows2[i] ?? "");
+       return b.id === "b1" ? t.endsWith(" · 3 people") : b.id === "b3" ? !/people|person/.test(t) : t.endsWith(" · 2 people");
+     }),
+     "H3", "season at 2: every shift shows \"2 people\" except its own 3, and one set to 1 shows nothing", rows2.map(timeCell).join(" | "));
+  const src = (...p: string[]) => readFileSync(join(__dirname, "..", "..", "src", ...p), "utf8");
+  const outbound: [string, string][] = [
+    ["full-schedule email route", src("app", "api", "snack-shack", "[id]", "email", "route.ts")],
+    ["team email route", src("app", "api", "snack-shack", "team", "[teamId]", "email", "route.ts")],
+    ["teams page snack shack button", src("components", "teams", "team-snack-shack-button.tsx")],
+    ["print-all team document", src("lib", "snack-shack", "print.ts")],
+  ];
+  for (const [name, text] of outbound) {
+    ok(!/people_needed|people_per_shift|headcount|peoplePerShift/.test(text), "H4", `${name} never shows a headcount`);
+  }
+
+  // G1 — ONLY the intended changes: take the cash header, each row's last
+  // cell and the headcount out, and what remains is the golden recorded
+  // before the change.
+  const withoutCash = full.replace("<th>Cash / questions</th>", "").replace(/<td>[^<]*<\/td><\/tr>/g, "</tr>").replace(/ · \d+ people/g, "");
   golden("full-schedule.html", withoutCash, "G1");
   golden("full-schedule-empty.html", empty, "G2");
 

@@ -370,6 +370,9 @@ export type StoredShiftRow = {
    *  regenerate would carry or lose. Optional: the derivation ignores them. */
   notes?: string | null;
   cash_person_id?: string | null;
+  /** 0119: this shift's own headcount (null = the season's). Carried like a
+   *  note. Optional: the derivation ignores it. */
+  people_needed?: number | null;
 };
 
 export type Reconciliation = {

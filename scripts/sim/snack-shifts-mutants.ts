@@ -172,6 +172,12 @@ const MUTANTS: Mutant[] = [
     expect: "F10",
   },
   {
+    id: "SM40", what: "(0119) a headcount-only row is not carried or lost (hasInternal ignores people_needed)", file: PLAN,
+    find: " || !!r.cash_person_id || r.people_needed != null;",
+    replace: " || !!r.cash_person_id;",
+    expect: "F12",
+  },
+  {
     id: "SM27", what: "lost not reported (removed rows' note/cash vanish silently)", file: PLAN,
     find: "      if (hasInternal(r)) {\n        lost.push(",
     replace: "      if (false) {\n        lost.push(",

@@ -317,6 +317,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
 - **0118 (rename official role) APPLIED 2026-11-07 20:51 UTC, catalog
   `20261107205104`** — see "RENAMING A ROLE CARRIES ITS ASSIGNMENTS" under
   Officials. The latest migration applied; 0102 is still reserved.
+- **0119 (snack shack people per shift) — WRITTEN, NOT PROVEN, NOT APPLIED
+  (branch `feat/snack-shack-headcount`, 2026-11-07).** The proof run and the
+  apply wait for Whit's go and timing. Expected md5(prosrc) after apply:
+  `regenerate_snack_shack_shifts` `fd94fb29d2dd64ef659ac52fae736ae8`
+  (`snack-shack-headcount-build.ts --md5`, method self-checked against
+  0104's live md5). **Deploy order: apply 0119 BEFORE the branch reaches
+  `main`** — the page, the plan read and the wizard select and write the new
+  columns. See "People per shift (0119)" under the snack shack section.
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -5570,6 +5578,32 @@ Still open:
   byte-identical on their original columns afterward; no row carries a
   note or cash person and the cash-people table is empty until an admin
   uses the feature.
+- **People per shift (0119, branch `feat/snack-shack-headcount`, NOT yet
+  applied — see the Database section).** A season number,
+  `snack_shack_settings.people_per_shift` (1–20, NOT NULL default 1, set in
+  the wizard's Hours step), and an optional per-shift override,
+  `snack_shack_blocks.people_needed` (1–20, null = the season's number; set
+  in the inline row edit, Add a shift and the calendar's edit modal). ALL
+  rules and words: `src/lib/snack-shack/headcount.ts` (`effectivePeople`,
+  `headcountPrintLine`, `headcountListLine`; `PEOPLE_MIN`/`PEOPLE_MAX` mirror
+  the two CHECKs and `sim:snack-print` H1 reads them out of the migration).
+  **The full-schedule print shows "N people" after the time ONLY when the
+  effective count is above 1** (decided 2026-11-07); team prints and both
+  emails never show a headcount (`sim:snack-print` H4 fences them). The list
+  shows the count when it is above 1 or the shift has its own number.
+  **Regenerate carries the override like a note**: 0119 re-creates the RPC
+  verbatim from 0104 with `people_needed` in the capture (predicate + jsonb),
+  the INSERT, the `carried` predicate and so `lost`; the plan's
+  `hasInternal` counts a headcount-only row (`sim:snack-shifts` F12, SM40)
+  and the preview words it ("needs 3 people"). The inline row edit's write is
+  now checked (`.select("id")`, zero rows = error), as is the edit modal's.
+  Locks when applied: ACCESS EXCLUSIVE on `snack_shack_settings` AND
+  `snack_shack_blocks` (ADD COLUMN with a constant default, ADD CHECK; 3 and
+  ~110 rows) for well under a second; nothing on profiles. Proof:
+  `scripts/sim/snack-shack-headcount-sim.sql` (+ build script; applies 0119
+  rolled back in the "test" org, re-runs 0104's R- and N-series, H1–H8, 8
+  mutants HM1–HM6 + PM1/PM6). NOT RUN YET. `sim:snack-print` (24 checks) +
+  `:mutants` (11).
 - **Harness: `npm run sim:snack-shifts`** (108 checks × 3 zones, 16
   anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (27 mutants,
   each killed FIRST at its own assertion). Read the MUTATION LOG in the sim

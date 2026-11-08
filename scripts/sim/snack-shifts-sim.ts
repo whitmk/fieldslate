@@ -788,6 +788,19 @@ section("F: past dates frozen, preview, upcoming staleness", () => {
      "F11", "with no upcoming games, the two removed rows' note/cash are reported as LOST (the kept-only cash row too)", JSON.stringify(planNC2.lost));
   counters.lostItems += planNC2.lost.length;
   ok(buildRegeneratePlan({ derivation, stored, teams, preference: "prefer_off_days", index: assignmentIndexFromGames([], HOME), today: TODAY }).lost.length === 0, "F11", "a removed row with neither note nor cash is not listed as lost");
+  // 0119 — a shift's OWN headcount is carried and lost like a note, even with
+  // no note and no cash person on the row.
+  const storedHC: StoredShiftRow[] = stored.map((r) => (r.id === "u2" ? { ...r, people_needed: 3 } : r));
+  const planHC = buildRegeneratePlan({ derivation, stored: storedHC, teams, preference: "prefer_off_days", index: assignmentIndexFromGames([], HOME), today: TODAY });
+  ok(planHC.carried.length === 1 && planHC.carried[0]?.start === "11:30" && planHC.carried[0]?.peopleNeeded === 3
+     && planHC.carried[0]?.notes === null && planHC.carried[0]?.cashPersonId === null,
+     "F12", "a headcount-only CHANGED row is reported as carried, with its count", JSON.stringify(planHC.carried));
+  const planHC2 = buildRegeneratePlan({ derivation: deriveShifts([], RULE, []), stored: storedHC, teams, preference: "prefer_off_days", index: assignmentIndexFromGames([], HOME), today: TODAY });
+  ok(planHC2.lost.length === 1 && planHC2.lost[0]?.start === "11:30" && planHC2.lost[0]?.peopleNeeded === 3,
+     "F12", "a headcount-only REMOVED row is reported as lost, with its count", JSON.stringify(planHC2.lost));
+  ok(planNC.carried[0]?.peopleNeeded === null, "F12", "a carried row with no headcount of its own reports null (the season's number)");
+  counters.carriedItems += planHC.carried.length;
+  counters.lostItems += planHC2.lost.length;
 
   // todayInTimezone.
   const t = new Date("2026-10-10T05:30:00Z");

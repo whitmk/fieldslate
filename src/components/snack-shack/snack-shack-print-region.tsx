@@ -5,13 +5,15 @@
 // compare it with goldens. Hidden on screen; the page adds `.print-active`
 // just before window.print(). See src/lib/snack-shack/print.ts for what this
 // print may show: the cash person in its own column, through cashPrintLine
-// only — never a note.
+// only; the headcount after the time, through headcountPrintLine only, and
+// only when it is above 1 (0119) — never a note.
 
 import { forwardRef } from "react";
 import { CASH_PRINT_HEADER, cashPrintLine, fmtPrintDate, fmtPrintTime, type CashPrintSource } from "@/lib/snack-shack/print";
+import { headcountPrintLine, type HeadcountSource } from "@/lib/snack-shack/headcount";
 
 /** What the full print needs from a shift. */
-export type FullPrintBlock = CashPrintSource & {
+export type FullPrintBlock = CashPrintSource & HeadcountSource & {
   id: string;
   date: string;
   start_time: string;
@@ -19,8 +21,8 @@ export type FullPrintBlock = CashPrintSource & {
   team_name: string | null;
 };
 
-export const SnackShackPrintRegion = forwardRef<HTMLDivElement, { seasonLabel: string; blocks: FullPrintBlock[] }>(
-  function SnackShackPrintRegion({ seasonLabel, blocks }, ref) {
+export const SnackShackPrintRegion = forwardRef<HTMLDivElement, { seasonLabel: string; blocks: FullPrintBlock[]; peoplePerShift?: number }>(
+  function SnackShackPrintRegion({ seasonLabel, blocks, peoplePerShift = 1 }, ref) {
     return (
       <div ref={ref} className="fieldslate-snack-print-ready" aria-hidden>
         <div className="fieldslate-print-header">
@@ -47,16 +49,20 @@ export const SnackShackPrintRegion = forwardRef<HTMLDivElement, { seasonLabel: s
               </tr>
             </thead>
             <tbody>
-              {blocks.map((b) => (
-                <tr key={b.id}>
-                  <td>{fmtPrintDate(b.date)}</td>
-                  <td>
-                    {fmtPrintTime(b.start_time)} – {fmtPrintTime(b.end_time)}
-                  </td>
-                  <td>{b.team_name ?? "—"}</td>
-                  <td>{cashPrintLine(b)}</td>
-                </tr>
-              ))}
+              {blocks.map((b) => {
+                const people = headcountPrintLine(b, peoplePerShift);
+                return (
+                  <tr key={b.id}>
+                    <td>{fmtPrintDate(b.date)}</td>
+                    <td>
+                      {fmtPrintTime(b.start_time)} – {fmtPrintTime(b.end_time)}
+                      {people ? ` · ${people}` : null}
+                    </td>
+                    <td>{b.team_name ?? "—"}</td>
+                    <td>{cashPrintLine(b)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

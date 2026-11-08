@@ -10,6 +10,7 @@ import { Loader2, RefreshCw, X } from "lucide-react";
 import { assignmentChangeLines, type RegeneratePlan } from "@/lib/snack-shack/regenerate-plan";
 import type { SchedulingPreference, StoredShiftRow } from "@/lib/snack-shack/derive-shifts";
 import { NEEDS_TEAM, fmtShiftRange, previewFlagLine } from "@/lib/snack-shack/shift-flags";
+import { headcountCarryText } from "@/lib/snack-shack/headcount";
 
 function fmtDate(d: string) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -54,6 +55,13 @@ export function RegeneratePreviewModal({ plan, preference, teamName, cashName = 
   const lines = assignmentChangeLines(plan.assignmentChanges, teamName);
   const rowSpan = (r: StoredShiftRow) => span(r.start_time, r.end_time);
   const needsTeam = plan.flagged.filter((f) => f.flag === "unfilled").length;
+  // What a carried or lost row holds: "“note” · cash: Pat · needs 3 people".
+  const internalText = (notes: string | null, cashPersonId: string | null, peopleNeeded: number | null) =>
+    [
+      notes ? `“${notes}”` : "",
+      cashPersonId ? `cash: ${cashName(cashPersonId) ?? "a name"}` : "",
+      headcountCarryText(peopleNeeded),
+    ].filter(Boolean).join(" · ");
 
   return (
     <div
@@ -126,11 +134,11 @@ export function RegeneratePreviewModal({ plan, preference, teamName, cashName = 
 
               {plan.carried.length > 0 && (
                 <div>
-                  <p className="text-sm font-semibold text-[#0C1F3F]">Notes and cash people carried to the changed shift</p>
+                  <p className="text-sm font-semibold text-[#0C1F3F]">Notes, cash people and headcounts carried to the changed shift</p>
                   <ul className="mt-1 flex flex-col gap-0.5 text-sm text-gray-700">
                     {plan.carried.map((c) => (
                       <li key={`k-${c.date}-${c.start}`}>
-                        {fmtDate(c.date)} {fmtTime(c.start)}: {c.notes ? `“${c.notes}”` : ""}{c.notes && c.cashPersonId ? " · " : ""}{c.cashPersonId ? `cash: ${cashName(c.cashPersonId) ?? "a name"}` : ""} → moves to {fmtTime(c.start)} – {fmtTime(c.toEnd)}
+                        {fmtDate(c.date)} {fmtTime(c.start)}: {internalText(c.notes, c.cashPersonId, c.peopleNeeded)} → moves to {fmtTime(c.start)} – {fmtTime(c.toEnd)}
                       </li>
                     ))}
                   </ul>
@@ -139,11 +147,11 @@ export function RegeneratePreviewModal({ plan, preference, teamName, cashName = 
 
               {plan.lost.length > 0 && (
                 <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2">
-                  <p className="text-sm font-semibold text-red-800">Notes and cash people on removed shifts — gone after Confirm</p>
+                  <p className="text-sm font-semibold text-red-800">Notes, cash people and headcounts on removed shifts — gone after Confirm</p>
                   <ul className="mt-1 flex flex-col gap-0.5 text-sm text-red-800">
                     {plan.lost.map((l) => (
                       <li key={`l-${l.date}-${l.start}`}>
-                        {fmtDate(l.date)} {span(l.start, l.end)}: {l.notes ? `“${l.notes}”` : ""}{l.notes && l.cashPersonId ? " · " : ""}{l.cashPersonId ? `cash: ${cashName(l.cashPersonId) ?? "a name"}` : ""}
+                        {fmtDate(l.date)} {span(l.start, l.end)}: {internalText(l.notes, l.cashPersonId, l.peopleNeeded)}
                       </li>
                     ))}
                   </ul>

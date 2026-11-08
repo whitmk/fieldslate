@@ -8,6 +8,7 @@ import { GameNoteIcon, GameNoteLine } from "@/components/schedule/game-note";
 import type { ShiftNoteFields, CashPerson } from "@/lib/snack-shack/shift-notes";
 import { normalizeTime } from "@/lib/snack-shack/derive-shifts";
 import { NEEDS_TEAM, fmtShiftRange, redBannerLine, redSummary, type BlockFlagView } from "@/lib/snack-shack/shift-flags";
+import { PEOPLE_OPTIONS, headcountListLine, overrideFromInput, overrideOptionLabel } from "@/lib/snack-shack/headcount";
 
 export type BlockRow = ShiftNoteFields & {
   id: string;
@@ -17,6 +18,8 @@ export type BlockRow = ShiftNoteFields & {
   assigned_team_id: string | null;
   is_recurring: boolean;
   team_name: string | null;
+  /** 0119: this shift's own headcount; null = the season's number. */
+  people_needed: number | null;
 };
 
 export type TeamOption = {
@@ -40,6 +43,8 @@ interface Props {
    *  game schedule is still loading or could not be read — then nothing is
    *  flagged and an empty row reads "Unassigned". Past rows are never here. */
   flags?: Map<string, BlockFlagView | null>;
+  /** 0119: the season's people per shift. */
+  peoplePerShift?: number;
 }
 
 function fmtDate(d: string) {
@@ -57,10 +62,12 @@ function fmtTime(t: string) {
   return `${h12}:${String(m).padStart(2, "0")}${ampm}`;
 }
 
-export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cashPeople = [], onEditNote, flags }: Props) {
+export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cashPeople = [], onEditNote, flags, peoplePerShift = 1 }: Props) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTeam, setEditTeam] = useState<string>("");
+  const [editPeople, setEditPeople] = useState<string>("");
+  const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [cashError, setCashError] = useState<string | null>(null);
@@ -85,18 +92,27 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cas
   function startEdit(block: BlockRow) {
     setEditingId(block.id);
     setEditTeam(block.assigned_team_id ?? "");
+    setEditPeople(block.people_needed == null ? "" : String(block.people_needed));
+    setEditError(null);
   }
 
   async function saveEdit(blockId: string) {
     setSaving(blockId);
+    setEditError(null);
     const supabase = createClient();
-    await supabase
+    const { data, error } = await supabase
       .from("snack_shack_blocks")
       .update({
         assigned_team_id: editTeam || null,
+        people_needed: overrideFromInput(editPeople),
       } as never)
-      .eq("id", blockId);
+      .eq("id", blockId)
+      .select("id");
     setSaving(null);
+    if (error || (data ?? []).length === 0) {
+      setEditError(error?.message ?? "Nothing was saved — refresh and try again.");
+      return;
+    }
     setEditingId(null);
     router.refresh();
   }
@@ -135,6 +151,17 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cas
               </option>
             ))}
           </select>
+          <select
+            value={editPeople}
+            onChange={(e) => setEditPeople(e.target.value)}
+            aria-label="People this shift needs"
+            className="h-8 max-w-[11rem] rounded-lg border border-gray-200 px-2 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none"
+          >
+            <option value="">{overrideOptionLabel(null, peoplePerShift)}</option>
+            {PEOPLE_OPTIONS.map((n) => (
+              <option key={n} value={n}>{overrideOptionLabel(n, peoplePerShift)}</option>
+            ))}
+          </select>
           <button
             onClick={() => saveEdit(block.id)}
             disabled={saving === block.id}
@@ -169,6 +196,11 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cas
     }
     if (view?.soft) return <span className="text-xs text-gray-500">{view.soft}</span>;
     return <span className="text-xs text-gray-300">—</span>;
+  };
+
+  const headcountLine = (block: BlockRow) => {
+    const line = headcountListLine(block, peoplePerShift);
+    return line ? <span className="block text-xs text-gray-500">{line}</span> : null;
   };
 
   const manualTag = (block: BlockRow) =>
@@ -246,6 +278,7 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cas
                     <td className="whitespace-nowrap py-3 pr-4 font-medium text-gray-900 tabular-nums">{fmtDate(block.date)}</td>
                     <td className="whitespace-nowrap py-3 pr-4 tabular-nums text-gray-600">
                       {fmtShiftRange(block.start_time, block.end_time)}
+                      {headcountLine(block)}
                       {onEditNote && (
                         <GameNoteLine game={block} onClick={() => onEditNote(block)} className="max-w-[16rem] whitespace-normal" />
                       )}
@@ -278,6 +311,7 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cas
                   {manualTag(block)}
                 </div>
                 <div className="mt-0.5 text-sm">{teamCell(block, view)}</div>
+                {headcountLine(block)}
                 {onEditNote && <GameNoteLine game={block} onClick={() => onEditNote(block)} />}
                 {(view?.chip || view?.soft) && <div className="mt-1.5">{statusCell(view)}</div>}
                 <div className="mt-2 flex items-center justify-between gap-2">
@@ -290,6 +324,10 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cas
         })}
       </div>
 
+      {editError && (
+        <p className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">Couldn&rsquo;t save the shift: {editError}</p>
+      )}
+
       {cashError && (
         <p className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">Couldn&rsquo;t save the cash person: {cashError}</p>
       )}
@@ -298,6 +336,7 @@ export function SnackShackSchedule({ snackShackId, blocks, teams, dayHeader, cas
         <AddOneOffModal
           snackShackId={snackShackId}
           teams={teams}
+          peoplePerShift={peoplePerShift}
           onClose={() => setShowAddModal(false)}
           onSaved={() => {
             setShowAddModal(false);
@@ -315,6 +354,7 @@ export function AddOneOffModal({
   snackShackId,
   teams,
   fixedDate,
+  peoplePerShift = 1,
   onClose,
   onSaved,
 }: {
@@ -322,6 +362,8 @@ export function AddOneOffModal({
   teams: TeamOption[];
   /** Per-day control: the date is fixed and not editable. */
   fixedDate?: string;
+  /** 0119: the season's people per shift. */
+  peoplePerShift?: number;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -329,6 +371,7 @@ export function AddOneOffModal({
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("12:00");
   const [teamId, setTeamId] = useState("");
+  const [people, setPeople] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -345,6 +388,7 @@ export function AddOneOffModal({
       end_time: endTime,
       assigned_team_id: teamId || null,
       is_recurring: false,
+      people_needed: overrideFromInput(people),
     } as never);
     setSaving(false);
     if (dbErr) {
@@ -435,6 +479,7 @@ export function AddOneOffModal({
               ))}
             </select>
           </div>
+          <PeopleField value={people} onChange={setPeople} peoplePerShift={peoplePerShift} />
           {error && (
             <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
               {error}
@@ -470,6 +515,27 @@ export function AddOneOffModal({
   );
 }
 
+// ── People this shift needs (0119) ───────────────────────────────────────────
+// "" = the season's number; otherwise this shift's own count.
+
+function PeopleField({ value, onChange, peoplePerShift }: { value: string; onChange: (v: string) => void; peoplePerShift: number }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-sm font-medium text-gray-700">People this shift needs</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-11 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
+      >
+        <option value="">{overrideOptionLabel(null, peoplePerShift)}</option>
+        {PEOPLE_OPTIONS.map((n) => (
+          <option key={n} value={n}>{overrideOptionLabel(n, peoplePerShift)}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 // ── Edit assignment modal ────────────────────────────────────────────────────
 // Mirrors the inline edit in the table row (team select + save) for callers
 // that don't have an inline row to edit (e.g. the calendar view). Same field,
@@ -479,18 +545,21 @@ export function BlockEditModal({
   block,
   teams,
   cashPeople = [],
+  peoplePerShift = 1,
   onClose,
   onSaved,
 }: {
   block: BlockRow;
   teams: TeamOption[];
   cashPeople?: CashPerson[];
+  peoplePerShift?: number;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const router = useRouter();
   const [teamId, setTeamId] = useState(block.assigned_team_id ?? "");
   const [cashId, setCashId] = useState(block.cash_person_id ?? "");
+  const [people, setPeople] = useState(block.people_needed == null ? "" : String(block.people_needed));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -498,13 +567,14 @@ export function BlockEditModal({
     setSaving(true);
     setError(null);
     const supabase = createClient();
-    const { error: dbErr } = await supabase
+    const { data: saved, error: dbErr } = await supabase
       .from("snack_shack_blocks")
-      .update({ assigned_team_id: teamId || null, cash_person_id: cashId || null } as never)
-      .eq("id", block.id);
+      .update({ assigned_team_id: teamId || null, cash_person_id: cashId || null, people_needed: overrideFromInput(people) } as never)
+      .eq("id", block.id)
+      .select("id");
     setSaving(false);
-    if (dbErr) {
-      setError(dbErr.message);
+    if (dbErr || (saved ?? []).length === 0) {
+      setError(dbErr?.message ?? "Nothing was saved — refresh and try again.");
       return;
     }
     onSaved();
@@ -561,6 +631,8 @@ export function BlockEditModal({
               ))}
             </select>
           </div>
+
+          <PeopleField value={people} onChange={setPeople} peoplePerShift={peoplePerShift} />
 
           {cashPeople.length > 0 && (
             <div className="flex flex-col gap-1.5">
@@ -623,9 +695,11 @@ export function BlockEditModal({
 export function AddOneOffButton({
   snackShackId,
   teams,
+  peoplePerShift = 1,
 }: {
   snackShackId: string;
   teams: TeamOption[];
+  peoplePerShift?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -642,6 +716,7 @@ export function AddOneOffButton({
         <AddOneOffModal
           snackShackId={snackShackId}
           teams={teams}
+          peoplePerShift={peoplePerShift}
           onClose={() => setOpen(false)}
           onSaved={() => {
             setOpen(false);

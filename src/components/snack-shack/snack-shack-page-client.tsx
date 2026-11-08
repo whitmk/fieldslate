@@ -32,6 +32,7 @@ import type { ShiftNoteFields, CashPerson } from "@/lib/snack-shack/shift-notes"
 import { blockFlagView, type BlockFlagView } from "@/lib/snack-shack/shift-flags";
 import { teamSchedulesDocument } from "@/lib/snack-shack/print";
 import { SnackShackPrintRegion } from "./snack-shack-print-region";
+import { peopleLabel, seasonPeople } from "@/lib/snack-shack/headcount";
 
 type ViewMode = "list" | "calendar";
 
@@ -50,6 +51,7 @@ type Settings = {
   open_before_min: number;
   close_after_min: number;
   max_shift_min: number;
+  people_per_shift: number;
   shifts_generated_at: string | null;
 };
 
@@ -61,6 +63,7 @@ type BlockRaw = ShiftNoteFields & {
   end_time: string;
   assigned_team_id: string | null;
   is_recurring: boolean;
+  people_needed: number | null;
   team: { name: string } | null;
 };
 
@@ -88,6 +91,7 @@ function settingsToWizardData(s: Settings): SnackShackWizardData {
     open_before_min: Number(s.open_before_min),
     close_after_min: Number(s.close_after_min),
     max_shift_min: Number(s.max_shift_min),
+    people_per_shift: seasonPeople(s.people_per_shift),
   };
 }
 
@@ -158,6 +162,7 @@ export function SnackShackPageClient({
       end_time: b.end_time,
       assigned_team_id: b.assigned_team_id,
       is_recurring: b.is_recurring,
+      people_needed: b.people_needed ?? null,
       team_name: b.team?.name ?? null,
       notes: b.notes ?? null,
       notes_updated_at: b.notes_updated_at ?? null,
@@ -172,6 +177,8 @@ export function SnackShackPageClient({
   const noteEditor = useShiftNoteEditor({ leagueId: selectedSeasonId });
 
   const seasonLabel = season ? `${season.name} · ${season.season}` : "";
+  // 0119: the season's people per shift (1 when unset); a shift may override it.
+  const peoplePerShift = seasonPeople(settings?.people_per_shift);
 
   // The derivation + plan. Fails loud into `planState.error`.
   const planState = useShiftPlan(settings, currentOrgId);
@@ -380,6 +387,10 @@ export function SnackShackPageClient({
                   <p className="mt-0.5 text-gray-900">{fmtDuration(Number(settings.max_shift_min))}</p>
                 </div>
                 <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">People per shift</p>
+                  <p className="mt-0.5 text-gray-900">{peopleLabel(seasonPeople(settings.people_per_shift))}</p>
+                </div>
+                <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Days</p>
                   <p className="mt-0.5 text-gray-900">
                     {((settings.days_of_week as string[]) ?? []).join(", ") || "—"}
@@ -540,7 +551,7 @@ export function SnackShackPageClient({
                       )}
                     </>
                   )}
-                  <AddOneOffButton snackShackId={settings.id} teams={teams} />
+                  <AddOneOffButton snackShackId={settings.id} teams={teams} peoplePerShift={peoplePerShift} />
                 </div>
               </div>
             </CardHeader>
@@ -554,12 +565,14 @@ export function SnackShackPageClient({
                   cashPeople={cashPeople}
                   onEditNote={noteEditor.open}
                   flags={flags}
+                  peoplePerShift={peoplePerShift}
                 />
               ) : (
                 <SnackShackCalendar
                   blocks={blocks}
                   teams={teams}
                   cashPeople={cashPeople}
+                  peoplePerShift={peoplePerShift}
                   startDate={settings.start_date}
                   endDate={settings.end_date}
                 />
@@ -610,6 +623,7 @@ export function SnackShackPageClient({
           snackShackId={settings.id}
           teams={teams}
           fixedDate={addOnDate}
+          peoplePerShift={peoplePerShift}
           onClose={() => setAddOnDate(null)}
           onSaved={() => {
             setAddOnDate(null);
@@ -641,7 +655,7 @@ export function SnackShackPageClient({
       {/* ── Hidden print regions ───────────────────────────────────────────── */}
 
       {/* Full season schedule print region (snack-shack-print-region.tsx) */}
-      <SnackShackPrintRegion ref={fullPrintRef} seasonLabel={seasonLabel} blocks={blocks} />
+      <SnackShackPrintRegion ref={fullPrintRef} seasonLabel={seasonLabel} blocks={blocks} peoplePerShift={peoplePerShift} />
 
     </>
   );
