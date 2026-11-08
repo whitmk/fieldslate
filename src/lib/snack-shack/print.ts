@@ -30,6 +30,19 @@ export function fmtPrintTime(t: string): string {
   return `${h12}:${String(m).padStart(2, "0")}${ampm}`;
 }
 
+/** The column header the full-schedule print gives the cash person. */
+export const CASH_PRINT_HEADER = "Cash / questions";
+
+/** What the cash column reads from a shift. */
+export type CashPrintSource = { cash_person?: { name: string } | null };
+
+/** The full-schedule print's cash cell: the cash person's name, or "" (a blank
+ *  cell) when the shift has none. The ONLY way the cash person reaches a
+ *  print — and only the full-schedule print. */
+export function cashPrintLine(b: CashPrintSource): string {
+  return b.cash_person?.name?.trim() ?? "";
+}
+
 /** One shift on a team's printed page: date and time only. */
 export type TeamPrintBlock = { date: string; start_time: string; end_time: string };
 

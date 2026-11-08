@@ -128,7 +128,7 @@ export function CashPeopleCard({ snackShackId, people }: Props) {
       <CardHeader>
         <CardTitle>In charge of cash</CardTitle>
         <p className="text-sm text-gray-500">
-          Names you can put on a shift as the person handling the cash box. Internal only — never printed, emailed or shown to teams.
+          Names you can put on a shift as the person handling the cash box. Printed on the full schedule as the person to ask about cash; never emailed and never on a team&rsquo;s own schedule.
         </p>
       </CardHeader>
       <CardContent>

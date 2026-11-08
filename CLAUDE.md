@@ -5513,14 +5513,37 @@ Still open:
   season, keyed by the settings row; unique on lower(btrim(name)); ON DELETE
   SET NULL — removing a name nulls its shifts in the same statement; the
   page's confirm shows a pre-flight count that renders "couldn't count" on a
-  failed read, never 0). **Both are INTERNAL: never printed, emailed,
-  exported or shown to teams.** `SHIFT_NOTE_SELECT_FIELDS`
+  failed read, never 0). **A NOTE is internal: never printed, emailed,
+  exported or shown to teams. The CASH PERSON prints on the FULL-SCHEDULE
+  print only (decided 2026-11-07), in a "Cash / questions" column, blank when
+  a shift has none, through `cashPrintLine` (`src/lib/snack-shack/print.ts`)
+  — never emailed, never on a team print (Print all team schedules or the
+  Teams page button), never exported.** `SHIFT_NOTE_SELECT_FIELDS`
   (`src/lib/snack-shack/shift-notes.ts`) is the one string the page select
-  carries, and that is the hazard: the print regions render from the same
-  object. `npm run sim:game-notes` scans the two email routes and the Teams
-  page button as files and the page client's TWO print paths as SLICES, and
-  asserts the page select CARRIES the fields; `sim:game-notes:mutants`
-  (GM8–GM11) plants a leak in each and requires its own line to catch it.
+  carries, and that is the hazard: the prints render from the same object.
+  `npm run sim:game-notes` scans the two email routes and the Teams page
+  button as files (each with its own cash tag, `O1-snack-cash-full/-team/
+  -button`), the full print component (`snack-shack-print-region.tsx`: no
+  note, cash only via `cashPrintLine`), `cashPrintLine`'s body (the name and
+  nothing else), and the print-all document (`teamSchedulesDocument`) plus
+  its call site; and asserts the page select CARRIES the fields.
+  `sim:game-notes:mutants` (GM8–GM11, GM17–GM21) plants a leak in each and
+  requires its own line to catch it.
+- **The two page prints are pinned by goldens (2026-11-07,
+  `npm run sim:snack-print` + `:mutants`).** Both were lifted out of the page
+  client byte-identically (checked against the inline originals) and their
+  output recorded in `scripts/sim/fixtures/snack-print/` from that commit.
+  G1 compares the full print WITH THE CASH COLUMN TAKEN OUT against the
+  pre-change golden (so the column is the only thing that moved); C0–C2 pin
+  the column; G2/G3 (empty print, print-all) are byte-identical. Re-record
+  only on Whit's decision. The page's shift read is `fetchAllRows`
+  (complete-or-throw) and a failed read — shifts or cash people — renders an
+  error card instead of the page, so the print's "N shifts" can't be short
+  (R1–R3, source wiring). **Known, not fixed: the snack print CSS
+  (`.fieldslate-snack-print-ready.print-active` in globals.css) still uses
+  `position: absolute` and `break-after: avoid` — the two clip causes under
+  "Print path". A long season may print one page in Safari; the Safari check
+  is where that shows.**
 - **Regenerate carries a note and its cash person to the same-start
   replacement.** 0104 re-creates `regenerate_snack_shack_shifts` (body
   verbatim from 0103 plus: capture the doomed rows' note, attribution and

@@ -31,8 +31,9 @@ interface Props {
   /** Rendered once above each date's rows (window summary, leftover control,
    *  per-day add). The list stays a flat table of stored rows. */
   dayHeader?: (date: string) => ReactNode;
-  /** 0104: the season's cash people and the note editor. Internal fields —
-   *  never rendered by a print or email path. */
+  /** 0104: the season's cash people and the note editor. Notes are never
+   *  printed or emailed; the cash person prints on the full-schedule print
+   *  only (lib/snack-shack/print.ts), never on a team print or an email. */
   cashPeople?: CashPerson[];
   onEditNote?: (block: BlockRow) => void;
   /** Per-row flag views (shift-flags.ts), keyed by block id. Absent while the

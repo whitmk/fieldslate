@@ -1,7 +1,10 @@
-// Shift notes and the cash person — the INTERNAL fields on a snack shack
-// shift (0104). Decided 2026-10-05, same rules as game notes: never printed,
-// never emailed, never exported, never shown to teams. The game-notes
-// harness scans every outbound snack shack path for these column names.
+// Shift notes and the cash person — the internal fields on a snack shack
+// shift (0104). A NOTE follows the game-note rules (decided 2026-10-05): never
+// printed, never emailed, never exported, never shown to teams. The CASH
+// PERSON prints on the full-schedule print only, through cashPrintLine in
+// lib/snack-shack/print.ts (decided 2026-11-07); it is never emailed and never
+// on a team print (print-all or the Teams page button). The game-notes harness
+// scans every outbound snack shack path for both.
 //
 // The pure note helpers (hasNote, noteDraft, noteLineText, noteAttribution)
 // are the game-notes ones — the fields have the same shape on purpose, so one

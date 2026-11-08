@@ -4,13 +4,14 @@
 // snack-shack-page-client.tsx so `npm run sim:snack-print` can render it and
 // compare it with goldens. Hidden on screen; the page adds `.print-active`
 // just before window.print(). See src/lib/snack-shack/print.ts for what this
-// print may show — never a note.
+// print may show: the cash person in its own column, through cashPrintLine
+// only — never a note.
 
 import { forwardRef } from "react";
-import { fmtPrintDate, fmtPrintTime } from "@/lib/snack-shack/print";
+import { CASH_PRINT_HEADER, cashPrintLine, fmtPrintDate, fmtPrintTime, type CashPrintSource } from "@/lib/snack-shack/print";
 
 /** What the full print needs from a shift. */
-export type FullPrintBlock = {
+export type FullPrintBlock = CashPrintSource & {
   id: string;
   date: string;
   start_time: string;
@@ -42,6 +43,7 @@ export const SnackShackPrintRegion = forwardRef<HTMLDivElement, { seasonLabel: s
                 <th>Date</th>
                 <th>Time</th>
                 <th>Assigned Team</th>
+                <th>{CASH_PRINT_HEADER}</th>
               </tr>
             </thead>
             <tbody>
@@ -52,6 +54,7 @@ export const SnackShackPrintRegion = forwardRef<HTMLDivElement, { seasonLabel: s
                     {fmtPrintTime(b.start_time)} – {fmtPrintTime(b.end_time)}
                   </td>
                   <td>{b.team_name ?? "—"}</td>
+                  <td>{cashPrintLine(b)}</td>
                 </tr>
               ))}
             </tbody>

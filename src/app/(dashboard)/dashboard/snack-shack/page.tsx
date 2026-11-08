@@ -112,8 +112,9 @@ export default async function SnackShackPage() {
   // Load blocks for all settings IDs
   const settingIds = allSettings.map((s) => s.id);
   // The blocks select CARRIES the internal note + cash fields (0104) so the
-  // row can render them. That is exactly why the print regions and the
-  // email routes must never read them — the game-notes harness pins it.
+  // row can render them. The note is never printed or emailed; the cash
+  // person prints on the full-schedule print only (via cashPrintLine) and
+  // never on a team print or in an email — the game-notes harness pins it.
   let allBlocks: (ShiftNoteFields & {
     id: string;
     snack_shack_id: string;

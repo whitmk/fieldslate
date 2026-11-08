@@ -13,6 +13,12 @@
 // golden fails later, the print changed — fix the print, do not re-record
 // without Whit's decision.
 //
+// CASH COLUMN (2026-11-07): the full-schedule print gains a "Cash / questions"
+// column (blank when a shift has none). G1 compares the print with that
+// column taken out against the PRE-CHANGE golden, so it proves the column is
+// the only thing that moved; C0–C2 pin the column itself. The print-all
+// document (G3) and the empty print (G2) stay byte-identical.
+//
 // FIXTURES: a long team name, an 80-character cash name (the limit), a day with
 // four shifts, an unassigned shift, a manual shift, a shift carrying a NOTE
 // (which must never print), HTML-special characters, and an empty season.
@@ -94,7 +100,22 @@ async function main() {
   // ── G: goldens ──────────────────────────────────────────────────────────
   const full = renderToStaticMarkup(<SnackShackPrintRegion seasonLabel={SEASON} blocks={FIXTURE_BLOCKS} />);
   const empty = renderToStaticMarkup(<SnackShackPrintRegion seasonLabel={SEASON} blocks={[]} />);
-  golden("full-schedule.html", full, "G1");
+  // ── C: the cash column (2026-11-07) — header "Cash / questions", the cash
+  // person's name, a BLANK cell when there is none. Checked first so a wrong
+  // cell dies here, before the golden comparison.
+  const rows = [...full.matchAll(/<tr><td>[^]*?<\/tr>/g)].map((m) => m[0]);
+  const lastCell = (r: string) => (r.match(/<td>([^<]*)<\/td><\/tr>$/) ?? [])[1];
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  ok(full.includes("<th>Assigned Team</th><th>Cash / questions</th></tr>"), "C0", "the full print has a \"Cash / questions\" column after Assigned Team");
+  ok(rows.length === FIXTURE_BLOCKS.length, "C0", "one row per shift", String(rows.length));
+  ok(FIXTURE_BLOCKS.every((b, i) => !b.cash_person || lastCell(rows[i] ?? "") === esc(b.cash_person.name)), "C1", "a shift with a cash person prints that name, whole, in the cash column",
+    rows.map(lastCell).join(" | "));
+  ok(FIXTURE_BLOCKS.every((b, i) => b.cash_person || lastCell(rows[i] ?? "") === ""), "C2", "a shift with no cash person prints a blank cell", rows.map(lastCell).join(" | "));
+
+  // G1 — ONLY the intended column changed: take the cash header and each row's
+  // last cell out, and what remains is the golden recorded before the change.
+  const withoutCash = full.replace("<th>Cash / questions</th>", "").replace(/<td>[^<]*<\/td><\/tr>/g, "</tr>");
+  golden("full-schedule.html", withoutCash, "G1");
   golden("full-schedule-empty.html", empty, "G2");
 
   const teams = ["t-expos", "t-royals", "t-mets"].map((id) => {

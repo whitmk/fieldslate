@@ -4,6 +4,8 @@
 import { runMutants, type Mutant } from "./mutant-runner";
 
 const SERVER_PAGE = "src/app/(dashboard)/dashboard/snack-shack/page.tsx";
+const PRINT_LIB = "src/lib/snack-shack/print.ts";
+const REGION = "src/components/snack-shack/snack-shack-print-region.tsx";
 
 const MUTANTS: Mutant[] = [
   {
@@ -23,6 +25,30 @@ const MUTANTS: Mutant[] = [
     find: "  if (readError) {\n    return (",
     replace: "  if (readError) {\n    void (",
     expect: "R3",
+  },
+  {
+    id: "SP4", what: "a shift with no cash person prints a dash, not a blank cell", file: PRINT_LIB,
+    find: "  return b.cash_person?.name?.trim() ?? \"\";\n",
+    replace: "  return b.cash_person?.name?.trim() ?? \"—\";\n",
+    expect: "C2",
+  },
+  {
+    id: "SP5", what: "a long cash name is cut to 40 characters", file: PRINT_LIB,
+    find: "  return b.cash_person?.name?.trim() ?? \"\";\n",
+    replace: "  return b.cash_person?.name?.trim().slice(0, 40) ?? \"\";\n",
+    expect: "C1",
+  },
+  {
+    id: "SP6", what: "the cash column change also rewords an unassigned shift", file: REGION,
+    find: "                  <td>{b.team_name ?? \"—\"}</td>\n",
+    replace: "                  <td>{b.team_name ?? \"Unassigned\"}</td>\n",
+    expect: "G1",
+  },
+  {
+    id: "SP7", what: "the print-all team document gains a cash column", file: PRINT_LIB,
+    find: "  <table><thead><tr><th>Date</th><th>Time</th></tr></thead><tbody>${rows}</tbody></table>",
+    replace: "  <table><thead><tr><th>Date</th><th>Time</th><th>Cash / questions</th></tr></thead><tbody>${rows}</tbody></table>",
+    expect: "G3",
   },
 ];
 

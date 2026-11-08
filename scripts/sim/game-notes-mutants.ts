@@ -5,6 +5,7 @@ import { runMutants, type Mutant } from "./mutant-runner";
 
 const TEAM_ROUTE = "src/app/api/snack-shack/team/[teamId]/email/route.ts";
 const SERVER_PAGE = "src/app/(dashboard)/dashboard/snack-shack/page.tsx";
+const FULL_ROUTE = "src/app/api/snack-shack/[id]/email/route.ts";
 const REGION = "src/components/snack-shack/snack-shack-print-region.tsx";
 const PRINT_LIB = "src/lib/snack-shack/print.ts";
 
@@ -70,6 +71,36 @@ const MUTANTS: Mutant[] = [
     find: "           'show_scores',   po.public_scores,",
     replace: "           'show_scores',   po.public_scores,\n           'seeding',       po.seeding,",
     expect: "O1-bracket-reader",
+  },
+  {
+    id: "GM17", what: "(2026-11-07) the full-schedule email selects the cash person", file: FULL_ROUTE,
+    find: "    .select(\"date, start_time, end_time, team:teams(name)\")",
+    replace: "    .select(\"date, start_time, end_time, team:teams(name), cash_person:snack_shack_cash_people(name)\")",
+    expect: "O1-snack-cash-full",
+  },
+  {
+    id: "GM18", what: "(2026-11-07) the team email selects the cash person", file: TEAM_ROUTE,
+    find: "      \"date, start_time, end_time, snack_shack_settings(leagues(name, season))\",",
+    replace: "      \"date, start_time, end_time, cash_person_id, snack_shack_settings(leagues(name, season))\",",
+    expect: "O1-snack-cash-team",
+  },
+  {
+    id: "GM19", what: "(2026-11-07) the full print renders the cash name directly, not through cashPrintLine", file: REGION,
+    find: "                  <td>{cashPrintLine(b)}</td>",
+    replace: "                  <td>{b.cash_person?.name ?? \"\"}</td>",
+    expect: "O1-snack-print",
+  },
+  {
+    id: "GM20", what: "(2026-11-07) cashPrintLine also returns the shift's note", file: PRINT_LIB,
+    find: "  return b.cash_person?.name?.trim() ?? \"\";",
+    replace: "  return `${b.cash_person?.name?.trim() ?? \"\"} ${(b as { notes?: string }).notes ?? \"\"}`.trim();",
+    expect: "O1-snack-print-cash-helper",
+  },
+  {
+    id: "GM21", what: "(2026-11-07) the full print drops the cash column's value", file: REGION,
+    find: "                  <td>{cashPrintLine(b)}</td>",
+    replace: "                  <td></td>",
+    expect: "O1-snack-print-cash",
   },
 ];
 

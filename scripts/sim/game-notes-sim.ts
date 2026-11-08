@@ -243,28 +243,37 @@ function partO() {
     "[O1-bracket-reader] get_league_bracket_by_token never selects notes, contacts, seeding, Stage 1 changes, lights, an address or a whole row");
 
   // 0104 — the snack shack's outbound paths: two email routes, the Teams page
-  // button (its own select + print region), and the page client's TWO print
-  // paths as SLICES (the file as a whole legitimately mentions notes for the
-  // row). The page select must CARRY the fields while the slices never do —
-  // the same shape that caught the game-notes print leak.
-  const snackOutbound: [string, string[]][] = [
-    ["snack shack full-schedule email route", ["app", "api", "snack-shack", "[id]", "email", "route.ts"]],
-    ["snack shack team email route", ["app", "api", "snack-shack", "team", "[teamId]", "email", "route.ts"]],
-    ["teams page snack shack button", ["components", "teams", "team-snack-shack-button.tsx"]],
+  // button (its own select + print region), and the page's TWO prints. The
+  // page select must CARRY the fields while the outbound paths never render
+  // a note — the same shape that caught the game-notes print leak.
+  // THE RULE SINCE 2026-11-07 (decided by Whit): the cash person PRINTS on the
+  // full-schedule print, through cashPrintLine only. It is never emailed,
+  // never on a team print (print-all or the Teams page button), and a note is
+  // never printed anywhere. Each surface has its own cash tag.
+  const snackOutbound: [string, string, string[]][] = [
+    ["snack shack full-schedule email route", "full", ["app", "api", "snack-shack", "[id]", "email", "route.ts"]],
+    ["snack shack team email route", "team", ["app", "api", "snack-shack", "team", "[teamId]", "email", "route.ts"]],
+    ["teams page snack shack button", "button", ["components", "teams", "team-snack-shack-button.tsx"]],
   ];
-  for (const [name, p] of snackOutbound) {
+  for (const [name, key, p] of snackOutbound) {
     counters.omissionFilesChecked++;
     const src = read(...p);
     ok(!mentionsNotes(src), `[O1-snack] ${name} never references notes`);
-    ok(!mentionsCash(src), `[O1-snack-cash] ${name} never references a cash person`);
+    ok(!mentionsCash(src) && !src.includes("cashPrintLine"), `[O1-snack-cash-${key}] ${name} never references a cash person`);
   }
   // The two page prints were lifted out of the page client (2026-11-07):
   // the full-schedule region is its own component file, the print-all
   // document is teamSchedulesDocument in lib/snack-shack/print.ts, and the
   // page's printAllTeamSchedules only hands it date + time per team.
   const snackRegion = read("components", "snack-shack", "snack-shack-print-region.tsx");
-  ok(!mentionsNotes(snackRegion) && !mentionsCash(snackRegion), "[O1-snack-print] the snack shack full-schedule print region never references notes or a cash person");
+  ok(!mentionsNotes(snackRegion) && !mentionsCash(snackRegion), "[O1-snack-print] the snack shack full-schedule print region never references notes, and names the cash person only through cashPrintLine");
+  ok(snackRegion.includes("<td>{cashPrintLine(b)}</td>"), "[O1-snack-print-cash] the full-schedule print renders the cash column through cashPrintLine");
   const snackPrintLib = read("lib", "snack-shack", "print.ts");
+  const helperStart = snackPrintLib.indexOf("export function cashPrintLine(");
+  const helperEnd = snackPrintLib.indexOf("\n}\n", helperStart);
+  ok(helperStart > 0 && helperEnd > helperStart, "[O1-snack-print-cash-helper] the cashPrintLine body was found");
+  const helperBody = snackPrintLib.slice(helperStart, helperEnd);
+  ok(!mentionsNotes(helperBody) && !/team_name|assigned_team/.test(helperBody) && /cash_person\?\.name/.test(helperBody), "[O1-snack-print-cash-helper] cashPrintLine reads the cash person's name and nothing else (never a note)");
   const docStart = snackPrintLib.indexOf("export function teamSchedulesDocument(");
   const docEnd = snackPrintLib.indexOf("\n}\n", docStart);
   ok(docStart > 0 && docEnd > docStart, "[O1-snack-print-all] the teamSchedulesDocument slice was found");
@@ -274,7 +283,7 @@ function partO() {
   const callEnd = snackPage.indexOf("w.document.close();", callStart);
   ok(callStart > 0 && callEnd > callStart && snackPage.slice(callStart, callEnd).includes("teamSchedulesDocument("), "[O1-snack-print-all] the page's print-all call site was found and uses teamSchedulesDocument");
   const callSlice = snackPage.slice(callStart, callEnd);
-  ok(!mentionsNotes(docSlice) && !mentionsCash(docSlice) && !mentionsNotes(callSlice) && !mentionsCash(callSlice), "[O1-snack-print-all] the print-all-team-schedules document and its call site never reference notes or a cash person");
+  ok(!mentionsNotes(docSlice) && !mentionsCash(docSlice) && !docSlice.includes("cashPrintLine") && !mentionsNotes(callSlice) && !mentionsCash(callSlice) && !callSlice.includes("cashPrintLine"), "[O1-snack-print-all] the print-all-team-schedules document and its call site never reference notes or a cash person");
   counters.omissionFilesChecked += 2;
   const snackPageServer = read("app", "(dashboard)", "dashboard", "snack-shack", "page.tsx");
   // The SELECT STRING must interpolate the constant — the import line alone
