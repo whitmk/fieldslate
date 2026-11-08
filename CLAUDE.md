@@ -52,6 +52,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   sitting on local `main` and would ride along silently (this happened
   2026-07-14: a held docs commit shipped uninspected alongside an approved
   one).
+- **EVERY BACKUP COPY IS OVERWRITTEN WITHIN 30 DAYS (2026-11-08).** The
+  privacy policy promises it ("Copies may remain in our backups for up to 30
+  days before they are overwritten", section 8). That covers Supabase's daily
+  backups AND the planned off-site pg_dump: any backup, export or snapshot
+  kept anywhere must age out within 30 days, or the policy changes first.
 - **Stripe is LIVE.** The keys in Vercel are live-mode keys; real cards get
   charged. There is no test-mode deployment. Any change to checkout, webhook,
   or pricing code ships straight to paying customers on the next push.
@@ -5620,6 +5625,37 @@ Still open:
   each killed FIRST at its own assertion). Read the MUTATION LOG in the sim
   header: the first run had five killed at the wrong line, all harness
   ordering faults, and the section order now exists because of them.
+
+## Volunteer sign-ups (planned, not built — 2026-11-08)
+
+- **Plan approved 2026-11-08; Phase 0 (privacy policy + help page) is the
+  only part built.** The build is four migrations on four branches (0120
+  foundation, 0121 game roles + claims, 0122 snack shack sign-ups, 0123
+  tracker), behind a per-org switch that is ON only for the two test orgs —
+  "SRALL" (owner `aa21d01c…`) and "test" — and NEVER the real league.
+- **The privacy policy now describes the feature** (`/privacy`, section 8
+  "Volunteer sign-ups", added 2026-11-08; sections after it renumbered 9–14).
+  It states: first initial, last name, email, division/team, spots, 18+
+  confirmation; admins see everything, the public page shows "Taken" only;
+  emails from FieldSlate's address with the league's name, replies to the
+  league; Cloudflare Turnstile; hashed IP + email kept up to 24 hours; deleted
+  when the season is archived, not restored with it; backups up to 30 days;
+  change or cancel until 24 hours before. **The build must match every one of
+  those sentences — change the policy first if a decision changes.** Section 7
+  now says leagues may list youth umpires (parent's/guardian's contact asked
+  for under 18, REQUIRED with permission under 13) and section 1 says leagues
+  enter information about other people and FieldSlate processes it on the
+  league's behalf.
+- **`/help/volunteers` is `noindex` and NOT in the sitemap until launch.** At
+  launch: drop `robots` from its metadata and add it to `src/app/sitemap.ts`.
+  Its FAQ renders from `src/lib/volunteers/help-faq.ts` (visible list + JSON-LD
+  from one array, the calendar help page's rule).
+- **LAUNCH BLOCKERS before any real league gets the switch:**
+  1. Reply-to verification: the league contact email the volunteer emails
+     reply to is unverified (fine behind the switch, not for real leagues).
+  2. Legal review of the privacy policy's league-on-behalf framing (section 1,
+     "Information leagues provide about other people") and section 7 (minors,
+     youth umpires).
 
 ## Open items
 

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   alternates: { canonical: `${SITE_URL}/privacy` },
 };
 
-const LAST_UPDATED = "May 26, 2026";
+const LAST_UPDATED = "November 8, 2026";
 
 // Anchor-link helper so every section heading also serves as a `#hash` target
 // for the table of contents.
@@ -48,12 +48,13 @@ const tocItems: { id: string; label: string }[] = [
   { id: "inforetain", label: "5. How long do we keep your information?" },
   { id: "infosafe", label: "6. How do we keep your information safe?" },
   { id: "infominors", label: "7. Do we collect information from minors?" },
-  { id: "privacyrights", label: "8. What are your privacy rights?" },
-  { id: "dnt", label: "9. Controls for Do-Not-Track features" },
-  { id: "uslaws", label: "10. Do United States residents have specific privacy rights?" },
-  { id: "policyupdates", label: "11. Do we make updates to this notice?" },
-  { id: "contact", label: "12. How can you contact us about this notice?" },
-  { id: "request", label: "13. How can you review, update, or delete the data we collect from you?" },
+  { id: "volunteers", label: "8. Volunteer sign-ups" },
+  { id: "privacyrights", label: "9. What are your privacy rights?" },
+  { id: "dnt", label: "10. Controls for Do-Not-Track features" },
+  { id: "uslaws", label: "11. Do United States residents have specific privacy rights?" },
+  { id: "policyupdates", label: "12. Do we make updates to this notice?" },
+  { id: "contact", label: "13. How can you contact us about this notice?" },
+  { id: "request", label: "14. How can you review, update, or delete the data we collect from you?" },
 ];
 
 export default function PrivacyPolicyPage() {
@@ -92,11 +93,11 @@ export default function PrivacyPolicyPage() {
             </li>
             <li>
               Use FieldSlate. FieldSlate is a web-based scheduling and league
-              management platform for youth sports organizations. It allows
-              league administrators to create and manage divisions, teams, game
-              schedules, and practice assignments. FieldSlate is a
-              subscription-based SaaS product intended for use by league
-              administrators, not by players or parents directly.
+              management platform for youth sports organizations. League
+              administrators use it to create and manage divisions, teams, game
+              schedules, practices, officials and volunteers. Some parts are
+              used by families directly, such as a league&rsquo;s public
+              schedule, team calendar links, and volunteer sign-up pages.
             </li>
             <li>
               Engage with us in other related ways, including any marketing or
@@ -156,7 +157,14 @@ export default function PrivacyPolicyPage() {
           </p>
           <p>
             <strong>Do we collect any information from third parties?</strong>{" "}
-            We do not collect any information from third parties.
+            Yes, in one way. League administrators enter information about
+            other people so they can run their league: for example,
+            coaches&rsquo; and officials&rsquo; names and contact details, and
+            volunteers they sign up by hand. Learn more about{" "}
+            <a href="#leagueinfo" className="text-[#22C55E] hover:underline">
+              information leagues provide
+            </a>
+            .
           </p>
           <p>
             <strong>How do we process your information?</strong> We process your
@@ -276,6 +284,23 @@ export default function PrivacyPolicyPage() {
             <li>passwords</li>
             <li>usernames</li>
           </ul>
+          <p id="leagueinfo" className="scroll-mt-24">
+            <strong>Information leagues provide about other people.</strong>{" "}
+            When a league uses FieldSlate, its administrators may enter
+            information about people involved in the league, such as team
+            contacts, coaches, officials (including youth umpires), and
+            volunteers. The league decides what to enter and why. We process
+            it on the league&rsquo;s behalf to provide the Services to that
+            league. If you have questions about information a league entered
+            about you, contact the league, or contact us at{" "}
+            <a
+              href="mailto:hello@thefieldslate.com"
+              className="font-medium text-[#22C55E] hover:underline"
+            >
+              hello@thefieldslate.com
+            </a>
+            .
+          </p>
           <p>
             <strong>Sensitive information.</strong> We do not process sensitive
             information.
@@ -487,6 +512,9 @@ export default function PrivacyPolicyPage() {
               <strong>Web hosting:</strong> Vercel
             </li>
             <li>
+              <strong>Bot protection:</strong> Cloudflare (Turnstile)
+            </li>
+            <li>
               <strong>User account registration &amp; authentication:</strong>{" "}
               Supabase
             </li>
@@ -566,6 +594,14 @@ export default function PrivacyPolicyPage() {
             than the period of time in which users have an account with us.
           </p>
           <p>
+            League information that identifies volunteers is deleted when the
+            league archives the season (see{" "}
+            <a href="#volunteers" className="text-[#22C55E] hover:underline">
+              &ldquo;Volunteer sign-ups&rdquo;
+            </a>
+            ).
+          </p>
+          <p>
             When we have no ongoing legitimate business need to process your
             personal information, we will either delete or anonymize such
             information, or, if this is not possible (for example, because your
@@ -607,20 +643,87 @@ export default function PrivacyPolicyPage() {
             Do we collect information from minors?
           </SectionHeading>
           <InShort>
-            We do not knowingly collect data from or market to children under
-            18 years of age.
+            FieldSlate is for adults. Leagues may list officials who are under
+            18, such as youth umpires.
           </InShort>
           <p>
-            We do not knowingly collect, solicit data from, or market to
-            children under 18 years of age, nor do we knowingly sell such
-            personal information. By using the Services, you represent that you
-            are at least 18 or that you are the parent or guardian of such a
-            minor and consent to such minor dependent&rsquo;s use of the
-            Services. If we learn that personal information from users less
-            than 18 years of age has been collected, we will deactivate the
-            account and take reasonable measures to promptly delete such data
-            from our records. If you become aware of any data we may have
-            collected from children under age 18, please contact us at{" "}
+            FieldSlate is not directed at children, and we do not knowingly
+            collect information directly from anyone under 18. Volunteer
+            sign-ups require you to confirm you are 18 or older.
+          </p>
+          <p>
+            A league may list officials who are under 18, such as youth
+            umpires, so it can assign them to games. The league enters that
+            information and is responsible for having a parent&rsquo;s or
+            guardian&rsquo;s permission. We ask leagues to use a parent&rsquo;s
+            or guardian&rsquo;s email and phone number for any official under
+            18. Leagues may enter an official under 13 only with a
+            parent&rsquo;s or guardian&rsquo;s permission, and must use that
+            parent&rsquo;s or guardian&rsquo;s email and phone number. We use
+            this information only to provide the Services to that league. If
+            you believe we hold information about a child that shouldn&rsquo;t
+            be here, contact us at{" "}
+            <a
+              href="mailto:hello@thefieldslate.com"
+              className="font-medium text-[#22C55E] hover:underline"
+            >
+              hello@thefieldslate.com
+            </a>{" "}
+            and we will delete it.
+          </p>
+        </section>
+
+        {/* 8. VOLUNTEERS */}
+        <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
+          <SectionHeading id="volunteers" number={8}>
+            Volunteer sign-ups
+          </SectionHeading>
+          <InShort>
+            If your league uses FieldSlate for volunteer sign-ups, we collect a
+            few details so the league can see who is covering each spot.
+          </InShort>
+          <p>
+            <strong>What we collect.</strong> When you sign up for a volunteer
+            spot, we collect your first initial, last name, email address, the
+            division and team you&rsquo;re signing up for, the spots you
+            choose, and your confirmation that you are 18 or older. If a league
+            administrator signs you up, they enter the same details.
+          </p>
+          <p>
+            <strong>Who can see it.</strong> Your league&rsquo;s administrators
+            can see your name, email, team and spots, and whether you worked a
+            spot. On the public sign-up page, a filled spot shows only as
+            &ldquo;Taken&rdquo;. Your name is never shown there. We don&rsquo;t
+            show your information to other leagues. It doesn&rsquo;t appear on
+            public schedules, printed schedules or calendar feeds.
+          </p>
+          <p>
+            <strong>Emails.</strong> We email you a confirmation with a private
+            link to change or cancel your spots, plus reminders and updates
+            when your spot changes (for example, if a game moves or is rained
+            out). These emails come from FieldSlate&rsquo;s address with your
+            league&rsquo;s name. Replies go to your league. We don&rsquo;t use
+            your email for marketing, and we don&rsquo;t sell it.
+          </p>
+          <p>
+            <strong>Spam protection.</strong> To stop automated sign-ups, the
+            sign-up form uses Cloudflare Turnstile, which checks your browser
+            and device. We also keep a scrambled (hashed) form of your IP
+            address and email address for up to 24 hours to limit how many
+            sign-ups can come from one place.
+          </p>
+          <p>
+            <strong>How long we keep it.</strong> Your volunteer information is
+            deleted when your league archives the season. It isn&rsquo;t
+            brought back if the season is restored. Copies may remain in our
+            backups for up to 30 days before they are overwritten.
+          </p>
+          <p>
+            <strong>Changing or deleting it.</strong> You can change or cancel
+            your spots with the private link in your confirmation email, up to
+            24 hours before a spot. After that, contact your league. To have
+            your volunteer information deleted sooner, contact your league or
+            email{" "}
             <a
               href="mailto:hello@thefieldslate.com"
               className="font-medium text-[#22C55E] hover:underline"
@@ -631,9 +734,9 @@ export default function PrivacyPolicyPage() {
           </p>
         </section>
 
-        {/* 8. RIGHTS */}
+        {/* 9. RIGHTS */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
-          <SectionHeading id="privacyrights" number={8}>
+          <SectionHeading id="privacyrights" number={9}>
             What are your privacy rights?
           </SectionHeading>
           <InShort>
@@ -721,9 +824,9 @@ export default function PrivacyPolicyPage() {
           </p>
         </section>
 
-        {/* 9. DNT */}
+        {/* 10. DNT */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
-          <SectionHeading id="dnt" number={9}>
+          <SectionHeading id="dnt" number={10}>
             Controls for Do-Not-Track features
           </SectionHeading>
           <p>
@@ -747,9 +850,9 @@ export default function PrivacyPolicyPage() {
           </p>
         </section>
 
-        {/* 10. US RIGHTS */}
+        {/* 11. US RIGHTS */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
-          <SectionHeading id="uslaws" number={10}>
+          <SectionHeading id="uslaws" number={11}>
             Do United States residents have specific privacy rights?
           </SectionHeading>
           <InShort>
@@ -1105,9 +1208,9 @@ export default function PrivacyPolicyPage() {
           </p>
         </section>
 
-        {/* 11. UPDATES */}
+        {/* 12. UPDATES */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
-          <SectionHeading id="policyupdates" number={11}>
+          <SectionHeading id="policyupdates" number={12}>
             Do we make updates to this notice?
           </SectionHeading>
           <InShort>
@@ -1126,9 +1229,9 @@ export default function PrivacyPolicyPage() {
           </p>
         </section>
 
-        {/* 12. CONTACT */}
+        {/* 13. CONTACT */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
-          <SectionHeading id="contact" number={12}>
+          <SectionHeading id="contact" number={13}>
             How can you contact us about this notice?
           </SectionHeading>
           <p>
@@ -1155,9 +1258,9 @@ export default function PrivacyPolicyPage() {
           </address>
         </section>
 
-        {/* 13. REQUEST */}
+        {/* 14. REQUEST */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
-          <SectionHeading id="request" number={13}>
+          <SectionHeading id="request" number={14}>
             How can you review, update, or delete the data we collect from you?
           </SectionHeading>
           <p>
