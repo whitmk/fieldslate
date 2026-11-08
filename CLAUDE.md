@@ -5589,9 +5589,15 @@ Still open:
   rules and words: `src/lib/snack-shack/headcount.ts` (`effectivePeople`,
   `headcountPrintLine`, `headcountListLine`; `PEOPLE_MIN`/`PEOPLE_MAX` mirror
   the two CHECKs and `sim:snack-print` H1 reads them out of the migration).
-  **The full-schedule print shows "N people" after the time ONLY when the
-  effective count is above 1** (decided 2026-11-07); team prints and both
-  emails never show a headcount (`sim:snack-print` H4 fences them). The list
+  **The full-schedule print shows the headcount in the Assigned Team cell
+  ONLY when the effective count is above 1** — "Braves · 3 people", or
+  "3 people" in place of the dash when no team is assigned; a count of 1
+  prints exactly as before (decided 2026-11-07, moved out of the Time cell
+  2026-11-08; `teamWithPeople` in the print region, H2/H2b/H3). Team prints
+  and both emails never show a headcount (`sim:snack-print` H4 fences them).
+  G4 (`full-schedule-current.html`, recorded on purpose 2026-11-08) pins the
+  full print as it prints now; G1 still compares against the pre-cash golden
+  with the cash column and headcount taken out. The list
   shows the count when it is above 1 or the shift has its own number.
   **Regenerate carries the override like a note**: 0119 re-creates the RPC
   verbatim from 0104 with `people_needed` in the capture (predicate + jsonb),

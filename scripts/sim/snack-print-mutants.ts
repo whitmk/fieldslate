@@ -41,10 +41,10 @@ const MUTANTS: Mutant[] = [
     expect: "C1",
   },
   {
-    id: "SP6", what: "the cash column change also rewords an unassigned shift", file: REGION,
-    find: "                  <td>{b.team_name ?? \"—\"}</td>\n",
-    replace: "                  <td>{b.team_name ?? \"Unassigned\"}</td>\n",
-    expect: "G1",
+    id: "SP6", what: "an unassigned shift is reworded (\"Unassigned\" for the dash)", file: REGION,
+    find: "  return people || \"—\";\n",
+    replace: "  return people || \"Unassigned\";\n",
+    expect: "H3",
   },
   {
     id: "SP7", what: "the print-all team document gains a cash column", file: PRINT_LIB,
@@ -66,10 +66,16 @@ const MUTANTS: Mutant[] = [
     expect: "H1",
   },
   {
-    id: "SP10", what: "the print region adds the headcount whether or not it is above 1", file: REGION,
-    find: "                      {people ? ` · ${people}` : null}\n",
-    replace: "                      {` · ${people || \"1 person\"}`}\n",
+    id: "SP10", what: "(2026-11-08) the headcount is left out of the team cell", file: REGION,
+    find: "                    <td>{teamWithPeople(b.team_name, people)}</td>\n",
+    replace: "                    <td>{b.team_name ?? \"—\"}</td>\n",
     expect: "H2",
+  },
+  {
+    id: "SP12", what: "(2026-11-08) no team and a count above 1 still prints the dash", file: REGION,
+    find: "  return people || \"—\";\n",
+    replace: "  return \"—\";\n",
+    expect: "H2b",
   },
   {
     id: "SP11", what: "the full-schedule email selects the headcount", file: FULL_ROUTE,

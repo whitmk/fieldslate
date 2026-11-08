@@ -5,12 +5,22 @@
 // compare it with goldens. Hidden on screen; the page adds `.print-active`
 // just before window.print(). See src/lib/snack-shack/print.ts for what this
 // print may show: the cash person in its own column, through cashPrintLine
-// only; the headcount after the time, through headcountPrintLine only, and
-// only when it is above 1 (0119) — never a note.
+// only; the headcount in the Assigned Team cell ("Braves · 3 people", or
+// "3 people" in place of the dash), through headcountPrintLine only, and only
+// when it is above 1 (0119; moved out of the Time cell 2026-11-08) — never a
+// note.
 
 import { forwardRef } from "react";
 import { CASH_PRINT_HEADER, cashPrintLine, fmtPrintDate, fmtPrintTime, type CashPrintSource } from "@/lib/snack-shack/print";
 import { headcountPrintLine, type HeadcountSource } from "@/lib/snack-shack/headcount";
+
+/** The Assigned Team cell: the team, then " · 3 people" when the headcount
+ *  is above 1; with no team, the headcount alone in place of the dash. A count
+ *  of 1 prints exactly as before 0119. */
+export function teamWithPeople(teamName: string | null, people: string): string {
+  if (teamName) return people ? `${teamName} · ${people}` : teamName;
+  return people || "—";
+}
 
 /** What the full print needs from a shift. */
 export type FullPrintBlock = CashPrintSource & HeadcountSource & {
@@ -56,9 +66,8 @@ export const SnackShackPrintRegion = forwardRef<HTMLDivElement, { seasonLabel: s
                     <td>{fmtPrintDate(b.date)}</td>
                     <td>
                       {fmtPrintTime(b.start_time)} – {fmtPrintTime(b.end_time)}
-                      {people ? ` · ${people}` : null}
                     </td>
-                    <td>{b.team_name ?? "—"}</td>
+                    <td>{teamWithPeople(b.team_name, people)}</td>
                     <td>{cashPrintLine(b)}</td>
                   </tr>
                 );

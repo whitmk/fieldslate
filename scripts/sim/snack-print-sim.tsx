@@ -19,11 +19,14 @@
 // the only thing that moved; C0–C2 pin the column itself. The print-all
 // document (G3) and the empty print (G2) stay byte-identical.
 //
-// HEADCOUNT (0119, 2026-11-07): the full-schedule print shows "N people" after
-// the time ONLY when the shift's effective count (its own, else the season's)
-// is above 1. H1 pins the rule in headcount.ts, H2/H3 the print, H4 fences
-// the team prints and both emails. G1 also takes the headcount out before
-// comparing, so the golden still proves nothing else moved.
+// HEADCOUNT (0119, 2026-11-07; moved to the Assigned Team cell 2026-11-08):
+// the full-schedule print shows "Braves · 3 people" — or "3 people" in place
+// of the dash when no team is assigned — ONLY when the shift's effective
+// count (its own, else the season's) is above 1. H1 pins the rule in
+// headcount.ts, H2/H2b/H3 the print, H4 fences the team prints and both
+// emails. G1 takes the cash column and the headcount out and compares with
+// the PRE-CASH golden, so it still proves nothing else moved; G4 pins the
+// full print exactly as it prints now (recorded on purpose 2026-11-08).
 //
 // FIXTURES: a long team name, an 80-character cash name (the limit), a day with
 // four shifts, an unassigned shift, a manual shift, a shift carrying a NOTE
@@ -131,17 +134,26 @@ async function main() {
   ok(hc.PEOPLE_MIN === 1 && hc.PEOPLE_MAX === 20 && (mig.match(/between 1 and 20/g) ?? []).length === 2
      && hc.PEOPLE_OPTIONS.length === 20 && hc.PEOPLE_OPTIONS[0] === 1 && hc.PEOPLE_OPTIONS[19] === 20,
      "H1", "the 1–20 bounds match 0119's two CHECKs");
-  const timeCell = (r: string) => (r.match(/^<tr><td>[^<]*<\/td><td>(.*?)<\/td>/) ?? [])[1] ?? "";
-  ok(timeCell(rows[0] ?? "").endsWith(" · 3 people") && rows.slice(1).every((r) => !/people|person/.test(r)),
-     "H2", "season at 1: only the shift needing 3 shows \"3 people\", after its time", rows.map(timeCell).join(" | "));
+  const cells = (r: string) => [...r.matchAll(/<td>(.*?)<\/td>/g)].map((m) => m[1]);
+  const timeCell = (r: string) => cells(r)[1] ?? "";
+  const teamCell = (r: string) => cells(r)[2] ?? "";
+  ok(teamCell(rows[0] ?? "") === "Expos · 3 people" && !/people|person/.test(timeCell(rows[0] ?? ""))
+     && rows.slice(1).every((r) => !/people|person/.test(r)),
+     "H2", "season at 1: only the shift needing 3 shows it, in the team cell (\"Expos · 3 people\"), never the time cell", rows.map(teamCell).join(" | "));
+  const noTeam = FIXTURE_BLOCKS.map((b) => (b.id === "b3" ? { ...b, people_needed: 4 } : b));
+  const fullNoTeam = renderToStaticMarkup(<SnackShackPrintRegion seasonLabel={SEASON} blocks={noTeam} peoplePerShift={1} />);
+  const rowsNoTeam = [...fullNoTeam.matchAll(/<tr><td>[^]*?<\/tr>/g)].map((m) => m[0]);
+  ok(teamCell(rowsNoTeam[2] ?? "") === "4 people" && !/people|person/.test(timeCell(rowsNoTeam[2] ?? "")),
+     "H2b", "no team assigned and a count above 1: \"4 people\" replaces the dash", teamCell(rowsNoTeam[2] ?? ""));
   const two = FIXTURE_BLOCKS.map((b) => (b.id === "b3" ? { ...b, people_needed: 1 } : b));
   const full2 = renderToStaticMarkup(<SnackShackPrintRegion seasonLabel={SEASON} blocks={two} peoplePerShift={2} />);
   const rows2 = [...full2.matchAll(/<tr><td>[^]*?<\/tr>/g)].map((m) => m[0]);
   ok(two.every((b, i) => {
-       const t = timeCell(rows2[i] ?? "");
-       return b.id === "b1" ? t.endsWith(" · 3 people") : b.id === "b3" ? !/people|person/.test(t) : t.endsWith(" · 2 people");
+       const t = teamCell(rows2[i] ?? "");
+       return !/people|person/.test(timeCell(rows2[i] ?? ""))
+         && (b.id === "b1" ? t === "Expos · 3 people" : b.id === "b3" ? t === "—" : t.endsWith(" · 2 people"));
      }),
-     "H3", "season at 2: every shift shows \"2 people\" except its own 3, and one set to 1 shows nothing", rows2.map(timeCell).join(" | "));
+     "H3", "season at 2: every team cell shows \"· 2 people\" except its own 3, and an unassigned shift set to 1 keeps its dash", rows2.map(teamCell).join(" | "));
   const src = (...p: string[]) => readFileSync(join(__dirname, "..", "..", "src", ...p), "utf8");
   const outbound: [string, string][] = [
     ["full-schedule email route", src("app", "api", "snack-shack", "[id]", "email", "route.ts")],
@@ -154,11 +166,16 @@ async function main() {
   }
 
   // G1 — ONLY the intended changes: take the cash header, each row's last
-  // cell and the headcount out, and what remains is the golden recorded
-  // before the change.
-  const withoutCash = full.replace("<th>Cash / questions</th>", "").replace(/<td>[^<]*<\/td><\/tr>/g, "</tr>").replace(/ · \d+ people/g, "");
+  // cell and the headcount (" · N people" after a team, or "N people" in
+  // place of the dash) out, and what remains is the golden recorded before
+  // the change.
+  const withoutCash = full.replace("<th>Cash / questions</th>", "").replace(/<td>[^<]*<\/td><\/tr>/g, "</tr>")
+    .replace(/ · \d+ people/g, "").replace(/<td>\d+ people<\/td>/g, "<td>—</td>");
   golden("full-schedule.html", withoutCash, "G1");
   golden("full-schedule-empty.html", empty, "G2");
+  // G4 — the full print exactly as it prints now (cash column + headcount in
+  // the team cell). Recorded on purpose 2026-11-08 with the move.
+  golden("full-schedule-current.html", full, "G4");
 
   const teams = ["t-expos", "t-royals", "t-mets"].map((id) => {
     const bl = FIXTURE_BLOCKS.filter((b) => b.assigned_team_id === id);

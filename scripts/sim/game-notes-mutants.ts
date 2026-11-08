@@ -12,8 +12,8 @@ const PRINT_LIB = "src/lib/snack-shack/print.ts";
 const MUTANTS: Mutant[] = [
   {
     id: "GM8", what: "the full-schedule print region renders the note", file: REGION,
-    find: "                  <td>{b.team_name ?? \"—\"}</td>",
-    replace: "                  <td>{b.team_name ?? \"—\"} {b.notes}</td>",
+    find: "                    <td>{teamWithPeople(b.team_name, people)}</td>",
+    replace: "                    <td>{teamWithPeople(b.team_name, people)} {b.notes}</td>",
     expect: "O1-snack-print",
   },
   {
