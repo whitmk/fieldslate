@@ -171,3 +171,50 @@ export const CHANGE_NOTIFY = "Email the volunteer that their spot was canceled";
 export const CHANGE_CANCEL = "Cancel sign-up";
 export const CHANGE_REASSIGN = "Cancel and assign someone else";
 export const CHANGE_FAILED = "Couldn't cancel this sign-up. Nothing changed — try again.";
+
+// ── Volunteer emails (rendered by email-templates.ts) ────────────────────────
+export const EMAIL_FOOTER_REPLY = (league: string) => `Questions? Reply to this email to reach ${league}.`;
+export const EMAIL_FOOTER_BRAND = "Sent by FieldSlate for your league.";
+export const EMAIL_MANAGE = "Change or cancel your sign-up";
+export const EMAIL_MANAGE_NOTE = "Changes close 24 hours before the spot. After that, reply to this email.";
+export const EMAIL_PICK_NEW = "Pick a new spot";
+export const EMAIL_SPOTS_HEADING = (n: number) => (n === 1 ? "Your spot" : "Your spots");
+
+export const EMAIL_SIGNUP_SUBJECT = (role: string, when: string) => `You're signed up: ${role}, ${when}`;
+export const EMAIL_SIGNUP_LEAD = (league: string) => `Thanks for volunteering with ${league}. You're signed up for:`;
+export const EMAIL_SIGNUP_MOVES = "If this game moves or rains out, we'll email you.";
+
+export const EMAIL_ASSIGNED_SUBJECT = (league: string, role: string, when: string) => `${league} signed you up: ${role}, ${when}`;
+export const EMAIL_ASSIGNED_LEAD = (league: string) => `A ${league} admin signed you up to volunteer for:`;
+
+export const EMAIL_SELF_CANCEL_SUBJECT = (role: string, when: string) => `Canceled: ${role}, ${when}`;
+export const EMAIL_SELF_CANCEL_LEAD = "You canceled this volunteer spot:";
+
+export const EMAIL_ADMIN_CANCEL_SUBJECT = (role: string, when: string) => `Your volunteer spot was canceled: ${role}, ${when}`;
+export const EMAIL_ADMIN_CANCEL_LEAD = (league: string) => `A ${league} admin canceled your sign-up for:`;
+
+export const EMAIL_ROLE_CANCEL_SUBJECT = (role: string, when: string) => `Your volunteer spot was canceled: ${role}, ${when}`;
+export const EMAIL_ROLE_CANCEL_LEAD = (league: string) => `${league} changed this volunteer role, so this spot no longer exists:`;
+
+export const EMAIL_LOST_SUBJECT = (role: string, when: string) => `Your volunteer spot is gone: ${role}, ${when}`;
+export const EMAIL_LOST_LEAD = "This game was removed from the schedule, so this spot no longer exists:";
+
+export const EMAIL_MOVED_SUBJECT = (role: string) => `Game moved: your ${role} spot`;
+export const EMAIL_MOVED_LEAD = "The game for your volunteer spot moved.";
+export const EMAIL_MOVED_STILL = "You're still signed up. Can't make the new time? Cancel it, or keep it, from your sign-ups.";
+export const EMAIL_NOW = "Now";
+export const EMAIL_WAS = "Was";
+
+export const EMAIL_RAINOUT_SUBJECT = (role: string, when: string) => `Rained out: your ${role} spot, ${when}`;
+export const EMAIL_RAINOUT_LEAD = "This game was rained out:";
+export const EMAIL_RAINOUT_HELD = "Your spot is held. When the game gets a new date, we'll email you to confirm.";
+
+export const EMAIL_MAKEUP_SUBJECT = (role: string, when: string) => `Makeup set: your ${role} spot, ${when}`;
+export const EMAIL_MAKEUP_LEAD = "The rained-out game has a new date. You're still signed up:";
+export const EMAIL_MAKEUP_CANT = "Can't make the new date? Cancel from your sign-ups.";
+
+export const EMAIL_BACK_ON_SUBJECT = (role: string, when: string) => `Back on: your ${role} spot, ${when}`;
+export const EMAIL_BACK_ON_LEAD = "The game is back on at its original time. You're still signed up:";
+
+export const EMAIL_REMINDER_SUBJECT = (n: number) => (n === 1 ? "Reminder: your volunteer spot" : `Reminder: your ${n} volunteer spots`);
+export const EMAIL_REMINDER_LEAD = (league: string) => `A reminder from ${league} — you're signed up for:`;

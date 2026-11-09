@@ -5863,6 +5863,23 @@ Still open:
   NS1, AC1, G4 + MU48–MU58. **The email templates for these kinds (and
   `signup_confirmed`) are not written yet** — the drain refuses an unknown
   kind, so until they land these emails fail, never send blank.
+- **0121 part 6 + the emails (commit 2f, NOT APPLIED, proof case NOT RUN).**
+  The outbox payload holds ids only, so 0121 re-creates
+  `volunteer_outbox_take` (0120's steps a–e verbatim) to attach, per row:
+  `spots` (`volunteer_email_spots`, callable by no role — each claim's role,
+  team, matchup, field, spot start with the lead applied, and for a moved
+  game where it was; a detached claim is described from `detached_from`),
+  `manage_token` — a FRESH manage link for game_moved / rained_out /
+  makeup_set / back_on (only its sha256 stored; signup_confirmed,
+  admin_assigned and reminder carry theirs in the payload) — and
+  `signup_token` (the league's link, only while it is on). Take stays
+  service_role only. **The leak check after the proof must also find take
+  back at 0120's md5.** Templates: `email-templates.ts` — every kind 0120
+  allows has one except manage_link, switched and nudge (not built; T1 keeps
+  that list honest); words in `words.ts`; a template that can't describe its
+  spot, or lacks a required manage link, returns null and the row fails
+  (`unknown_kind`) — never a blank email. Proof TK1 + MU59–MU61;
+  `sim:volunteer-email` T1–T4 (175 checks) + VE21–VE24 (24/24).
 - **Screen 1 — Volunteer roles (`/dashboard/volunteers`, 2026-11-08,
   approved plan).** The sidebar item "Volunteers" (Elite tier) and the page
   exist only when `loadVolunteerFeature` (`src/lib/volunteers/feature-state.ts`

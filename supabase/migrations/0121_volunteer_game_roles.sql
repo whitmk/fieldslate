@@ -13,6 +13,9 @@
 --   PART 4: the auto-archive hold-back read.
 --   PART 5: the admin's sign-up list (names and emails, members only) and its
 --          actions: assign, cancel, no-show, reminders.
+--   PART 6: the email take re-created — each row carries its spots' current
+--          details, a fresh manage link where the email needs one, and the
+--          league's sign-up link.
 -- Nothing here writes a game, a division, a team or a season, and nothing is
 -- visible to a league whose org_features switch is off.
 --
@@ -1647,6 +1650,168 @@ end;
 $$;
 
 -- ────────────────────────────────────────────────────────────────────────────
+-- 8d. PART 6 — what an email says about its spots (callable by no role)
+-- ────────────────────────────────────────────────────────────────────────────
+-- The outbox payload holds ids only (0120's CHECK). At send time the take
+-- attaches each spot's CURRENT details — role, team, matchup, field, the
+-- spot's start (lead applied), and for a moved game where it was — so a
+-- coalesced "game moved" email states where the game is now. A detached
+-- spot (its game deleted) is described from what was kept when it was
+-- detached. Never another volunteer's name.
+create or replace function public.volunteer_email_spots(p_claim_ids uuid[])
+returns jsonb
+language sql
+stable
+security invoker
+set search_path = public, pg_temp
+as $$
+  select coalesce(jsonb_agg(s.spot order by s.sort_at, s.claim_id), '[]'::jsonb)
+    from (
+      select c.id as claim_id,
+             coalesce(g.scheduled_at, ((c.detached_from ->> 'start')::timestamp at time zone 'UTC')) as sort_at,
+             jsonb_build_object(
+               'claim_id', c.id,
+               'role_name', vr.name,
+               'for_team_name', ft.name,
+               'home_team_name', coalesce(ht.name, dht.name),
+               'away_team_name', case when g.id is not null then coalesce(at.name, g.external_team_name) else dat.name end,
+               'field', ve.name,
+               'park', loc.name,
+               'start', case
+                          when g.id is not null then to_char(public.volunteer_spot_start((g.scheduled_at at time zone 'UTC')::timestamp, vr.lead_minutes), 'YYYY-MM-DD"T"HH24:MI')
+                          when c.detached_from ? 'start' then to_char(public.volunteer_spot_start((c.detached_from ->> 'start')::timestamp, coalesce(vr.lead_minutes, 0)), 'YYYY-MM-DD"T"HH24:MI')
+                        end,
+               'state', case when g.id is not null then public.volunteer_slot_state(g.status) else 'gone' end,
+               'was_start', case when c.moved_from ? 'start'
+                                 then to_char(public.volunteer_spot_start((c.moved_from ->> 'start')::timestamp, coalesce(vr.lead_minutes, 0)), 'YYYY-MM-DD"T"HH24:MI') end,
+               'was_field', (select wv.name from public.venues wv where wv.id = (c.moved_from ->> 'venue_id')::uuid)
+             ) as spot
+        from public.volunteer_claims c
+        left join public.games g on g.id = c.game_id
+        left join public.volunteer_roles vr on vr.id = coalesce(c.role_id, (c.detached_from ->> 'role_id')::uuid)
+        left join public.teams ht on ht.id = g.home_team_id
+        left join public.teams at on at.id = g.away_team_id
+        left join public.teams ft on ft.id = c.for_team_id
+        left join public.teams dht on dht.id = (c.detached_from ->> 'home_team_id')::uuid
+        left join public.teams dat on dat.id = (c.detached_from ->> 'away_team_id')::uuid
+        left join public.venues ve on ve.id = g.venue_id
+        left join public.locations loc on loc.id = ve.location_id
+       where c.id = any (coalesce(p_claim_ids, '{}'::uuid[]))
+    ) s;
+$$;
+
+-- 0120's take, plus three keys per row: `spots` (volunteer_email_spots for the
+-- row's claim_id or claim_ids), `manage_token` — a FRESH manage link for the
+-- kinds whose email offers "change or cancel" and don't already carry one
+-- (game_moved, rained_out, makeup_set, back_on; only its sha256 is stored,
+-- the plain token goes to the email and nowhere else) — and `signup_token`,
+-- the league's public sign-up link when it is on (for the emails that invite
+-- the volunteer to pick a new spot). Steps a–e are 0120's, verbatim.
+create or replace function public.volunteer_outbox_take(p_limit integer)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_limit integer := least(greatest(coalesce(p_limit, 0), 0), 100);
+  v_rows  jsonb;
+  v_out   jsonb := '[]'::jsonb;
+  r       jsonb;
+  v_ids   uuid[];
+  v_token text;
+begin
+  -- a. Rate-limit keys older than 23 hours go (privacy policy: up to 24h).
+  delete from public.volunteer_rate_events where at < now() - interval '23 hours';
+
+  -- b. A drain that died mid-send leaves rows `sending`; after 10 minutes
+  --    they are due again. The send carries an idempotency key per row, so a
+  --    row that did go out is not sent twice by the provider.
+  update public.volunteer_outbox
+     set status = 'pending', locked_at = null
+   where status = 'sending' and locked_at < now() - interval '10 minutes';
+
+  -- c. One email per coalesce key: every pending row older than the newest
+  --    pending row with the same key is superseded.
+  update public.volunteer_outbox o
+     set status = 'superseded', error = 'superseded by a newer change'
+   where o.status = 'pending'
+     and o.coalesce_key is not null
+     and exists (select 1 from public.volunteer_outbox n
+                  where n.coalesce_key = o.coalesce_key
+                    and n.status = 'pending'
+                    and (n.created_at, n.id) > (o.created_at, o.id));
+
+  -- d. Rows that must not be sent are failed, visibly, never silently kept.
+  update public.volunteer_outbox o
+     set status = 'failed', error = 'feature_off'
+   where o.status = 'pending'
+     and not public.org_feature_on(o.owner_id, 'volunteers');
+  update public.volunteer_outbox o
+     set status = 'failed', error = 'no_contact_email'
+   where o.status = 'pending'
+     and not exists (select 1 from public.volunteer_settings s
+                      where s.owner_id = o.owner_id and s.contact_email is not null);
+
+  -- e. Claim the due rows. SKIP LOCKED: a second drain running at the same
+  --    time takes different rows or none.
+  with due as (
+    select o.id
+      from public.volunteer_outbox o
+     where o.status = 'pending' and o.next_attempt_at <= now()
+     order by o.next_attempt_at, o.id
+     limit v_limit
+       for update skip locked
+  ), took as (
+    update public.volunteer_outbox o
+       set status = 'sending', locked_at = now(), attempts = o.attempts + 1
+      from due
+     where o.id = due.id
+    returning o.id, o.owner_id, o.season_id, o.volunteer_id, o.kind, o.payload, o.attempts
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', t.id,
+           'kind', t.kind,
+           'payload', t.payload,
+           'attempts', t.attempts,
+           'season_id', t.season_id,
+           'volunteer_id', t.volunteer_id,
+           'to', v.email_lc,
+           'league_name', p.org_name,
+           'reply_to', s.contact_email,
+           'signup_token', case when s.link_enabled then s.link_token end
+         ) order by t.id), '[]'::jsonb)
+    into v_rows
+    from took t
+    join public.volunteers v on v.id = t.volunteer_id
+    join public.profiles p on p.id = t.owner_id
+    left join public.volunteer_settings s on s.owner_id = t.owner_id;
+
+  -- f. Each row's spots, and a fresh manage link where the email needs one.
+  for r in select * from jsonb_array_elements(v_rows) loop
+    v_ids := case
+               when jsonb_typeof(r -> 'payload' -> 'claim_ids') = 'array'
+                 then array(select x::uuid from jsonb_array_elements_text(r -> 'payload' -> 'claim_ids') x)
+               when r -> 'payload' ? 'claim_id' then array[(r -> 'payload' ->> 'claim_id')::uuid]
+               else '{}'::uuid[]
+             end;
+    v_token := null;
+    if r ->> 'kind' in ('game_moved', 'rained_out', 'makeup_set', 'back_on') then
+      v_token := encode(extensions.gen_random_bytes(32), 'hex');
+      insert into public.volunteer_manage_links (token_hash, volunteer_id, season_id)
+      values (encode(extensions.digest(v_token, 'sha256'), 'hex'), (r ->> 'volunteer_id')::uuid, (r ->> 'season_id')::uuid);
+    end if;
+    v_out := v_out || jsonb_build_array(
+      (r - 'volunteer_id')
+      || jsonb_build_object('spots', public.volunteer_email_spots(v_ids),
+                            'manage_token', coalesce(v_token, r -> 'payload' ->> 'manage_token')));
+  end loop;
+
+  return v_out;
+end;
+$$;
+
+-- ────────────────────────────────────────────────────────────────────────────
 -- 9. Function privileges
 -- ────────────────────────────────────────────────────────────────────────────
 revoke execute on function public.volunteer_slot_state(text) from public, anon, authenticated, service_role, dashboard_readonly;
@@ -1680,6 +1845,8 @@ revoke execute on function public.volunteer_admin_assign(uuid, uuid, uuid, uuid,
 revoke execute on function public.volunteer_admin_cancel(uuid, boolean) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_set_no_show(uuid, boolean) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_admin_remind(uuid, uuid[]) from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_email_spots(uuid[]) from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_outbox_take(integer) from public, anon, authenticated, service_role, dashboard_readonly;
 
 grant execute on function public.save_volunteer_role(uuid, uuid, text, text, integer, integer, boolean, boolean, uuid[], boolean) to authenticated;
 grant execute on function public.delete_volunteer_role(uuid, boolean) to authenticated;
@@ -1690,6 +1857,7 @@ grant execute on function public.volunteer_cancel(text, uuid) to service_role;
 grant execute on function public.volunteer_outbox_finish(bigint, boolean, text, text, boolean) to service_role;
 grant execute on function public.volunteer_failure_count(uuid) to authenticated;
 grant execute on function public.volunteer_keep_spot(text, uuid) to service_role;
+grant execute on function public.volunteer_outbox_take(integer) to service_role;
 grant execute on function public.volunteer_archive_holds(uuid[]) to authenticated;
 grant execute on function public.volunteer_admin_signups(uuid) to authenticated;
 grant execute on function public.volunteer_admin_assign(uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, boolean) to authenticated;
@@ -1741,6 +1909,7 @@ begin
     'public.volunteer_on_game_delete()',
     'public.volunteer_on_game_insert()',
     'public.volunteer_record_failure(uuid, uuid, text, text)',
+    'public.volunteer_email_spots(uuid[])',
     'public.wipe_volunteer_data_on_archive()'] loop
     foreach r in array array['anon', 'authenticated', 'service_role', 'dashboard_readonly'] loop
       if has_function_privilege(r, f, 'EXECUTE') then
@@ -1755,6 +1924,7 @@ begin
     'public.volunteer_manage_page(text)',
     'public.volunteer_cancel(text, uuid)',
     'public.volunteer_keep_spot(text, uuid)',
+    'public.volunteer_outbox_take(integer)',
     'public.volunteer_outbox_finish(bigint, boolean, text, text, boolean)'] loop
     if not has_function_privilege('service_role', f, 'EXECUTE') then
       raise exception '0121 verify: service_role cannot execute %', f;

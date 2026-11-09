@@ -129,6 +129,30 @@ const MUTANTS: Mutant[] = [
     replace: "    console.error(`[${where}] volunteer feature read failed:`, error.message);\n    return { elite: false, settings: null };\n",
     expect: "S6",
   },
+  {
+    id: "VE21", what: "a moved game's email leaves out where it was", file: "src/lib/volunteers/email-templates.ts",
+    find: "  if (opts.moved && s.was_start) {",
+    replace: "  if (false) {",
+    expect: "T2",
+  },
+  {
+    id: "VE22", what: "team names not escaped in the html", file: "src/lib/volunteers/email-templates.ts",
+    find: "      .map((l) => `<br>${esc(l)}`)",
+    replace: "      .map((l) => `<br>${l}`)",
+    expect: "T2",
+  },
+  {
+    id: "VE23", what: "a confirmation goes out without its manage link", file: "src/lib/volunteers/email-templates.ts",
+    find: "  if (opts.needManage && !m) return null;",
+    replace: "",
+    expect: "T3",
+  },
+  {
+    id: "VE24", what: "the parser drops the take's manage token", file: "src/lib/volunteers/outbox-drain.ts",
+    find: "      manageToken: typeof o.manage_token === \"string\" ? o.manage_token : null,",
+    replace: "      manageToken: null,",
+    expect: "T4",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/volunteer-email-sim.ts", timezones: [undefined], mutants: MUTANTS });

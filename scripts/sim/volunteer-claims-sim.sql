@@ -134,6 +134,9 @@
 --   MU56 reminders include past spots                          → RM1
 --   MU57 a second reminder doesn't replace the first           → RM1
 --   MU58 the admin list callable by anon                       → G4
+--   MU59 a moved game's email gets no manage link              → TK1
+--   MU60 an email states the OLD time as the spot's start      → TK1
+--   MU61 the take callable by authenticated                    → TK1
 --   PART 3 (own fixture): T1 a move → one game_moved per claim, coalesced,
 --   original kept; T2 moved again keeps the FIRST original; T1b a field
 --   change is a move; T3 rainout; T4 makeup (new time); T5 back on (same
@@ -154,7 +157,10 @@
 --   sign-ups off; stores created_by admin, the volunteer and an
 --   admin_assigned email with a manage token; AS2 an unpublished division
 --   can't be filled; AD1 the list (names + emails) for members only, switch
---   on; RM1 reminders: one email per volunteer for spots still ahead, asked
+--   on; PART 6 (in case 3, after T2): TK1 the take — one coalesced
+--   game_moved email for the claim, its spot's current start, where it was,
+--   a fresh manage link (only the hash stored), no other volunteer's name;
+--   take service_role only, the details helper no role; RM1 reminders: one email per volunteer for spots still ahead, asked
 --   again → the waiting one is replaced; NS1 no-show only on a past spot;
 --   AC1 admin cancel withdraws waiting email and notifies only when asked,
 --   non-members refused; G4 privileges (authenticated only).
@@ -836,6 +842,30 @@ begin
      or (select moved_from ->> 'start' from public.volunteer_claims where id = c1) is distinct from v_start then
     return 'T2 second move';
   end if;
+
+  -- TK1 — the take (part 6): a moved game's email carries the spot as it is
+  -- NOW and where it was, a fresh manage link, and nobody else's name.
+  v_r := public.volunteer_outbox_take(100);
+  if (select count(*) from jsonb_array_elements(v_r) x where x ->> 'kind' = 'game_moved' and x -> 'payload' ->> 'claim_id' = c1::text) <> 1 then
+    return 'TK1 one game_moved email for the claim';
+  end if;
+  select x into v_r from jsonb_array_elements(v_r) x where x ->> 'kind' = 'game_moved' and x -> 'payload' ->> 'claim_id' = c1::text;
+  if v_r -> 'spots' -> 0 ->> 'role_name' is distinct from 'ZZ Field prep'
+     or v_r -> 'spots' -> 0 ->> 'start' is distinct from to_char(v_now + interval '3 days 2 hours', 'YYYY-MM-DD"T"HH24:MI')
+     or v_r -> 'spots' -> 0 ->> 'was_start' is distinct from v_start
+     or coalesce(v_r ->> 'manage_token', '') !~ '^[0-9a-f]{64}$'
+     or not exists (select 1 from public.volunteer_manage_links k
+                     where k.token_hash = encode(extensions.digest(v_r ->> 'manage_token', 'sha256'), 'hex') and k.volunteer_id = v_vol)
+     or v_r::text ~* 'quebec|zz121-p3b' then
+    return 'TK1 the email''s details: ' || left(v_r::text, 300);
+  end if;
+  if has_function_privilege('anon', 'public.volunteer_outbox_take(integer)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.volunteer_outbox_take(integer)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.volunteer_outbox_take(integer)', 'EXECUTE')
+     or exists (select 1 from unnest(array['anon', 'authenticated', 'service_role']) ro
+                 where has_function_privilege(ro, 'public.volunteer_email_spots(uuid[])', 'EXECUTE')) then
+    return 'TK1 take privileges';
+  end if;
   -- T1b — a field change alone is a move too.
   update public.games set venue_id = (select v.id from public.venues v where v.owner_id = v_org order by v.id limit 1) where id = g2;
   if (select venue_id from public.games where id = g2) is not null
@@ -1349,7 +1379,13 @@ $r$, $r$$r$),
      where o.status = 'pending' and o.coalesce_key = 'remind:' || v_vol.volunteer_id;
 $r$, $r$$r$),
     ('MU58', 'G4', $r$grant execute on function public.volunteer_admin_signups(uuid) to authenticated;$r$,
-                   $r$grant execute on function public.volunteer_admin_signups(uuid) to authenticated, anon;$r$)
+                   $r$grant execute on function public.volunteer_admin_signups(uuid) to authenticated, anon;$r$),
+    ('MU59', 'TK1', $r$    if r ->> 'kind' in ('game_moved', 'rained_out', 'makeup_set', 'back_on') then$r$,
+                    $r$    if r ->> 'kind' in ('none') then$r$),
+    ('MU60', 'TK1', $r$                          when g.id is not null then to_char(public.volunteer_spot_start((g.scheduled_at at time zone 'UTC')::timestamp, vr.lead_minutes), 'YYYY-MM-DD"T"HH24:MI')$r$,
+                    $r$                          when g.id is not null then to_char(coalesce((c.moved_from ->> 'start')::timestamp, (g.scheduled_at at time zone 'UTC')::timestamp), 'YYYY-MM-DD"T"HH24:MI')$r$),
+    ('MU61', 'TK1', $r$grant execute on function public.volunteer_outbox_take(integer) to service_role;$r$,
+                    $r$grant execute on function public.volunteer_outbox_take(integer) to service_role, authenticated;$r$)
   ) as t(id, expect, find, repl)
   loop
     if (length(v_body) - length(replace(v_body, m.find, ''))) / greatest(length(m.find), 1) <> 1 then
