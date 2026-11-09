@@ -402,6 +402,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   enabled; `game_umpires` byte-identical. **Deploy order (met): 0123 was
   applied BEFORE the tracker reached `main`.** **The latest migration
   applied.** See "Volunteer sign-ups" → branch D.
+- **0124 (officials self-sign-up) APPLIED 2026-11-09 22:57 UTC, catalog
+  `20261109225744`**, verbatim from the repo file on Whit's go, after its
+  rolled-back proof (first-run green, 16/16 mutants at their own tag — read
+  its RUN LOG). md5(prosrc) of all 25 functions = `official-signup-build.ts
+  --md5`, one overload each; EXECUTE: page/claim/drop/take/finish/digest
+  service_role only, the admin functions and `insert_official_assignments`
+  authenticated only, the helpers and the wipe no role (anon and
+  dashboard_readonly false throughout); RLS on the five tables, SELECT for
+  authenticated on `official_divisions` and `official_self_claims` only;
+  wipe trigger enabled; `game_umpires` byte-identical. **Deploy order (met):
+  0124 was applied BEFORE the code reached `main`.** **The latest migration
+  applied.** See "Officials self-sign-up".
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -6238,6 +6250,78 @@ Still open:
   2. Legal review of the privacy policy's league-on-behalf framing (section 1,
      "Information leagues provide about other people") and section 7 (minors,
      youth umpires).
+
+## Officials self-sign-up (0124 applied 2026-11-09)
+
+- **Plan and decisions:** `docs/plans/official-self-signup.md` (on
+  `docs/officials-signup-privacy`, with the privacy wording — section 9
+  "Officials sign-up", plus lines in 5 and 7). Built on
+  `feat/officials-signup`, behind `org_features` 'official_signup' (0124 adds
+  the value; no rows), Elite. Test orgs only, never the real league.
+- **What it is:** a rostered official claims open umpire spots through a
+  PRIVATE link (`/o/<token>`; only its sha256 stored, one current link per
+  official). A claim writes an ORDINARY `game_umpires` row plus an
+  `official_self_claims` mark, so pay, the pay report, the officials pages
+  and the volunteer tracker need nothing. The coordinator's "Ask for help"
+  emails chosen officials their open spots with a FRESH link each (the old
+  one stops working — the dialog says so); "Copy new link (the old one stops
+  working)" on the edit modal does the same for an official without email.
+- **The rules (decided 2026-11-09):** an official with no division list may
+  work every division (`official_divisions`; decision 1); spots come from
+  LOCKED divisions only (decision 3), scheduled games not started, the
+  division's real slots (the first `umpires_per_game` season roles by sort
+  order THEN NAME — auto-assign and the slot UIs now order the same way);
+  an official drops only spots they took, only MORE than 48 hours before the
+  game, else the page shows the officials contact email (decision 6); no
+  hold window (decision 7); claims reach the coordinator in ONE daily digest
+  (cron 15:00 UTC) plus the "Signed up" tag in the slot UI, each drop emails
+  at once (decision 8). Youth = under 18: the one email field reads "Parent
+  or guardian email" for a youth official (decision 2), and the emails are
+  worded to a parent.
+- **ONE RULE, TWO LANGUAGES, ONE TABLE:** `official_block_reason` (SQL) and
+  `blockReason` (`src/lib/umpires/claim-rules.ts`), pinned by the
+  OFFICIAL-BLOCK-TABLE in `scripts/sim/official-signup-sim.sql`. Order:
+  already on the game → division list → blackout → coach → conflict of
+  interest → overlap → availability window → weekly cap; wall-clock
+  throughout. **auto-assign now picks through `blockReason`** (sim:officials
+  unchanged at 15,495 assertions) and reads `official_divisions` (an unread
+  list fails closed).
+- **auto-assign's write is `insert_official_assignments` (member only, every
+  league):** the claim's advisory locks (every official, then every game, id
+  order), a re-check of every row, and rows that no longer fit come back
+  `skipped` (`takenMeanwhile` on the result, counted as left open) — never a
+  double booking, never a whole-run failure. An error or an unreadable reply
+  fills nothing. Manual assignment (UmpireSlots) still inserts directly and
+  takes no lock — warn-with-override, unchanged.
+- **The settings are PER ORG** (`official_signup_settings.owner_id`), not per
+  season as the plan's design section first said: one officials contact
+  email, which is both the reply-to and where the coordinator's notices go.
+  Never an account email.
+- **The link never says why it doesn't work** (`official_link_resolve`):
+  revoked, switch off, setting off, a Pro league, an archived season → the
+  page reads "This link isn't working". The page names nobody else
+  (proof OK1: exact key sets).
+- **Display-only reads are fail-soft** (`slot-extras.ts`): the "Signed up"
+  tag and the picker's "not set to work this division" flag show nothing when
+  their read fails, so the officials screens don't break before 0124 is
+  applied. The divisions EDITOR fails closed (an unread list can't be saved
+  over).
+- **Shared email pieces live in `src/lib/outbound-email/`** (headers, the
+  drain, the cron gate) — lifted from the volunteer code, volunteer output
+  unchanged (sim:volunteer-email green, its mutants re-pointed). The officials
+  drain is `/api/officials/outbox/drain` (every 5 minutes) and
+  `/api/officials/digest` (daily); both FAIL CLOSED without `CRON_SECRET`.
+- **Fences:** sim:volunteer-leaks U1 now also walks `src/lib/officials-signup`,
+  its components, `/o/`, `/api/officials` and `src/lib/outbound-email`
+  (VL10/VL11); sim:daylight-leaks fences the same as outbound.
+- **Harnesses:** the SQL proof (run 1 green, 16/16); `npm run sim:official-claim-rules`
+  (41 checks × 3 zones; + `:mutants` 9, CR5 skews the shared table);
+  `npm run sim:official-signup-page` (29 checks × 3 zones; + `:mutants` 11 —
+  read its MUTATION LOG, SP11 first survived a substring check). Screens
+  checked on a deleted scratch route at 1280px and 375px with the network
+  stubbed.
+- **Launch blockers:** legal review of privacy sections 7 and 9; the officials
+  contact email is unverified (the volunteer blocker, again).
 
 ## Open items
 

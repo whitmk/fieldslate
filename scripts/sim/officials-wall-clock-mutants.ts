@@ -11,6 +11,9 @@ const ELIG = "src/lib/umpires/eligibility.ts";
 const ENGINE = "src/lib/umpires/auto-assign.ts";
 const CONFLICTS = "src/lib/umpires/conflicts.ts";
 const SLOTS = "src/components/umpires/umpire-slots.tsx";
+// Since 2026-11-09 auto-assign picks through blockReason (claim-rules.ts), so
+// WC6/WC7 mutate the rule there and WC5 the engine's call into it.
+const RULES = "src/lib/umpires/claim-rules.ts";
 
 // The old reading, as an expression: the instant's host-zone wall time,
 // rendered back into the stored "…Z" shape.
@@ -45,20 +48,20 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "WC5", what: "auto-assign checks availability on the host-zone time", file: ENGINE,
-    find: "              g.scheduled_at,\n              divisionDuration,",
-    replace: `              ${HOST("g.scheduled_at")},\n              divisionDuration,`,
+    find: "            start: g.scheduled_at,",
+    replace: `            start: ${HOST("g.scheduled_at")},`,
     expect: "A1",
   },
   {
-    id: "WC6", what: "auto-assign's blackout date from the host-zone instant", file: ENGINE,
-    find: "    const gameDate = gameDateKey(g.scheduled_at);",
-    replace: `    const gameDate = ${HOST_DATE("g.scheduled_at")};`,
+    id: "WC6", what: "auto-assign's blackout date from the host-zone instant", file: RULES,
+    find: "  if (i.blackouts.includes(i.start.slice(0, 10))) return \"blackout\";",
+    replace: `  if (i.blackouts.includes(${HOST_DATE("i.start")})) return "blackout";`,
     expect: "A5",
   },
   {
-    id: "WC7", what: "auto-assign's weekly-cap week from the host-zone instant", file: ENGINE,
-    find: "    const gameWeek = gameWeekKey(g.scheduled_at);",
-    replace: `    const gameWeek = gameWeekKey(${HOST_DATE("g.scheduled_at")});`,
+    id: "WC7", what: "auto-assign's weekly-cap week from the host-zone instant", file: RULES,
+    find: "    const week = gameWeekKey(i.start);",
+    replace: `    const week = gameWeekKey(${HOST_DATE("i.start")});`,
     expect: "A6",
   },
   {

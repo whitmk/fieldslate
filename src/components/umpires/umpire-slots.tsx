@@ -23,6 +23,7 @@ import {
 import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
 import { coachTeamLabel } from "@/lib/umpires/team-options";
 import { coiPhrase, coiRelationshipLabel, type CoiLink } from "@/lib/umpires/coi";
+import { NOT_IN_DIVISIONS_FLAG, SIGNED_UP_SLOT_TAG } from "@/lib/officials-signup/slot-extras";
 
 export type UmpireOption = {
   id: string;
@@ -39,6 +40,9 @@ export type UmpireOption = {
   availability?: AvailabilityWindow[] | null;
   blackouts?: { date: string }[] | null;
   booking_rows?: UmpireBookingRow[] | null;
+  /** 0124: the divisions this official may work; absent/empty = every one.
+   *  A warning only here (manual assignment overrides, the house rule). */
+  divisions?: string[] | null;
 };
 
 /** Pre-click option state, computed against the specific game. rank orders
@@ -55,6 +59,8 @@ export type SlotAssignment = {
   umpire_id: string;
   umpire_name: string;
   role: string;
+  /** 0124: taken by the official through their sign-up link. */
+  self_claimed?: boolean;
 };
 
 export type UmpireSlotsGame = {
@@ -66,6 +72,8 @@ export type UmpireSlotsGame = {
   /** Team ids (0063) — enable the coach-conflict warning when provided. */
   home_team_id?: string | null;
   away_team_id?: string | null;
+  /** The game's division (0124) — drives the "not set to work this division" flag. */
+  division_id?: string | null;
 };
 
 interface Props {
@@ -168,6 +176,14 @@ export function UmpireSlots({
       !isWithinAvailability(windows, game.scheduled_at, candidate.duration_minutes)
     ) {
       flags.push("outside listed availability");
+    }
+    if (
+      game.division_id &&
+      u.divisions &&
+      u.divisions.length > 0 &&
+      !u.divisions.includes(game.division_id)
+    ) {
+      flags.push(NOT_IN_DIVISIONS_FLAG);
     }
     const coachesTeamInGame =
       u.team_id != null &&
@@ -362,6 +378,11 @@ export function UmpireSlots({
                 )}
               </div>
             </div>
+            {current?.self_claimed && (
+              <span className="ml-[72px] inline-block w-fit rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-800">
+                {SIGNED_UP_SLOT_TAG}
+              </span>
+            )}
             {err && (
               <div className="ml-[72px] flex items-start gap-1.5 text-[11px] text-red-600">
                 <AlertTriangle className="mt-0.5 h-3 w-3 flex-shrink-0" />

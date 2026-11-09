@@ -20,6 +20,7 @@ import {
   type ConflictType,
 } from "@/lib/schedule/conflict-overrides";
 import { hasNote, noteAttribution, type GameNoteFields } from "@/lib/schedule/game-notes";
+import { officialDivisionLists, selfClaimedIds } from "@/lib/officials-signup/slot-extras";
 
 export type GameDetailGame = {
   id: string;
@@ -86,7 +87,7 @@ async function fetchAssignments(
   // null = couldn't read. An unread assignment list would render every slot
   // as Open and invite a second official onto it (2026-11-06).
   if (error) return null;
-  return ((data as unknown as AssignRow[] | null) ?? [])
+  const list = ((data as unknown as AssignRow[] | null) ?? [])
     .filter((r) => r.umpire)
     .map<SlotAssignment>((r) => ({
       id: r.id,
@@ -94,6 +95,9 @@ async function fetchAssignments(
       umpire_name: r.umpire!.name,
       role: r.role,
     }));
+  // "Signed up" tag (0124) — display only, fail-soft.
+  const claimed = await selfClaimedIds(supabase, list.map((a) => a.id));
+  return list.map((a) => ({ ...a, self_claimed: claimed.has(a.id) }));
 }
 
 const OFFICIALS_READ_FAILED =
@@ -228,7 +232,9 @@ export function GameDetailModal({ game, onClose }: Props) {
           .from("official_roles")
           .select("name")
           .eq("season_id", game.league_id)
-          .order("sort_order"),
+          // Sort order, then name — the slot order claims and auto-assign use.
+          .order("sort_order")
+          .order("name"),
         supabase
           .from("conflict_overrides")
           .select("id, conflict_type, reason, created_at, profile:profiles(full_name, email)")
@@ -247,7 +253,10 @@ export function GameDetailModal({ game, onClose }: Props) {
         }
         return;
       }
-      const umpires = (umpiresRaw ?? []) as UmpireOption[];
+      // Each official's division list (0124) — the picker's warning only, fail-soft.
+      const roster = (umpiresRaw ?? []) as UmpireOption[];
+      const lists = await officialDivisionLists(supabase, roster.map((u) => u.id));
+      const umpires = roster.map((u) => ({ ...u, divisions: lists.get(u.id) ?? null }));
       const sport = (leagueRaw as { sport: string | null } | null)?.sport ?? null;
 
       // Slot labels: first umpires_per_game season roles by sort_order,
@@ -410,6 +419,7 @@ export function GameDetailModal({ game, onClose }: Props) {
                     away_team_name: game.away_team?.name ?? "TBD",
                     home_team_id: game.home_team_id,
                     away_team_id: game.away_team_id,
+                    division_id: loaded.divisionId,
                   }}
                   seasonId={game.league_id}
                   roles={loaded.roles}

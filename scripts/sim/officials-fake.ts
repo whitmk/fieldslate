@@ -25,6 +25,9 @@ export type Db = {
   game_umpires: Row[];
   /** profiles.timezone — the org's "today" (auto-assign skips past games). */
   profiles: Row[];
+  /** 0124: the divisions an official may work (no rows = every division).
+   *  Optional so older fixtures need no change; absent reads as empty. */
+  official_divisions?: Row[];
 };
 
 type DbError = { message: string } | null;
@@ -115,7 +118,7 @@ const RELATIONS: Record<string, Relation> = {
 
 class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }> {
   private filters: ((r: Row) => boolean)[] = [];
-  private orderBy: { column: string; ascending: boolean } | null = null;
+  private orderBy: { column: string; ascending: boolean }[] = [];
   private singleMode = false;
   private maybeSingleMode = false;
   private selectText = "";
@@ -149,7 +152,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }> {
   }
 
   order(column: string, opts?: { ascending?: boolean }): this {
-    this.orderBy = { column, ascending: opts?.ascending !== false };
+    this.orderBy.push({ column, ascending: opts?.ascending !== false });
     return this;
   }
 
@@ -173,7 +176,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }> {
         : `${this.table}.${node.target}`;
       const rel = RELATIONS[relKey];
       if (!rel) throw new Error(`fake client: no relation for ${key}`);
-      const children = this.fake.db[rel.table].filter((c) => rel.match(parent, c));
+      const children = (this.fake.db[rel.table] ?? ([] as Row[])).filter((c) => rel.match(parent, c));
       const project = (child: Row) =>
         new FakeQuery(this.fake, rel.table).projectChild(child, node.children);
       out[node.alias] = rel.many
@@ -211,16 +214,19 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }> {
       }
     }
 
-    let rows = this.fake.db[this.table].filter((r) =>
+    let rows = (this.fake.db[this.table] ?? ([] as Row[])).filter((r) =>
       this.filters.every((f) => f(r)),
     );
-    if (this.orderBy) {
-      const { column, ascending } = this.orderBy;
+    if (this.orderBy.length > 0) {
+      // Several .order() calls sort by each key in turn, as PostgREST does.
       rows = [...rows].sort((a, b) => {
-        const av = a[column] as string | number;
-        const bv = b[column] as string | number;
-        if (av === bv) return 0;
-        return (av < bv ? -1 : 1) * (ascending ? 1 : -1);
+        for (const { column, ascending } of this.orderBy) {
+          const av = a[column] as string | number;
+          const bv = b[column] as string | number;
+          if (av === bv) continue;
+          return (av < bv ? -1 : 1) * (ascending ? 1 : -1);
+        }
+        return 0;
       });
     }
     const projected = rows.map((r) => this.resolveEmbeds(r, this.embeds));
@@ -314,6 +320,7 @@ export class FakeClient {
     upsert: (rows: Row[], opts: { onConflict: string; ignoreDuplicates: boolean }) => FakeQuery;
   } {
     const t = table as keyof Db;
+    if (t === "official_divisions" && !this.db.official_divisions) this.db.official_divisions = [];
     if (!(t in this.db)) throw new Error(`fake client: unknown table ${table}`);
     return {
       select: (cols: string) => new FakeQuery(this, t).select(cols),
@@ -321,6 +328,40 @@ export class FakeClient {
       upsert: (rows: Row[], opts) =>
         new FakeQuery(this, t, { kind: "upsert", rows, ...opts }),
     };
+  }
+
+  /** Calls to rpc(), in order. */
+  rpcCalls: { name: string; args: Record<string, unknown> }[] = [];
+  /** Replaces the default insert_official_assignments behaviour (a test can
+   *  make rows come back skipped, or the call fail). */
+  rpcOverride:
+    | ((name: string, args: Record<string, unknown>) => { data: unknown; error: DbError } | undefined)
+    | null = null;
+
+  /** 0124's insert_official_assignments: writes each row unless the slot or
+   *  the official is already on the game (the real uniques), and returns the
+   *  rest as skipped — the database re-checks eligibility too, which the
+   *  engine's own picks always satisfy here. */
+  rpc(name: string, args: Record<string, unknown>): Promise<{ data: unknown; error: DbError }> {
+    this.rpcCalls.push({ name, args });
+    const over = this.rpcOverride?.(name, args);
+    if (over) return Promise.resolve(over);
+    if (name !== "insert_official_assignments") throw new Error(`fake client: unexpected rpc ${name}`);
+    const rows = (args.p_rows ?? []) as Row[];
+    let inserted = 0;
+    const skipped: Row[] = [];
+    for (const row of rows) {
+      const clash = this.db.game_umpires.some(
+        (g) => g.game_id === row.game_id && (g.umpire_id === row.umpire_id || g.role === row.role),
+      );
+      if (clash) {
+        skipped.push({ game_id: row.game_id, umpire_id: row.umpire_id, role: row.role, reason: "slot_taken" });
+        continue;
+      }
+      this.db.game_umpires.push({ id: this.nextId("gu"), ...row });
+      inserted++;
+    }
+    return Promise.resolve({ data: { inserted, skipped }, error: null });
   }
 
   asClient(): AutoAssignClient {

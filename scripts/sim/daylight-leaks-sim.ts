@@ -88,6 +88,10 @@ const OUTBOUND_DIRS = [
   "src/lib/interleague", // partner emails and token-page wording
   "src/lib/orgs",
   "src/components/export",
+  "src/app/o", // an official's private sign-up page (0124)
+  "src/lib/officials-signup", // its rules and the officials emails
+  "src/components/officials-signup",
+  "src/lib/outbound-email", // the shared league-email headers and drain
 ];
 const OUTBOUND_FILES = [
   // The bracket's presentation pieces — rendered by the public bracket page.

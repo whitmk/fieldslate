@@ -1,15 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
-import {
-  DEFAULT_GAME_DURATION_MINS,
-  gamesOverlap,
-  type GameTimeInfo,
-} from "./conflicts";
-import {
-  gameDateKey,
-  gameWeekKey,
-  isWithinAvailability,
-  type AvailabilityWindow,
-} from "./eligibility";
+import { DEFAULT_GAME_DURATION_MINS } from "./conflicts";
+import { type AvailabilityWindow } from "./eligibility";
+import { blockReason, type Booking } from "./claim-rules";
 import { ensureSeasonRoleIds } from "./roles";
 import { padRoleLabels } from "@/lib/utils/official-title";
 import { isBeforeToday, todayInTimezone } from "@/lib/utils/org-today";
@@ -31,7 +23,9 @@ export type SkipReason =
   | "coach_conflict"
   | "conflict_of_interest"
   | "outside_availability"
-  | "over_weekly_limit";
+  | "over_weekly_limit"
+  /** 0124: the official has a division list without this division. */
+  | "division_not_allowed";
 
 /**
  * The Supabase client surface the engine runs against. Production callers
@@ -54,6 +48,10 @@ export type AutoAssignResult = {
   /** Games in the division dated BEFORE today (league timezone) — never
    *  staffed by auto-assign. Their existing assignments still count. */
   pastGamesSkipped: number;
+  /** Picks the database refused at write time because the slot or the
+   *  official had been taken meanwhile (an official's own claim, another
+   *  run) — insert_official_assignments re-checks every row under lock. */
+  takenMeanwhile: number;
   error?: string;
 };
 
@@ -150,6 +148,7 @@ export async function autoAssignUmpires(
     outsideAvailabilityNames: [],
     overWeeklyLimitNames: [],
     pastGamesSkipped,
+    takenMeanwhile: 0,
     error,
   });
 
@@ -170,7 +169,10 @@ export async function autoAssignUmpires(
       .from("official_roles")
       .select("id, name")
       .eq("season_id", seasonId)
-      .order("sort_order"),
+      // Sort order, then name — the same slot order the database uses for
+      // officials' own claims (official_division_slots, 0124).
+      .order("sort_order")
+      .order("name"),
   ]);
 
   if (divisionErr || !divisionRaw) {
@@ -313,6 +315,7 @@ export async function autoAssignUmpires(
     { data: existingRaw, error: existingErr },
     { data: availabilityRaw, error: availabilityErr },
     { data: blackoutsRaw, error: blackoutsErr },
+    { data: officialDivisionsRaw, error: officialDivisionsErr },
     roleIdByName,
   ] = await Promise.all([
     supabase
@@ -333,12 +336,23 @@ export async function autoAssignUmpires(
       .from("official_blackouts")
       .select("umpire_id, date")
       .in("umpire_id", umpireIds),
+    supabase
+      .from("official_divisions")
+      .select("umpire_id, division_id")
+      .in("umpire_id", umpireIds),
     ensureSeasonRoleIds(supabase, seasonId, roles),
   ]);
 
   if (existingErr) return unreadable("the officials' other games");
   if (availabilityErr) return unreadable("the officials' availability");
   if (blackoutsErr) return unreadable("the officials' blackout dates");
+  // 0124: an unread division list would read as "every division".
+  if (officialDivisionsErr) return unreadable("the officials' divisions");
+  const divisionsByUmpire = new Map<string, Set<string>>();
+  for (const r of (officialDivisionsRaw ?? []) as { umpire_id: string; division_id: string }[]) {
+    if (!divisionsByUmpire.has(r.umpire_id)) divisionsByUmpire.set(r.umpire_id, new Set());
+    divisionsByUmpire.get(r.umpire_id)!.add(r.division_id);
+  }
 
   const existing = ((existingRaw as unknown as ExistingRow[] | null) ?? []).filter(
     (r) => r.game && r.game.status !== "cancelled",
@@ -359,33 +373,23 @@ export async function autoAssignUmpires(
     availabilityByUmpire.get(a.umpire_id)!.push(a);
   }
 
-  const blackoutsByUmpire = new Map<string, Set<string>>();
+  const blackoutsByUmpire = new Map<string, string[]>();
   for (const b of (blackoutsRaw ?? []) as { umpire_id: string; date: string }[]) {
-    if (!blackoutsByUmpire.has(b.umpire_id)) blackoutsByUmpire.set(b.umpire_id, new Set());
-    blackoutsByUmpire.get(b.umpire_id)!.add(b.date);
+    if (!blackoutsByUmpire.has(b.umpire_id)) blackoutsByUmpire.set(b.umpire_id, []);
+    blackoutsByUmpire.get(b.umpire_id)!.push(b.date);
   }
 
-  // Build: umpire_id → list of GameTimeInfo they're already booked on, plus a
-  // per-week assignment count for the max_games_per_week cap.
-  const umpireBookings = new Map<string, GameTimeInfo[]>();
-  const weeklyLoad = new Map<string, Map<string, number>>();
-  for (const u of umpires) {
-    umpireBookings.set(u.id, []);
-    weeklyLoad.set(u.id, new Map());
-  }
+  // Build: umpire_id → the games they're already booked on (wall-clock start
+  // + minutes). blockReason reads both the overlap and the Mon–Sun weekly
+  // count from this one list (claim-rules.ts), as the database does.
+  const umpireBookings = new Map<string, Booking[]>();
+  for (const u of umpires) umpireBookings.set(u.id, []);
   for (const e of existing) {
     if (!e.game) continue;
-    const dur = gameDuration(e.game.home_team?.division?.settings);
     umpireBookings.get(e.umpire_id)!.push({
-      id: e.game.id,
-      scheduled_at: e.game.scheduled_at,
-      duration_minutes: dur,
-      home_team_name: "",
-      away_team_name: "",
+      start: e.game.scheduled_at,
+      minutes: gameDuration(e.game.home_team?.division?.settings),
     });
-    const wk = gameWeekKey(e.game.scheduled_at);
-    const weeks = weeklyLoad.get(e.umpire_id)!;
-    weeks.set(wk, (weeks.get(wk) ?? 0) + 1);
   }
 
   // 6. Per-game slot occupancy across the division being assigned.
@@ -429,17 +433,6 @@ export async function autoAssignUmpires(
   const overWeeklyLimitNames = new Set<string>();
 
   for (const g of divisionGames) {
-    // Wall-clock date and week of the stored time (eligibility.ts) — never
-    // the instant read in the browser's zone.
-    const gameDate = gameDateKey(g.scheduled_at);
-    const gameWeek = gameWeekKey(g.scheduled_at);
-    const candidateInfo: GameTimeInfo = {
-      id: g.id,
-      scheduled_at: g.scheduled_at,
-      duration_minutes: divisionDuration,
-      home_team_name: "",
-      away_team_name: "",
-    };
     const occupiedRoles = filledRolesByGame.get(g.id) ?? new Set();
     const occupiedUmpires = umpiresOnGame.get(g.id) ?? new Set();
 
@@ -465,63 +458,35 @@ export async function autoAssignUmpires(
       // genuinely had nothing else in the way.
       const pick = (): UmpireRow | null => {
         for (const candidate of sorted) {
-          if (occupiedUmpires.has(candidate.id)) {
-            slotReasons.add("conflict");
-            continue;
-          }
-          if (blackoutsByUmpire.get(candidate.id)?.has(gameDate)) {
-            slotReasons.add("blackout");
-            continue;
-          }
-          // Coach conflict (0063): an official never works a game involving
-          // the team they coach — hard at both tiers, same as blackouts.
-          if (
-            candidate.team_id &&
-            (candidate.team_id === g.home_team_id ||
-              candidate.team_id === g.away_team_id)
-          ) {
-            slotReasons.add("coach_conflict");
-            continue;
-          }
-          // Conflict of interest (0073): parent/sibling/family/other link to
-          // a team in the game — hard at both tiers, same as the coach link.
-          if (
-            (candidate.conflicts ?? []).some(
+          const allowed = divisionsByUmpire.get(candidate.id);
+          const reason = blockReason({
+            onGame: occupiedUmpires.has(candidate.id),
+            divisionAllowed: !allowed || allowed.has(divisionId),
+            blackouts: blackoutsByUmpire.get(candidate.id) ?? [],
+            // Coach conflict (0063) and conflict of interest (0073) — hard.
+            coaches:
+              candidate.team_id != null &&
+              (candidate.team_id === g.home_team_id || candidate.team_id === g.away_team_id),
+            conflictOfInterest: (candidate.conflicts ?? []).some(
               (c) =>
                 c.team_id === g.home_team_id ||
                 (g.away_team_id != null && c.team_id === g.away_team_id),
-            )
-          ) {
-            slotReasons.add("conflict_of_interest");
-            continue;
-          }
-          const bookings = umpireBookings.get(candidate.id) ?? [];
-          if (bookings.some((b) => gamesOverlap(candidateInfo, b))) {
-            slotReasons.add("conflict");
-            continue;
-          }
-          if (
-            !isWithinAvailability(
-              availabilityByUmpire.get(candidate.id) ?? [],
-              g.scheduled_at,
-              divisionDuration,
-            )
-          ) {
-            slotReasons.add("outside_availability");
-            slotOutsideNames.add(candidate.name);
-            continue;
-          }
-          const cap = candidate.max_games_per_week;
-          if (
-            cap != null &&
-            cap > 0 &&
-            (weeklyLoad.get(candidate.id)?.get(gameWeek) ?? 0) >= cap
-          ) {
-            slotReasons.add("over_weekly_limit");
-            slotOverCapNames.add(candidate.name);
-            continue;
-          }
-          return candidate;
+            ),
+            start: g.scheduled_at,
+            minutes: divisionDuration,
+            bookings: umpireBookings.get(candidate.id) ?? [],
+            windows: availabilityByUmpire.get(candidate.id) ?? [],
+            cap: candidate.max_games_per_week,
+          });
+          if (reason === null) return candidate;
+          // Blockers are recorded as they're hit — if the slot ends up
+          // empty, they're the reasons why. Hard checks come before the
+          // availability/cap ones, so an official recorded as soft-blocked
+          // (the "ask them first" list) genuinely had nothing else in the way.
+          if (reason === "already_on_game" || reason === "time_conflict") slotReasons.add("conflict");
+          else slotReasons.add(reason);
+          if (reason === "outside_availability") slotOutsideNames.add(candidate.name);
+          if (reason === "over_weekly_limit") slotOverCapNames.add(candidate.name);
         }
         return null;
       };
@@ -544,19 +509,25 @@ export async function autoAssignUmpires(
       });
       occupiedRoles.add(role);
       occupiedUmpires.add(chosen.id);
-      umpireBookings.get(chosen.id)!.push(candidateInfo);
+      umpireBookings.get(chosen.id)!.push({ start: g.scheduled_at, minutes: divisionDuration });
       loadByUmpire.set(chosen.id, (loadByUmpire.get(chosen.id) ?? 0) + 1);
-      const weeks = weeklyLoad.get(chosen.id)!;
-      weeks.set(gameWeek, (weeks.get(gameWeek) ?? 0) + 1);
     }
   }
 
-  // 9. Bulk insert.
+  // 9. Write through insert_official_assignments (0124): the database takes
+  //    the same per-official, per-game locks as an official's own claim and
+  //    re-checks every row, so a slot claimed (or an official booked) since
+  //    this run's reads is skipped, never double-written. Fails loud: an
+  //    error or an unreadable reply means nothing is reported as filled.
+  let takenMeanwhile = 0;
+  let filled = 0;
   if (inserts.length > 0) {
-    const { error: insertErr } = await supabase
-      .from("game_umpires")
-      .insert(inserts as never[]);
-    if (insertErr) {
+    const { data: wrote, error: writeErr } = await supabase.rpc(
+      "insert_official_assignments" as never,
+      { p_season_id: seasonId, p_rows: inserts } as never,
+    );
+    const reply = wrote as { inserted?: unknown; skipped?: unknown } | null;
+    if (writeErr || typeof reply?.inserted !== "number" || !Array.isArray(reply?.skipped)) {
       return {
         success: false,
         filled: 0,
@@ -565,18 +536,22 @@ export async function autoAssignUmpires(
         outsideAvailabilityNames: Array.from(outsideAvailabilityNames),
         overWeeklyLimitNames: Array.from(overWeeklyLimitNames),
         pastGamesSkipped,
-        error: insertErr.message,
+        takenMeanwhile: 0,
+        error: writeErr?.message ?? "The assignments couldn't be confirmed. Refresh to see what was saved.",
       };
     }
+    filled = reply.inserted;
+    takenMeanwhile = reply.skipped.length;
   }
 
   return {
     success: true,
-    filled: inserts.length,
-    skipped,
+    filled,
+    skipped: skipped + takenMeanwhile,
     skipReasons: Array.from(allSkipReasons),
     outsideAvailabilityNames: Array.from(outsideAvailabilityNames),
     overWeeklyLimitNames: Array.from(overWeeklyLimitNames),
     pastGamesSkipped,
+    takenMeanwhile,
   };
 }

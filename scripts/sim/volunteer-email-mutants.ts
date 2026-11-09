@@ -3,8 +3,8 @@
 // written for it.
 import { runMutants, type Mutant } from "./mutant-runner";
 
-const HEADERS = "src/lib/volunteers/email-headers.ts";
-const DRAIN = "src/lib/volunteers/outbox-drain.ts";
+const HEADERS = "src/lib/outbound-email/headers.ts";
+const DRAIN = "src/lib/outbound-email/outbox-drain.ts";
 const EMAIL = "src/lib/email.ts";
 const ROUTE = "src/app/api/volunteers/outbox/drain/route.ts";
 

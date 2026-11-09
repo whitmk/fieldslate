@@ -1,5 +1,16 @@
 {
   "crons": [
-    { "path": "/api/volunteers/outbox/drain", "schedule": "*/5 * * * *" }
+    {
+      "path": "/api/volunteers/outbox/drain",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/officials/outbox/drain",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/officials/digest",
+      "schedule": "0 15 * * *"
+    }
   ]
 }

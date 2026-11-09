@@ -62,6 +62,18 @@ const MUTANTS: Mutant[] = [
     replace: "  set paid = not paid\n  where id = p_assignment_id\n    and not exists (select 1 from public.volunteer_official_no_shows n where n.game_umpire_id = p_assignment_id)\n",
     expect: "U1",
   },
+  {
+    id: "VL10", what: "(2026-11-09) the shared email module imports the volunteer code", file: "src/lib/outbound-email/outbox-drain.ts",
+    find: "import { bareFromAddress, leagueFromHeader, safeReplyTo, scrubError, isEmailShape } from \"./headers\";",
+    replace: "import { bareFromAddress, leagueFromHeader, safeReplyTo, scrubError, isEmailShape } from \"./headers\";\nimport \"@/lib/volunteers/words\";",
+    expect: "U1",
+  },
+  {
+    id: "VL11", what: "(2026-11-09) the officials sign-up page reads the volunteer words", file: "src/lib/officials-signup/page.ts",
+    find: "import * as W from \"./words\";",
+    replace: "import * as W from \"./words\";\nimport \"@/lib/volunteers/words\";",
+    expect: "U1",
+  },
 ];
 
 runMutants({
