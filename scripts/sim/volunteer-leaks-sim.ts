@@ -53,6 +53,7 @@
 
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
+import { latestSqlBodies } from "./sql-latest";
 
 const ROOT = join(__dirname, "..", "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -198,25 +199,8 @@ ok(visits > fenced, "[AV] the import walk went past the fenced files themselves"
   ok(bad.length === 0, "[W1] no outbound file names a volunteer table, function or personal column", bad.join(", "));
 }
 
-// ── latest migration bodies ─────────────────────────────────────────────
-const latest = new Map<string, string>(); // fn → body (last definition wins), comments stripped
-{
-  const dir = "supabase/migrations";
-  for (const f of readdirSync(join(ROOT, dir)).filter((x) => x.endsWith(".sql")).sort()) {
-    const sql = read(join(dir, f));
-    const re = /create\s+or\s+replace\s+function\s+public\.([a-z_0-9]+)\s*\(/gi;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(sql))) {
-      const after = sql.slice(m.index);
-      const open = /\$([a-z_]*)\$/i.exec(after);
-      if (!open) continue;
-      const bodyStart = open.index + open[0].length;
-      const bodyEnd = after.indexOf(open[0], bodyStart);
-      if (bodyEnd < 0) continue;
-      latest.set(m[1].toLowerCase(), after.slice(bodyStart, bodyEnd).replace(/--[^\n]*/g, ""));
-    }
-  }
-}
+// ── latest migration bodies — the ONE resolver (sql-latest.ts) ─────────
+const latest = latestSqlBodies(); // fn → latest body, comments stripped
 
 // ── U1: the officials fence (0123) ──────────────────────────────────────
 let officialFiles = 0;

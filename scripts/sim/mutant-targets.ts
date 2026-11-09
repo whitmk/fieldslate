@@ -9,6 +9,10 @@
 // Why it exists: seven mutants went stale with the playoff-series step 3/4
 // commits and reached main unnoticed (found 2026-10-20) — their passes had
 // not been re-run, and nothing else looks at a mutant until its pass runs.
+//
+// It also fails a SHADOWED mutant (2026-11-09): one aimed at a SQL function
+// body that a later migration re-creates — the find text still matches once,
+// but it mutates dead text (sql-latest.ts resolves the live definition).
 import { readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
@@ -39,12 +43,12 @@ for (const f of files) {
   mutants += n;
   if (r.status !== 0 || Number(summary[2]) > 0 || n === 0) {
     console.error(`FAIL ${f}: ${summary[0]}`);
-    for (const l of out.split("\n").filter((x) => x.includes("STALE"))) console.error(l);
+    for (const l of out.split("\n").filter((x) => x.includes("STALE") || x.includes("SHADOWED"))) console.error(l);
     failed++;
   } else {
     console.log(`ok   ${f}: ${n} mutants`);
   }
 }
 
-console.log(`\n${files.length} mutants files, ${mutants} mutants — ${failed ? `${failed} FAILED` : "every target matches exactly once"}`);
+console.log(`\n${files.length} mutants files, ${mutants} mutants — ${failed ? `${failed} FAILED` : "every target matches exactly once, none shadowed"}`);
 process.exit(failed ? 1 : 0);

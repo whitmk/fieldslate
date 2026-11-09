@@ -10,6 +10,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import { shadowedAt } from "./sql-latest";
 
 const ROOT = join(__dirname, "../..");
 
@@ -33,7 +34,10 @@ export function runMutants(opts: {
 
   // `npm run sim:mutant-targets` sets this: check that every mutant's find text
   // is in its file exactly once, then stop — no sim is run and nothing is
-  // written. A stale target is a mutant that would mutate nothing.
+  // written. A stale target is a mutant that would mutate nothing. So is one
+  // aimed at a SQL function body a later migration re-creates (2026-11-09,
+  // sql-latest.ts): the live function is the later copy, so the mutant
+  // changes dead text — reported as SHADOWED.
   if (process.env.MUTANT_TARGETS_ONLY === "1") {
     let stale = 0;
     for (const m of opts.mutants) {
@@ -48,6 +52,12 @@ export function runMutants(opts: {
       const n = src.split(m.find).length - 1;
       if (n !== 1) {
         console.error(`  STALE ${m.id}: find text matches ${n} time(s) in ${m.file}, not exactly once`);
+        stale++;
+        continue;
+      }
+      const sh = shadowedAt(m.file, src, src.indexOf(m.find));
+      if (sh) {
+        console.error(`  SHADOWED ${m.id}: ${m.file} holds a dead copy of ${sh.name} — the live body is in ${sh.liveFile}`);
         stale++;
       }
     }
@@ -87,6 +97,12 @@ export function runMutants(opts: {
     const original = readFileSync(path, "utf8");
     if (original.split(m.find).length !== 2) {
       console.error(`${m.id}: target text not found exactly once in ${m.file} — mutant is stale\n`);
+      bad++;
+      continue;
+    }
+    const sh = shadowedAt(m.file, original, original.indexOf(m.find));
+    if (sh) {
+      console.error(`${m.id}: SHADOWED — ${m.file} holds a dead copy of ${sh.name}; the live body is in ${sh.liveFile}\n`);
       bad++;
       continue;
     }
