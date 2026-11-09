@@ -8,7 +8,7 @@
 -- "test" proof org (bbf9afe1…, Elite) and, as the OTHER league, "Test 2"
 -- (27c15406…) — never Santa Rosa American's data.
 --
--- NOT RUN YET. Running it against production needs Whit's go and timing.
+-- Run 2026-11-08 (see RUN LOG); 0120 applied after it.
 --
 -- LOCKS for the run (a few seconds; lock_timeout 3s): the migration's
 -- CREATE TRIGGER on `leagues` and its FKs take SHARE ROW EXCLUSIVE on
@@ -462,8 +462,8 @@ language plpgsql
 security definer$r3$, $r3b$returns trigger
 language plpgsql
 security invoker$r3b$),
-    ('MU4', 'G1', $r4$grant select on table public.volunteer_settings to authenticated;$r4$,
-                  $r4b$grant select on table public.volunteer_settings to authenticated;
+    ('MU4', 'G1', $r4$revoke all on table public.volunteer_outbox from public, anon, authenticated, service_role, dashboard_readonly;$r4$,
+                  $r4b$revoke all on table public.volunteer_outbox from public, anon, authenticated, service_role, dashboard_readonly;
 grant select on table public.volunteer_outbox to authenticated;$r4b$),
     ('MU5', 'C2', $r5$  v_email   text := nullif(btrim(coalesce(p_email, '')), '');$r5$,
                   $r5b$  v_email   text := coalesce(nullif(btrim(coalesce(p_email, '')), ''), (select p0.email from public.profiles p0 where p0.id = p_org_id));$r5b$),
@@ -529,8 +529,8 @@ language plpgsql
 security definer$v3$, $v3b$returns trigger
 language plpgsql
 security invoker$v3b$),
-    ('MU4', $v4$grant select on table public.volunteer_settings to authenticated;$v4$,
-            $v4b$grant select on table public.volunteer_settings to authenticated;
+    ('MU4', $v4$revoke all on table public.volunteer_outbox from public, anon, authenticated, service_role, dashboard_readonly;$v4$,
+            $v4b$revoke all on table public.volunteer_outbox from public, anon, authenticated, service_role, dashboard_readonly;
 grant select on table public.volunteer_outbox to authenticated;$v4b$),
     ('MU16', $v16$grant execute on function public.volunteer_outbox_take(integer)          to service_role;$v16$,
              $v16b$grant execute on function public.volunteer_outbox_take(integer)          to service_role, authenticated;$v16b$)
@@ -560,4 +560,27 @@ end $h$;
 --        (select plan from public.profiles where id = 'bbf9afe1-9e62-41e0-becc-895085bfc9d6');
 
 -- ── RUN LOG ──────────────────────────────────────────────────────────────────
--- (not run yet — needs Whit's go and timing)
+-- 2026-11-08 evening (Pacific), against production on Whit's go, rolled back,
+-- in the "test" org with "Test 2" as the other league.
+--   Run 1: BASELINE pass. md5s printed (all eight matched the repo file and,
+--     after the apply, the live catalog). L1 locks: leagues AccessShare +
+--     ShareRowExclusive, profiles AccessShare + ShareRowExclusive. K1: 0
+--     feature rows, 0 for the real league. 15/16 mutants KILLED at their own
+--     tag. MU4 KILLED AT THE WRONG TAG — a HARNESS fault: its added grant on
+--     volunteer_outbox was placed after the volunteer_settings grant, i.e.
+--     before the outbox table exists, so the mutated migration failed to
+--     build ("relation public.volunteer_outbox does not exist") and V1 MU4
+--     reported the same. Fixed: the mutant now appends the grant after the
+--     outbox's own revoke line. (MU6 died at R1 with an FK error — the
+--     non-member's random uuid as updated_by — which is still R1 refusing to
+--     see not_authorized: the right line.) V1: MU3 and MU16 refused by the
+--     verify block.
+--   Run 2 (MU4 only, plus baseline): BASELINE pass; MU4 KILLED at G1
+--     ("authenticated read volunteer_outbox: 0"); V1 MU4 refused by the
+--     verify block. NOTE: run 2 sent a SHORTENED copy of the migration
+--     (comments, indexes and table comments left out, verify block cut to the
+--     table-privilege loop) to fit the batch; the full-file baseline is run 1.
+--   Leak check after both: 0 ZZ120 seasons, 0 tables, 0 functions, 0
+--     triggers, test org plan elite, no disabled leagues trigger, no idle
+--     transaction.
+-- 0120 applied right after (catalog 20261109012619), verbatim from the file.

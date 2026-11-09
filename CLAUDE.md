@@ -329,9 +329,30 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `fd94fb29d2dd64ef659ac52fae736ae8` verified, one overload, SECURITY DEFINER;
   EXECUTE authenticated only (PUBLIC, anon, service_role, dashboard_readonly
   false); existing rows byte-identical on their original columns, all at the
-  defaults. The latest migration applied; 0102 is still reserved. **Deploy
+  defaults. 0102 is still reserved. **Deploy
   order (met): 0119 was applied BEFORE the code reached `main`.** See "People
   per shift (0119)" under the snack shack section.
+- **0120 (volunteer sign-ups foundation) APPLIED 2026-11-09 01:26 UTC
+  (2026-11-08 evening Pacific), catalog `20261109012619`**, verbatim from the
+  repo file on Whit's go, after its rolled-back proof (run 1 baseline green,
+  15/16 at their own tag, MU4 a harness fault; run 2 MU4 killed at G1 —
+  read its RUN LOG). md5(prosrc) verified against the repo file, one overload
+  each: `org_feature_on` `517cc1d6bea110af498a58bbbbb125ff` (INVOKER),
+  `volunteer_admin_state` `66ef262f7bfd7bb4c5fa1792ca538179`,
+  `set_volunteer_contact_email` `eb1b950c88ef9faeefd2287215d603ce`,
+  `set_volunteer_link` `b34511ea24976f08f6ff3605d404db7e`,
+  `reset_volunteer_link` `1f0976697a6045e03c056f2d696d3b90`,
+  `volunteer_outbox_take` `53a42e704c867a4bee5eae3890a55b91`,
+  `volunteer_outbox_finish` `8fe09939363479571d0fdc69fd4ab4ad`,
+  `wipe_volunteer_data_on_archive` `888ac9aaa739d21b60ec255dabca9ff4` (all
+  DEFINER but the first, `search_path=public, pg_temp`). EXECUTE: the four
+  admin functions authenticated only, take/finish service_role only,
+  `org_feature_on` and the trigger function no role (PUBLIC, anon,
+  dashboard_readonly false throughout). Table privileges: SELECT on
+  `volunteer_settings` for authenticated, nothing else for any role on the
+  five tables; RLS on all five; trigger enabled. Zero `org_features` and
+  `volunteer_settings` rows. The latest migration applied. See "Volunteer
+  sign-ups".
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -5629,8 +5650,8 @@ Still open:
 ## Volunteer sign-ups (in progress — 2026-11-08)
 
 - **Plan approved 2026-11-08. Phase 0 (privacy policy + help page) is on
-  `main`. Branch A (`feat/volunteers-foundation`, 0120) is WRITTEN, its proof
-  NOT RUN, 0120 NOT APPLIED.** The build is four migrations on four branches (0120
+  `main`. Branch A (`feat/volunteers-foundation`, 0120) is on `main`; 0120
+  APPLIED 2026-11-09 01:26 UTC (see the Database section).** The build is four migrations on four branches (0120
   foundation, 0121 game roles + claims, 0122 snack shack sign-ups, 0123
   tracker), behind a per-org switch that is ON only for the two test orgs —
   "SRALL" (owner `aa21d01c…`) and "test" — and NEVER the real league.
@@ -5652,7 +5673,7 @@ Still open:
   Its FAQ renders from `src/lib/volunteers/help-faq.ts` (visible list + JSON-LD
   from one array, the calendar help page's rule).
 - **0120 foundation (`supabase/migrations/0120_volunteers_foundation.sql`,
-  NOT APPLIED).** `org_features` (the switch; NO role holds any privilege;
+  APPLIED 2026-11-09).** `org_features` (the switch; NO role holds any privilege;
   the migration inserts no rows — Whit turns orgs on in the SQL editor:
   `insert into org_features (owner_id, feature, enabled) values (<owner>,
   'volunteers', true)` for "SRALL" (`aa21d01c…`) and "test" (`bbf9afe1…`)
@@ -5670,13 +5691,18 @@ Still open:
   UPDATE OF archived_at trigger on `leagues`, NULL → set only, SECURITY
   DEFINER on purpose (archiving is a browser write by a member who holds no
   DELETE here; as INVOKER the archive would fail) — 0121 re-creates it to
-  delete claims, roles and goals too. Auto-archive skipping seasons with
-  volunteer data (option b) and its banner come with 0121, when claims exist.
+  delete claims, roles and goals too. **Auto-archive skipping seasons with
+  volunteer data (option b) and its banner land IN branch B (0121), in the
+  same change as the claims — never after it.** Auto-archive runs on every
+  dashboard load, and this trigger fires on it like any other archive, so
+  once claims exist a season past its end date would lose its volunteer data
+  the moment an admin opens the dashboard. Today nothing writes `volunteers`
+  or the outbox, so there is nothing to lose until 0121.
   Proof: `scripts/sim/volunteers-foundation-sim.sql` (+ build script; rolled
   back in "test" with "Test 2"; 16 mutants; each mutant drops and re-creates
-  the 0120 objects in its own rolled-back sub-run). NOT RUN — needs Whit's go.
-  Locks when applied: SHARE ROW EXCLUSIVE on `leagues` and `profiles`
-  (under a second).
+  the 0120 objects in its own rolled-back sub-run). Run 2026-11-08 (read its
+  RUN LOG). Locks it held (L1, the apply's own): SHARE ROW EXCLUSIVE + ACCESS
+  SHARE on `leagues` and `profiles`.
 - **The outbox drain** (`/api/volunteers/outbox/drain`, GET): 503 without
   `CRON_SECRET`, constant-time bearer check, counts-only reply. Pure logic in
   `src/lib/volunteers/outbox-drain.ts`; headers in `email-headers.ts` (From =
