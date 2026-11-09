@@ -402,12 +402,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   enabled; `game_umpires` byte-identical. **Deploy order (met): 0123 was
   applied BEFORE the tracker reached `main`.** **The latest migration
   applied.** See "Volunteer sign-ups" → branch D.
-- **0124 (officials self-sign-up) WRITTEN, NOT APPLIED (2026-11-09, branch
-  `feat/officials-signup`).** Its rolled-back proof
-  (`scripts/sim/official-signup-sim.sql`, 16 mutants) has not run — proofs
-  run on Whit's go. Expected md5s: `official-signup-build.ts --md5`. **Deploy
-  order: 0124 BEFORE the code reaches `main`** — auto-assign writes through
-  `insert_official_assignments`. See "Officials self-sign-up".
+- **0124 (officials self-sign-up) APPLIED 2026-11-09 22:57 UTC, catalog
+  `20261109225744`**, verbatim from the repo file on Whit's go, after its
+  rolled-back proof (first-run green, 16/16 mutants at their own tag — read
+  its RUN LOG). md5(prosrc) of all 25 functions = `official-signup-build.ts
+  --md5`, one overload each; EXECUTE: page/claim/drop/take/finish/digest
+  service_role only, the admin functions and `insert_official_assignments`
+  authenticated only, the helpers and the wipe no role (anon and
+  dashboard_readonly false throughout); RLS on the five tables, SELECT for
+  authenticated on `official_divisions` and `official_self_claims` only;
+  wipe trigger enabled; `game_umpires` byte-identical. **Deploy order (met):
+  0124 was applied BEFORE the code reached `main`.** **The latest migration
+  applied.** See "Officials self-sign-up".
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -6245,7 +6251,7 @@ Still open:
      "Information leagues provide about other people") and section 7 (minors,
      youth umpires).
 
-## Officials self-sign-up (0124 written, not applied — 2026-11-09)
+## Officials self-sign-up (0124 applied 2026-11-09)
 
 - **Plan and decisions:** `docs/plans/official-self-signup.md` (on
   `docs/officials-signup-privacy`, with the privacy wording — section 9
@@ -6308,7 +6314,7 @@ Still open:
 - **Fences:** sim:volunteer-leaks U1 now also walks `src/lib/officials-signup`,
   its components, `/o/`, `/api/officials` and `src/lib/outbound-email`
   (VL10/VL11); sim:daylight-leaks fences the same as outbound.
-- **Harnesses:** the SQL proof (not run); `npm run sim:official-claim-rules`
+- **Harnesses:** the SQL proof (run 1 green, 16/16); `npm run sim:official-claim-rules`
   (41 checks × 3 zones; + `:mutants` 9, CR5 skews the shared table);
   `npm run sim:official-signup-page` (29 checks × 3 zones; + `:mutants` 11 —
   read its MUTATION LOG, SP11 first survived a substring check). Screens

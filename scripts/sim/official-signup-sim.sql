@@ -550,4 +550,19 @@ end $h$;
 --   (select count(*) from pg_stat_activity where state = 'idle in transaction') as idle_tx_must_be_0;
 --
 -- ── RUN LOG ───────────────────────────────────────────────────────────────
--- Not run yet (written 2026-11-09; runs only on Whit's go).
+-- 2026-11-09, against production, rolled back, on Whit's go (sent as a
+-- comment-stripped copy — harness only; the migration byte-exact).
+--   Run 1 — GREEN: baseline pass; 16/16 KILLED at their own tag; md5(prosrc)
+--     of all 25 functions = `official-signup-build.ts --md5`. Locks held (L1),
+--     the migration's own: SHARE ROW EXCLUSIVE on divisions, game_umpires,
+--     leagues, profiles, umpires (new foreign keys / the trigger); ACCESS
+--     EXCLUSIVE on org_features (the CHECK swap) and the five new tables;
+--     the rest were the fixture's row locks. NOTE: the migration header also
+--     names `games` — no 0124 key references games; it was row-locked only.
+--   Leak check after the run: identical to the pre-run snapshot (no new
+--     tables or functions, CHECK = volunteers only, no ZZ124 fixtures,
+--     game_umpires md5 6d579ac5… unchanged, org_features unchanged, test org
+--     still Elite, no idle transaction).
+--   Applied right after (verbatim, apply_migration): catalog 20261109225744;
+--     its verify block passed; md5s, EXECUTE per role, RLS, table grants and
+--     the trigger checked live.
