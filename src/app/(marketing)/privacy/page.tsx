@@ -49,12 +49,13 @@ const tocItems: { id: string; label: string }[] = [
   { id: "infosafe", label: "6. How do we keep your information safe?" },
   { id: "infominors", label: "7. Do we collect information from minors?" },
   { id: "volunteers", label: "8. Volunteer sign-ups" },
-  { id: "privacyrights", label: "9. What are your privacy rights?" },
-  { id: "dnt", label: "10. Controls for Do-Not-Track features" },
-  { id: "uslaws", label: "11. Do United States residents have specific privacy rights?" },
-  { id: "policyupdates", label: "12. Do we make updates to this notice?" },
-  { id: "contact", label: "13. How can you contact us about this notice?" },
-  { id: "request", label: "14. How can you review, update, or delete the data we collect from you?" },
+  { id: "officialsignup", label: "9. Officials sign-up" },
+  { id: "privacyrights", label: "10. What are your privacy rights?" },
+  { id: "dnt", label: "11. Controls for Do-Not-Track features" },
+  { id: "uslaws", label: "12. Do United States residents have specific privacy rights?" },
+  { id: "policyupdates", label: "13. Do we make updates to this notice?" },
+  { id: "contact", label: "14. How can you contact us about this notice?" },
+  { id: "request", label: "15. How can you review, update, or delete the data we collect from you?" },
 ];
 
 export default function PrivacyPolicyPage() {
@@ -599,6 +600,11 @@ export default function PrivacyPolicyPage() {
             <a href="#volunteers" className="text-[#22C55E] hover:underline">
               &ldquo;Volunteer sign-ups&rdquo;
             </a>
+            ). So are officials&rsquo; private sign-up links and the record of
+            which spots an official took through one (see{" "}
+            <a href="#officialsignup" className="text-[#22C55E] hover:underline">
+              &ldquo;Officials sign-up&rdquo;
+            </a>
             ).
           </p>
           <p>
@@ -660,9 +666,18 @@ export default function PrivacyPolicyPage() {
             18. Leagues may enter an official under 13 only with a
             parent&rsquo;s or guardian&rsquo;s permission, and must use that
             parent&rsquo;s or guardian&rsquo;s email and phone number. We use
-            this information only to provide the Services to that league. If
-            you believe we hold information about a child that shouldn&rsquo;t
-            be here, contact us at{" "}
+            this information only to provide the Services to that league.
+          </p>
+          <p>
+            If the league uses officials sign-up, our emails about an official
+            under 18 go to the parent&rsquo;s or guardian&rsquo;s email address
+            the league entered, along with that official&rsquo;s private
+            sign-up link. The parent or guardian can take spots for the
+            official, or let the official use the link. Taking or dropping a
+            spot records only which game was chosen and when; it doesn&rsquo;t
+            ask for any information about the official. If you believe we hold
+            information about a child that shouldn&rsquo;t be here, contact us
+            at{" "}
             <a
               href="mailto:hello@thefieldslate.com"
               className="font-medium text-[#22C55E] hover:underline"
@@ -740,9 +755,68 @@ export default function PrivacyPolicyPage() {
           </p>
         </section>
 
-        {/* 9. RIGHTS */}
+        {/* 9. OFFICIALS SIGN-UP */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
-          <SectionHeading id="privacyrights" number={9}>
+          <SectionHeading id="officialsignup" number={9}>
+            Officials sign-up
+          </SectionHeading>
+          <InShort>
+            If your league lets its officials (such as umpires) sign up for
+            games, we send each official a private link to the open spots they
+            can take.
+          </InShort>
+          <p>
+            <strong>What the league enters.</strong> The league enters its
+            officials&rsquo; names and an email address so we can send the
+            link. For an official under 18, the league enters a parent&rsquo;s
+            or guardian&rsquo;s email address instead, and our emails go there
+            (see{" "}
+            <a href="#infominors" className="text-[#22C55E] hover:underline">
+              &ldquo;Do we collect information from minors?&rdquo;
+            </a>
+            ). A league can also copy a link and send it to an official itself,
+            for example by text message.
+          </p>
+          <p>
+            <strong>What the private link shows.</strong> The link shows the
+            official&rsquo;s own assigned games, the open spots in the
+            divisions the league lets them work, and, when a spot doesn&rsquo;t
+            fit, the reason from the official&rsquo;s own details (their
+            availability, blackout dates, other games or weekly limit). It
+            never shows other officials&rsquo; names or contact details. Anyone
+            who has the link can take or drop spots for that official, so keep
+            it private. The league can replace the link at any time, and the
+            old one stops working. We store only a scrambled (hashed) form of
+            the link.
+          </p>
+          <p>
+            <strong>What we record.</strong> When an official takes a spot
+            through the link, it becomes an assignment like any the league
+            makes, and we also record that it was taken through the link and
+            when. An official can drop a spot they took until 48 hours before
+            the game; after that, the page shows how to contact the league.
+          </p>
+          <p>
+            <strong>Emails.</strong> We email officials when the league asks
+            for help with open spots, and to confirm a spot they took or
+            dropped. These emails come from FieldSlate&rsquo;s address with
+            your league&rsquo;s name, and replies go to the league&rsquo;s
+            officials contact. We also email that contact when an official
+            drops a spot, and once a day with the spots officials took. We
+            don&rsquo;t use these email addresses for marketing, and we
+            don&rsquo;t sell them.
+          </p>
+          <p>
+            <strong>How long we keep it.</strong> Sign-up links and the record
+            of which spots were taken through a link are deleted when the
+            league archives the season. The assignments themselves stay with
+            the league&rsquo;s season, as they always have. Copies may remain
+            in our backups for up to 30 days before they are overwritten.
+          </p>
+        </section>
+        {/* 10. RIGHTS */}
+        <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
+          <SectionHeading id="privacyrights" number={10}>
             What are your privacy rights?
           </SectionHeading>
           <InShort>
@@ -830,9 +904,9 @@ export default function PrivacyPolicyPage() {
           </p>
         </section>
 
-        {/* 10. DNT */}
+        {/* 11. DNT */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
-          <SectionHeading id="dnt" number={10}>
+          <SectionHeading id="dnt" number={11}>
             Controls for Do-Not-Track features
           </SectionHeading>
           <p>
@@ -856,9 +930,9 @@ export default function PrivacyPolicyPage() {
           </p>
         </section>
 
-        {/* 11. US RIGHTS */}
+        {/* 12. US RIGHTS */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
-          <SectionHeading id="uslaws" number={11}>
+          <SectionHeading id="uslaws" number={12}>
             Do United States residents have specific privacy rights?
           </SectionHeading>
           <InShort>
@@ -1214,9 +1288,9 @@ export default function PrivacyPolicyPage() {
           </p>
         </section>
 
-        {/* 12. UPDATES */}
+        {/* 13. UPDATES */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
-          <SectionHeading id="policyupdates" number={12}>
+          <SectionHeading id="policyupdates" number={13}>
             Do we make updates to this notice?
           </SectionHeading>
           <InShort>
@@ -1235,9 +1309,9 @@ export default function PrivacyPolicyPage() {
           </p>
         </section>
 
-        {/* 13. CONTACT */}
+        {/* 14. CONTACT */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
-          <SectionHeading id="contact" number={13}>
+          <SectionHeading id="contact" number={14}>
             How can you contact us about this notice?
           </SectionHeading>
           <p>
@@ -1264,9 +1338,9 @@ export default function PrivacyPolicyPage() {
           </address>
         </section>
 
-        {/* 14. REQUEST */}
+        {/* 15. REQUEST */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
-          <SectionHeading id="request" number={14}>
+          <SectionHeading id="request" number={15}>
             How can you review, update, or delete the data we collect from you?
           </SectionHeading>
           <p>
