@@ -57,7 +57,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const LINK_TOKEN = /^[0-9a-f]{64}$/;
 
 export type ClaimBody = {
-  gameId: string;
+  /** Exactly one of gameId / blockId (a snack shack shift, 0122). */
+  gameId: string | null;
+  blockId: string | null;
   roleId: string;
   forTeamId: string | null;
   divisionId: string;
@@ -77,7 +79,10 @@ export function parseClaimBody(raw: unknown): ClaimBody | null {
   const b = raw as Record<string, unknown>;
   const str = (k: string, max: number) => (typeof b[k] === "string" && (b[k] as string).length <= max ? (b[k] as string) : null);
   const id = (k: string) => (typeof b[k] === "string" && UUID.test(b[k] as string) ? (b[k] as string) : null);
-  const gameId = id("gameId");
+  const gameId = b.gameId === null || b.gameId === undefined ? null : id("gameId");
+  const blockId = b.blockId === null || b.blockId === undefined ? null : id("blockId");
+  if ((b.gameId !== null && b.gameId !== undefined && gameId === null) || (b.blockId !== null && b.blockId !== undefined && blockId === null)) return null;
+  if ((gameId === null) === (blockId === null)) return null;
   const roleId = id("roleId");
   const divisionId = id("divisionId");
   const teamId = id("teamId");
@@ -86,11 +91,11 @@ export function parseClaimBody(raw: unknown): ClaimBody | null {
   const lastName = str("lastName", 200);
   const email = str("email", 320);
   const turnstileToken = str("turnstileToken", 2048);
-  if (!gameId || !roleId || !divisionId || !teamId || firstInitial === null || lastName === null || email === null || !turnstileToken) return null;
+  if (!roleId || !divisionId || !teamId || firstInitial === null || lastName === null || email === null || !turnstileToken) return null;
   if (b.forTeamId !== null && b.forTeamId !== undefined && forTeamId === null) return null;
   if (typeof b.adult !== "boolean" || (b.confirmOverlap !== undefined && typeof b.confirmOverlap !== "boolean")) return null;
   return {
-    gameId, roleId, forTeamId, divisionId, teamId, firstInitial, lastName, email,
+    gameId, blockId, roleId, forTeamId: blockId ? null : forTeamId, divisionId, teamId, firstInitial, lastName, email,
     adult: b.adult, confirmOverlap: b.confirmOverlap === true, turnstileToken,
   };
 }

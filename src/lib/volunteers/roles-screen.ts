@@ -3,7 +3,9 @@
 // Words live in ./words.ts; the slot rules in ./slots.ts (never a copy).
 //
 // Approved plan (2026-11-08) against docs/mockups/volunteer-signup/AdminRoles:
-// the snack shack row arrives with branch C; "How many each" is 1–10 (the
+// the snack shack row (branch C, 0122) is the season's ONE snack shack role —
+// its spots are each shift's headcount, so its editor asks only for a name
+// and the on-link switch; "How many each" is 1–10 (the
 // database rule) instead of the board's 1/2/3; a new "Starts before the game"
 // (0–120); the slot kind can't change once anyone has signed up; saving or
 // deleting first states how many sign-ups it cancels; the link strip shows
@@ -68,10 +70,13 @@ export function activeByRole(claims: readonly { role_id: string | null; status: 
   return m;
 }
 
+/** A draft's kind: a game role's, or the season's snack shack role (0122). */
+export type DraftKind = RoleKind | "snack_shack";
+
 export type RoleDraft = {
   id: string | null;
   name: string;
-  kind: RoleKind;
+  kind: DraftKind;
   spots: number;
   leadMinutes: number;
   divisionIds: string[];
@@ -86,6 +91,9 @@ export function draftProblem(d: RoleDraft): string | null {
   const name = d.name.trim();
   if (name.length === 0) return "Give the role a name.";
   if (name.length > 60) return "Keep the name to 60 characters.";
+  // The snack shack role takes its spots from the shifts and covers no
+  // division: only the name is the form's to check (0122).
+  if (d.kind === "snack_shack") return null;
   if (!Number.isInteger(d.spots) || d.spots < 1 || d.spots > MAX_SPOTS) return "Choose 1 to 10 spots.";
   if (!Number.isInteger(d.leadMinutes) || d.leadMinutes < 0 || d.leadMinutes > MAX_LEAD_MIN) return "Choose 0 to 120 minutes.";
   if (d.divisionIds.length === 0) return "Pick at least one division.";

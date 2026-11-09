@@ -13,6 +13,8 @@
 //   M3  cancelOutcome: canceled; change_closed names the contact; not_found
 //       reloads; unknown; anything else → the generic failure
 //   M4  keepOutcome: kept; not_found reloads; anything else → failure
+//   M5  a snack shack shift (0122): "until 11:30 AM · For Braves families",
+//       never a matchup; an open shift says only its end
 //   W1  wiring: the action checks the token and the claim id before the
 //       database; only a canceled reply drains; the page is noindex with no
 //       referrer; each route calls its own function
@@ -22,7 +24,7 @@
 // Each check must now be present (> 0) as well as first.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { cancelOutcome, claimView, keepOutcome, readManageReply, type MyClaim } from "@/lib/volunteers/manage-page";
+import { cancelOutcome, claimView, claimWhere, keepOutcome, readManageReply, type MyClaim } from "@/lib/volunteers/manage-page";
 import * as W from "@/lib/volunteers/words";
 
 const ROOT = join(__dirname, "..", "..");
@@ -80,6 +82,15 @@ ok(cancelOutcome({ status: "<x>" }, null).line === W.MY_ACTION_FAILED && cancelO
 ok(keepOutcome({ status: "kept" }).kind === "ok", "M4", "kept");
 ok(keepOutcome({ status: "not_found" }).kind === "error" && (keepOutcome({ status: "not_found" }) as { reload: boolean }).reload, "M4", "not_found reloads");
 ok(keepOutcome({ status: "canceled" }).kind === "error", "M4", "a cancel reply is not a keep");
+
+// M5
+const shiftClaim: MyClaim = {
+  ...claim, kind: "shift", role_name: "Snack shack", for_team_name: null, home_team_name: "", away_team_name: null, field: null,
+  start: "2027-03-06T09:30", end: "2027-03-06T11:30", assigned_team_name: "Braves",
+};
+ok(claimWhere(shiftClaim) === "until 11:30 AM · For Braves families", "M5", "a shift's line", claimWhere(shiftClaim));
+ok(claimWhere({ ...shiftClaim, assigned_team_name: null }) === "until 11:30 AM", "M5", "an open shift's line");
+ok(claimWhere(claim) === "Expos vs Pirates · Field 1", "M5", "a game spot unchanged", claimWhere(claim));
 
 // W1
 const action = read("src/lib/volunteers/manage-action.ts");

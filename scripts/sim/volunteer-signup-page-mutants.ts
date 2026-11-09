@@ -19,7 +19,7 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "SP3", what: "the division chip ignored", file: SP,
-    find: "    if (chips.divisionId && s.division_id !== chips.divisionId) continue;\n",
+    find: "    if (chips.divisionId && s.kind !== \"shift\" && s.division_id !== chips.divisionId) continue;\n",
     replace: "",
     expect: "P3",
   },
@@ -63,6 +63,30 @@ const MUTANTS: Mutant[] = [
     id: "SP10", what: "the claim reaches the database before Turnstile", file: "src/app/api/volunteers/signup/[token]/claim/route.ts",
     find: "  if (!(await verifyTurnstile(config.turnstileSecret, body.turnstileToken, ip, fetch))) {\n    return NextResponse.json({ status: \"captcha\" }, { headers: NO_STORE });\n  }\n",
     replace: "",
+    expect: "W1",
+  },
+  {
+    id: "SP11", what: "shifts keyed like games (all collide on an empty game id)", file: SP,
+    find: "  return s.kind === \"shift\" ? `shift|${s.block_id}` : `${s.game_id}|${s.role_id}|${s.for_team_id ?? \"\"}`;",
+    replace: "  return `${s.game_id}|${s.role_id}|${s.for_team_id ?? \"\"}`;",
+    expect: "P7",
+  },
+  {
+    id: "SP12", what: "a division chip hides shifts", file: SP,
+    find: "    if (chips.divisionId && s.kind !== \"shift\" && s.division_id !== chips.divisionId) continue;",
+    replace: "    if (chips.divisionId && s.division_id !== chips.divisionId) continue;",
+    expect: "P7",
+  },
+  {
+    id: "SP13", what: "a body with a game AND a shift accepted", file: PS,
+    find: "  if ((gameId === null) === (blockId === null)) return null;\n",
+    replace: "",
+    expect: "Q2",
+  },
+  {
+    id: "SP14", what: "the route always sends p_block_id", file: "src/app/api/volunteers/signup/[token]/claim/route.ts",
+    find: "      ...(body.blockId ? { p_block_id: body.blockId } : {}),",
+    replace: "      p_block_id: body.blockId ?? null,",
     expect: "W1",
   },
 ];

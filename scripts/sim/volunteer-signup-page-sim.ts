@@ -15,15 +15,21 @@
 //   P5  claimOutcome: every database status worded; overlap asks again;
 //       unknown → the generic failure, never a raw string
 //   P6  titles, details and dates as the page prints them
+//   P7  snack shack shifts (0122): read from `shifts` (none when the reply
+//       has no key — a database before 0122), keyed by block, detailed
+//       "9:30–11:30 AM · For Braves families" (no team → times only), spots
+//       = the headcount, and never hidden by a division chip
 //   Q1  publicConfig: no Turnstile secret, no salt or a short salt → null
 //       (the claim route then answers 503 and touches nothing)
-//   Q2  parseClaimBody: shape-checked; anything off → null (400)
+//   Q2  parseClaimBody: shape-checked; anything off → null (400); exactly
+//       one of a game and a shift; a shift carries no for-team
 //   Q3  verifyTurnstile: only Cloudflare's success counts; a failure, a
 //       thrown fetch or no token → false; no remote IP when unknown
 //   Q4  hashKey salted and stable; clientIp takes the first forwarded hop
 //   W1  wiring: the claim route checks config, then the body, then
 //       Turnstile, BEFORE the database; the data route answers 503 on a read
-//       error; the page is noindex; /v/ is outside the middleware
+//       error; the page is noindex; /v/ is outside the middleware; the
+//       route sends p_block_id only for a shift (a game claim is 0121's call)
 // ANTI-VACUITY: every spot action and every claim outcome kind occurs.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -35,6 +41,7 @@ import {
   readPageReply,
   spotAction,
   spotDetail,
+  spotKey,
   spotTitle,
   type PageSpot,
 } from "@/lib/volunteers/signup-page";
@@ -63,6 +70,7 @@ async function main() {
 
   // P2
   const base: PageSpot = {
+    kind: "game", block_id: null, assigned_team_name: null,
     game_id: "g1", role_id: "rFP", for_team_id: null, for_team_name: null, division_id: "dM", division_name: "Majors",
     home_team_name: "Expos", away_team_name: "Pirates", interleague: false, is_away: false, field: "Field 1", park: "Main Park",
     start: "2027-03-06T08:15", game_start: "2027-03-06T09:00", end: "2027-03-06T10:30", state: "open", spots: 2, taken: 1,
@@ -136,6 +144,30 @@ async function main() {
     spotDetail({ ...base, field: null, is_away: true, away_team_name: null, home_team_name: "Giants" }));
   ok(fmtDay("2027-03-06T08:15") === "Saturday, March 6", "P6", "day", fmtDay("2027-03-06T08:15"));
 
+  // P7 — snack shack shifts
+  const withShifts = readPageReply({
+    ...okReply,
+    spots: [{ ...base }],
+    shifts: [
+      { block_id: "b1", role_id: "rSS", start: "2027-03-06T09:30", end: "2027-03-06T11:30", assigned_team_name: "Braves", spots: 2, taken: 1 },
+      { block_id: "b2", role_id: "rSS", start: "2027-03-06T11:30", end: "2027-03-06T13:30", assigned_team_name: null, spots: 3, taken: 3 },
+    ],
+  });
+  const shiftSpots = withShifts.kind === "ok" ? withShifts.data.spots.filter((s) => s.kind === "shift") : [];
+  ok(withShifts.kind === "ok" && withShifts.data.spots.length === 3 && shiftSpots.length === 2 &&
+     shiftSpots[0].block_id === "b1" && shiftSpots[0].game_id === "" && shiftSpots[0].for_team_id === null,
+    "P7", "shifts read as spots", JSON.stringify(shiftSpots[0]));
+  const noShifts = readPageReply(okReply);
+  ok(noShifts.kind === "ok" && noShifts.data.spots.length === 0, "P7", "no shifts key → none");
+  ok(spotKey(shiftSpots[0]) === "shift|b1" && spotKey(shiftSpots[1]) === "shift|b2", "P7", "keyed by block",
+    shiftSpots.map(spotKey).join(","));
+  ok(spotDetail(shiftSpots[0]) === "9:30–11:30 AM · For Braves families", "P7", "assigned shift detail", spotDetail(shiftSpots[0]));
+  ok(spotDetail(shiftSpots[1]) === "11:30 AM–1:30 PM", "P7", "open shift: times only", spotDetail(shiftSpots[1]));
+  const sa = spotAction(shiftSpots[0]);
+  ok(sa.kind === "sign_up" && sa.openLine === "1 of 2 spots open" && spotAction(shiftSpots[1]).kind === "taken", "P7", "headcount spots", JSON.stringify(sa));
+  ok(groupSpots(shiftSpots, { roleId: null, divisionId: "dM" }).flatMap((g) => g.spots).length === 2, "P7", "a division chip keeps shifts");
+  ok(groupSpots(shiftSpots, { roleId: "rGC", divisionId: null }).length === 0, "P7", "a role chip filters shifts");
+
   // Q1
   const salt = "s".repeat(32);
   ok(publicConfig({ TURNSTILE_SECRET_KEY: "x", VOLUNTEER_HASH_SALT: salt }) !== null, "Q1", "configured");
@@ -147,6 +179,12 @@ async function main() {
   const U = (n: number) => `00000000-0000-0000-0000-00000000000${n}`;
   const good = { gameId: U(1), roleId: U(2), forTeamId: null, divisionId: U(3), teamId: U(4), firstInitial: "A", lastName: "Garcia", email: "a@example.org", adult: true, turnstileToken: "t" };
   ok(parseClaimBody(good)?.confirmOverlap === false, "Q2", "valid body");
+  const shiftBody = parseClaimBody({ ...good, gameId: null, blockId: U(5), forTeamId: U(6) });
+  ok(shiftBody?.blockId === U(5) && shiftBody.gameId === null && shiftBody.forTeamId === null, "Q2", "a shift body (no for-team)",
+    JSON.stringify(shiftBody));
+  ok(parseClaimBody({ ...good, blockId: U(5) }) === null, "Q2", "a game AND a shift → null");
+  ok(parseClaimBody({ ...good, gameId: null }) === null, "Q2", "neither → null");
+  ok(parseClaimBody({ ...good, gameId: null, blockId: "b1" }) === null, "Q2", "a bad block id → null");
   for (const [what, p] of [
     ["bad game id", { gameId: "g1" }], ["bad for-team", { forTeamId: "x" }], ["adult missing", { adult: undefined }],
     ["adult as text", { adult: "yes" }], ["no captcha", { turnstileToken: "" }], ["long name", { lastName: "x".repeat(201) }],
@@ -190,6 +228,10 @@ async function main() {
   ok(/if \(error\) \{[\s\S]*?status: 503/.test(dataRoute), "W1", "data route: a read error → 503");
   ok(read("src/app/v/[token]/page.tsx").includes("robots: { index: false, follow: false }"), "W1", "page is noindex");
   ok(read("src/middleware.ts").includes("|s/|v/|"), "W1", "/v/ outside the middleware");
+  ok(claim.includes("...(body.blockId ? { p_block_id: body.blockId } : {})") && !/p_block_id: body\.blockId \?\?/.test(claim), "W1",
+    "the route sends p_block_id only for a shift");
+  const client = read("src/components/volunteers/signup-page-client.tsx");
+  ok(client.includes('blockId: spot.kind === "shift" ? spot.block_id : null'), "W1", "the page sends the shift's block");
 
   for (const [k, v] of Object.entries(counters)) ok(v > 0, "VAC", `anti-vacuity counter ${k} is zero`);
   if (failures.length) {

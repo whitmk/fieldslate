@@ -24,8 +24,16 @@
 //   R4  remindOutcome: a count → sent (and what was left out); none queued
 //       or an unreadable reply → failure, never "sent"
 //   R5  remindedLine reads the league-timezone date, never the raw timestamp
+//   S8  snack shack shifts (0122): one row per position of each shift's
+//       headcount under the snack shack role (none without the role); a
+//       shift's sign-up sits at its own block and position; "9:30–11:30 AM ·
+//       For Expos families"; a removed shift's sign-ups get their own lost
+//       group and words
 //   W1  wiring: the page fails closed on the sign-up read; the component
 //       trusts only an "assigned" / "canceled" / "saved" reply
+//   W2  wiring (0122): both pages read shifts through loadSeasonShifts and
+//       keep the snack shack role out of the game roles; Assign sends
+//       p_block_id only for a shift
 // ANTI-VACUITY: filled, open, noted, past and lost rows must all occur.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -202,6 +210,43 @@ ok(assignStatusLine("weird")?.startsWith("Couldn't save") === true, "S7", "unkno
     "R5", "the screen sends through volunteer_admin_remind and trusts only a readable count");
 }
 
+// S8 — snack shack shifts
+{
+  const SHIFTS = [
+    { id: "b1", date: "2027-03-06", start: "09:30", end: "11:30", assignedTeamId: "tE", people: 2 },
+    { id: "b2", date: "2027-03-06", start: "11:30", end: "13:30", assignedTeamId: null, people: 1 },
+  ];
+  const sClaims: SignupClaim[] = [
+    ...CLAIMS,
+    claim("s1", null, "rSS", null, 2, { snack_shack_block_id: "b1", last_name: "Lee" }),
+    claim("s2", null, "rSS", null, 1, { snack_shack_block_id: "b2", status: "canceled" }),
+    claim("s3", null, "rSS", null, 1, {
+      status: "detached", detached_from: { kind: "shift", start: "2027-03-20T09:30" }, detached_at: "2027-03-03T10:00:00Z",
+    }),
+  ];
+  const srows = buildSpotRows({ games: GAMES, roles: ROLES, teams: TEAMS, divisionName: DIV, claims: sClaims,
+    shifts: SHIFTS, snackRole: { id: "rSS", name: "Snack shack" } });
+  const sr = srows.filter((r) => r.blockId);
+  ok(sr.length === 3 && sr.every((r) => r.gameId === "" && r.roleId === "rSS" && r.title === "Snack shack"), "S8", "a row per headcount position",
+    JSON.stringify(sr.map((r) => r.key)));
+  const b1p2 = sr.find((r) => r.blockId === "b1" && r.position === 2);
+  const b1p1 = sr.find((r) => r.blockId === "b1" && r.position === 1);
+  ok(b1p2?.claim?.claim_id === "s1" && b1p1?.claim === null, "S8", "the sign-up sits at its block and position");
+  ok(sr.find((r) => r.blockId === "b2")?.claim === null, "S8", "a canceled shift sign-up never shows");
+  ok(b1p2?.detail === "9:30–11:30 AM · For Expos families · spot 2 of 2", "S8", "assigned shift detail", b1p2?.detail);
+  ok(sr.find((r) => r.blockId === "b2")?.detail === "11:30 AM–1:30 PM", "S8", "open shift detail");
+  ok(b1p1?.start === "2027-03-06T09:30", "S8", "the shift's start");
+  ok(buildSpotRows({ games: GAMES, roles: ROLES, teams: TEAMS, divisionName: DIV, claims: sClaims, shifts: SHIFTS, snackRole: null })
+    .every((r) => r.blockId === null), "S8", "no snack shack role → no shift rows");
+  const sl = lostGroups(sClaims, TEAMS, DIV);
+  const shiftGroup = sl.find((g) => g.shifts);
+  ok(shiftGroup?.claims.length === 1 && shiftGroup.claims[0].claim_id === "s3" && !sl.some((g) => !g.shifts && g.claims.some((c) => c.claim_id === "s3")),
+    "S8", "a removed shift's sign-up gets its own group");
+  ok(!!shiftGroup && lostTitle(shiftGroup) === "1 sign-up lost when snack shack shifts were removed or regenerated on Mar 3", "S8",
+    "lost shift words", shiftGroup ? lostTitle(shiftGroup) : "");
+  ok(lostDetail(1, true).startsWith("That shift no longer exists."), "S8", "lost shift detail");
+}
+
 // W1
 const page = read("src/app/(dashboard)/dashboard/volunteers/signups/page.tsx");
 ok(/if \(signups\.error \|\| !reply \|\| !Array\.isArray\(reply\.claims\) \|\| typeof reply\.today !== "string"\) \{\s*throw/.test(page),
@@ -209,6 +254,16 @@ ok(/if \(signups\.error \|\| !reply \|\| !Array\.isArray\(reply\.claims\) \|\| t
 const comp = read("src/components/volunteers/signups-screen.tsx");
 ok(comp.includes('if (status === "assigned") {') && comp.includes('?.status !== "canceled"') && comp.includes('?.status !== "saved"'),
   "W1", "only a confirming reply counts as done");
+
+// W2
+for (const f of ["src/app/(dashboard)/dashboard/volunteers/signups/page.tsx", "src/app/(dashboard)/dashboard/volunteers/page.tsx"]) {
+  const src = read(f);
+  ok(src.includes("loadSeasonShifts(") && src.includes('.filter((r) => r.kind !== "snack_shack")'), "W2", `${f}: shifts read, snack shack role kept out of the game roles`);
+}
+ok(comp.includes("p_game_id: row.blockId ? null : row.gameId,") && comp.includes("...(row.blockId ? { p_block_id: row.blockId } : {}),"),
+  "W2", "Assign sends p_block_id only for a shift");
+ok(comp.includes("{data.snackRole && <option value={data.snackRole.id}>{data.snackRole.name}</option>}"), "W2",
+  "the role filter offers the snack shack role");
 
 for (const [k, v] of Object.entries(counters)) ok(v > 0, "VAC", `anti-vacuity counter ${k} is zero`);
 if (failures.length) {

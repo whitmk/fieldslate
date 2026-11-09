@@ -179,7 +179,7 @@ export function SignupPageClient({ token, siteKey }: { token: string | null; sit
                     <div className="font-semibold text-[#0C1F3F]">{spotTitle(s, data.roles)}</div>
                     <div className="text-sm text-gray-600">{spotDetail(s)}</div>
                     <div className="mt-1 flex flex-wrap gap-2 text-xs">
-                      <span className="text-gray-500">{s.division_name}</span>
+                      {s.division_name && <span className="text-gray-500">{s.division_name}</span>}
                       {action.kind === "sign_up" && <span className="text-green-700">{action.openLine}</span>}
                       {tag && <span className="rounded-full bg-amber-50 px-2 text-amber-800">{tag}</span>}
                     </div>
@@ -284,7 +284,8 @@ function SignupForm({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          gameId: spot.game_id,
+          gameId: spot.kind === "shift" ? null : spot.game_id,
+          blockId: spot.kind === "shift" ? spot.block_id : null,
           roleId: spot.role_id,
           forTeamId: spot.for_team_id,
           divisionId,

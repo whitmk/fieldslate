@@ -2,6 +2,8 @@
 // volunteer switch, Elite on the server. Names and emails come ONLY from
 // volunteer_admin_signups; every read is complete-or-throw and any failure
 // shows one error card — a list missing sign-ups would read as open spots.
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadSeasonShifts } from "@/lib/volunteers/shifts-read";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrgId } from "@/lib/orgs/context";
@@ -29,7 +31,7 @@ type GameRow = {
 type RoleRow = {
   id: string;
   name: string;
-  kind: "per_game" | "per_team";
+  kind: "per_game" | "per_team" | "snack_shack";
   spots: number;
   lead_minutes: number;
   signups_open: boolean;
@@ -97,6 +99,9 @@ async function loadSignups(
     .order("created_at")
     .order("id");
   if (roles.error || !roles.data) throw new Error(roles.error?.message ?? "roles");
+  // 0122: the season's shifts (the snack shack role's spots).
+  const shack = await loadSeasonShifts(supabase as unknown as SupabaseClient, seasonId);
+  const snackRole = (roles.data as unknown as RoleRow[]).find((r) => r.kind === "snack_shack") ?? null;
   // @ts-expect-error — RPCs aren't in the hand-maintained Functions map.
   const signups = await supabase.rpc("volunteer_admin_signups", { p_season_id: seasonId });
   const reply = signups.data as { claims?: unknown; today?: unknown } | null;
@@ -119,10 +124,12 @@ async function loadSignups(
       isAway: g.is_away === true,
       fieldLabel: g.is_away ? g.proposed_venue_name : g.venue?.name ?? null,
     })),
-    roles: (roles.data as unknown as RoleRow[]).map((r) => ({
+    shifts: shack.shifts,
+    snackRole: snackRole ? { id: snackRole.id, name: snackRole.name } : null,
+    roles: (roles.data as unknown as RoleRow[]).filter((r) => r.kind !== "snack_shack").map((r) => ({
       id: r.id,
       name: r.name,
-      kind: r.kind,
+      kind: r.kind as "per_game" | "per_team",
       spots: r.spots,
       leadMinutes: r.lead_minutes,
       signupsOpen: r.signups_open,

@@ -7,11 +7,20 @@
 // role and division chips; spots grouped by date with "Sign up" or "Taken"
 // and "1 of 2 spots open"; Division → Team → first initial, last name,
 // email, 18+; the confirmation screen. Differences (decided): the overlap
-// warning is GENERIC and names no spot; no snack shack shifts until branch
-// C; a season picker when two seasons are open.
+// warning is GENERIC and names no spot; a season picker when two seasons
+// are open. Snack shack shifts (0122) are spots too: any family may take one
+// (decided 2026-11-09); a shift assigned to a team says "For <team> families".
+// They belong to no division, so a division chip never hides them.
+import { shiftDetail } from "./shifts";
 import * as W from "./words";
 
 export type PageSpot = {
+  /** "game" for a game role's spot, "shift" for a snack shack shift (0122). */
+  kind: "game" | "shift";
+  /** The shift's block id; null for a game spot. */
+  block_id: string | null;
+  /** The team a shift is assigned to; null for a game spot or an open shift. */
+  assigned_team_name: string | null;
   game_id: string;
   role_id: string;
   for_team_id: string | null;
@@ -31,7 +40,7 @@ export type PageSpot = {
   spots: number;
   taken: number;
 };
-export type PageRole = { id: string; name: string; kind: "per_game" | "per_team" };
+export type PageRole = { id: string; name: string; kind: "per_game" | "per_team" | "snack_shack" };
 export type PageDivision = { id: string; name: string; teams: { id: string; name: string }[] };
 export type PageData = {
   leagueName: string;
@@ -69,13 +78,57 @@ export function readPageReply(raw: unknown): PageReply {
       seasonId: typeof r.season_id === "string" ? r.season_id : null,
       divisions: r.divisions as PageDivision[],
       roles: r.roles as PageRole[],
-      spots: r.spots as PageSpot[],
+      spots: [
+        ...((Array.isArray(r.spots) ? r.spots : []) as Omit<PageSpot, "kind" | "block_id" | "assigned_team_name">[]).map(
+          (s): PageSpot => ({ ...s, kind: "game", block_id: null, assigned_team_name: null }),
+        ),
+        // A database before 0122 sends no shifts; that reads as none.
+        ...(Array.isArray(r.shifts) ? (r.shifts as PageShift[]) : []).map(shiftSpot),
+      ],
     },
   };
 }
 
-export function spotKey(s: Pick<PageSpot, "game_id" | "role_id" | "for_team_id">): string {
-  return `${s.game_id}|${s.role_id}|${s.for_team_id ?? ""}`;
+/** volunteer_signup_page's `shifts` (0122). */
+export type PageShift = {
+  block_id: string;
+  role_id: string;
+  start: string;
+  end: string;
+  assigned_team_name: string | null;
+  spots: number;
+  taken: number;
+};
+
+/** A shift as a spot on the page: open (it is listed only while ahead). */
+export function shiftSpot(s: PageShift): PageSpot {
+  return {
+    kind: "shift",
+    block_id: s.block_id,
+    assigned_team_name: s.assigned_team_name ?? null,
+    game_id: "",
+    role_id: s.role_id,
+    for_team_id: null,
+    for_team_name: null,
+    division_id: "",
+    division_name: "",
+    home_team_name: "",
+    away_team_name: null,
+    interleague: false,
+    is_away: false,
+    field: null,
+    park: null,
+    start: s.start,
+    game_start: s.start,
+    end: s.end,
+    state: "open",
+    spots: s.spots,
+    taken: s.taken,
+  };
+}
+
+export function spotKey(s: Pick<PageSpot, "kind" | "block_id" | "game_id" | "role_id" | "for_team_id">): string {
+  return s.kind === "shift" ? `shift|${s.block_id}` : `${s.game_id}|${s.role_id}|${s.for_team_id ?? ""}`;
 }
 
 /** "GameChanger · Expos" for a per-team spot, else the role's name. */
@@ -86,6 +139,7 @@ export function spotTitle(s: PageSpot, roles: readonly PageRole[]): string {
 
 /** "9:00 AM · Expos vs Pirates · Field 1 (Main Park)". */
 export function spotDetail(s: PageSpot): string {
+  if (s.kind === "shift") return shiftDetail(s.start, s.end, s.assigned_team_name);
   const game = s.away_team_name ? `${s.home_team_name} vs ${s.away_team_name}` : s.home_team_name;
   const place = s.field ? (s.park ? `${s.field} (${s.park})` : s.field) : s.is_away ? "Away" : "";
   return [fmtTime(s.start), game, place].filter(Boolean).join(" · ");
@@ -133,7 +187,7 @@ export function groupSpots(spots: readonly PageSpot[], chips: Chips): { date: st
   const out = new Map<string, PageSpot[]>();
   for (const s of spots) {
     if (chips.roleId && s.role_id !== chips.roleId) continue;
-    if (chips.divisionId && s.division_id !== chips.divisionId) continue;
+    if (chips.divisionId && s.kind !== "shift" && s.division_id !== chips.divisionId) continue;
     const d = s.start.slice(0, 10);
     if (!out.has(d)) out.set(d, []);
     out.get(d)!.push(s);

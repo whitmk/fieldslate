@@ -250,6 +250,10 @@ function partO() {
   // full-schedule print, through cashPrintLine only. It is never emailed,
   // never on a team print (print-all or the Teams page button), and a note is
   // never printed anywhere. Each surface has its own cash tag.
+  // 0122: shift sign-ups live in volunteer tables the snack shack's prints,
+  // emails and Teams button never read — no volunteer table, function, column
+  // or module named in any of them.
+  const VOLUNTEER_NAMES = /volunteer|snack_shack_block_id|claims_carried|claims_lost|signupCounts|signups_line|signupsLine/i;
   const snackOutbound: [string, string, string[]][] = [
     ["snack shack full-schedule email route", "full", ["app", "api", "snack-shack", "[id]", "email", "route.ts"]],
     ["snack shack team email route", "team", ["app", "api", "snack-shack", "team", "[teamId]", "email", "route.ts"]],
@@ -260,12 +264,15 @@ function partO() {
     const src = read(...p);
     ok(!mentionsNotes(src), `[O1-snack] ${name} never references notes`);
     ok(!mentionsCash(src) && !src.includes("cashPrintLine"), `[O1-snack-cash-${key}] ${name} never references a cash person`);
+    ok(!VOLUNTEER_NAMES.test(src), `[O1-snack-volunteer-${key}] ${name} never references volunteer sign-ups (0122)`);
   }
   // The two page prints were lifted out of the page client (2026-11-07):
   // the full-schedule region is its own component file, the print-all
   // document is teamSchedulesDocument in lib/snack-shack/print.ts, and the
   // page's printAllTeamSchedules only hands it date + time per team.
   const snackRegion = read("components", "snack-shack", "snack-shack-print-region.tsx");
+  ok(!VOLUNTEER_NAMES.test(snackRegion) && !VOLUNTEER_NAMES.test(read("lib", "snack-shack", "print.ts")),
+    "[O1-snack-volunteer-print] the snack shack prints never reference volunteer sign-ups (0122)");
   ok(!mentionsNotes(snackRegion) && !mentionsCash(snackRegion), "[O1-snack-print] the snack shack full-schedule print region never references notes, and names the cash person only through cashPrintLine");
   ok(snackRegion.includes("<td>{cashPrintLine(b)}</td>"), "[O1-snack-print-cash] the full-schedule print renders the cash column through cashPrintLine");
   const snackPrintLib = read("lib", "snack-shack", "print.ts");

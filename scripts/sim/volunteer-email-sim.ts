@@ -304,14 +304,20 @@ async function main() {
     };
     // T1 — every kind the outbox can hold has a template, or is knowingly not built yet.
     const mig = readFileSync(join(ROOT, "supabase/migrations/0120_volunteers_foundation.sql"), "utf8");
-    const kinds = /kind\s+text not null check \(kind in \(([\s\S]*?)\)\)/.exec(mig)?.[1].match(/'([a-z_]+)'/g)?.map((k) => k.slice(1, -1)) ?? [];
+    const kinds0120 = /kind\s+text not null check \(kind in \(([\s\S]*?)\)\)/.exec(mig)?.[1].match(/'([a-z_]+)'/g)?.map((k) => k.slice(1, -1)) ?? [];
+    // 0122 widened the list (shift_changed): its CHECK is the current one.
+    const mig122 = readFileSync(join(ROOT, "supabase/migrations/0122_volunteer_snack_shack.sql"), "utf8");
+    const kinds0122 = /volunteer_outbox_kind_check\s+check \(kind in \(([\s\S]*?)\)\)/.exec(mig122)?.[1].match(/'([a-z_]+)'/g)?.map((k) => k.slice(1, -1)) ?? [];
+    ok(kinds0122.length === kinds0120.length + 1 && kinds0122.includes("shift_changed") && kinds0120.every((k) => kinds0122.includes(k)),
+      "T1", "0122's outbox kinds = 0120's + shift_changed", kinds0122.join(","));
+    const kinds = kinds0122;
     const NOT_YET = ["manage_link", "switched", "nudge"];
     ok(kinds.length >= 14, "T1", "the outbox kinds were read from 0120", String(kinds.length));
     const unaccounted = kinds.filter((k) => !TEMPLATE_KINDS.includes(k) && !NOT_YET.includes(k));
     ok(unaccounted.length === 0, "T1", "every outbox kind has a template or is listed as not built yet", unaccounted.join(", "));
     // T2 — each template says what and when, links where it must, and escapes.
     const ctx = { leagueName: "Majors LL", spots: [spot], manageToken: tok, signupToken: sig };
-    const NEED_MANAGE = ["signup_confirmed", "admin_assigned", "game_moved", "rained_out", "makeup_set", "back_on", "reminder"];
+    const NEED_MANAGE = ["signup_confirmed", "admin_assigned", "game_moved", "rained_out", "makeup_set", "back_on", "reminder", "shift_changed"];
     const PICK_NEW = ["admin_canceled", "shift_canceled", "spot_lost"];
     for (const kind of TEMPLATE_KINDS) {
       const e = renderVolunteerEmail(kind, {}, ctx);
@@ -333,6 +339,30 @@ async function main() {
     ok(renderVolunteerEmail("game_moved", {}, { ...ctx, manageToken: "short" }) === null, "T3", "a malformed token → no email");
     ok(renderVolunteerEmail("admin_canceled", {}, { ...ctx, signupToken: null })?.text.includes("/v/") === false, "T3",
       "no sign-up link when the league's link is off");
+    // T5 — a snack shack shift (0122): its times and team, never a game; a
+    //      lowered headcount and a removed shift each say so.
+    const shift: EmailSpot = {
+      claim_id: "c2", kind: "shift", role_name: "Snack shack", for_team_name: null, home_team_name: null, away_team_name: null,
+      field: null, park: null, start: "2027-03-06T09:30", end: "2027-03-06T11:30", assigned_team_name: "Braves", state: "open",
+      was_start: null, was_field: null,
+    };
+    const sctx = { leagueName: "Majors LL", spots: [shift], manageToken: tok, signupToken: sig };
+    const conf = renderVolunteerEmail("signup_confirmed", {}, sctx);
+    ok(!!conf && conf.text.includes("Sat, Mar 6 · 9:30 AM") && conf.text.includes("until 11:30 AM · For Braves families") &&
+       !conf.text.includes(" vs "), "T5", "a shift's confirmation: start, until, its team", conf?.text ?? "");
+    const hc = renderVolunteerEmail("shift_canceled", { reason: "headcount" }, sctx);
+    ok(!!hc && hc.text.includes("needs fewer people on this snack shack shift"), "T5", "a lowered headcount says so", hc?.text ?? "");
+    const rc = renderVolunteerEmail("shift_canceled", {}, ctx);
+    ok(!!rc && rc.text.includes("changed this volunteer role"), "T5", "a role change still says role", rc?.text ?? "");
+    const lost = renderVolunteerEmail("spot_lost", {}, sctx);
+    ok(!!lost && lost.text.includes("This snack shack shift was removed"), "T5", "a removed shift says shift", lost?.text ?? "");
+    ok(renderVolunteerEmail("spot_lost", {}, ctx)?.text.includes("This game was removed") === true, "T5", "a removed game still says game");
+    const ch = renderVolunteerEmail("shift_changed", { was_end: "2027-03-06T11:00" }, sctx);
+    ok(!!ch && ch.subject.startsWith("Shift hours changed: your Snack shack spot") && ch.text.includes("until 11:30 AM") &&
+       ch.text.includes("It used to end at 11:00 AM.") && ch.text.includes(manageUrl(tok)), "T5", "hours changed: new end, old end, manage link",
+       ch?.text ?? "");
+    ok(renderVolunteerEmail("shift_changed", { was_end: "2027-03-06T11:00" }, { ...sctx, manageToken: null }) === null, "T5",
+      "hours changed without its manage link → no email");
     // T4 — the parser carries what the take attached.
     const parsed = parseOutboxRows([{ id: 7, kind: "game_moved", payload: {}, spots: [spot, 3], manage_token: tok, signup_token: sig }]).rows[0];
     ok(parsed?.spots.length === 1 && parsed.manageToken === tok && parsed.signupToken === sig, "T4", "spots and tokens parsed",

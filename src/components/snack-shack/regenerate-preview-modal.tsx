@@ -7,7 +7,7 @@
 
 import { useEffect, useRef } from "react";
 import { Loader2, RefreshCw, X } from "lucide-react";
-import { assignmentChangeLines, type RegeneratePlan } from "@/lib/snack-shack/regenerate-plan";
+import { assignmentChangeLines, signupsLine, type RegeneratePlan } from "@/lib/snack-shack/regenerate-plan";
 import type { SchedulingPreference, StoredShiftRow } from "@/lib/snack-shack/derive-shifts";
 import { NEEDS_TEAM, fmtShiftRange, previewFlagLine } from "@/lib/snack-shack/shift-flags";
 import { headcountCarryText } from "@/lib/snack-shack/headcount";
@@ -143,6 +143,10 @@ export function RegeneratePreviewModal({ plan, preference, teamName, cashName = 
                     ))}
                   </ul>
                 </div>
+              )}
+
+              {signupsLine(plan.signups) && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{signupsLine(plan.signups)}</p>
               )}
 
               {plan.lost.length > 0 && (

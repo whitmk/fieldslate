@@ -29,6 +29,7 @@ import {
   type ScreenRole,
 } from "@/lib/volunteers/roles-screen";
 import { MAX_LEAD_MIN, MAX_SPOTS, type SlotGame } from "@/lib/volunteers/slots";
+import { snackTotalSpots, type ShiftRow } from "@/lib/volunteers/shifts";
 import * as W from "@/lib/volunteers/words";
 
 export type RolesScreenData = {
@@ -42,6 +43,14 @@ export type RolesScreenData = {
   active: [string, number][] | null;
   /** The public sign-up URL when the link is on, else null. */
   link: string | null;
+  /** The season's snack shack (0122): its shifts are the snack shack role's
+   *  spots. `role` is null until the league adds snack shack sign-ups. */
+  snack: {
+    setUp: boolean;
+    peoplePerShift: number;
+    shifts: ShiftRow[];
+    role: { id: string; name: string; signupsOpen: boolean; countsTowardGoal: boolean } | null;
+  };
 };
 
 const ROLES_TH = "px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500";
@@ -62,6 +71,37 @@ export function RolesScreen({ data }: { data: RolesScreenData }) {
     };
   }
   const rows = data.roles.map(rowFor);
+
+  // 0122: the snack shack row.
+  const snackRole = data.snack.role;
+  const snack = {
+    spots: W.SNACK_SPOTS,
+    signups: snackRole ? (snackRole.signupsOpen ? W.SIGNUPS_ON : W.SIGNUPS_OFF) : "",
+    filled: snackRole
+      ? filledLabel(active ? active.get(snackRole.id) ?? 0 : null, snackTotalSpots(data.snack.shifts)) ?? W.FILLED_UNKNOWN
+      : "",
+  };
+  const openSnack = () =>
+    setEditing({
+      id: snackRole?.id ?? null,
+      name: snackRole?.name ?? W.SNACK_ROLE_DEFAULT_NAME,
+      kind: "snack_shack",
+      spots: 1,
+      leadMinutes: 0,
+      divisionIds: [],
+      signupsOpen: snackRole?.signupsOpen ?? true,
+      countsTowardGoal: snackRole?.countsTowardGoal ?? true,
+    });
+  const snackAction = !data.snack.setUp ? (
+    <span className="text-sm text-gray-600">
+      {W.SNACK_NOT_SET_UP}{" "}
+      <Link href="/dashboard/snack-shack" className="font-semibold text-[#0C1F3F] hover:underline">{W.SNACK_SETUP_LINK}</Link>
+    </span>
+  ) : !snackRole ? (
+    <button type="button" onClick={openSnack} className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-[#0C1F3F] hover:bg-gray-50">
+      {W.SNACK_ADD}
+    </button>
+  ) : null;
 
   const openNew = () =>
     setEditing({
@@ -137,6 +177,22 @@ export function RolesScreen({ data }: { data: RolesScreenData }) {
                 <td className="px-3 py-3 text-gray-700">{r.filled}</td>
               </tr>
             ))}
+            <tr className={snackRole ? "cursor-pointer hover:bg-gray-50" : ""} onClick={snackRole ? openSnack : undefined}>
+              <td className="px-3 py-3">
+                <div className="font-semibold text-[#0C1F3F]">{snackRole?.name ?? W.SNACK_ROLE_DEFAULT_NAME}</div>
+                <div className="text-xs text-gray-500">{W.SNACK_SOURCE}</div>
+              </td>
+              {snackAction ? (
+                <td className="px-3 py-3" colSpan={4}>{snackAction}</td>
+              ) : (
+                <>
+                  <td className="px-3 py-3 text-gray-700">{snack.spots}</td>
+                  <td className="px-3 py-3 text-gray-700">{W.SNACK_DIVISIONS}</td>
+                  <td className="px-3 py-3 text-gray-700">{snack.signups}</td>
+                  <td className="px-3 py-3 text-gray-700">{snack.filled}</td>
+                </>
+              )}
+            </tr>
             <tr className="bg-gray-50/60">
               <td className="px-3 py-3">
                 <div className="font-semibold text-[#0C1F3F]">{W.UMPIRES_ROLE}</div>
@@ -170,6 +226,26 @@ export function RolesScreen({ data }: { data: RolesScreenData }) {
               </button>
             </li>
           ))}
+          <li>
+            {snackAction ? (
+              <div className="px-4 py-3">
+                <div className="font-semibold text-[#0C1F3F]">{W.SNACK_ROLE_DEFAULT_NAME}</div>
+                <div className="mb-2 text-sm text-gray-600">{W.SNACK_SOURCE}</div>
+                {snackAction}
+              </div>
+            ) : (
+              <button type="button" onClick={openSnack} className="w-full px-4 py-3 text-left">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-semibold text-[#0C1F3F]">{snackRole?.name}</span>
+                  <span className="text-sm text-gray-600">{snack.filled}</span>
+                </div>
+                <div className="mt-0.5 text-sm text-gray-600">{snack.spots}</div>
+                <div className="text-sm text-gray-500">
+                  {W.SNACK_SOURCE} · {W.COL_SIGNUPS} {snack.signups.toLowerCase()}
+                </div>
+              </button>
+            )}
+          </li>
           <li className="bg-gray-50/60 px-4 py-3">
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-semibold text-[#0C1F3F]">{W.UMPIRES_ROLE}</span>
@@ -277,7 +353,10 @@ function RoleEditor({
   const leadValid = /^\d{1,3}$/.test(leadText) && Number(leadText) <= MAX_LEAD_MIN;
   const draft: RoleDraft = { ...d, leadMinutes: leadValid ? Number(leadText) : -1 };
   const problem = draftProblem(draft);
-  const count = slotCount(draft, games, teamDivision);
+  // 0122: the snack shack role's spots are the shifts' — no count, no kind,
+  // spots, divisions or lead to set.
+  const isSnack = d.kind === "snack_shack";
+  const count = d.kind === "snack_shack" ? null : slotCount({ ...draft, kind: d.kind }, games, teamDivision);
 
   async function call(fn: "save_volunteer_role" | "delete_volunteer_role", commit: boolean) {
     const supabase = createClient();
@@ -353,7 +432,9 @@ function RoleEditor({
     >
       <div className="flex max-h-[90dvh] w-full max-w-lg flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-          <h2 className="font-semibold text-[#0C1F3F]">{initial.id ? W.EDIT_ROLE_TITLE(initial.name) : W.NEW_ROLE_TITLE}</h2>
+          <h2 className="font-semibold text-[#0C1F3F]">
+            {isSnack ? W.SNACK_EDIT_TITLE : initial.id ? W.EDIT_ROLE_TITLE(initial.name) : W.NEW_ROLE_TITLE}
+          </h2>
           <button type="button" onClick={onClose} disabled={busy} aria-label="Close" className="rounded-md p-1 text-gray-400 hover:text-gray-600">
             <X className="h-5 w-5" />
           </button>
@@ -370,6 +451,10 @@ function RoleEditor({
             />
           </label>
 
+          {isSnack && <p className="rounded-lg bg-gray-50 px-3 py-2 text-gray-600">{W.SNACK_EDIT_DETAIL}</p>}
+
+          {!isSnack && (
+          <>
           <fieldset>
             <legend className="font-semibold text-[#0C1F3F]">{W.FIELD_KIND}</legend>
             {(["per_game", "per_team"] as const).map((k) => (
@@ -441,15 +526,19 @@ function RoleEditor({
               <span className="text-gray-600">min</span>
             </span>
           </label>
+          </>
+          )}
 
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={d.signupsOpen} onChange={(e) => setD({ ...d, signupsOpen: e.target.checked })} />
             <span className="font-medium text-[#0C1F3F]">{W.FIELD_OPEN}</span>
           </label>
 
-          <p className="rounded-lg bg-gray-50 px-3 py-2 text-gray-600">
-            {createsLine(count)} {W.PARTNER_NOTE}
-          </p>
+          {count && (
+            <p className="rounded-lg bg-gray-50 px-3 py-2 text-gray-600">
+              {createsLine(count)} {W.PARTNER_NOTE}
+            </p>
+          )}
 
           {error && <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-red-700">{error}</p>}
         </div>

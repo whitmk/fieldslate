@@ -97,6 +97,10 @@ export type RegeneratePlan = {
   dayChanges: DayChange[];
   assignmentChanges: AssignmentChange[];
   hasChanges: boolean;
+  /** 0122: volunteer sign-ups on changed shifts (they move with the shift)
+   *  and on removed ones (lost; each volunteer is emailed). Null when the
+   *  counts couldn't be read. Counts only, never names. */
+  signups: { carried: number; lost: number } | null;
 };
 
 export type PlanInput = {
@@ -108,6 +112,8 @@ export type PlanInput = {
   index: AssignmentIndex;
   /** "YYYY-MM-DD" in the org's timezone. */
   today: string;
+  /** 0122: active volunteer sign-ups per shift id; null = couldn't count. */
+  signupCounts?: Readonly<Record<string, number>> | null;
 };
 
 export function buildRegeneratePlan(input: PlanInput): RegeneratePlan {
@@ -192,6 +198,17 @@ export function buildRegeneratePlan(input: PlanInput): RegeneratePlan {
     }
   }
 
+  // 0122: the database carries a sign-up by the same date + start (the notes
+  // rule) and loses the rest; the preview counts both from the same pairs.
+  const counts = input.signupCounts;
+  const signups =
+    counts === null
+      ? null
+      : {
+          carried: dayChanges.reduce((n, d) => n + d.changed.reduce((m, c) => m + (counts?.[c.from.id] ?? 0), 0), 0),
+          lost: dayChanges.reduce((n, d) => n + d.removed.reduce((m, r) => m + (counts?.[r.id] ?? 0), 0), 0),
+        };
+
   const flagged: FlaggedShift[] = assigned
     .filter((a) => a.flag !== null)
     .map((a) => ({ date: a.date, start: a.start, end: a.end, teamId: a.assignedTeamId, flag: a.flag as AssignmentFlag }));
@@ -206,7 +223,26 @@ export function buildRegeneratePlan(input: PlanInput): RegeneratePlan {
     dayChanges,
     assignmentChanges,
     hasChanges: dayChanges.length > 0,
+    signups,
   };
+}
+
+/** 0122: the preview's volunteer sign-up line, or null when there is nothing
+ *  to say. Unreadable counts say so — never silence. */
+export function signupsLine(s: RegeneratePlan["signups"]): string | null {
+  if (s === null) return "Couldn't count volunteer sign-ups on these shifts.";
+  const parts: string[] = [];
+  // A "changed" shift keeps its start and moves its end, so each carried
+  // volunteer is emailed the new hours (0122, review item 8).
+  if (s.carried > 0)
+    parts.push(s.carried === 1
+      ? "1 volunteer sign-up moves with its changed shift; the volunteer is emailed the new hours."
+      : `${s.carried} volunteer sign-ups move with their changed shifts; each volunteer is emailed the new hours.`);
+  if (s.lost > 0)
+    parts.push(s.lost === 1
+      ? "1 volunteer sign-up is on a removed shift and will be canceled; the volunteer is emailed."
+      : `${s.lost} volunteer sign-ups are on removed shifts and will be canceled; each volunteer is emailed.`);
+  return parts.length ? parts.join(" ") : null;
 }
 
 /** Staleness over UPCOMING dates only (today in the org's zone and later). */

@@ -12,8 +12,9 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "VS2", what: "canceled sign-ups fill spots", file: SS,
-    find: "    if (c.status !== \"active\" || !c.game_id || !c.role_id) continue;",
-    replace: "    if (!c.game_id || !c.role_id) continue;",
+    // 0122: re-anchored — the line no longer requires a game (shifts too).
+    find: "    if (c.status !== \"active\" || !c.role_id) continue;",
+    replace: "    if (!c.role_id) continue;",
     expect: "S2",
   },
   {
@@ -99,6 +100,30 @@ const MUTANTS: Mutant[] = [
     find: "    throw new Error(signups.error?.message ?? \"malformed sign-up reply\");",
     replace: "    reply!.claims = [];",
     expect: "W1",
+  },
+  {
+    id: "VS17", what: "no shift rows", file: SS,
+    find: "  if (snack) {\n    for (const s of input.shifts ?? []) {",
+    replace: "  if (false) {\n    for (const s of input.shifts ?? []) {",
+    expect: "S8",
+  },
+  {
+    id: "VS18", what: "a shift sign-up not placed", file: SS,
+    find: "    if (c.snack_shack_block_id) held.set(`shift|${c.snack_shack_block_id}|${c.position}`, c);\n    else if (c.game_id)",
+    replace: "    if (c.game_id)",
+    expect: "S8",
+  },
+  {
+    id: "VS19", what: "a removed shift grouped as a division's games", file: SS,
+    find: "    if (c.detached_from?.kind === \"shift\") {",
+    replace: "    if (false) {",
+    expect: "S8",
+  },
+  {
+    id: "VS20", what: "Assign always sends p_block_id", file: "src/components/volunteers/signups-screen.tsx",
+    find: "      ...(row.blockId ? { p_block_id: row.blockId } : {}),",
+    replace: "      p_block_id: row.blockId,",
+    expect: "W2",
   },
 ];
 

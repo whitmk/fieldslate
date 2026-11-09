@@ -153,6 +153,30 @@ const MUTANTS: Mutant[] = [
     replace: "      manageToken: null,",
     expect: "T4",
   },
+  {
+    id: "VE25", what: "a shift described as a game", file: "src/lib/volunteers/email-templates.ts",
+    find: "  if (s.kind === \"shift\") {\n    // \"until 11:30 AM · For Braves families\"\n    return [s.end",
+    replace: "  if (false) {\n    // \"until 11:30 AM · For Braves families\"\n    return [s.end",
+    expect: "T5",
+  },
+  {
+    id: "VE26", what: "a lowered headcount worded as a role change", file: "src/lib/volunteers/email-templates.ts",
+    find: "      p.reason === \"headcount\" ? W.EMAIL_HEADCOUNT_CANCEL_LEAD(league(ctx)) : W.EMAIL_ROLE_CANCEL_LEAD(league(ctx)), [], { pickNew: true }),",
+    replace: "      W.EMAIL_ROLE_CANCEL_LEAD(league(ctx)), [], { pickNew: true }),",
+    expect: "T5",
+  },
+  {
+    id: "VE27", what: "a removed shift worded as a removed game", file: "src/lib/volunteers/email-templates.ts",
+    find: "first(ctx)?.kind === \"shift\" ? W.EMAIL_SHIFT_LOST_LEAD : W.EMAIL_LOST_LEAD",
+    replace: "W.EMAIL_LOST_LEAD",
+    expect: "T5",
+  },
+  {
+    id: "VE28", what: "the hours email leaves out the old end", file: "src/lib/volunteers/email-templates.ts",
+    find: "      typeof p.was_end === \"string\" && clockLabel(p.was_end) ? [para(W.EMAIL_SHIFT_CHANGED_WAS(clockLabel(p.was_end)))] : [],",
+    replace: "      [],",
+    expect: "T5",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/volunteer-email-sim.ts", timezones: [undefined], mutants: MUTANTS });

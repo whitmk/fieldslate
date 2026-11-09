@@ -40,6 +40,12 @@ const MUTANTS: Mutant[] = [
     replace: "",
     expect: "W1",
   },
+  {
+    id: "MP7", what: "a shift shown as a game", file: "src/lib/volunteers/manage-page.ts",
+    find: "  if (c.kind === \"shift\") {",
+    replace: "  if (false) {",
+    expect: "M5",
+  },
 ];
 
 runMutants({
