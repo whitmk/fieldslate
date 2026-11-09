@@ -18,6 +18,7 @@
 //     goes.
 //   * At most one send per `gapMs` (Resend's default limit is about two
 //     requests a second).
+import type { EmailSpot, RenderCtx } from "./email-templates";
 import { bareFromAddress, safeReplyTo, scrubError, volunteerFromHeader, isEmailShape } from "./email-headers";
 
 export type OutboxRow = {
@@ -28,6 +29,10 @@ export type OutboxRow = {
   to: string | null;
   leagueName: string | null;
   replyTo: string | null;
+  /** What the take attached (0121 part 6) — see email-templates.ts. */
+  spots: EmailSpot[];
+  manageToken: string | null;
+  signupToken: string | null;
 };
 
 export type RenderedEmail = { subject: string; html: string; text: string };
@@ -52,7 +57,7 @@ export type DrainDeps = {
     replyTo: string;
     idempotencyKey: string;
   }): Promise<SendResult>;
-  render(kind: string, payload: Record<string, unknown>, ctx: { leagueName: string | null }): RenderedEmail | null;
+  render(kind: string, payload: Record<string, unknown>, ctx: RenderCtx): RenderedEmail | null;
   sleep(ms: number): Promise<void>;
   log(message: string): void;
   /** RESEND_FROM_EMAIL, as configured. */
@@ -104,6 +109,9 @@ export function parseOutboxRows(raw: unknown): { rows: OutboxRow[]; dropped: num
       to: typeof o.to === "string" ? o.to : null,
       leagueName: typeof o.league_name === "string" ? o.league_name : null,
       replyTo: typeof o.reply_to === "string" ? o.reply_to : null,
+      spots: Array.isArray(o.spots) ? (o.spots.filter((s) => s && typeof s === "object") as EmailSpot[]) : [],
+      manageToken: typeof o.manage_token === "string" ? o.manage_token : null,
+      signupToken: typeof o.signup_token === "string" ? o.signup_token : null,
     });
   }
   return { rows, dropped };
@@ -157,7 +165,12 @@ export async function drainOutbox(
       await finish(row, false, null, "bad_reply_to", false);
       continue;
     }
-    const rendered = deps.render(row.kind, row.payload, { leagueName: row.leagueName });
+    const rendered = deps.render(row.kind, row.payload, {
+      leagueName: row.leagueName,
+      spots: row.spots,
+      manageToken: row.manageToken,
+      signupToken: row.signupToken,
+    });
     if (!rendered) {
       await finish(row, false, null, "unknown_kind", false);
       continue;

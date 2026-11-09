@@ -19,6 +19,7 @@ import { deriveSeasonStatus } from "@/lib/seasons/derived-status";
 import { UpgradeModal } from "@/components/plan/upgrade-cta";
 import type { Plan } from "@/lib/plan/limits";
 import { planLabel } from "@/lib/plan/labels";
+import { HOLD_LIST_TAG } from "@/lib/seasons/volunteer-hold";
 
 type Tab = "active" | "archived";
 
@@ -32,6 +33,8 @@ interface Props {
   /** Elite-only: browse the Archived tab + restore seasons. Archiving stays
    *  available to all tiers. */
   canBrowseArchived: boolean;
+  /** Seasons the auto-archive held open because they have volunteer sign-ups. */
+  heldForVolunteers?: string[];
 }
 
 export function SeasonsListClient({
@@ -41,6 +44,7 @@ export function SeasonsListClient({
   activeSeasonLimit,
   plan,
   canBrowseArchived,
+  heldForVolunteers = [],
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -127,6 +131,7 @@ export function SeasonsListClient({
             <SeasonCard
               key={league.id}
               league={league}
+              held={heldForVolunteers.includes(league.id)}
               onArchive={() => setModal({ kind: "archive", league })}
               onUnarchive={() => setModal({ kind: "unarchive", league })}
               onDelete={() => setModal({ kind: "delete", league })}
@@ -212,11 +217,13 @@ function TabButton({
 
 function SeasonCard({
   league,
+  held,
   onArchive,
   onUnarchive,
   onDelete,
 }: {
   league: League;
+  held: boolean;
   onArchive: () => void;
   onUnarchive: () => void;
   onDelete: () => void;
@@ -239,6 +246,11 @@ function SeasonCard({
           <p className="text-sm text-gray-400">
             {league.sport} · {league.season}
           </p>
+          {held && (
+            <span className="self-start rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+              {HOLD_LIST_TAG}
+            </span>
+          )}
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           <span

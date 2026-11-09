@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin: who signed up</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#0C1F3F}a:hover{color:#16a34a}
+</style>
+</helmet>
+<div style="min-height: 1500px; box-sizing: border-box; background: #f4f5f0; font-family: Manrope, system-ui, sans-serif; color: #0C1F3F; padding: 32px 24px 48px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<a href="AdminRoles.dc.html" style="font-size: 13px; font-weight: 700; color: #4b5563; text-decoration: none">← Volunteer roles</a>
+<h1 style="margin: 0; font-size: 28px; font-weight: 800">Who signed up</h1>
+</div>
+<button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 14px Manrope, system-ui, sans-serif">Export CSV</button>
+</div>
+
+<div style="background: #fffbeb; border: 1px solid #f59e0b; border-radius: 12px; padding: 14px 18px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between">
+<div style="display: flex; flex-direction: column; gap: 3px">
+<div style="font-size: 14px; font-weight: 800; color: #78350f">2 sign-ups lost when Majors was regenerated on Mar 2</div>
+<div style="font-size: 13px; color: #78350f">Their games no longer exist. Both volunteers were emailed and invited to pick a new spot.</div>
+</div>
+<button type="button" style="min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #92400e; background: #ffffff; color: #78350f; font: 700 13px Manrope, system-ui, sans-serif">See who</button>
+</div>
+
+<div style="display: flex; gap: 4px; border-bottom: 1px solid #dfe2da">
+<button type="button" style="min-height: 44px; padding: 0 16px; border: none; border-bottom: 3px solid #0C1F3F; background: none; color: #0C1F3F; font: 800 14px Manrope, system-ui, sans-serif">Spots</button>
+<button type="button" style="min-height: 44px; padding: 0 16px; border: none; border-bottom: 3px solid transparent; background: none; color: #4b5563; font: 700 14px Manrope, system-ui, sans-serif">Volunteers (34)</button>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+<label for="fl-role" style="font-size: 13px; font-weight: 700">Role</label>
+<select id="fl-role" style="min-height: 40px; padding: 0 10px; border: 1px solid #c9cdc4; border-radius: 10px; font: 500 15px Manrope, system-ui, sans-serif; background: #ffffff; color: #0C1F3F"><option>All roles</option></select>
+<label for="fl-div" style="font-size: 13px; font-weight: 700">Division</label>
+<select id="fl-div" style="min-height: 40px; padding: 0 10px; border: 1px solid #c9cdc4; border-radius: 10px; font: 500 15px Manrope, system-ui, sans-serif; background: #ffffff; color: #0C1F3F"><option>All divisions</option></select>
+<label for="fl-st" style="font-size: 13px; font-weight: 700">Show</label>
+<select id="fl-st" style="min-height: 40px; padding: 0 10px; border: 1px solid #c9cdc4; border-radius: 10px; font: 500 15px Manrope, system-ui, sans-serif; background: #ffffff; color: #0C1F3F"><option>Open and filled</option></select>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 12px; padding: 14px 18px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between">
+<div style="display: flex; flex-direction: column; gap: 3px">
+<div style="font-size: 14px; font-weight: 800">Next up: Sat, Mar 6 · 4 volunteers signed up</div>
+<div style="font-size: 13px; color: #4b5563">Reminder not sent yet. Each reminder includes the volunteer's link to change or cancel.</div>
+</div>
+<button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: none; background: #0C1F3F; color: #ffffff; font: 700 14px Manrope, system-ui, sans-serif">Remind all 4 for Mar 6</button>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 14px; overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 14px; min-width: 860px">
+<thead>
+<tr style="text-align: left; color: #4b5563; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em">
+<th style="padding: 12px 16px; font-weight: 800">When</th>
+<th style="padding: 12px 12px; font-weight: 800">Spot</th>
+<th style="padding: 12px 12px; font-weight: 800">Volunteer</th>
+<th style="padding: 12px 12px; font-weight: 800">Team</th>
+<th style="padding: 12px 12px; font-weight: 800">Email</th>
+<th style="padding: 12px 12px; font-weight: 800">Filled by</th>
+<th style="padding: 12px 16px; font-weight: 800"><span style="position: absolute; left: -9999px">Actions</span></th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 12px 16px; white-space: nowrap">Sat 3/6 · 8:30 AM</td>
+<td style="padding: 12px 12px"><b>Snack shack · Shift 1</b><div style="font-size: 12px; color: #4b5563">Main Park · spot 1 of 2</div></td>
+<td style="padding: 12px 12px">L. Nguyen</td>
+<td style="padding: 12px 12px">AAA Rays</td>
+<td style="padding: 12px 12px">lnguyen@example.com</td>
+<td style="padding: 12px 12px">Volunteer</td>
+<td style="padding: 12px 16px"><button type="button" style="min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 13px Manrope, system-ui, sans-serif">Change</button></td>
+</tr>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 12px 16px; white-space: nowrap">Sat 3/6 · 8:30 AM</td>
+<td style="padding: 12px 12px"><b>Snack shack · Shift 1</b><div style="font-size: 12px; color: #4b5563">Main Park · spot 2 of 2</div></td>
+<td style="padding: 12px 12px; color: #4b5563">Open</td>
+<td style="padding: 12px 12px; color: #4b5563">—</td>
+<td style="padding: 12px 12px; color: #4b5563">—</td>
+<td style="padding: 12px 12px; color: #4b5563">—</td>
+<td style="padding: 12px 16px"><button type="button" style="min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #0C1F3F; background: #ffffff; color: #0C1F3F; font: 700 13px Manrope, system-ui, sans-serif">Assign</button></td>
+</tr>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 12px 16px; white-space: nowrap">Sat 3/6 · 9:00 AM</td>
+<td style="padding: 12px 12px"><b>GameChanger · Expos</b><div style="font-size: 12px; color: #4b5563">Majors · Expos vs Pirates · Field 1</div></td>
+<td style="padding: 12px 12px">A. Garcia</td>
+<td style="padding: 12px 12px">Majors Expos</td>
+<td style="padding: 12px 12px">agarcia@example.com<div style="font-size: 12px; color: #4b5563">Reminded Mar 4</div></td>
+<td style="padding: 12px 12px">Volunteer</td>
+<td style="padding: 12px 16px"><div style="display: flex; gap: 6px"><button type="button" style="min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 13px Manrope, system-ui, sans-serif">Remind</button><button type="button" style="min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 13px Manrope, system-ui, sans-serif">Change</button></div></td>
+</tr>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 12px 16px; white-space: nowrap">Sat 3/6 · 9:00 AM</td>
+<td style="padding: 12px 12px"><b>GameChanger · Pirates</b><div style="font-size: 12px; color: #4b5563">Majors · Expos vs Pirates · Field 1</div></td>
+<td style="padding: 12px 12px">M. Patel</td>
+<td style="padding: 12px 12px">Majors Pirates</td>
+<td style="padding: 12px 12px">mpatel@example.com</td>
+<td style="padding: 12px 12px">Admin</td>
+<td style="padding: 12px 16px"><button type="button" style="min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 13px Manrope, system-ui, sans-serif">Change</button></td>
+</tr>
+<tr style="border-top: 1px solid #eceee8; background: #fffbeb">
+<td style="padding: 12px 16px; white-space: nowrap">Sat 3/6 · 12:00 PM</td>
+<td style="padding: 12px 12px"><b>GameChanger · Giants</b><div style="font-size: 12px; color: #4b5563">Majors · Giants at Westside (interleague)</div><div style="font-size: 12px; color: #92400e; font-weight: 700">Partner league asked to move this game. We'll email the volunteer once the new time is set.</div></td>
+<td style="padding: 12px 12px">J. Okafor</td>
+<td style="padding: 12px 12px">Majors Giants</td>
+<td style="padding: 12px 12px">jokafor@example.com</td>
+<td style="padding: 12px 12px">Volunteer</td>
+<td style="padding: 12px 16px"><button type="button" style="min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 13px Manrope, system-ui, sans-serif">Change</button></td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px; padding-top: 8px">
+<div style="display: flex; flex-direction: column; gap: 3px">
+<div style="font-size: 18px; font-weight: 800">Past spots: mark who didn't show</div>
+<div style="font-size: 13px; color: #4b5563">Everyone counts as showed up unless you tick No-show. Only on dates that have passed. Admin-only; volunteers aren't notified. Deleted at archive like everything else.</div>
+</div>
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 14px; overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 14px; min-width: 640px">
+<tbody>
+<tr>
+<td style="padding: 12px 16px; white-space: nowrap">Sat 2/27 · 9:00 AM</td>
+<td style="padding: 12px 12px"><b>Snack shack · Shift 1</b><div style="font-size: 12px; color: #4b5563">Preseason scrimmages · Main Park</div></td>
+<td style="padding: 12px 12px">L. Nguyen · AAA Rays</td>
+<td style="padding: 12px 16px"><label style="display: flex; gap: 8px; align-items: center; min-height: 44px; font-size: 14px; font-weight: 700; cursor: pointer"><input type="checkbox" style="width: 20px; height: 20px; margin: 0"> No-show</label></td>
+</tr>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 12px 16px; white-space: nowrap">Sat 2/27 · 9:00 AM</td>
+<td style="padding: 12px 12px"><b>GameChanger · Pirates</b><div style="font-size: 12px; color: #4b5563">Preseason · Pirates vs Cubs · Field 1</div></td>
+<td style="padding: 12px 12px">M. Patel · Majors Pirates</td>
+<td style="padding: 12px 16px"><label style="display: flex; gap: 8px; align-items: center; min-height: 44px; font-size: 14px; font-weight: 700; color: #b91c1c; cursor: pointer"><input type="checkbox" checked="{{ true }}" style="width: 20px; height: 20px; margin: 0"> No-show</label></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px; padding-top: 8px">
+<div style="font-size: 18px; font-weight: 800">Volunteers tab preview</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 12px; padding: 14px 18px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between">
+<div style="display: flex; flex-direction: column; gap: 3px">
+<div style="font-size: 14px; font-weight: 800">Possible same family: A. Garcia and R. Garcia</div>
+<div style="font-size: 13px; color: #4b5563">Same last name, both Majors Expos, different emails. Merging combines their counts; their sign-ups stay as they are.</div>
+</div>
+<div style="display: flex; gap: 8px">
+<button type="button" style="min-height: 40px; padding: 0 14px; border-radius: 10px; border: none; background: #0C1F3F; color: #ffffff; font: 700 13px Manrope, system-ui, sans-serif">Merge as one family</button>
+<button type="button" style="min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 13px Manrope, system-ui, sans-serif">Not the same</button>
+</div>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 14px; overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 14px; min-width: 640px">
+<thead>
+<tr style="text-align: left; color: #4b5563; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em">
+<th style="padding: 12px 16px; font-weight: 800">Volunteer</th>
+<th style="padding: 12px 12px; font-weight: 800">Team(s)</th>
+<th style="padding: 12px 12px; font-weight: 800">Snack shack</th>
+<th style="padding: 12px 12px; font-weight: 800">GameChanger</th>
+<th style="padding: 12px 12px; font-weight: 800">Field prep</th>
+<th style="padding: 12px 12px; font-weight: 800">No-shows</th>
+<th style="padding: 12px 16px; font-weight: 800">Total</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-top: 1px solid #eceee8"><td style="padding: 12px 16px">L. Nguyen</td><td style="padding: 12px 12px">AAA Rays</td><td style="padding: 12px 12px">2</td><td style="padding: 12px 12px">3</td><td style="padding: 12px 12px">0</td><td style="padding: 12px 12px">0</td><td style="padding: 12px 16px; font-weight: 800">5</td></tr>
+<tr style="border-top: 1px solid #eceee8"><td style="padding: 12px 16px">A. Garcia</td><td style="padding: 12px 12px">Majors Expos</td><td style="padding: 12px 12px">1</td><td style="padding: 12px 12px">1</td><td style="padding: 12px 12px">1</td><td style="padding: 12px 12px">0</td><td style="padding: 12px 16px; font-weight: 800">3</td></tr>
+<tr style="border-top: 1px solid #eceee8"><td style="padding: 12px 16px">M. Patel</td><td style="padding: 12px 12px">Majors Pirates, AA Owls</td><td style="padding: 12px 12px">0</td><td style="padding: 12px 12px">2</td><td style="padding: 12px 12px">0</td><td style="padding: 12px 12px; color: #b91c1c; font-weight: 800">1</td><td style="padding: 12px 16px; font-weight: 800">2</td></tr>
+</tbody>
+</table>
+</div>
+<div style="font-size: 12px; color: #4b5563">Later phase: set a goal per family (for example, 2 snack shifts) and see who's short. Volunteer names and emails are deleted when the season is archived. Export first if you want a record.</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

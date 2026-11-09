@@ -25,6 +25,7 @@ import {
   UserCheck,
   ShoppingBag,
   BarChart3,
+  HandHeart,
   Lock,
   X,
   type LucideIcon,
@@ -64,6 +65,16 @@ const navItems: NavItem[] = [
   { href: "/dashboard/export", label: "Export", icon: FileDown, tier: "pro" },
 ];
 
+// Volunteers (0120+) appears only for an org whose feature switch is on — the
+// layout reads it through loadVolunteerFeature. Placed after Snack Shack.
+const VOLUNTEERS_ITEM: NavItem = { href: "/dashboard/volunteers", label: "Volunteers", icon: HandHeart, tier: "elite" };
+
+function itemsFor(volunteers: boolean): NavItem[] {
+  if (!volunteers) return navItems;
+  const i = navItems.findIndex((n) => n.href === "/dashboard/snack-shack");
+  return [...navItems.slice(0, i + 1), VOLUNTEERS_ITEM, ...navItems.slice(i + 1)];
+}
+
 // An item is locked when its required tier outranks the org's current plan.
 function isLocked(tier: NavItem["tier"], plan: Plan): boolean {
   if (tier === "pro") return plan === "free";
@@ -92,9 +103,12 @@ function LockBadge({ tier }: { tier: "pro" | "elite" }) {
 export function Sidebar({
   plan,
   orgId,
+  volunteers = false,
 }: {
   plan: Plan;
   orgId: string;
+  /** The org's volunteer feature switch is on. */
+  volunteers?: boolean;
 }) {
   const pathname = usePathname();
   // A single modal serves every locked item — they all open the same
@@ -143,7 +157,7 @@ export function Sidebar({
         {/* Primary nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-0.5">
-            {navItems.map(({ href, label, icon: Icon, tier }) => {
+            {itemsFor(volunteers).map(({ href, label, icon: Icon, tier }) => {
               // Locked: render as a button (never navigates) with a muted label
               // and a tier badge; clicking opens the upgrade modal.
               if (isLocked(tier, plan)) {

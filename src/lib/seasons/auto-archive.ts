@@ -9,7 +9,10 @@
 //   3. for each season whose end date has passed (endDatePassed — the
 //      decision's own rule, so seasons still running cost no further reads):
 //      every game's date (fetchAllRows — complete or throw) and every playoff
-//      game of its brackets.
+//      game of its brackets;
+//   4. ONE call for all of those seasons: volunteer_archive_holds (0121
+//      part 4) — which of them hold volunteer data. A failed call (including
+//      "function not found" before 0121 is applied) holds them all.
 // Any read that fails means NO archive for the seasons it concerns: archiving
 // early hides a running season; skipping costs nothing but one more visit.
 //
@@ -35,19 +38,49 @@ type PlayoffRow = {
   away_score: number | null;
 };
 
+/** What a visit decided: the seasons archived, and the seasons held back
+ *  only because they hold volunteer data (the hold banner's list). */
+export type AutoArchiveResult = { archived: string[]; heldForVolunteers: string[] };
+
+const NOTHING: AutoArchiveResult = { archived: [], heldForVolunteers: [] };
+
 export async function autoArchivePastSeasons(
   supabase: SupabaseClient<Database>,
   ownerId: string,
   now: Date = new Date(),
-): Promise<void> {
-  const { data: seasonsRaw, error: seasonsError } = await supabase
+): Promise<AutoArchiveResult> {
+  return runAutoArchive(supabase, ownerId, now, null, true);
+}
+
+/** The season page's question, answered by the SAME reads and decision:
+ *  is this one season held open only because it has volunteer sign-ups?
+ *  Writes nothing. Any unreadable input → false (no banner). */
+export async function seasonHeldForVolunteers(
+  supabase: SupabaseClient<Database>,
+  ownerId: string,
+  seasonId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const r = await runAutoArchive(supabase, ownerId, now, seasonId, false);
+  return r.heldForVolunteers.includes(seasonId);
+}
+
+async function runAutoArchive(
+  supabase: SupabaseClient<Database>,
+  ownerId: string,
+  now: Date,
+  onlySeasonId: string | null,
+  write: boolean,
+): Promise<AutoArchiveResult> {
+  let seasonsQuery = supabase
     .from("leagues")
     .select("id, end_date")
     .eq("owner_id", ownerId)
     .is("archived_at", null)
-    .not("end_date", "is", null)
-    .order("id", { ascending: true });
-  if (seasonsError || !seasonsRaw || seasonsRaw.length === 0) return;
+    .not("end_date", "is", null);
+  if (onlySeasonId !== null) seasonsQuery = seasonsQuery.eq("id", onlySeasonId);
+  const { data: seasonsRaw, error: seasonsError } = await seasonsQuery.order("id", { ascending: true });
+  if (seasonsError || !seasonsRaw || seasonsRaw.length === 0) return NOTHING;
   const seasons = seasonsRaw as unknown as { id: string; end_date: string }[];
 
   const { data: profile, error: profileError } = await supabase
@@ -56,16 +89,27 @@ export async function autoArchivePastSeasons(
     .eq("id", ownerId)
     .maybeSingle();
   const tz = (profile as { timezone?: unknown } | null)?.timezone;
-  if (profileError || typeof tz !== "string" || !tz) return;
+  if (profileError || typeof tz !== "string" || !tz) return NOTHING;
   let today: string;
   try {
     today = todayInTimezone(tz, now);
   } catch {
-    return;
+    return NOTHING;
   }
 
-  for (const season of seasons) {
-    if (!endDatePassed(season.end_date, today)) continue;
+  const past = seasons.filter((s) => endDatePassed(s.end_date, today));
+  if (past.length === 0) return NOTHING;
+
+  let holds: string[] | null = null;
+  {
+    // @ts-expect-error — RPCs aren't in the hand-maintained Functions map.
+    const { data, error } = await supabase.rpc("volunteer_archive_holds", { p_season_ids: past.map((s) => s.id) });
+    const reply: unknown = data;
+    if (!error && Array.isArray(reply) && reply.every((x: unknown) => typeof x === "string")) holds = reply as string[];
+  }
+
+  const result: AutoArchiveResult = { archived: [], heldForVolunteers: [] };
+  for (const season of past) {
 
     let gameTimes: string[] | null = null;
     try {
@@ -104,13 +148,18 @@ export async function autoArchivePastSeasons(
       playoffGames = null;
     }
 
-    const decision = decideAutoArchive({ endDate: season.end_date, today, gameTimes, playoffGames });
+    const volunteerData = holds === null ? null : holds.includes(season.id);
+    const decision = decideAutoArchive({ endDate: season.end_date, today, gameTimes, playoffGames, volunteerData });
+    if (decision.reason === "volunteer_data") result.heldForVolunteers.push(season.id);
     if (!decision.archive) continue;
+    if (!write) continue;
 
-    await supabase
+    const { error } = await supabase
       .from("leagues")
       .update({ archived_at: now.toISOString(), status: "archived" } as never)
       .eq("id", season.id)
       .is("archived_at", null);
+    if (!error) result.archived.push(season.id);
   }
+  return result;
 }

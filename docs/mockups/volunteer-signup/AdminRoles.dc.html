@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin: volunteer roles</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#0C1F3F}a:hover{color:#16a34a}
+</style>
+</helmet>
+<div style="min-height: 1000px; box-sizing: border-box; background: #f4f5f0; font-family: Manrope, system-ui, sans-serif; color: #0C1F3F; padding: 32px 24px 48px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px">
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 13px; font-weight: 700; color: #4b5563">Spring 2027 · Volunteers</div>
+<h1 style="margin: 0; font-size: 28px; font-weight: 800">Volunteer roles</h1>
+</div>
+<div style="display: flex; gap: 8px">
+<a href="AdminSignups.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font-weight: 700; font-size: 14px; text-decoration: none">Who signed up →</a>
+</div>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 14px; padding: 18px 20px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center">
+<div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 16px; font-weight: 800">Public sign-up link</div>
+<div style="font-size: 13px; color: #4b5563">Post it on your league site or send it to families. Shows only roles with sign-ups on. Names are never shown, only "Taken."</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+<label for="pub-on" style="display: flex; gap: 8px; align-items: center; font-size: 14px; font-weight: 700; min-height: 44px">
+<input id="pub-on" type="checkbox" checked="{{ true }}" style="width: 20px; height: 20px; margin: 0">
+Link is on
+</label>
+<button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: none; background: #0C1F3F; color: #ffffff; font: 700 14px Manrope, system-ui, sans-serif">Copy link</button>
+<button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 14px Manrope, system-ui, sans-serif">Open ↗</button>
+<button type="button" style="min-height: 44px; padding: 0 12px; border: none; background: none; color: #4b5563; font: 700 13px Manrope, system-ui, sans-serif; text-decoration: underline">Reset link</button>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+
+<div style="flex: 999 1 560px; min-width: 0; background: #ffffff; border: 1px solid #dfe2da; border-radius: 14px; overflow: hidden">
+<div style="padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #dfe2da">
+<div style="font-size: 16px; font-weight: 800">Roles this season</div>
+<button type="button" style="min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #0C1F3F; background: #ffffff; color: #0C1F3F; font: 700 14px Manrope, system-ui, sans-serif">+ Add role</button>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 14px; min-width: 640px">
+<thead>
+<tr style="text-align: left; color: #4b5563; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em">
+<th style="padding: 12px 20px; font-weight: 800">Role</th>
+<th style="padding: 12px 12px; font-weight: 800">Slots</th>
+<th style="padding: 12px 12px; font-weight: 800">Divisions</th>
+<th style="padding: 12px 12px; font-weight: 800">Sign-ups</th>
+<th style="padding: 12px 20px; font-weight: 800">Filled</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 14px 20px"><div style="font-weight: 800">Snack shack</div><div style="font-size: 12px; color: #4b5563">Shifts come from the Snack shack page</div></td>
+<td style="padding: 14px 12px">2 spots per shift</td>
+<td style="padding: 14px 12px">All</td>
+<td style="padding: 14px 12px"><span style="padding: 4px 10px; border-radius: 999px; background: #dcfce7; color: #14532d; font-weight: 700; font-size: 13px">On</span></td>
+<td style="padding: 14px 20px">38 of 52</td>
+</tr>
+<tr style="border-top: 1px solid #eceee8; background: #f7f8fb">
+<td style="padding: 14px 20px"><div style="font-weight: 800">GameChanger</div><div style="font-size: 12px; color: #4b5563">Selected below</div></td>
+<td style="padding: 14px 12px">1 per our team, per game</td>
+<td style="padding: 14px 12px">Majors, AAA</td>
+<td style="padding: 14px 12px"><span style="padding: 4px 10px; border-radius: 999px; background: #dcfce7; color: #14532d; font-weight: 700; font-size: 13px">On</span></td>
+<td style="padding: 14px 20px">41 of 96</td>
+</tr>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 14px 20px"><div style="font-weight: 800">Field prep</div></td>
+<td style="padding: 14px 12px">1 per home game</td>
+<td style="padding: 14px 12px">All</td>
+<td style="padding: 14px 12px"><span style="padding: 4px 10px; border-radius: 999px; background: #dcfce7; color: #14532d; font-weight: 700; font-size: 13px">On</span></td>
+<td style="padding: 14px 20px">12 of 60</td>
+</tr>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 14px 20px"><div style="font-weight: 800">Umpires</div><div style="font-size: 12px; color: #4b5563">From the Umpires page roster</div></td>
+<td style="padding: 14px 12px">Per division setting</td>
+<td style="padding: 14px 12px">All</td>
+<td style="padding: 14px 12px"><span style="padding: 4px 10px; border-radius: 999px; background: #e5e7eb; color: #374151; font-weight: 700; font-size: 13px">Assigned by admin</span></td>
+<td style="padding: 14px 20px">Umpires page →</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div style="padding: 12px 20px 16px; font-size: 12px; color: #4b5563; border-top: 1px solid #eceee8">Umpires never use the public link. A later phase adds personal links for rostered umpires, so they can claim open slots they're eligible for.</div>
+</div>
+
+<div style="flex: 1 1 340px; background: #ffffff; border: 1px solid #dfe2da; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 16px">
+<div style="font-size: 16px; font-weight: 800">Edit role: GameChanger</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="r-name" style="font-size: 14px; font-weight: 700">Role name</label>
+<input id="r-name" value="GameChanger" style="min-height: 44px; padding: 0 12px; border: 1px solid #c9cdc4; border-radius: 10px; font: 500 16px Manrope, system-ui, sans-serif; box-sizing: border-box">
+</div>
+
+<fieldset style="border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px">
+<legend style="font-size: 14px; font-weight: 700; padding: 0; margin-bottom: 8px">Slots are created</legend>
+<label style="display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid #c9cdc4; border-radius: 10px; font-size: 14px">
+<input type="radio" name="kind" style="margin: 2px 0 0">
+<span><b>Per game</b><br><span style="color: #4b5563; font-size: 13px">Like field prep or announcer. Home games only.</span></span>
+</label>
+<label style="display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 2px solid #0C1F3F; border-radius: 10px; font-size: 14px">
+<input type="radio" name="kind" checked="{{ true }}" style="margin: 2px 0 0">
+<span><b>Per our team in the game</b><br><span style="color: #4b5563; font-size: 13px">Two of our teams playing each other gets 2 slots. An interleague game gets 1, for our team only.</span></span>
+</label>
+</fieldset>
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="r-count" style="font-size: 14px; font-weight: 700">How many each</label>
+<select id="r-count" style="min-height: 44px; padding: 0 12px; border: 1px solid #c9cdc4; border-radius: 10px; font: 500 16px Manrope, system-ui, sans-serif; background: #ffffff; color: #0C1F3F; width: 120px">
+<option>1</option><option>2</option><option>3</option>
+</select>
+</div>
+
+<fieldset style="border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px">
+<legend style="font-size: 14px; font-weight: 700; padding: 0; margin-bottom: 6px">Divisions</legend>
+<div style="display: flex; flex-wrap: wrap; gap: 12px">
+<label style="display: flex; gap: 6px; align-items: center; font-size: 14px; min-height: 36px"><input type="checkbox" checked="{{ true }}" style="width: 18px; height: 18px; margin: 0"> Majors</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 14px; min-height: 36px"><input type="checkbox" checked="{{ true }}" style="width: 18px; height: 18px; margin: 0"> AAA</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 14px; min-height: 36px"><input type="checkbox" style="width: 18px; height: 18px; margin: 0"> AA</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 14px; min-height: 36px"><input type="checkbox" style="width: 18px; height: 18px; margin: 0"> Tee Ball</label>
+</div>
+</fieldset>
+
+<label style="display: flex; gap: 10px; align-items: center; font-size: 14px; font-weight: 700; min-height: 44px">
+<input type="checkbox" checked="{{ true }}" style="width: 20px; height: 20px; margin: 0">
+Open on the public sign-up link
+</label>
+
+<div style="font-size: 13px; color: #4b5563; background: #f4f5f0; border-radius: 10px; padding: 10px 12px; line-height: 1.5">This creates 96 slots across 48 games. Games waiting on a partner league's answer get slots once they're agreed.</div>
+
+<div style="display: flex; gap: 8px">
+<button type="button" style="flex: 1; min-height: 44px; border-radius: 10px; border: none; background: #0C1F3F; color: #ffffff; font: 700 14px Manrope, system-ui, sans-serif">Save role</button>
+<button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 14px Manrope, system-ui, sans-serif">Cancel</button>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

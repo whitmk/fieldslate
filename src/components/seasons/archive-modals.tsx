@@ -25,6 +25,12 @@ import {
   type SeasonDeleteCounts,
 } from "@/lib/seasons/delete-counts";
 import {
+  archiveButtonLabel,
+  archiveSignupsLine,
+  archiveSignupsState,
+  type ArchiveSignupsState,
+} from "@/lib/seasons/volunteer-hold";
+import {
   assignmentLossLine,
   countAssignmentsForSeason,
   type AssignmentCount,
@@ -85,8 +91,29 @@ export function ArchiveSeasonModal({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Archiving deletes the season's volunteer sign-ups (0121's wipe), so the
+  // confirm asks first. Until it knows, the button waits.
+  const [signups, setSignups] = useState<ArchiveSignupsState>("checking");
 
   useEsc(() => !busy && onClose());
+
+  useEffect(() => {
+    let live = true;
+    const supabase = createClient();
+    // @ts-expect-error — RPCs aren't in the hand-maintained Functions map.
+    void supabase.rpc("volunteer_archive_holds", { p_season_ids: [seasonId] }).then(
+      (reply: { data: unknown; error: unknown }) => {
+        if (live) setSignups(archiveSignupsState(seasonId, reply));
+      },
+      () => {
+        if (live) setSignups("unknown");
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [seasonId]);
+  const signupsLine = archiveSignupsLine(signups);
 
   async function handleConfirm() {
     setBusy(true);
@@ -124,6 +151,13 @@ export function ArchiveSeasonModal({
         Archived tab and is hidden from the active workspace.
       </p>
 
+      {signupsLine && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+          <p className="text-sm text-amber-800">{signupsLine}</p>
+        </div>
+      )}
+
       {error && (
         <div className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2.5">
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" />
@@ -143,11 +177,11 @@ export function ArchiveSeasonModal({
         <button
           type="button"
           onClick={handleConfirm}
-          disabled={busy}
+          disabled={busy || signups === "checking"}
           className="inline-flex items-center gap-2 rounded-lg bg-[#0C1F3F] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0C1F3F]/85 disabled:opacity-50"
         >
-          {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-          Archive season
+          {(busy || signups === "checking") && <Loader2 className="h-4 w-4 animate-spin" />}
+          {archiveButtonLabel(signups)}
         </button>
       </div>
     </ModalShell>

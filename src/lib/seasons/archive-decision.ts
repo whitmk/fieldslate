@@ -10,8 +10,14 @@
 //      today or later;
 //   3. no playoff game is unfinished — missing a result, OR not dated at all
 //      (a game that hasn't been scheduled hasn't been played).
-// Anything unreadable (timezone, games, brackets) → do NOT archive. Archiving
-// early hides a running season; not archiving costs one more visit.
+//   4. the season holds no volunteer data (0121 part 4,
+//      volunteer_archive_holds): archiving deletes its sign-ups, so a season
+//      that has any stays open until an admin archives it by hand (decided
+//      2026-11-08, option b). Checked LAST, so a held season is one that is
+//      otherwise ready — that is what the hold banner tells the admin.
+// Anything unreadable (timezone, games, brackets, volunteer holds) → do NOT
+// archive. Archiving early hides a running season; not archiving costs one
+// more visit.
 //
 // Regular-season STATUS and SCORES are deliberately not consulted: leagues
 // don't enter regular-season results, so requiring them would stop every
@@ -37,6 +43,8 @@ export type ArchiveInput = {
   gameTimes: string[] | null;
   /** Every playoff game of every bracket in the season; null when unreadable. */
   playoffGames: PlayoffGameForArchive[] | null;
+  /** The season holds volunteer data (any sign-up, any status); null when unreadable. */
+  volunteerData: boolean | null;
 };
 
 export type ArchiveReason =
@@ -45,6 +53,7 @@ export type ArchiveReason =
   | "end_date_not_passed"
   | "game_today_or_later"
   | "playoff_unfinished"
+  | "volunteer_data"
   | "ready";
 
 export type ArchiveDecision = { archive: boolean; reason: ArchiveReason; detail: string };
@@ -92,6 +101,12 @@ export function decideAutoArchive(input: ArchiveInput): ArchiveDecision {
       reason: "playoff_unfinished",
       detail: `${unfinished} playoff game${unfinished === 1 ? " has" : "s have"} no result or no date yet`,
     };
+  }
+  if (input.volunteerData === null) {
+    return { archive: false, reason: "unreadable", detail: "the season's volunteer sign-ups couldn't be checked" };
+  }
+  if (input.volunteerData) {
+    return { archive: false, reason: "volunteer_data", detail: "the season has volunteer sign-ups, which archiving deletes" };
   }
   return { archive: true, reason: "ready", detail: `the end date ${endDate} has passed and every game is done` };
 }

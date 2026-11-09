@@ -8,7 +8,7 @@ import { OrgTimezoneCard } from "@/components/settings/org-timezone-card";
 import { PublicScheduleCard, type PublicScheduleCardData } from "@/components/settings/public-schedule-card";
 import { DaylightCard } from "@/components/settings/daylight-card";
 import { VolunteersCard } from "@/components/settings/volunteers-card";
-import { cardDataFromAdminState, type VolunteerCardData } from "@/lib/volunteers/settings-card";
+import { loadVolunteerFeature } from "@/lib/volunteers/feature-state";
 import { loadDaylight } from "@/lib/daylight/load";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/calendar/timezones";
@@ -39,7 +39,7 @@ export default async function SettingsPage() {
   const plan = await getOrgPlan(currentOrgId);
   const publicSchedule = await loadPublicScheduleCard(supabase, currentOrgId);
   const daylight = await loadDaylight(supabase, currentOrgId);
-  const volunteers = await loadVolunteersCard(supabase, currentOrgId);
+  const volunteers = await loadVolunteerFeature(supabase, currentOrgId, "settings");
   const profile = rawProfile as Profile | null;
   const orgTimezone =
     (orgRow as { timezone: string } | null)?.timezone ?? DEFAULT_ORG_TIMEZONE;
@@ -174,21 +174,3 @@ async function loadPublicScheduleCard(
   };
 }
 
-// The Volunteer sign-ups card (0120). Null = no card: the switch is off, or
-// the read failed (logged), or 0120 isn't applied yet. A real league never
-// sees the feature, and an error can't reveal it.
-async function loadVolunteersCard(
-  supabase: ReturnType<typeof createClient>,
-  orgId: string,
-): Promise<VolunteerCardData | null> {
-  const { data, error } = await supabase.rpc(
-    // @ts-expect-error — RPC isn't in the hand-maintained types (0120)
-    "volunteer_admin_state",
-    { p_org_id: orgId },
-  );
-  if (error) {
-    console.error("[settings] volunteer card read failed:", error.message);
-    return null;
-  }
-  return cardDataFromAdminState(data);
-}

@@ -351,8 +351,22 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   dashboard_readonly false throughout). Table privileges: SELECT on
   `volunteer_settings` for authenticated, nothing else for any role on the
   five tables; RLS on all five; trigger enabled. Zero `org_features` and
-  `volunteer_settings` rows. The latest migration applied. See "Volunteer
+  `volunteer_settings` rows. See "Volunteer
   sign-ups".
+- **0121 (volunteer game roles, parts 1–6) APPLIED 2026-11-09 06:13 UTC
+  (2026-11-08 evening Pacific), catalog `20261109061340`**, on Whit's go,
+  after its rolled-back proof (run 2 green, 62/62 mutants at their own tag;
+  run 1 had MU22/MU24 STALE — read its RUN LOG). Applied from the
+  md5-checked proof stage in one transaction, the catalog row written with
+  the file's exact text (statements md5 `688ce929…` = the repo file) — the
+  file is ~99 KB, too large to paste safely in one `apply_migration` call.
+  All 33 function bodies' md5(prosrc) match the repo file, one overload
+  each, `search_path=public, pg_temp`; EXECUTE: the nine admin functions
+  authenticated only, the seven public/outbox functions service_role only,
+  the rest callable by no role (PUBLIC, anon, dashboard_readonly false
+  throughout); RLS on all five new tables, only SELECT on roles and role
+  divisions for authenticated; the three games triggers enabled. **The
+  latest migration applied.** See "Volunteer sign-ups".
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -3263,8 +3277,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   season day); (2) no game of any kind — regular season of ANY status, or a
   dated playoff game — is dated today or later; (3) no playoff game is
   unfinished: no result (completed, a winner or a score — 0107's test) OR no
-  date at all. Anything unreadable (timezone, games, playoff games) → NO
-  archive. It returns `{archive, reason, detail}`.
+  date at all; (4) the season holds NO volunteer data — any
+  `volunteer_claims` row, any status (0121 part 4, branch
+  `feat/volunteer-game-roles`, decided 2026-11-08, option b): archiving
+  deletes sign-ups, so such a season stays open until an admin archives it by
+  hand. Rule 4 is checked LAST, so `reason: "volunteer_data"` only ever names
+  a season that is otherwise done (the hold banner's list). Anything
+  unreadable (timezone, games, playoff games, volunteer holds) → NO archive.
+  It returns `{archive, reason, detail}`.
 - **Regular-season STATUS and SCORES are deliberately not read.** Leagues
   don't enter regular-season results; requiring them would stop every season
   from ever archiving. A regular-season game matters only by its DATE.
@@ -3277,9 +3297,17 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   unarchived seasons with an end date and the org's timezone; skips every
   season whose end date hasn't passed (`endDatePassed`, the decision's own
   rule — running seasons cost no further reads); for the rest reads every
-  game date and every playoff game (`fetchAllRows`, complete or throw), asks
-  `decideAutoArchive`, and archives only on yes (one UPDATE per season,
-  `.is("archived_at", null)`). Never put a second copy of the rule in a caller.
+  game date and every playoff game (`fetchAllRows`, complete or throw), makes
+  ONE `volunteer_archive_holds(season_ids)` call for all past-end seasons
+  (authenticated, member of every named season or `not_authorized`; a failed
+  or malformed reply holds them all), asks `decideAutoArchive`, and archives
+  only on yes (one UPDATE per season, `.is("archived_at", null)`). It returns
+  `{archived, heldForVolunteers}`; `seasonHeldForVolunteers(…, seasonId)`
+  runs the SAME reads and decision for one season and writes nothing (the
+  season page's banner). Never put a second copy of the rule in a caller. **Deploy order (met 2026-11-09):
+  0121 was applied BEFORE this code reached `main`** — without the
+  function every holds call fails, so NO season would ever auto-archive (the
+  safe direction, but a silent stop).
 - **The end date is editable on the season page** (header: "Ends Oct 25,
   2026 · Change end date", unarchived seasons only — the Unarchive modal owns
   an archived season's end date). Rules and words: `src/lib/seasons/end-date.ts`
@@ -3290,8 +3318,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   the last game, whichever is later — the 0112 rule). A plain
   browser UPDATE (0110 allows `end_date`), `.select("id")`, zero rows →
   "Nothing was saved". No migration.
-- **Harness: `npm run sim:auto-archive`** (36 checks × 3 host zones, 4
-  counters; fixed NOW = 2026-10-26 03:00Z, 8pm Oct 25 in Pacific) drives the
+- **Harness: `npm run sim:auto-archive`** (66 checks × 3 host zones, 5
+  counters incl. heldForVolunteers; VD1–VD3 the decision's volunteer rule,
+  VH1–VH2 the helper's one holds call and its fail-closed replies; fixed NOW = 2026-10-26 03:00Z, 8pm Oct 25 in Pacific) drives the
   decision and the REAL helper against a small fake client: playoffs after the
   end date, undated playoff games, results all in, a future regular-season
   game (even cancelled), a game today, past unscored games, the Pacific
@@ -5691,13 +5720,23 @@ Still open:
   UPDATE OF archived_at trigger on `leagues`, NULL → set only, SECURITY
   DEFINER on purpose (archiving is a browser write by a member who holds no
   DELETE here; as INVOKER the archive would fail) — 0121 re-creates it to
-  delete claims, roles and goals too. **Auto-archive skipping seasons with
-  volunteer data (option b) and its banner land IN branch B (0121), in the
-  same change as the claims — never after it.** Auto-archive runs on every
-  dashboard load, and this trigger fires on it like any other archive, so
-  once claims exist a season past its end date would lose its volunteer data
-  the moment an admin opens the dashboard. Today nothing writes `volunteers`
-  or the outbox, so there is nothing to lose until 0121.
+  delete claims, roles and goals too. **Auto-archive skips seasons with
+  volunteer data (option b) — 0121 part 4 + `decideAutoArchive` rule 4, in
+  the same change as the claims (see "Auto-archive").** Auto-archive runs on
+  every dashboard load, and this trigger fires on it like any other archive,
+  so without the hold a season past its end date would lose its volunteer
+  data the moment an admin opens the dashboard. **The hold surfaces (approved
+  2026-11-08), words in `src/lib/seasons/volunteer-hold.ts`, rendered
+  verbatim:** the season page's neutral `VolunteerHoldBanner` (only for a
+  season `seasonHeldForVolunteers` says is held; its button opens the shared
+  archive confirm); the Seasons list tag "Open: volunteer sign-ups" (from
+  `autoArchivePastSeasons`' `heldForVolunteers`); and the ARCHIVE CONFIRM on
+  every surface: it asks `volunteer_archive_holds([season])` on open, the
+  button waits while it answers, and a season with sign-ups gets the deletion
+  line and the button **"Archive and delete sign-ups"** (decided 2026-11-08);
+  an unreadable answer shows the "couldn't check" line, never silence.
+  Harness: `sim:auto-archive` VH3, B1–B3 (+ AA18–AA21). Checked on a deleted
+  scratch route at 1280px and 375px with the reply stubbed.
   Proof: `scripts/sim/volunteers-foundation-sim.sql` (+ build script; rolled
   back in "test" with "Test 2"; 16 mutants; each mutant drops and re-creates
   the 0120 objects in its own rolled-back sub-run). Run 2026-11-08 (read its
@@ -5727,6 +5766,248 @@ Still open:
   card (logged), so the code is safe on `main` before the apply, and a real
   league never sees the feature. Its link line says the sign-up page isn't
   built yet (`LINK_NOT_BUILT_YET`) — remove it with 0121.
+- **Branch B (`feat/volunteer-game-roles`, 0121) — slot rules (commit 1,
+  2026-11-08).** `src/lib/volunteers/slots.ts` (pure): a slot is role × game ×
+  (team) × position, never stored. `per_game` = one set per game, HOME games
+  only (none when an interleague partner hosts), the home team's division;
+  `per_team` = one set per OUR team in the game (interleague: our team only),
+  that team's division. No slots on `pending_interleague`, undated games or
+  playoff games (v1). scheduled → open; reschedule_pending → open + "May
+  move"; cancelled → claims kept, new ones refused; any other status → no new
+  claims. Refusal order: no_slot → rained_out → closed → past (claims close AT
+  the start, league wall clock) → unpublished (LOCKED divisions only) →
+  signups_closed. Change/cancel only while the start is MORE than 24 hours
+  away (wall-clock arithmetic, as the database will do it). Overlap = same
+  date, `spansOverlap`, a game's span from `durationFromSettings`. **ONE RULE,
+  TWO LANGUAGES, ONE TABLE:** the `VSLOT-TABLE` and `VCHANGE-TABLE` blocks in
+  `scripts/sim/volunteer-claims-sim.sql` (the 0121 proof file; its body
+  arrives with the migration). `npm run sim:volunteer-slots` (132 checks × 3
+  zones, 12 counters) + `:mutants` (14, each killed at its own assertion).
+- **0121 part 1 (commit 2a, APPLIED with 0121 on 2026-11-09; proof run 2026-11-08, run 3 green, 16/16 — read its RUN LOG: run 1 caught a real SQL/TS drift on `pending_interleague`; re-proven with part 2).**
+  `supabase/migrations/0121_volunteer_game_roles.sql`: `volunteer_roles`
+  (per season, `per_game`/`per_team`, 1–10 spots, name unique trimmed +
+  case-insensitive), `volunteer_role_divisions`, `volunteer_claims` (one row
+  per spot; every target FK SET NULL so nothing silently destroys a sign-up;
+  the PARTIAL UNIQUE INDEX on active game spots — for_team coalesced to the
+  nil uuid — is the one-person-per-spot guard; playoff and snack shack targets
+  held NULL by a CHECK until later). Pure twins `volunteer_slot_state` /
+  `_slot_targets` / `_claim_refusal` / `_change_allowed` (callable by no role;
+  run against the shared tables). `volunteer_admin_gate`: season → member →
+  switch → Elite → not archived. `save_volunteer_role` / `delete_volunteer_role`
+  are their own preview; lowering spots, dropping a division or deleting
+  CANCELS the stranded claims (position > spots) and queues one
+  `shift_canceled` email each; kind can't change under claims. The archive
+  wipe now deletes claims and roles too. Proof: `volunteer-claims-sim.sql`
+  (+ build script; 16 mutants).
+- **0121 part 2 (commit 2b, APPLIED with 0121; parts 1–2 proof run 2026-11-08, run 2 green 31/31 — read its RUN LOG).** Public
+  functions, service_role ONLY (the routes add Turnstile and pass
+  sha256(salt + IP / email)); each answers `{status}` and never raises for a
+  refusal. `volunteer_signup_page(token, season)` — unknown (no link, off, or
+  the switch off: a link never reveals the feature) / plan / ok with the open
+  seasons (picker), LOCKED divisions and their teams, roles with sign-ups on,
+  and spots whose SHIFTED start is ahead, each with `spots` and a `taken`
+  COUNT — never a name or email. `volunteer_claim(…)` — input check → rate
+  limits (100/hour per IP — decided 2026-11-08, shared IPs at league
+  meetings and on carrier NAT; 10/23h per email; every attempt past input counts)
+  → the family team in that LOCKED division of the game's season → a per-spot-
+  set advisory lock → the shared refusal → already_signed_up → overlap (generic
+  `overlap_confirm_needed`, overridable) → lowest free position (the unique
+  index backstops a race → `just_taken`). The first sign-up names the
+  volunteer; a later one with the same email never renames them.
+  `volunteer_manage_page(token)` / `volunteer_cancel(token, claim)` — own spots
+  only; cancel refused 24 hours or less before (`change_closed` + the contact
+  email). Manage links: `volunteer_manage_links` holds only the sha256; the
+  plain token rides in the `signup_confirmed` payload until
+  `volunteer_outbox_finish` (re-created) drops it on sent/failed. Part 1 gained
+  `volunteer_roles.lead_minutes` (0–120) and `volunteer_spot_start` (the
+  shared table pins it). Proof: 31 mutants (15 new).
+- **0121 part 3 (commit 2c, APPLIED with 0121; parts 1–3 proof run 2026-11-08, run 4 green 44/44 — read its RUN LOG: three runs of harness faults, incl. a snapshot read inside one IF and a mutant hidden by the trigger's early exit).** Two `games`
+  triggers, both SECURITY DEFINER (members write games from the browser and
+  hold nothing on the volunteer tables), neither writing games, divisions or
+  teams — the lock and "Sent to parents" are untouched.
+  `volunteer_on_game_change` (AFTER UPDATE OF scheduled_at, venue_id, status):
+  moved → `game_moved` (coalesce key `moved:<claim>`; `moved_from` keeps the
+  FIRST original time + field until "Keep it" or cancel); → cancelled →
+  `rained_out`; cancelled → back with a new time → `makeup_set`, same time →
+  `back_on`; a game whose old AND new times are past (record-where-played)
+  emails nobody; a failure is logged and SWALLOWED so an email can never block
+  a schedule edit. **`volunteer_on_game_delete` (BEFORE DELETE) is
+  load-bearing:** an active claim must keep its target (CHECK), so without it
+  the claim's SET NULL would make every game delete with a sign-up FAIL —
+  regenerate, division delete and team delete included. It detaches the
+  claims (`detached_from`: start, home/away team, for-team, role, position)
+  and queues `spot_lost` held 10 minutes (`lost:<claim>`), not swallowed.
+  **The reattach is a trigger too (decided 2026-11-08):**
+  `volunteer_on_game_insert` (AFTER INSERT) puts back sign-ups detached under
+  10 minutes ago (`detached_at`) on a new game with the same start and home
+  team (a per-team spot's team still in it, its position free) and withdraws
+  the held email — so a tab closed between a regenerate's delete and insert
+  can't strand sign-ups or send a false "spot lost". No browser call; the
+  regenerate code is unchanged. **Trigger failures fail LOUD:** the change and
+  insert triggers never block the edit, but record a row in
+  `volunteer_trigger_failures` (game, trigger, SQLSTATE — no personal data);
+  `volunteer_failure_count(season)` (member only) feeds the sign-up list and
+  the daily check. `volunteer_keep_spot`
+  (service_role) clears `moved_from`. Season delete sends nothing: it needs an
+  archived season, and archiving already wiped the sign-ups. Proof: 44 mutants (13 for part 3), all killed at their own tag. Applying takes SHARE ROW EXCLUSIVE on `games`
+  for the three CREATE TRIGGERs, plus the part-1 FKs.
+- **0121 part 4 (commit 2d, APPLIED with 0121, proof green):**
+  `volunteer_archive_holds(p_season_ids uuid[]) returns uuid[]` — SECURITY
+  DEFINER, `search_path = public, pg_temp`, EXECUTE authenticated only; the
+  seasons among those named that have ANY claim row (canceled and detached
+  count — they are history). Every named season must exist and belong to an
+  org the caller is a member of, else `not_authorized`. The switch is not
+  consulted. Proof AH1–AH3 + MU45–MU47 in `volunteer-claims-sim.sql`.
+- **0121 part 5 (commit 2e, APPLIED with 0121, proof green):** the
+  admin's sign-up list and its actions, all authenticated, all through
+  `volunteer_admin_gate` (member → switch → Elite → not archived), none
+  writing the activity log. `volunteer_admin_signups(season)` — every claim,
+  any status, with first initial, last name and email: the ONLY admin path
+  to names and emails (the who-signed-up list, the roles screen's Filled
+  counts, the admin CSV). `volunteer_admin_assign(…)` — the public claim's
+  spot rules except a role with sign-ups off can be filled; the family team
+  must be in the season; the admin confirms 18+; `created_by 'admin'`; emails
+  `admin_assigned` with a manage token. `volunteer_admin_cancel(claim,
+  notify)` — active or detached → canceled, withdraws that claim's waiting
+  email, emails `admin_canceled` only when asked. `volunteer_set_no_show` —
+  an active game sign-up whose spot date has passed (league timezone).
+  `volunteer_admin_remind(season, claims)` — one `reminder` per volunteer for
+  spots still ahead, a fresh manage link each, a waiting reminder replaced
+  (`remind:<volunteer>`), `last_reminded_at` set. Proof AS1–AS2, AD1, RM1,
+  NS1, AC1, G4 + MU48–MU58. **The email templates for these kinds (and
+  `signup_confirmed`) are not written yet** — the drain refuses an unknown
+  kind, so until they land these emails fail, never send blank.
+- **0121 part 6 + the emails (commit 2f, APPLIED with 0121, proof green).**
+  The outbox payload holds ids only, so 0121 re-creates
+  `volunteer_outbox_take` (0120's steps a–e verbatim) to attach, per row:
+  `spots` (`volunteer_email_spots`, callable by no role — each claim's role,
+  team, matchup, field, spot start with the lead applied, and for a moved
+  game where it was; a detached claim is described from `detached_from`),
+  `manage_token` — a FRESH manage link for game_moved / rained_out /
+  makeup_set / back_on (only its sha256 stored; signup_confirmed,
+  admin_assigned and reminder carry theirs in the payload) — and
+  `signup_token` (the league's link, only while it is on). Take stays
+  service_role only. **The leak check after the proof must also find take
+  back at 0120's md5.** Templates: `email-templates.ts` — every kind 0120
+  allows has one except manage_link, switched and nudge (not built; T1 keeps
+  that list honest); words in `words.ts`; a template that can't describe its
+  spot, or lacks a required manage link, returns null and the row fails
+  (`unknown_kind`) — never a blank email. Proof TK1 + MU59–MU61;
+  `sim:volunteer-email` T1–T4 (175 checks) + VE21–VE24 (24/24).
+- **Screen 1 — Volunteer roles (`/dashboard/volunteers`, 2026-11-08,
+  approved plan).** The sidebar item "Volunteers" (Elite tier) and the page
+  exist only when `loadVolunteerFeature` (`src/lib/volunteers/feature-state.ts`
+  — the ONE read of `volunteer_admin_state`; Settings, the layout and the page
+  all use it) returns data: otherwise no item and the page 404s. Not Elite →
+  `FeatureLockedCard`. Reads are complete-or-throw (one error card, never a
+  partial list); Filled comes from `volunteer_admin_signups` and says
+  "Couldn't count" if that read fails. Rules: `roles-screen.ts`; words:
+  `words.ts`; slot counts through `slots.ts` (never a copy). The editor calls
+  `save_volunteer_role` / `delete_volunteer_role` with `p_commit false` FIRST
+  and confirms any cancellation before committing; a reply that isn't a
+  readable preview is an error. Differences from the board (approved): no
+  snack shack row until branch C; spots 1–10; "Starts before the game"
+  0–120; the kind locks once anyone signed up (unknown counts lock too); the
+  link strip shows status, Copy, Open and a Settings link (on/off, contact,
+  Reset stay in Settings). Harness `npm run sim:volunteer-roles` (53 checks
+  × 3 zones) + `:mutants` (9). Checked on a deleted scratch route at 1280px
+  and 375px with the RPCs stubbed. **Deploy order (met 2026-11-09): 0121 was applied before `main`.**
+- **Screen 4 — Who signed up (`/dashboard/volunteers/signups`, 2026-11-08,
+  approved plan).** Same gates as screen 1. Names and emails ONLY from
+  `volunteer_admin_signups`; that read failing (or malformed) is one error
+  card, never an empty list (an empty list reads as open spots). Rules:
+  `signups-screen.ts` — one row per spot position from `slots.ts`, an ACTIVE
+  claim in its own position, notes for rained-out and move-pending games,
+  role / division / open-filled filters, upcoming from the league's "now"
+  (the read's `today`): every spot dated today or later stays listed — one
+  that already started today is tagged "Started" until the day ends
+  (decided 2026-11-08); the No-show list = filled spots on dates before
+  today (the database refuses a no-show on today, so the tick appears from
+  the next day); the "N sign-ups lost" banner from detached claims
+  grouped by division and day, and the admin CSV (`signupsCsv`; formula
+  cells made inert; it lives in `src/lib/volunteers`, so the leak fence needs
+  no allowance). Actions: Assign (`volunteer_admin_assign`, 18+ checkbox,
+  overlap → "Assign anyway"), Change (`volunteer_admin_cancel`, notify on by
+  default; "Cancel and assign someone else"), No-show
+  (`volunteer_set_no_show`) — each trusts only an `assigned` / `canceled` /
+  `saved` reply. Not here (approved): Merge family (cut), the Volunteers tab
+  (branch D), reminders (built last). Harness `npm run sim:volunteer-signups`
+  (45 checks × 3 zones) + `:mutants` (11). Checked on a deleted scratch route
+  at 1280px and 375px.
+- **Screen 2 — the public sign-up page (`/v/<token>`, 2026-11-08, approved
+  plan).** A client shell (noindex, NOT framable, outside the middleware like
+  `/s/`) fetching `GET /api/volunteers/signup/<token>[?season=]`
+  (`volunteer_signup_page` through the admin client; COUNTS only; no-store;
+  a read error → 503, the page says it couldn't load — never an empty list)
+  and posting to `POST …/claim`. **The claim route FAILS CLOSED, in this
+  order:** `TURNSTILE_SECRET_KEY` and `VOLUNTEER_HASH_SALT` (≥ 16 chars) set,
+  else 503 and nothing touched → link shape → body shape (`parseClaimBody`)
+  → Turnstile (`verifyTurnstile`: only `success === true`) → the database
+  (`volunteer_claim`), with the IP and email passed only as
+  `sha256(salt|ip:…)` / `sha256(salt|email:…)`. On `claimed` it drains up
+  to 5 outbox rows so the confirmation goes out at once (the cron retries a
+  failure). `NEXT_PUBLIC_TURNSTILE_SITE_KEY` renders the widget (explicit
+  render, reset after every attempt — tokens are single-use). Rules:
+  `signup-page.ts`; server pieces: `public-server.ts`; the drain wiring:
+  `drain-runner.ts` (shared with the cron route). Differences from the board
+  (decided): the overlap warning is generic; no snack shack shifts until
+  branch C; a season picker for two open seasons. Harness `npm run
+  sim:volunteer-signup-page` (87 checks × 3 zones) + `:mutants` (10).
+  Checked on a deleted scratch route at 375px with the data and claim
+  stubbed and Cloudflare's always-pass TEST site key; the real claim route
+  answered 503 locally (no keys in .env.local).
+- **Screen 3 — the volunteer's own page (`/v/m/<token>`, 2026-11-08,
+  approved plan).** Shell + client, noindex, NOT framable, outside the
+  middleware, `referrer: no-referrer` (the URL is the credential). Reads
+  `GET /api/volunteers/manage/<token>` (`volunteer_manage_page`, which 0121
+  now also gives `signup_token` — the league's link only while it is on — and
+  `was_start` / `was_field` for a moved game; proof M1/K1 + MU62); writes
+  `POST …/cancel` and `…/keep` through ONE handler, `manage-action.ts` (token
+  and claim-id shape checked before the database; only a `canceled` reply
+  drains the outbox). Rules: `manage-page.ts` — inside 24 hours a spot is
+  closed even when its game moved (the database refuses), with the league's
+  contact; a moved game shows Now / Was with Keep it and Cancel; a rained-out
+  one is held. No Switch (cut). Harness `npm run sim:volunteer-manage-page`
+  (32 checks × 3 zones) + `:mutants` (6; MP5 first survived — read the sim's
+  MUTATION LOG). Checked on a deleted scratch route at 375px.
+- **Reminders (who signed up, 2026-11-08, built last in branch B).** The
+  "Next up" banner (`nextUp`: the earliest day with filled spots still
+  ahead; "Reminder sent <date>" only when EVERY sign-up that day was
+  reminded) with "Remind all N for <date>", a Remind button on every filled
+  spot not yet started, and "Reminded <date>" — the date in the LEAGUE's
+  timezone, from `volunteer_admin_signups`' `last_reminded_on` (0121; proof
+  RM1). All go through `volunteer_admin_remind` (one email per volunteer, a
+  fresh manage link, a waiting reminder replaced); a reply that isn't a
+  readable count, or queues nothing, is a failure, never "sent". Harness
+  `sim:volunteer-signups` R1–R5 (59 checks) + VS12–VS15 (15/15).
+- **THE FENCE: `npm run sim:volunteer-leaks`** (+ `:mutants`, 7, each killed
+  at its own assertion). F1 no outbound file (the daylight fence's list plus
+  the activity log, its panel and the snack shack print) reaches
+  `src/lib/volunteers` / `src/components/volunteers` through any import
+  chain; W1 none names a volunteer table, function or personal column; A1 no
+  volunteer code reaches `src/lib/activity-log.ts`, and no database function
+  (latest body) both reads volunteer data and writes `activity_log`; D1 no
+  `get_*_by_token` body names a volunteer table; V1 `volunteer_signup_page`
+  and `volunteer_season_spots` never name `last_name` / `first_initial` /
+  `email_lc`; S1 wiring. Allowed: `src/app/api/volunteers/**` and
+  `src/app/v/**` (the sign-up and manage routes). **The admin CSV, when
+  built, goes in its `CSV_ALLOWED` list with the decision's date.** A new
+  outbound file belongs in its fence list.
+- **Mockup decisions (2026-11-08, boards in `docs/mockups/volunteer-signup/`).**
+  Where the boards and the written decisions disagree, the decisions win.
+  (1) The overlap warning is GENERIC and names no spot (the board names one).
+  (2) Umpires are never claimable on the sign-up page (admin-assigned, as
+  today), but assigned umpire games DO count toward the family goal in v1
+  (regular season only); the roles and tracker screens show an Umpires row.
+  How an official links to a family and how a missed game is excluded is a
+  PROPOSAL owed to Whit before building (may land with the tracker, branch D);
+  the assignment flow does not change. (3) Switching is CUT from v1 — cancel,
+  then sign up again (later item). Added: a role's "starts N minutes before
+  the game" (0–120, default 0; the spot ends at game end; spot time, 24-hour
+  window, overlap and claim cutoff all use the shifted start); "Keep it" on a
+  moved spot (2c, stored moved-from); two active seasons → a picker like the
+  public schedule; public spot counts ("1 of 2 spots open") are fine. Not in
+  v1: the "possible same family" hint.
 - **LAUNCH BLOCKERS before any real league gets the switch:**
   1. Reply-to verification: the league contact email the volunteer emails
      reply to is unverified (fine behind the switch, not for real leagues).
@@ -5736,6 +6017,9 @@ Still open:
 
 ## Open items
 
+- **Volunteer spot SWITCHING — cut from v1 (decided 2026-11-08).** A
+  volunteer cancels, then signs up again. A later version may add an atomic
+  switch (the plan's `switch_from` on the claim function).
 - **Snack shack print — Safari clip risk (recorded 2026-11-07).** The snack
   print CSS in `globals.css` (`.fieldslate-snack-print-ready.print-active`)
   still uses `position: absolute` and `break-after: avoid`, the two causes of

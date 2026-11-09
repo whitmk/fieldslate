@@ -18,6 +18,8 @@ import { LeagueContent } from "@/components/dashboard/league-content";
 import { BlackoutDatesPanel } from "@/components/blackout/blackout-dates-panel";
 import { ActivityLogPanel } from "@/components/dashboard/activity-log-panel";
 import { ArchivedSeasonBanner } from "@/components/seasons/archived-season-banner";
+import { VolunteerHoldBanner } from "@/components/seasons/volunteer-hold-banner";
+import { seasonHeldForVolunteers } from "@/lib/seasons/auto-archive";
 import { detectConflicts, venueGamesConflict } from "@/lib/schedule/detect-conflicts";
 import { RainedOutStatCard, type RainedOutGame } from "@/components/dashboard/rained-out-stat-card";
 import { ConflictStatCard, type ConflictGame } from "@/components/dashboard/conflict-stat-card";
@@ -434,10 +436,14 @@ export default async function LeaguePage({ params }: { params: { id: string } })
   // teamCount/Limit goes through into the wizard's upfront cap check.
   // Named `orgTeamCount` to avoid colliding with `teamCount` above, which is
   // scoped to THIS league only.
-  const [plan, orgDivisionCount, orgTeamCount] = await Promise.all([
+  // Held open for volunteer sign-ups (0121 part 4): the auto-archive's own
+  // reads and decision, read-only. Only an unarchived season past its end
+  // date can be held; anything else costs nothing.
+  const [plan, orgDivisionCount, orgTeamCount, heldForVolunteers] = await Promise.all([
     getOrgPlan(currentOrgId),
     getDivisionCount(supabase, currentOrgId),
     getTeamCountForOrg(supabase, currentOrgId),
+    league.archived_at ? Promise.resolve(false) : seasonHeldForVolunteers(supabase, currentOrgId, league.id),
   ]);
   const divisionLimit = PLAN_LIMITS[plan].divisions;
   const teamLimit = PLAN_LIMITS[plan].teamsPerOrg;
@@ -478,6 +484,11 @@ export default async function LeaguePage({ params }: { params: { id: string } })
           endDate={league.end_date}
           canRestore={isElite(plan)}
         />
+      )}
+
+      {/* Held open for volunteer sign-ups (archiving deletes them) */}
+      {heldForVolunteers && (
+        <VolunteerHoldBanner seasonId={league.id} seasonName={league.name} endDate={league.end_date} />
       )}
 
       {/* Schedule-conflict alert banner (double-booked fields only) */}

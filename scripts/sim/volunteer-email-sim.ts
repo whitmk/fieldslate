@@ -49,7 +49,8 @@ import {
   type SendResult,
 } from "../../src/lib/volunteers/outbox-drain";
 import { resendRequest } from "../../src/lib/email";
-import { renderVolunteerEmail } from "../../src/lib/volunteers/email-templates";
+import { TEMPLATE_KINDS, manageUrl, renderVolunteerEmail, signupUrl, type EmailSpot } from "../../src/lib/volunteers/email-templates";
+import { parseOutboxRows } from "../../src/lib/volunteers/outbox-drain";
 import { cardDataFromAdminState, linkSwitchBlocked, volunteerSignupUrl } from "../../src/lib/volunteers/settings-card";
 import { LINK_NEEDS_CONTACT, settingsErrorLine } from "../../src/lib/volunteers/words";
 
@@ -283,12 +284,59 @@ async function main() {
       eq([f.takes(), f.sends.length], [0, 0], "D9", "nothing taken without a From address");
       ok(s.error !== null, "D9", "the summary says why");
     }
-    // D10 — 0120 has no templates: every kind fails as unknown_kind.
+    // D10 — a kind with no template, or a template that can't describe its
+    // spot (no details attached), fails as unknown_kind: never a blank email.
     {
-      const f = fakeDeps([row(1, { kind: "signup_confirmed" })], {}, { render: renderVolunteerEmail });
-      await drainOutbox(f.deps);
-      eq([f.sends.length, f.finishes[0]?.error], [0, "unknown_kind"], "D10", "no 0120 kind has an email yet");
+      const f = fakeDeps([row(1, { kind: "nudge" }), row(2, { kind: "signup_confirmed" })], {}, { render: renderVolunteerEmail });
+      await drainOutbox(f.deps, { gapMs: 0 });
+      eq([f.sends.length, f.finishes.map((x) => x.error)], [0, ["unknown_kind", "unknown_kind"]], "D10",
+        "no template, or no spot details → failed, nothing sent");
     }
+  });
+
+  // ── T — the templates (0121) ───────────────────────────────────────────
+  await section("T", () => {
+    const tok = "a".repeat(64);
+    const sig = "b".repeat(64);
+    const spot: EmailSpot = {
+      claim_id: "c1", role_name: "GameChanger", for_team_name: "Expos", home_team_name: "Expos", away_team_name: "<Pirates>",
+      field: "Field 1", park: "Main Park", start: "2027-03-06T09:00", state: "open", was_start: "2027-03-05T18:00", was_field: "Field 2",
+    };
+    // T1 — every kind the outbox can hold has a template, or is knowingly not built yet.
+    const mig = readFileSync(join(ROOT, "supabase/migrations/0120_volunteers_foundation.sql"), "utf8");
+    const kinds = /kind\s+text not null check \(kind in \(([\s\S]*?)\)\)/.exec(mig)?.[1].match(/'([a-z_]+)'/g)?.map((k) => k.slice(1, -1)) ?? [];
+    const NOT_YET = ["manage_link", "switched", "nudge"];
+    ok(kinds.length >= 14, "T1", "the outbox kinds were read from 0120", String(kinds.length));
+    const unaccounted = kinds.filter((k) => !TEMPLATE_KINDS.includes(k) && !NOT_YET.includes(k));
+    ok(unaccounted.length === 0, "T1", "every outbox kind has a template or is listed as not built yet", unaccounted.join(", "));
+    // T2 — each template says what and when, links where it must, and escapes.
+    const ctx = { leagueName: "Majors LL", spots: [spot], manageToken: tok, signupToken: sig };
+    const NEED_MANAGE = ["signup_confirmed", "admin_assigned", "game_moved", "rained_out", "makeup_set", "back_on", "reminder"];
+    const PICK_NEW = ["admin_canceled", "shift_canceled", "spot_lost"];
+    for (const kind of TEMPLATE_KINDS) {
+      const e = renderVolunteerEmail(kind, {}, ctx);
+      ok(e !== null, "T2", `${kind} renders`);
+      if (!e) continue;
+      ok(e.subject.includes("GameChanger") || kind === "reminder", "T2", `${kind}: subject names the role`, e.subject);
+      ok(e.text.includes("Sat, Mar 6 · 9:00 AM"), "T2", `${kind}: says when`, e.text.slice(0, 200));
+      ok(!e.html.includes("<Pirates>") && e.html.includes("&lt;Pirates&gt;"), "T2", `${kind}: html escaped`);
+      ok(e.text.includes("Majors LL"), "T2", `${kind}: names the league`);
+      if (NEED_MANAGE.includes(kind)) ok(e.text.includes(manageUrl(tok)), "T2", `${kind}: manage link`);
+      if (PICK_NEW.includes(kind)) ok(e.text.includes(signupUrl(sig)), "T2", `${kind}: pick-a-new-spot link`);
+    }
+    const moved = renderVolunteerEmail("game_moved", {}, ctx);
+    ok(!!moved && moved.text.includes("Now: Sat, Mar 6 · 9:00 AM") && moved.text.includes("Was: Fri, Mar 5 · 6:00 PM · Field 2"), "T2",
+      "game_moved says now and was", moved?.text ?? "");
+    // T3 — nothing to say → no email.
+    ok(renderVolunteerEmail("signup_confirmed", {}, { ...ctx, spots: [] }) === null, "T3", "no spot → no email");
+    ok(renderVolunteerEmail("signup_confirmed", {}, { ...ctx, manageToken: null }) === null, "T3", "a confirmation without its manage link → no email");
+    ok(renderVolunteerEmail("game_moved", {}, { ...ctx, manageToken: "short" }) === null, "T3", "a malformed token → no email");
+    ok(renderVolunteerEmail("admin_canceled", {}, { ...ctx, signupToken: null })?.text.includes("/v/") === false, "T3",
+      "no sign-up link when the league's link is off");
+    // T4 — the parser carries what the take attached.
+    const parsed = parseOutboxRows([{ id: 7, kind: "game_moved", payload: {}, spots: [spot, 3], manage_token: tok, signup_token: sig }]).rows[0];
+    ok(parsed?.spots.length === 1 && parsed.manageToken === tok && parsed.signupToken === sig, "T4", "spots and tokens parsed",
+      JSON.stringify(parsed));
   });
 
   // ── S — the route (source greps — weak by nature) ──────────────────────
@@ -298,8 +346,9 @@ async function main() {
       "no CRON_SECRET → 503 before anything else");
     ok(src.includes("timingSafeEqual") && src.includes("bearerMatches(request.headers.get(\"authorization\"), secret)"),
       "S2", "the bearer is compared in constant time");
-    ok(src.includes("drainOutbox(") && src.includes("NextResponse.json(summary"), "S3",
-      "the reply is the drain summary (counts only)");
+    const runner = readFileSync(join(ROOT, "src/lib/volunteers/drain-runner.ts"), "utf8");
+    ok(src.includes("await runVolunteerDrain()") && runner.includes("return drainOutbox(") && src.includes("NextResponse.json(summary"), "S3",
+      "the reply is the drain summary (counts only), through the one drain runner");
     ok(!/from\(\s*["']volunteer/.test(src), "S4", "the route reads no volunteer table directly");
     const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as { crons?: { path: string; schedule: string }[] };
     eq(vercel.crons?.find((c) => c.path === "/api/volunteers/outbox/drain")?.schedule, "*/5 * * * *", "S5",
@@ -338,9 +387,11 @@ async function main() {
     const page = readFileSync(join(ROOT, "src/app/(dashboard)/dashboard/settings/page.tsx"), "utf8");
     ok(page.includes("{volunteers && <VolunteersCard orgId={currentOrgId} data={volunteers} />}"), "S6",
       "the card renders only when the loader returned data");
-    ok(/if \(error\) \{\s*console\.error\("\[settings\] volunteer card read failed:", error\.message\);\s*return null;/.test(page),
+    const loader = readFileSync(join(ROOT, "src/lib/volunteers/feature-state.ts"), "utf8");
+    ok(page.includes('loadVolunteerFeature(supabase, currentOrgId, "settings")'), "S6", "Settings reads through the shared loader");
+    ok(/if \(error\) \{\s*console\.error\(`\[\$\{where\}\] volunteer feature read failed:`, error\.message\);\s*return null;/.test(loader),
       "S6", "a failed read means no card");
-    ok(page.includes("return cardDataFromAdminState(data);"), "S6", "the reply goes through cardDataFromAdminState");
+    ok(loader.includes("return cardDataFromAdminState(data);"), "S6", "the reply goes through cardDataFromAdminState");
   });
 
   for (const [k, v] of Object.entries(counters)) ok(v > 0, "VAC", `anti-vacuity counter ${k} is zero`);

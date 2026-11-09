@@ -24,7 +24,7 @@ export default async function LeaguesPage({ searchParams }: PageProps) {
   // Auto-archive (write-on-read): bump any past-end-date season into the
   // archived state before the SELECT below sees it. Shared helper so both
   // /dashboard and /dashboard/leagues stay in sync.
-  await autoArchivePastSeasons(supabase, currentOrgId);
+  const { heldForVolunteers } = await autoArchivePastSeasons(supabase, currentOrgId);
 
   const { data } = await supabase
     .from("leagues")
@@ -53,6 +53,7 @@ export default async function LeaguesPage({ searchParams }: PageProps) {
       activeSeasonLimit={activeSeasonLimit}
       plan={plan}
       canBrowseArchived={canBrowseArchived}
+      heldForVolunteers={heldForVolunteers}
     />
   );
 }
