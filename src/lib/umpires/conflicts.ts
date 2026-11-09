@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
-import { localDateKey } from "./eligibility";
+import { gameDateKey } from "./eligibility";
+import { fmtGameTime } from "@/lib/utils/game-time";
 
 export const DEFAULT_GAME_DURATION_MINS = 90;
 
@@ -132,10 +133,11 @@ export type BlackoutCheck =
   | { ok: false };
 
 /**
- * The official's blackout entry covering the game's (local) date
+ * The official's blackout entry covering the game's WALL-CLOCK date
  * (`blackout: null` when there is none), or `{ ok: false }` when it could not
  * be read. official_blackouts.date is a plain date — compared against the
- * game's local calendar day, the same day the schedule UI shows.
+ * date part of the stored time (eligibility.ts `gameDateKey`), the day the
+ * schedule shows. Never the instant read in the browser's zone.
  *
  * `client` is for the simulation harnesses ONLY; production callers omit it.
  */
@@ -149,7 +151,7 @@ export async function findUmpireBlackout(
     .from("official_blackouts")
     .select("date, note")
     .eq("umpire_id", umpireId)
-    .eq("date", localDateKey(new Date(scheduledAt)))
+    .eq("date", gameDateKey(scheduledAt))
     .maybeSingle();
   if (error) return { ok: false };
   return { ok: true, blackout: (data as BlackoutInfo | null) ?? null };
@@ -190,14 +192,13 @@ export function assignmentPrecheckMessage(
 }
 
 export function formatConflictTime(scheduled_at: string): string {
-  const d = new Date(scheduled_at);
-  const date = d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-  const time = d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `${date}, ${time}`;
+  // Wall-clock, from the string (2026-11-09): toLocale* in the browser read
+  // a 9:00 AM game as 2:00 AM from a Pacific browser.
+  const [, m, d] = gameDateKey(scheduled_at).split("-").map(Number);
+  return `${MONTHS_SHORT[m - 1]} ${d}, ${fmtGameTime(scheduled_at)}`;
 }
+
+const MONTHS_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];

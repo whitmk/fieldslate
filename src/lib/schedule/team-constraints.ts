@@ -5,7 +5,8 @@
 // checks a candidate game time against a team's constraints must go through
 // these functions so the implementations can't drift.
 //
-// CLIENT-TIMEZONE-ONLY, same stance as src/lib/umpires/eligibility.ts: the
+// CLIENT-TIMEZONE-ONLY (src/lib/umpires/eligibility.ts shared this stance
+// until 2026-11-09, when it moved to the wall-clock rule): the
 // day-of-week is derived from the naive local wall-clock timestamp
 // ("YYYY-MM-DDTHH:MM:SS", no zone) exactly the way the schedule engine and
 // UI read it. In the browser that is the commissioner's local zone — correct.

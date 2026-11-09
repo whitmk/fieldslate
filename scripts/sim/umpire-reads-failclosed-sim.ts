@@ -11,7 +11,8 @@
 // list as "no blackouts", and a failed read of the division's assignments as
 // "every slot is open".
 //
-// TZ=UTC is mandatory, same as the other officials harnesses.
+// Runs under UTC, Los Angeles and Kiritimati (npm run sim:umpire-reads);
+// pinned to UTC until 2026-11-09 (see eligibility.ts).
 //
 // ASSERTIONS
 //   B0  the fixture, with nothing failing, fills a slot (so every refusal
@@ -46,8 +47,6 @@
 //   MR4  wording ignores an unreadable blackout check    → [W2]
 //   MA1–MA8  each auto-assign read's error check removed → [A1]…[A8]
 
-process.env.TZ = "UTC";
-
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { autoAssignUmpires } from "@/lib/umpires/auto-assign";
@@ -58,11 +57,6 @@ import {
   type GameTimeInfo,
 } from "@/lib/umpires/conflicts";
 import { FakeClient, type Db } from "./officials-fake";
-
-if (new Date("2026-10-10T00:00:00Z").getTimezoneOffset() !== 0) {
-  console.error("Run with TZ=UTC: TZ=UTC npx tsx scripts/sim/umpire-reads-failclosed-sim.ts");
-  process.exit(1);
-}
 
 let checks = 0;
 let fails = 0;
