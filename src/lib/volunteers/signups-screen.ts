@@ -298,12 +298,14 @@ export function remindedLine(c: Pick<SignupClaim, "last_reminded_on">): string |
 }
 
 /** volunteer_admin_remind's reply → what the screen says. A reply that isn't
- *  a readable count is a failure, never "sent". */
-export function remindOutcome(raw: unknown): { ok: boolean; line: string } {
+ *  a readable count is a failure, never "sent". `scope` is which button sent
+ *  it: one spot's Remind ("Reminder sent.") or Remind all (names the count). */
+export function remindOutcome(raw: unknown, scope: "one" | "all"): { ok: boolean; line: string } {
   const r = (raw && typeof raw === "object" ? raw : null) as Record<string, unknown> | null;
   const q = r?.queued;
   const s = r?.skipped;
   if (!r || typeof q !== "number" || typeof s !== "number" || q < 0 || s < 0) return { ok: false, line: W.REMIND_FAILED };
   if (q === 0) return { ok: false, line: W.REMIND_FAILED + (s > 0 ? W.REMIND_SKIPPED(s) : "") };
-  return { ok: true, line: W.REMIND_SENT(q) + (s > 0 ? W.REMIND_SKIPPED(s) : "") };
+  const sent = scope === "one" ? W.REMIND_SENT_ONE : W.REMIND_SENT_ALL(q);
+  return { ok: true, line: sent + (s > 0 ? W.REMIND_SKIPPED(s) : "") };
 }

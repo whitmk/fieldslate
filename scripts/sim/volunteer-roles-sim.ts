@@ -21,6 +21,8 @@
 //   W1  wiring: the page 404s without the feature and gates Elite; the
 //       sidebar item appears only with the feature; the editor previews
 //       (p_commit false) before it commits
+//   W2  the editor's "How spots are made" section: the approved words
+//       (2026-11-09) verbatim, rendered from words.ts
 // ANTI-VACUITY: R3's fixture must produce slots for both kinds and skip at
 // least one game for each reason.
 import { readFileSync } from "node:fs";
@@ -37,6 +39,7 @@ import {
   type RoleDraft,
 } from "@/lib/volunteers/roles-screen";
 import type { SlotGame } from "@/lib/volunteers/slots";
+import * as W from "@/lib/volunteers/words";
 import { roleErrorLine } from "@/lib/volunteers/words";
 
 const ROOT = join(__dirname, "..", "..");
@@ -141,6 +144,17 @@ ok(layout.includes("volunteers={volunteerFeature !== null}"), "W1", "layout pass
 const comp = read("src/components/volunteers/roles-screen.tsx");
 ok(/const r = await call\(fn, false\);[\s\S]*previewOutcome\(r\.data\)/.test(comp) && /const r = await call\(fn, true\);[\s\S]*commitOk\(r\.data\)/.test(comp),
   "W1", "the editor previews before it commits, and checks the commit");
+
+// W2
+ok(W.FIELD_KIND === "How spots are made", "W2", "heading", W.FIELD_KIND);
+ok(W.KIND_PER_GAME === "One per game." &&
+  W.KIND_PER_GAME_DETAIL === "Only one needed per game, like field prep, scoreboard or announcer.", "W2", "one per game", W.KIND_PER_GAME_DETAIL);
+ok(W.KIND_PER_TEAM === "One per team." &&
+  W.KIND_PER_TEAM_DETAIL === "Each team needs its own, like GameChanger. Two of our league's teams playing each other get two. Against another league's team, just one.",
+  "W2", "one per team", W.KIND_PER_TEAM_DETAIL);
+ok(roleErrorLine("P0001: invalid_kind") === "Choose how spots are made.", "W2", "kind refusal");
+ok(comp.includes("{W.FIELD_KIND}") && comp.includes("W.KIND_PER_GAME_DETAIL") && comp.includes("W.KIND_PER_TEAM_DETAIL") && !/Slots are created/.test(comp),
+  "W2", "the editor renders the section from words.ts");
 
 for (const [k, v] of Object.entries(counters)) ok(v > 0, "VAC", `anti-vacuity counter ${k} is zero`);
 if (failures.length) {

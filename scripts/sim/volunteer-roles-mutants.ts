@@ -58,6 +58,12 @@ const MUTANTS: Mutant[] = [
     replace: "    const r = await call(fn, true);",
     expect: "W1",
   },
+  {
+    id: "VR10", what: "the editor shows hand-typed old kind words", file: "src/components/volunteers/roles-screen.tsx",
+    find: "{k === \"per_game\" ? W.KIND_PER_GAME_DETAIL : W.KIND_PER_TEAM_DETAIL}",
+    replace: "{k === \"per_game\" ? \"Like field prep or announcer. Home games only.\" : W.KIND_PER_TEAM_DETAIL}",
+    expect: "W2",
+  },
 ];
 
 runMutants({

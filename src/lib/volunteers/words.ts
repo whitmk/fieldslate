@@ -5,7 +5,8 @@
 // ── Settings → Volunteer sign-ups (0120) ─────────────────────────────────────
 export const CARD_TITLE = "Volunteer sign-ups";
 export const CARD_INTRO =
-  "Families sign up for volunteer spots from one link: game-day roles and snack shack shifts. You see every name; everyone else sees a spot as Taken.";
+  "Families sign up for game-day volunteer spots from one link. You see every name; everyone else sees a spot as Taken.";
+// Snack shack shifts join the link with branch C (0122); add them back to this sentence then.
 export const ELITE_ONLY = "Volunteer sign-ups are available on Elite.";
 export const UPGRADE_BUTTON = "Upgrade to turn it on";
 
@@ -94,12 +95,12 @@ export const UMPIRES_FOOTNOTE =
 export const EDIT_ROLE_TITLE = (name: string) => `Edit role: ${name}`;
 export const NEW_ROLE_TITLE = "Add a role";
 export const FIELD_NAME = "Role name";
-export const FIELD_KIND = "Slots are created";
-export const KIND_PER_GAME = "Per game";
-export const KIND_PER_GAME_DETAIL = "Like field prep or announcer. Home games only.";
-export const KIND_PER_TEAM = "Per our team in the game";
+export const FIELD_KIND = "How spots are made";
+export const KIND_PER_GAME = "One per game.";
+export const KIND_PER_GAME_DETAIL = "Only one needed per game, like field prep, scoreboard or announcer.";
+export const KIND_PER_TEAM = "One per team.";
 export const KIND_PER_TEAM_DETAIL =
-  "Two of our teams playing each other gets 2 slots. An interleague game gets 1, for our team only.";
+  "Each team needs its own, like GameChanger. Two of our league's teams playing each other get two. Against another league's team, just one.";
 export const KIND_LOCKED = "Can't change while people are signed up for this role.";
 export const FIELD_SPOTS = "How many each";
 export const FIELD_DIVISIONS = "Divisions";
@@ -118,7 +119,7 @@ export function roleErrorLine(message: string | null | undefined): string {
   if (m.includes("name_taken")) return "This season already has a role with that name.";
   if (m.includes("invalid_spots")) return "Choose 1 to 10 spots.";
   if (m.includes("invalid_lead")) return "Choose 0 to 120 minutes.";
-  if (m.includes("invalid_kind")) return "Choose how slots are created.";
+  if (m.includes("invalid_kind")) return "Choose how spots are made.";
   if (m.includes("division_not_in_season")) return "One of those divisions isn't in this season. Reload and try again.";
   if (m.includes("kind_locked")) return KIND_LOCKED;
   if (m.includes("role_not_found")) return "This role was deleted. Reload to see the current roles.";
@@ -310,6 +311,7 @@ export const NEXT_UP = (when: string, n: number) => `Next up: ${when} · ${n} vo
 export const NEXT_UP_NOT_SENT = "Reminder not sent yet. Each reminder includes the volunteer's link to change or cancel.";
 export const NEXT_UP_SENT = (date: string) => `Reminder sent ${date}. Each reminder includes the volunteer's link to change or cancel.`;
 export const REMIND_ALL = (n: number, when: string) => `Remind ${n === 1 ? "1 volunteer" : `all ${n}`} for ${when}`;
-export const REMIND_SENT = (n: number) => `Reminder on its way to ${n} volunteer${n === 1 ? "" : "s"}.`;
+export const REMIND_SENT_ONE = "Reminder sent.";
+export const REMIND_SENT_ALL = (n: number) => (n === 1 ? "Reminder sent to 1 volunteer." : `Reminders sent to ${n} volunteers.`);
 export const REMIND_SKIPPED = (n: number) => ` ${n} spot${n === 1 ? " was" : "s were"} left out — already started or canceled.`;
 export const REMIND_FAILED = "Couldn't send the reminder. Nothing was sent — try again.";
