@@ -5744,6 +5744,22 @@ Still open:
   `scripts/sim/volunteer-claims-sim.sql` (the 0121 proof file; its body
   arrives with the migration). `npm run sim:volunteer-slots` (132 checks × 3
   zones, 12 counters) + `:mutants` (14, each killed at its own assertion).
+- **0121 part 1 (commit 2a, NOT APPLIED, proof NOT RUN).**
+  `supabase/migrations/0121_volunteer_game_roles.sql`: `volunteer_roles`
+  (per season, `per_game`/`per_team`, 1–10 spots, name unique trimmed +
+  case-insensitive), `volunteer_role_divisions`, `volunteer_claims` (one row
+  per spot; every target FK SET NULL so nothing silently destroys a sign-up;
+  the PARTIAL UNIQUE INDEX on active game spots — for_team coalesced to the
+  nil uuid — is the one-person-per-spot guard; playoff and snack shack targets
+  held NULL by a CHECK until later). Pure twins `volunteer_slot_state` /
+  `_slot_targets` / `_claim_refusal` / `_change_allowed` (callable by no role;
+  run against the shared tables). `volunteer_admin_gate`: season → member →
+  switch → Elite → not archived. `save_volunteer_role` / `delete_volunteer_role`
+  are their own preview; lowering spots, dropping a division or deleting
+  CANCELS the stranded claims (position > spots) and queues one
+  `shift_canceled` email each; kind can't change under claims. The archive
+  wipe now deletes claims and roles too. Proof: `volunteer-claims-sim.sql`
+  (+ build script; 16 mutants).
 - **LAUNCH BLOCKERS before any real league gets the switch:**
   1. Reply-to verification: the league contact email the volunteer emails
      reply to is unverified (fine behind the switch, not for real leagues).
