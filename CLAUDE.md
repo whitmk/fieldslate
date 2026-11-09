@@ -414,13 +414,17 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   wipe trigger enabled; `game_umpires` byte-identical. **Deploy order (met):
   0124 was applied BEFORE the code reached `main`.** **The latest migration
   applied.** See "Officials self-sign-up".
-- **0125 (officials sign-up: turning it on) WRITTEN 2026-11-09, NOT APPLIED**
-  (branch `fix/official-signup-enable`; proof and apply on Whit's go). 0124's
+- **0125 (officials sign-up: turning it on) APPLIED 2026-11-09 23:13 UTC,
+  catalog `20261109231310`**, verbatim from the repo file on Whit's go, after
+  its first-run-green rolled-back proof (3/3 mutants at their own tag);
+  md5(prosrc) verified, one overload, SECURITY DEFINER, EXECUTE authenticated
+  only (PUBLIC, anon, service_role, dashboard_readonly false). **The latest
+  migration applied.** 0124's
   `set_official_signup_enabled` upserted `(owner_id, enabled, updated_by)`;
   Postgres checks CHECK constraints against the PROPOSED INSERT ROW before ON
   CONFLICT resolves, so `contact_when_on` refused every turn-on even with a
   contact saved. 0125 reads the contact FOR UPDATE and carries it into the
-  proposed row. Expected md5(prosrc) `3bd26f050165053abfcfa810be87298a`.
+  proposed row. md5(prosrc) `3bd26f050165053abfcfa810be87298a`.
   Proof: `scripts/sim/official-signup-enable-sim.sql` (+ build script; OE1 =
   contact and enable in separate calls; 3 mutants). **RULE: an upsert into a
   table with a cross-column CHECK must propose a row that passes the CHECK on
@@ -2154,6 +2158,17 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   taken without asking. Say what the lock will block and for roughly how
   long, get agreement, keep the transaction as short as possible, and
   confirm `tgenabled = 'O'` on every trigger afterward.
+- **A PROOF CHANGES SETTINGS THROUGH THE SAME FUNCTIONS THE APP CALLS — never
+  by writing the rows directly (2026-11-09).** A fixture that INSERTs a
+  settings row (or flips a switch) by hand skips the function the screen
+  calls, so a bug in that function ships green. Live example: the 0124 proof
+  wrote `official_signup_settings` with enabled + contact in one INSERT;
+  `set_official_signup_enabled` failed every real turn-on (the upsert's
+  proposed row broke a CHECK) and nothing in the proof called it — 0125
+  fixed it. Seed through the app's own calls, in the order the screen makes
+  them (save the contact, THEN turn on), as the signed-in role. Direct writes
+  are for state the app has no function for (games, teams, fixtures of other
+  features) — say so in the proof's header when you use one.
 - **A "real data unchanged" check finds its rows by OWNER, never by a
   hard-coded id, and fails as VACUOUS when it finds none.** The 0107 proof's
   RL1 named one real bracket by id; the bracket was deleted and RL1 compared

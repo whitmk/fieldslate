@@ -189,4 +189,15 @@ end $h$;
 --   (select count(*) from pg_stat_activity where state = 'idle in transaction') as idle_tx_must_be_0;
 --
 -- ── RUN LOG ───────────────────────────────────────────────────────────────
--- Not run yet (written 2026-11-09; runs only on Whit's go).
+-- 2026-11-09, against production, rolled back, on Whit's go (sent as one
+-- batch, the migration byte-exact).
+--   Run 1 — GREEN: baseline pass; md5(prosrc) 3bd26f05… = `--md5`; ME1, ME2,
+--     ME3 KILLED at their own tag (ME1 reproduced the live error: 23514
+--     contact_when_on). Locks: the function's catalog row and the test org's
+--     settings row only.
+--   Leak check: identical to the pre-run snapshot (0124 md5 65e1a45f… live,
+--     one settings row — SRALL's, unchanged — none for "test", feature rows
+--     unchanged, no h125 functions, no idle transaction).
+--   Applied right after (apply_migration, verbatim): catalog 20261109231310;
+--     verify block passed; md5, overloads, SECURITY DEFINER, search_path and
+--     EXECUTE per role checked live.
