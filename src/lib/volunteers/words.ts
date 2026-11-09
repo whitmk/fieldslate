@@ -271,3 +271,34 @@ export const PUB_FAILED = "Couldn't sign you up. Nothing was saved — please tr
 export const PUB_UNKNOWN = "This sign-up link isn't recognized. Ask your league for the current link.";
 export const PUB_LOAD_FAILED = "We couldn't load the sign-up page right now. Please try again in a minute.";
 export const PUB_UNAVAILABLE = "Sign-ups are temporarily unavailable. Please try again later.";
+
+// ── The volunteer's own page (/v/m/<token>) ──────────────────────────────────
+export const MY_TITLE = "My sign-ups";
+export const MY_PRIVATE =
+  "This page is private to you. Anyone with this link can change these sign-ups, so don't share it. Changes close 24 hours before each spot.";
+export const MY_CLOSED = (contact: string | null) =>
+  contact
+    ? `Less than 24 hours away. Online changes are closed. To cancel, contact the league: ${contact}`
+    : "Less than 24 hours away. Online changes are closed. To cancel, reply to any sign-up email.";
+export const MY_MOVED_TAG = "Game moved";
+export const MY_NOW = "Now";
+export const MY_WAS = "Was";
+export const MY_MOVED_STILL = "You're still signed up. Can't make the new time?";
+export const MY_KEEP = "Keep it";
+export const MY_CANCEL = "Cancel";
+export const MY_RAINED_TAG = "Rained out";
+export const MY_RAINED_HELD = "Your spot is held. When the game gets a new date, we'll email you to confirm.";
+export const MY_MAY_MOVE_TAG = "May move";
+export const MY_MORE = "Sign up for more spots";
+export const MY_TOTAL = (n: number) => `Your total this season: ${n} spot${n === 1 ? "" : "s"}`;
+export const MY_QUESTIONS = "Questions? Reply to any sign-up email to reach the league.";
+export const MY_NONE = "You have no upcoming sign-ups.";
+export const MY_CANCEL_TITLE = "Cancel this spot?";
+export const MY_CANCEL_DETAIL = "We'll email you a confirmation. You can sign up again if a spot is still open.";
+export const MY_CANCEL_CONFIRM = "Cancel spot";
+export const MY_CANCELED = "Canceled. We emailed you a confirmation.";
+export const MY_KEPT = "Kept. You're signed up for the new time.";
+export const MY_GONE = "That spot isn't on your list anymore. Reload to see your sign-ups.";
+export const MY_ACTION_FAILED = "Couldn't save that. Nothing changed — please try again.";
+export const MY_UNKNOWN = "This link isn't recognized. Use the link in your most recent sign-up email.";
+export const MY_LOAD_FAILED = "We couldn't load your sign-ups right now. Please try again in a minute.";

@@ -137,6 +137,7 @@
 --   MU59 a moved game's email gets no manage link              → TK1
 --   MU60 an email states the OLD time as the spot's start      → TK1
 --   MU61 the take callable by authenticated                    → TK1
+--   MU62 the manage page hands out the sign-up link while off  → M1
 --   PART 3 (own fixture): T1 a move → one game_moved per claim, coalesced,
 --   original kept; T2 moved again keeps the FIRST original; T1b a field
 --   change is a move; T3 rainout; T4 makeup (new time); T5 back on (same
@@ -725,6 +726,12 @@ begin
      or v_r::text ~* 'bravo|zz121-b' then
     return 'M1 manage page: ' || left(coalesce(v_r::text, 'null'), 200);
   end if;
+  if v_r ->> 'signup_token' is distinct from v_tok then return 'M1 the sign-up link is missing while it is on'; end if;
+  update public.volunteer_settings set link_enabled = false where owner_id = v_org;
+  if public.volunteer_manage_page(v_a_tok) ->> 'signup_token' is not null then
+    return 'M1 the sign-up link shows while it is off';
+  end if;
+  update public.volunteer_settings set link_enabled = true where owner_id = v_org;
   if (public.volunteer_manage_page(repeat('c', 64)) ->> 'status') <> 'unknown' then return 'M1 unknown token'; end if;
 
   -- X1 — cancel.
@@ -901,6 +908,10 @@ begin
   if (select x -> 'moved_from' ->> 'start' from jsonb_array_elements(public.volunteer_manage_page(v_tok) -> 'claims') x
        where (x ->> 'claim_id')::uuid = c1) is distinct from v_start then
     return 'K1 manage page shows no original time';
+  end if;
+  if (select x ->> 'was_start' from jsonb_array_elements(public.volunteer_manage_page(v_tok) -> 'claims') x
+       where (x ->> 'claim_id')::uuid = c1) is distinct from v_start then
+    return 'K1 manage page shows no was-time';
   end if;
   if (public.volunteer_keep_spot(v_tok, c6) ->> 'status') <> 'not_found' then return 'K1 kept another volunteer''s spot'; end if;
   v_r := public.volunteer_keep_spot(v_tok, c1);
@@ -1385,7 +1396,9 @@ $r$, $r$$r$),
     ('MU60', 'TK1', $r$                          when g.id is not null then to_char(public.volunteer_spot_start((g.scheduled_at at time zone 'UTC')::timestamp, vr.lead_minutes), 'YYYY-MM-DD"T"HH24:MI')$r$,
                     $r$                          when g.id is not null then to_char(coalesce((c.moved_from ->> 'start')::timestamp, (g.scheduled_at at time zone 'UTC')::timestamp), 'YYYY-MM-DD"T"HH24:MI')$r$),
     ('MU61', 'TK1', $r$grant execute on function public.volunteer_outbox_take(integer) to service_role;$r$,
-                    $r$grant execute on function public.volunteer_outbox_take(integer) to service_role, authenticated;$r$)
+                    $r$grant execute on function public.volunteer_outbox_take(integer) to service_role, authenticated;$r$),
+    ('MU62', 'M1', $r$      'signup_token', (select s.link_token from public.volunteer_settings s where s.owner_id = v_owner and s.link_enabled),$r$,
+                   $r$      'signup_token', (select s.link_token from public.volunteer_settings s where s.owner_id = v_owner),$r$)
   ) as t(id, expect, find, repl)
   loop
     if (length(v_body) - length(replace(v_body, m.find, ''))) / greatest(length(m.find), 1) <> 1 then

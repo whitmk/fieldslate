@@ -127,6 +127,8 @@
     "sim:volunteer-signups:mutants": "npx tsx scripts/sim/volunteer-signups-mutants.ts",
     "sim:volunteer-signup-page": "TZ=UTC npx tsx scripts/sim/volunteer-signup-page-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/volunteer-signup-page-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/volunteer-signup-page-sim.ts",
     "sim:volunteer-signup-page:mutants": "npx tsx scripts/sim/volunteer-signup-page-mutants.ts",
+    "sim:volunteer-manage-page": "TZ=UTC npx tsx scripts/sim/volunteer-manage-page-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/volunteer-manage-page-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/volunteer-manage-page-sim.ts",
+    "sim:volunteer-manage-page:mutants": "npx tsx scripts/sim/volunteer-manage-page-mutants.ts",
     "sim:volunteer-email": "npx tsx scripts/sim/volunteer-email-sim.ts",
     "sim:volunteer-email:mutants": "npx tsx scripts/sim/volunteer-email-mutants.ts",
     "sim:volunteer-slots": "TZ=UTC npx tsx scripts/sim/volunteer-slots-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/volunteer-slots-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/volunteer-slots-sim.ts",

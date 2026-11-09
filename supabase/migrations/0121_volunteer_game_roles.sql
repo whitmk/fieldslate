@@ -962,6 +962,7 @@ begin
       'status', 'ok',
       'league_name', (select p.org_name from public.profiles p where p.id = v_owner),
       'contact_email', (select s.contact_email from public.volunteer_settings s where s.owner_id = v_owner),
+      'signup_token', (select s.link_token from public.volunteer_settings s where s.owner_id = v_owner and s.link_enabled),
       'first_initial', v.first_initial, 'last_name', v.last_name,
       'claims', coalesce((
         select jsonb_agg(jsonb_build_object(
@@ -973,6 +974,9 @@ begin
                  'start', to_char(public.volunteer_spot_start((g.scheduled_at at time zone 'UTC')::timestamp, vr.lead_minutes), 'YYYY-MM-DD"T"HH24:MI'),
                  'state', public.volunteer_slot_state(g.status),
                  'moved_from', c.moved_from,
+                 'was_start', case when c.moved_from ? 'start'
+                                   then to_char(public.volunteer_spot_start((c.moved_from ->> 'start')::timestamp, vr.lead_minutes), 'YYYY-MM-DD"T"HH24:MI') end,
+                 'was_field', (select wv.name from public.venues wv where wv.id = (c.moved_from ->> 'venue_id')::uuid),
                  'can_change', public.volunteer_change_allowed(
                                  public.volunteer_spot_start((g.scheduled_at at time zone 'UTC')::timestamp, vr.lead_minutes), v_now))
                order by g.scheduled_at, vr.name, c.id)

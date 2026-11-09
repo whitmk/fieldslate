@@ -5942,6 +5942,20 @@ Still open:
   Checked on a deleted scratch route at 375px with the data and claim
   stubbed and Cloudflare's always-pass TEST site key; the real claim route
   answered 503 locally (no keys in .env.local).
+- **Screen 3 — the volunteer's own page (`/v/m/<token>`, 2026-11-08,
+  approved plan).** Shell + client, noindex, NOT framable, outside the
+  middleware, `referrer: no-referrer` (the URL is the credential). Reads
+  `GET /api/volunteers/manage/<token>` (`volunteer_manage_page`, which 0121
+  now also gives `signup_token` — the league's link only while it is on — and
+  `was_start` / `was_field` for a moved game; proof M1/K1 + MU62); writes
+  `POST …/cancel` and `…/keep` through ONE handler, `manage-action.ts` (token
+  and claim-id shape checked before the database; only a `canceled` reply
+  drains the outbox). Rules: `manage-page.ts` — inside 24 hours a spot is
+  closed even when its game moved (the database refuses), with the league's
+  contact; a moved game shows Now / Was with Keep it and Cancel; a rained-out
+  one is held. No Switch (cut). Harness `npm run sim:volunteer-manage-page`
+  (32 checks × 3 zones) + `:mutants` (6; MP5 first survived — read the sim's
+  MUTATION LOG). Checked on a deleted scratch route at 375px.
 - **THE FENCE: `npm run sim:volunteer-leaks`** (+ `:mutants`, 7, each killed
   at its own assertion). F1 no outbound file (the daylight fence's list plus
   the activity log, its panel and the snack shack print) reaches
