@@ -5727,6 +5727,23 @@ Still open:
   card (logged), so the code is safe on `main` before the apply, and a real
   league never sees the feature. Its link line says the sign-up page isn't
   built yet (`LINK_NOT_BUILT_YET`) — remove it with 0121.
+- **Branch B (`feat/volunteer-game-roles`, 0121) — slot rules (commit 1,
+  2026-11-08).** `src/lib/volunteers/slots.ts` (pure): a slot is role × game ×
+  (team) × position, never stored. `per_game` = one set per game, HOME games
+  only (none when an interleague partner hosts), the home team's division;
+  `per_team` = one set per OUR team in the game (interleague: our team only),
+  that team's division. No slots on `pending_interleague`, undated games or
+  playoff games (v1). scheduled → open; reschedule_pending → open + "May
+  move"; cancelled → claims kept, new ones refused; any other status → no new
+  claims. Refusal order: no_slot → rained_out → closed → past (claims close AT
+  the start, league wall clock) → unpublished (LOCKED divisions only) →
+  signups_closed. Change/cancel only while the start is MORE than 24 hours
+  away (wall-clock arithmetic, as the database will do it). Overlap = same
+  date, `spansOverlap`, a game's span from `durationFromSettings`. **ONE RULE,
+  TWO LANGUAGES, ONE TABLE:** the `VSLOT-TABLE` and `VCHANGE-TABLE` blocks in
+  `scripts/sim/volunteer-claims-sim.sql` (the 0121 proof file; its body
+  arrives with the migration). `npm run sim:volunteer-slots` (132 checks × 3
+  zones, 12 counters) + `:mutants` (14, each killed at its own assertion).
 - **LAUNCH BLOCKERS before any real league gets the switch:**
   1. Reply-to verification: the league contact email the volunteer emails
      reply to is unverified (fine behind the switch, not for real leagues).
