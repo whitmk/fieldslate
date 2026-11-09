@@ -9,10 +9,17 @@
 // contact the league); "Sign up for more spots" and the season total. No
 // "Switch" (cut in v1).
 import { emailWhen } from "./email-templates";
+import { clockLabel, shiftFor } from "./shifts";
 import * as W from "./words";
 
 export type MyClaim = {
   claim_id: string;
+  /** "shift" for a snack shack shift (0122); a reply before 0122 has none. */
+  kind?: "game" | "shift";
+  /** A shift's end, wall clock. */
+  end?: string | null;
+  /** The team a shift is assigned to. */
+  assigned_team_name?: string | null;
   role_name: string;
   for_team_name: string | null;
   family_team_name: string | null;
@@ -63,6 +70,10 @@ export function claimTitle(c: MyClaim): string {
 }
 
 export function claimWhere(c: MyClaim, field: string | null = c.field): string {
+  if (c.kind === "shift") {
+    // "until 11:30 AM · For Braves families"
+    return [c.end ? W.SHIFT_UNTIL(clockLabel(c.end)) : "", shiftFor(c.assigned_team_name) ?? ""].filter(Boolean).join(" · ");
+  }
   const game = c.away_team_name ? `${c.home_team_name} vs ${c.away_team_name}` : c.home_team_name;
   const place = field ? (c.park && field === c.field ? `${field} (${c.park})` : field) : "";
   return [game, place].filter(Boolean).join(" · ");

@@ -34,6 +34,7 @@ import {
   type SignupClaim,
   type SpotRow,
 } from "@/lib/volunteers/signups-screen";
+import type { ShiftRow } from "@/lib/volunteers/shifts";
 import * as W from "@/lib/volunteers/words";
 
 export type SignupsScreenData = {
@@ -46,6 +47,9 @@ export type SignupsScreenData = {
   games: ScreenGame[];
   roles: ScreenRoleRow[];
   claims: SignupClaim[];
+  /** 0122: the season's snack shack shifts and its snack shack role. */
+  shifts: ShiftRow[];
+  snackRole: { id: string; name: string } | null;
 };
 
 const TH = "px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500";
@@ -55,7 +59,11 @@ export function SignupsScreen({ data }: { data: SignupsScreenData }) {
   const divisionName = useMemo(() => new Map(data.divisions.map((d) => [d.id, d.name])), [data.divisions]);
   const teamById = useMemo(() => new Map(data.teams.map((t) => [t.id, t])), [data.teams]);
   const rows = useMemo(
-    () => buildSpotRows({ games: data.games, roles: data.roles, teams: data.teams, divisionName, claims: data.claims }),
+    () =>
+      buildSpotRows({
+        games: data.games, roles: data.roles, teams: data.teams, divisionName, claims: data.claims,
+        shifts: data.shifts, snackRole: data.snackRole,
+      }),
     [data, divisionName],
   );
   const [filters, setFilters] = useState<Filters>({ roleId: null, divisionId: null, show: "all" });
@@ -305,7 +313,7 @@ function LostBanner({ group }: { group: ReturnType<typeof lostGroups>[number] })
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-semibold">{lostTitle(group)}</p>
-          <p>{lostDetail(group.claims.length)}</p>
+          <p>{lostDetail(group.claims.length, group.shifts === true)}</p>
         </div>
         <button type="button" onClick={() => setOpen(!open)} className="font-semibold underline">
           {open ? W.HIDE_WHO : W.SEE_WHO}
@@ -429,7 +437,7 @@ function AssignModal({
     // @ts-expect-error — RPCs aren't in the hand-maintained Functions map.
     const r = await createClient().rpc("volunteer_admin_assign", {
       p_season_id: seasonId,
-      p_game_id: row.gameId,
+      p_game_id: row.blockId ? null : row.gameId,
       p_role_id: row.roleId,
       p_for_team_id: row.forTeamId,
       p_team_id: teamId || null,
@@ -438,6 +446,8 @@ function AssignModal({
       p_email: email,
       p_adult: adult,
       p_confirm_overlap: confirmOverlap,
+      // 0122: sent only for a shift, so a game assign is exactly 0121's call.
+      ...(row.blockId ? { p_block_id: row.blockId } : {}),
     });
     setBusy(false);
     const status = r.error ? null : (r.data as { status?: string } | null)?.status;

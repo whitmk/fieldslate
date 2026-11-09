@@ -9,7 +9,10 @@
 // reassign) on a filled one; the past-spots No-show ticks; the "sign-ups
 // lost" banner from detached sign-ups; Export CSV (the one allowed export).
 // Not here: "Possible same family / Merge" (cut), the Volunteers tab
-// (branch D), reminders (built last in branch B).
+// (branch D), reminders (built last in branch B). Snack shack shifts (0122)
+// are rows too — one per position of each shift's headcount, under the
+// season's snack shack role; they belong to no division.
+import { shiftDetail, type ShiftRow } from "./shifts";
 import { slotTargets, spotStartWall, type SlotGame, type VolunteerRole } from "./slots";
 import * as W from "./words";
 
@@ -17,6 +20,8 @@ export type SignupClaim = {
   claim_id: string;
   status: "active" | "canceled" | "detached";
   game_id: string | null;
+  /** The shift's block (0122); null for a game spot. */
+  snack_shack_block_id?: string | null;
   role_id: string | null;
   for_team_id: string | null;
   position: number;
@@ -26,7 +31,7 @@ export type SignupClaim = {
   last_reminded_at: string | null;
   /** The reminder's date in the LEAGUE's timezone ("YYYY-MM-DD"), from the database. */
   last_reminded_on?: string | null;
-  detached_from: { start?: string; home_team_id?: string; away_team_id?: string | null } | null;
+  detached_from: { kind?: string; start?: string; home_team_id?: string; away_team_id?: string | null } | null;
   detached_at: string | null;
   moved_from: { start?: string } | null;
   volunteer_id: string;
@@ -41,7 +46,10 @@ export type ScreenRoleRow = VolunteerRole & { name: string };
 
 export type SpotRow = {
   key: string;
+  /** "" for a shift. */
   gameId: string;
+  /** The shift's block (0122); null for a game spot. */
+  blockId: string | null;
   roleId: string;
   forTeamId: string | null;
   position: number;
@@ -81,14 +89,18 @@ export function buildSpotRows(input: {
   teams: readonly ScreenTeam[];
   divisionName: ReadonlyMap<string, string>;
   claims: readonly SignupClaim[];
+  /** 0122: the season's shifts and its snack shack role (null → no shift rows). */
+  shifts?: readonly ShiftRow[];
+  snackRole?: { id: string; name: string } | null;
 }): SpotRow[] {
   const teamById = new Map(input.teams.map((t) => [t.id, t]));
   const teamDivision = new Map(input.teams.filter((t) => t.divisionId).map((t) => [t.id, t.divisionId as string]));
   const roleById = new Map(input.roles.map((r) => [r.id, r]));
   const held = new Map<string, SignupClaim>();
   for (const c of input.claims) {
-    if (c.status !== "active" || !c.game_id || !c.role_id) continue;
-    held.set(`${c.game_id}|${c.role_id}|${c.for_team_id ?? ""}|${c.position}`, c);
+    if (c.status !== "active" || !c.role_id) continue;
+    if (c.snack_shack_block_id) held.set(`shift|${c.snack_shack_block_id}|${c.position}`, c);
+    else if (c.game_id) held.set(`${c.game_id}|${c.role_id}|${c.for_team_id ?? ""}|${c.position}`, c);
   }
   const rows: SpotRow[] = [];
   for (const g of input.games) {
@@ -114,6 +126,7 @@ export function buildSpotRows(input: {
         rows.push({
           key: `${g.id}|${t.roleId}|${t.forTeamId ?? ""}|${p}`,
           gameId: g.id,
+          blockId: null,
           roleId: t.roleId,
           forTeamId: t.forTeamId,
           position: p,
@@ -127,6 +140,33 @@ export function buildSpotRows(input: {
           detail: t.spots > 1 ? `${parts.join(" · ")} · spot ${p} of ${t.spots}` : parts.join(" · "),
           note,
           claim: held.get(`${g.id}|${t.roleId}|${t.forTeamId ?? ""}|${p}`) ?? null,
+        });
+      }
+    }
+  }
+  const snack = input.snackRole;
+  if (snack) {
+    for (const s of input.shifts ?? []) {
+      const assigned = s.assignedTeamId ? teamById.get(s.assignedTeamId)?.name ?? null : null;
+      const detail = shiftDetail(`${s.date}T${s.start}`, `${s.date}T${s.end}`, assigned);
+      for (let p = 1; p <= s.people; p++) {
+        rows.push({
+          key: `shift|${s.id}|${p}`,
+          gameId: "",
+          blockId: s.id,
+          roleId: snack.id,
+          forTeamId: null,
+          position: p,
+          spots: s.people,
+          start: `${s.date}T${s.start}`,
+          divisionId: "",
+          divisionLabel: "",
+          matchup: "",
+          field: "",
+          title: snack.name,
+          detail: s.people > 1 ? `${detail} · spot ${p} of ${s.people}` : detail,
+          note: null,
+          claim: held.get(`shift|${s.id}|${p}`) ?? null,
         });
       }
     }
@@ -169,7 +209,7 @@ export function startedTag(row: Pick<SpotRow, "start">, nowWall: string): string
 
 /** The "sign-ups lost" banner: detached sign-ups grouped by the division of
  *  the game's home team and the day they were lost. */
-export type LostGroup = { divisionName: string; day: string; claims: SignupClaim[] };
+export type LostGroup = { divisionName: string; day: string; claims: SignupClaim[]; shifts?: boolean };
 
 export function lostGroups(
   claims: readonly SignupClaim[],
@@ -180,6 +220,14 @@ export function lostGroups(
   const groups = new Map<string, LostGroup>();
   for (const c of claims) {
     if (c.status !== "detached") continue;
+    if (c.detached_from?.kind === "shift") {
+      // 0122: a removed snack shack shift — its own group per day.
+      const day = (c.detached_at ?? "").slice(0, 10);
+      const k = `shift|${day}`;
+      if (!groups.has(k)) groups.set(k, { divisionName: "", day, claims: [], shifts: true });
+      groups.get(k)!.claims.push(c);
+      continue;
+    }
     const div = c.detached_from?.home_team_id ? teamDiv.get(c.detached_from.home_team_id) ?? null : null;
     const name = div ? divisionName.get(div) ?? "A division" : "A division";
     const day = (c.detached_at ?? "").slice(0, 10);
@@ -195,10 +243,12 @@ export function lostTitle(g: LostGroup): string {
   const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(g.day);
   const month = d ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][+d[2] - 1] : "";
   const when = d ? ` on ${month} ${+d[3]}` : "";
+  if (g.shifts) return W.LOST_SHIFTS_TITLE(n, when);
   return `${n} sign-up${n === 1 ? "" : "s"} lost when ${g.divisionName} games were removed or regenerated${when}`;
 }
 
-export function lostDetail(n: number): string {
+export function lostDetail(n: number, shifts = false): string {
+  if (shifts) return W.LOST_SHIFTS_DETAIL(n);
   return n === 1
     ? "That game no longer exists. The volunteer was emailed and invited to pick a new spot."
     : `Their games no longer exist. ${n === 2 ? "Both" : "All"} volunteers were emailed and invited to pick a new spot.`;

@@ -102,6 +102,12 @@ const MUTANTS: Mutant[] = [
     replace: "                  <td></td>",
     expect: "O1-snack-print-cash",
   },
+  {
+    id: "GM22", what: "(0122) the team email reads volunteer sign-ups", file: "src/app/api/snack-shack/team/[teamId]/email/route.ts",
+    find: '    .from("snack_shack_blocks")\n    .select(\n      "date, start_time, end_time, snack_shack_settings(leagues(name, season))",',
+    replace: '    .from("snack_shack_blocks")\n    .select(\n      "date, start_time, end_time, volunteer_claims(id), snack_shack_settings(leagues(name, season))",',
+    expect: "O1-snack-volunteer-team",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/game-notes-sim.ts", timezones: ["UTC"], mutants: MUTANTS });

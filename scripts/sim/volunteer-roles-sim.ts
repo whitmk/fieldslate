@@ -18,6 +18,11 @@
 //   R6  kindLocked: a saved role with sign-ups is locked; unknown counts lock
 //   R7  draftProblem: name, spots 1–10, lead 0–120, at least one division
 //   R8  roleErrorLine: each refusal key in words; unknown never shown raw
+//   R9  the snack shack row (0122): the draft needs only a name;
+//       shiftsFromRows takes each shift's own number, else the season's;
+//       "2 per shift" / ", some shifts differ"; total spots = the headcounts
+//   W3  wiring (0122): the roles page reads shifts through loadSeasonShifts;
+//       the editor sends the snack shack kind and hides the game fields
 //   W1  wiring: the page 404s without the feature and gates Elite; the
 //       sidebar item appears only with the feature; the editor previews
 //       (p_commit false) before it commits
@@ -41,6 +46,7 @@ import {
 } from "@/lib/volunteers/roles-screen";
 import type { SlotGame } from "@/lib/volunteers/slots";
 import * as W from "@/lib/volunteers/words";
+import { shiftsFromRows, snackSpotsLabel, snackTotalSpots } from "@/lib/volunteers/shifts";
 import { roleErrorLine } from "@/lib/volunteers/words";
 
 const ROOT = join(__dirname, "..", "..");
@@ -133,6 +139,26 @@ for (const [key, needle] of [
   ok(roleErrorLine(`P0001: ${key}`).includes(needle), "R8", key, roleErrorLine(key));
 }
 ok(!roleErrorLine('new row for relation "volunteer_roles" violates').includes("volunteer_roles"), "R8", "unknown never raw");
+
+// R9 — the snack shack row
+ok(draftProblem({ ...base, kind: "snack_shack", divisionIds: [], spots: 1, leadMinutes: 0 }) === null, "R9", "a snack shack draft needs no division");
+ok(draftProblem({ ...base, kind: "snack_shack", name: " ", divisionIds: [] }) !== null, "R9", "a snack shack draft still needs a name");
+const SH = shiftsFromRows([
+  { id: "b2", date: "2027-03-06", start_time: "11:30:00", end_time: "13:30:00", assigned_team_id: null, people_needed: 3 },
+  { id: "b1", date: "2027-03-06", start_time: "09:30:00", end_time: "11:30:00", assigned_team_id: "tE", people_needed: null },
+], 2);
+ok(SH.map((s) => `${s.id}:${s.start}-${s.end}:${s.people}`).join(",") === "b1:09:30-11:30:2,b2:11:30-13:30:3", "R9",
+  "shifts in time order, own number else the season's", JSON.stringify(SH));
+ok(snackSpotsLabel(2, SH) === "2 per shift, some shifts differ" && snackSpotsLabel(2, [SH[0]]) === "2 per shift", "R9", "spots label",
+  snackSpotsLabel(2, SH));
+ok(snackTotalSpots(SH) === 5, "R9", "total spots");
+
+// W3
+const vpage = read("src/app/(dashboard)/dashboard/volunteers/page.tsx");
+ok(vpage.includes("loadSeasonShifts(") && vpage.includes('.filter((r) => r.kind !== "snack_shack")'), "W3", "the roles page reads shifts and splits the snack shack role");
+const rcomp = read("src/components/volunteers/roles-screen.tsx");
+ok(rcomp.includes('kind: "snack_shack",') && rcomp.includes("{!isSnack && (") && rcomp.includes("{W.SNACK_SOURCE}"), "W3",
+  "the snack shack row and editor");
 
 // W1
 const page = read("src/app/(dashboard)/dashboard/volunteers/page.tsx");

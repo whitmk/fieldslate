@@ -7,10 +7,17 @@
 // send an email that says nothing. Never another volunteer's name.
 import { SITE_URL } from "@/lib/site";
 import type { RenderedEmail } from "./outbox-drain";
+import { clockLabel, shiftFor } from "./shifts";
 import * as W from "./words";
 
 export type EmailSpot = {
   claim_id: string;
+  /** "shift" for a snack shack shift (0122); absent before 0122. */
+  kind?: "game" | "shift";
+  /** A shift's end, wall clock. */
+  end?: string | null;
+  /** The team a shift is assigned to. */
+  assigned_team_name?: string | null;
   role_name: string | null;
   for_team_name: string | null;
   home_team_name: string | null;
@@ -63,6 +70,10 @@ export function spotTitle(s: EmailSpot): string | null {
 
 /** "Expos vs Pirates · Field 1 (Main Park)". */
 export function spotWhere(s: EmailSpot, field: string | null = s.field): string {
+  if (s.kind === "shift") {
+    // "until 11:30 AM · For Braves families"
+    return [s.end ? W.SHIFT_UNTIL(clockLabel(s.end)) : "", shiftFor(s.assigned_team_name) ?? ""].filter(Boolean).join(" · ");
+  }
   const game = s.home_team_name ? (s.away_team_name ? `${s.home_team_name} vs ${s.away_team_name}` : s.home_team_name) : "";
   const place = field ? (s.park && field === s.field ? `${field} (${s.park})` : field) : "";
   return [game, place].filter(Boolean).join(" · ");
@@ -140,9 +151,12 @@ const TEMPLATES: Record<string, Renderer> = {
   canceled_by_volunteer: (_p, ctx) => single(ctx, W.EMAIL_SELF_CANCEL_SUBJECT, W.EMAIL_SELF_CANCEL_LEAD, []),
   admin_canceled: (_p, ctx) =>
     single(ctx, W.EMAIL_ADMIN_CANCEL_SUBJECT, W.EMAIL_ADMIN_CANCEL_LEAD(league(ctx)), [], { pickNew: true }),
-  shift_canceled: (_p, ctx) =>
-    single(ctx, W.EMAIL_ROLE_CANCEL_SUBJECT, W.EMAIL_ROLE_CANCEL_LEAD(league(ctx)), [], { pickNew: true }),
-  spot_lost: (_p, ctx) => single(ctx, W.EMAIL_LOST_SUBJECT, W.EMAIL_LOST_LEAD, [], { pickNew: true }),
+  // 0122: a snack shack headcount lowered says so; a role change as before.
+  shift_canceled: (p, ctx) =>
+    single(ctx, W.EMAIL_ROLE_CANCEL_SUBJECT,
+      p.reason === "headcount" ? W.EMAIL_HEADCOUNT_CANCEL_LEAD(league(ctx)) : W.EMAIL_ROLE_CANCEL_LEAD(league(ctx)), [], { pickNew: true }),
+  spot_lost: (_p, ctx) =>
+    single(ctx, W.EMAIL_LOST_SUBJECT, first(ctx)?.kind === "shift" ? W.EMAIL_SHIFT_LOST_LEAD : W.EMAIL_LOST_LEAD, [], { pickNew: true }),
   game_moved: (_p, ctx) =>
     single(ctx, (r) => W.EMAIL_MOVED_SUBJECT(r), W.EMAIL_MOVED_LEAD, [para(W.EMAIL_MOVED_STILL)], { needManage: true, moved: true }),
   rained_out: (_p, ctx) => single(ctx, W.EMAIL_RAINOUT_SUBJECT, W.EMAIL_RAINOUT_LEAD, [para(W.EMAIL_RAINOUT_HELD)], { needManage: true }),

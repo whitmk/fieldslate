@@ -12,6 +12,8 @@ import { fetchAllRows, type PagedResult } from "@/lib/supabase/fetch-all";
 import { loadVolunteerFeature } from "@/lib/volunteers/feature-state";
 import { volunteerSignupUrl } from "@/lib/volunteers/settings-card";
 import { activeByRole } from "@/lib/volunteers/roles-screen";
+import { loadSeasonShifts } from "@/lib/volunteers/shifts-read";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import * as W from "@/lib/volunteers/words";
 import { RolesScreen, type RolesScreenData } from "@/components/volunteers/roles-screen";
 
@@ -29,7 +31,7 @@ type GameRow = {
 type RoleRow = {
   id: string;
   name: string;
-  kind: "per_game" | "per_team";
+  kind: "per_game" | "per_team" | "snack_shack";
   spots: number;
   lead_minutes: number;
   signups_open: boolean;
@@ -109,6 +111,10 @@ async function loadRolesScreen(
     .order("id", { ascending: true });
   if (roles.error || !roles.data) throw new Error(roles.error?.message ?? "roles");
 
+  // 0122: the season's snack shack — its shifts are the snack shack role's
+  // spots. No snack shack set up → the row says so. A failed read throws.
+  const shack = await loadSeasonShifts(supabase as unknown as SupabaseClient, seasonId);
+
   // Filled counts: the admin list (names never leave this function).
   // @ts-expect-error — RPCs aren't in the hand-maintained Functions map.
   const signups = await supabase.rpc("volunteer_admin_signups", { p_season_id: seasonId });
@@ -133,10 +139,17 @@ async function loadRolesScreen(
       interleagueOrgId: g.interleague_org_id,
       isAway: g.is_away === true,
     })),
-    roles: (roles.data as unknown as RoleRow[]).map((r) => ({
+    snack: {
+      ...shack,
+      role: (() => {
+        const r = (roles.data as unknown as RoleRow[]).find((x) => x.kind === "snack_shack");
+        return r ? { id: r.id, name: r.name, signupsOpen: r.signups_open, countsTowardGoal: r.counts_toward_goal } : null;
+      })(),
+    },
+    roles: (roles.data as unknown as RoleRow[]).filter((r) => r.kind !== "snack_shack").map((r) => ({
       id: r.id,
       name: r.name,
-      kind: r.kind,
+      kind: r.kind as "per_game" | "per_team",
       spots: r.spots,
       leadMinutes: r.lead_minutes,
       signupsOpen: r.signups_open,

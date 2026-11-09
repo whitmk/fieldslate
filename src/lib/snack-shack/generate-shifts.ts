@@ -73,6 +73,9 @@ export type ShiftInputs = {
   choices: StoredAbsorbChoice[];
   timezone: string;
   today: string;
+  /** 0122: active volunteer sign-ups per shift id (counts only); null when
+   *  they couldn't be read — the preview says so. */
+  signupCounts: Record<string, number> | null;
 };
 
 type GameRow = {
@@ -113,11 +116,21 @@ export async function loadShiftInputs(settings: SnackShackSettingsInput, orgId: 
   const supabase = createClient();
   const rule = ruleFromSettings(settings);
 
-  const [teamsRes, choicesRes, tzRes] = await Promise.all([
+  const [teamsRes, choicesRes, tzRes, countsRes] = await Promise.all([
     supabase.from("teams").select("id, name").eq("league_id", settings.season_id).order("name"),
     supabase.from("snack_shack_absorb_choices").select("date, window_start, choice").eq("snack_shack_id", settings.id),
     supabase.from("profiles").select("timezone").eq("id", orgId).maybeSingle(),
+    // 0122: counts only (members; never names). Not fatal — the preview says
+    // it couldn't count instead.
+    // @ts-expect-error — RPCs aren't in the hand-maintained Functions map.
+    supabase.rpc("volunteer_shift_claim_counts", { p_season_id: settings.season_id }),
   ]);
+  const counts = (countsRes as { data: unknown; error: { message: string } | null });
+  if (counts.error) console.error("[snack shack] volunteer sign-up counts:", counts.error.message);
+  const signupCounts =
+    !counts.error && counts.data && typeof counts.data === "object" && !Array.isArray(counts.data)
+      ? (counts.data as Record<string, number>)
+      : null;
   if (teamsRes.error) throw new Error(`Could not load teams: ${teamsRes.error.message}`);
   if (choicesRes.error) throw new Error(`Could not load leftover choices: ${choicesRes.error.message}`);
   if (tzRes.error) throw new Error(`Could not load the org timezone: ${tzRes.error.message}`);
@@ -214,6 +227,7 @@ export async function loadShiftInputs(settings: SnackShackSettingsInput, orgId: 
     choices,
     timezone,
     today,
+    signupCounts,
   };
 }
 
@@ -225,6 +239,7 @@ export function planFromInputs(inputs: ShiftInputs): RegeneratePlan {
     preference: inputs.preference,
     index: inputs.index,
     today: inputs.today,
+    signupCounts: inputs.signupCounts,
   });
 }
 

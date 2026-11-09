@@ -10,7 +10,7 @@ import {
   verifyTurnstile,
 } from "@/lib/volunteers/public-server";
 
-// Take a volunteer spot (0121, volunteer_claim). Order: config (fail closed)
+// Take a volunteer spot (0121, volunteer_claim; a snack shack shift since 0122). Order: config (fail closed)
 // → link shape → body shape → Turnstile → hashes → the database, which
 // decides everything else and rate-limits. The reply is the database's
 // status (and the position on success) — nothing else. After a claim the
@@ -56,6 +56,8 @@ export async function POST(request: Request, { params }: { params: { token: stri
       p_ip_hash: hashKey(config.hashSalt, `ip:${ip}`),
       p_email_hash: hashKey(config.hashSalt, `email:${body.email.trim().toLowerCase()}`),
       p_confirm_overlap: body.confirmOverlap,
+      // 0122: sent only for a shift, so a game claim is exactly 0121's call.
+      ...(body.blockId ? { p_block_id: body.blockId } : {}),
     } as never,
   );
   if (error) {

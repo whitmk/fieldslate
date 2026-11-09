@@ -5,8 +5,7 @@
 // ── Settings → Volunteer sign-ups (0120) ─────────────────────────────────────
 export const CARD_TITLE = "Volunteer sign-ups";
 export const CARD_INTRO =
-  "Families sign up for game-day volunteer spots from one link. You see every name; everyone else sees a spot as Taken.";
-// Snack shack shifts join the link with branch C (0122); add them back to this sentence then.
+  "Families sign up for volunteer spots from one link: game-day roles and snack shack shifts. You see every name; everyone else sees a spot as Taken.";
 export const ELITE_ONLY = "Volunteer sign-ups are available on Elite.";
 export const UPGRADE_BUTTON = "Upgrade to turn it on";
 
@@ -122,6 +121,7 @@ export function roleErrorLine(message: string | null | undefined): string {
   if (m.includes("invalid_kind")) return "Choose how spots are made.";
   if (m.includes("division_not_in_season")) return "One of those divisions isn't in this season. Reload and try again.";
   if (m.includes("kind_locked")) return KIND_LOCKED;
+  if (m.includes("snack_role_exists")) return "This season already has snack shack sign-ups.";
   if (m.includes("role_not_found")) return "This role was deleted. Reload to see the current roles.";
   if (m.includes("season_archived")) return "This season is archived.";
   return settingsErrorLine(m);
@@ -315,3 +315,29 @@ export const REMIND_SENT_ONE = "Reminder sent.";
 export const REMIND_SENT_ALL = (n: number) => (n === 1 ? "Reminder sent to 1 volunteer." : `Reminders sent to ${n} volunteers.`);
 export const REMIND_SKIPPED = (n: number) => ` ${n} spot${n === 1 ? " was" : "s were"} left out — already started or canceled.`;
 export const REMIND_FAILED = "Couldn't send the reminder. Nothing was sent — try again.";
+
+// ── Snack shack shifts (0122) ────────────────────────────────────────────────
+// Any family may take a spot (decided 2026-11-09); a shift assigned to a team
+// says who it's for.
+export const SHIFT_FOR = (team: string) => `For ${team} families`;
+export const SNACK_ROLE_DEFAULT_NAME = "Snack shack";
+export const SNACK_SOURCE = "Shifts come from the Snack shack page";
+export const SNACK_SPOTS = (n: number, varies: boolean) =>
+  `${n} per shift${varies ? ", some shifts differ" : ""}`;
+export const SNACK_ADD = "Add snack shack sign-ups";
+export const SNACK_NOT_SET_UP = "Set up the snack shack first";
+export const SNACK_SETUP_LINK = "Snack shack page →";
+export const SNACK_EDIT_TITLE = "Snack shack sign-ups";
+export const SNACK_EDIT_DETAIL =
+  "Each shift's spots are its people needed on the Snack shack page. Any family can sign up; a shift assigned to a team shows \"For <team> families\".";
+export const SNACK_DIVISIONS = "All";
+export const LOST_SHIFTS_TITLE = (n: number, when: string) =>
+  `${n} sign-up${n === 1 ? "" : "s"} lost when snack shack shifts were removed or regenerated${when}`;
+export const LOST_SHIFTS_DETAIL = (n: number) =>
+  n === 1
+    ? "That shift no longer exists. The volunteer was emailed and invited to pick a new spot."
+    : `Their shifts no longer exist. ${n === 2 ? "Both" : "All"} volunteers were emailed and invited to pick a new spot.`;
+export const EMAIL_HEADCOUNT_CANCEL_LEAD = (league: string) =>
+  `${league} needs fewer people on this snack shack shift, so this spot no longer exists:`;
+export const EMAIL_SHIFT_LOST_LEAD = "This snack shack shift was removed from the schedule, so this spot no longer exists:";
+export const SHIFT_UNTIL = (time: string) => `until ${time}`;

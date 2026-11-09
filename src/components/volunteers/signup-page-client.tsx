@@ -284,7 +284,8 @@ function SignupForm({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          gameId: spot.game_id,
+          gameId: spot.kind === "shift" ? null : spot.game_id,
+          blockId: spot.kind === "shift" ? spot.block_id : null,
           roleId: spot.role_id,
           forTeamId: spot.for_team_id,
           divisionId,

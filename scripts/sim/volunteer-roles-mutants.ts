@@ -70,6 +70,24 @@ const MUTANTS: Mutant[] = [
     replace: "answer get slots once they're agreed.",
     expect: "W2",
   },
+  {
+    id: "VR12", what: "the snack shack draft asked for a division", file: RS,
+    find: "  if (d.kind === \"snack_shack\") return null;\n",
+    replace: "",
+    expect: "R9",
+  },
+  {
+    id: "VR13", what: "a shift's own number ignored", file: "src/lib/volunteers/shifts.ts",
+    find: "      people: effectivePeople(b, peoplePerShift),",
+    replace: "      people: peoplePerShift,",
+    expect: "R9",
+  },
+  {
+    id: "VR14", what: "the snack shack role shown as a game role", file: "src/app/(dashboard)/dashboard/volunteers/page.tsx",
+    find: ".filter((r) => r.kind !== \"snack_shack\")",
+    replace: "",
+    expect: "W3",
+  },
 ];
 
 runMutants({

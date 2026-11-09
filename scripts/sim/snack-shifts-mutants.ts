@@ -269,6 +269,18 @@ const MUTANTS: Mutant[] = [
     replace: "    if (!v) continue;",
     expect: "U7",
   },
+  {
+    id: "SM41", what: "sign-ups on a changed shift counted as lost", file: "src/lib/snack-shack/regenerate-plan.ts",
+    find: "          carried: dayChanges.reduce((n, d) => n + d.changed.reduce((m, c) => m + (counts?.[c.from.id] ?? 0), 0), 0),",
+    replace: "          carried: 0,",
+    expect: "F13",
+  },
+  {
+    id: "SM42", what: "unreadable sign-up counts read as none", file: "src/lib/snack-shack/regenerate-plan.ts",
+    find: "  if (s === null) return \"Couldn't count volunteer sign-ups on these shifts.\";",
+    replace: "  if (s === null) return null;",
+    expect: "F13",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/snack-shifts-sim.ts", timezones: ["UTC"], mutants: MUTANTS });
