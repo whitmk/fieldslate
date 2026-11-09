@@ -15,6 +15,9 @@
 --     Its spots, lead and divisions are not used (stored 1 / 0 / none).
 --
 -- WHAT.
+--   0. A 0121 bug, fixed (found by this proof): a canceled sign-up blocked
+--      the delete of its game — `volunteer_claims_one_target` now requires a
+--      target only while a sign-up is active.
 --   1. Schema: the role kind `snack_shack` (one per season); claims on
 --      `snack_shack_block_id` (0121's v1 CHECK dropped, playoff spots still
 --      held NULL); one person per shift spot (partial unique index); spot
@@ -82,6 +85,15 @@ create unique index volunteer_roles_one_snack_shack
   on public.volunteer_roles (season_id) where kind = 'snack_shack';
 
 alter table public.volunteer_claims drop constraint volunteer_claims_v1_games_only;
+-- Found by the 0122 proof (run 2): deleting a game or shift nulls the target of
+-- EVERY sign-up on it, canceled ones included — and 0121's CHECK exempted only
+-- detached ones, so a canceled sign-up made the delete FAIL (a regenerate or a
+-- game delete refused). A sign-up needs exactly one target only while ACTIVE
+-- (the delete triggers detach active ones first); never more than one.
+alter table public.volunteer_claims drop constraint volunteer_claims_one_target;
+alter table public.volunteer_claims add constraint volunteer_claims_one_target
+  check (num_nonnulls(game_id, playoff_game_id, snack_shack_block_id) <= 1
+         and (status <> 'active' or num_nonnulls(game_id, playoff_game_id, snack_shack_block_id) = 1));
 -- Playoff spots come later.
 alter table public.volunteer_claims add constraint volunteer_claims_no_playoff
   check (playoff_game_id is null);

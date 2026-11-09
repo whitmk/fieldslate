@@ -365,17 +365,28 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   authenticated only, the seven public/outbox functions service_role only,
   the rest callable by no role (PUBLIC, anon, dashboard_readonly false
   throughout); RLS on all five new tables, only SELECT on roles and role
-  divisions for authenticated; the three games triggers enabled. **The
-  latest migration applied.** See "Volunteer sign-ups".
-- **0122 (volunteer snack shack shifts) WRITTEN, proof NOT RUN, NOT APPLIED** (it
-  also re-creates `volunteer_on_game_delete` and `volunteer_outbox_take` and
-  widens the outbox kind CHECK — review items 8 and 9)
-  (branch `feat/volunteer-snack-shack`, 2026-11-09). See "Volunteer sign-ups"
-  → branch C. Expected md5(prosrc) from `npx tsx
-  scripts/sim/volunteer-snack-build.ts --md5`. **Deploy order: apply 0122
-  BEFORE the code reaches `main`** — the regenerate preview calls
-  `volunteer_shift_claim_counts` (an error there reads "Couldn't count
-  volunteer sign-ups" on every snack shack preview).
+  divisions for authenticated; the three games triggers enabled. See "Volunteer sign-ups".
+- **0122 (volunteer snack shack shifts) APPLIED 2026-11-09 18:54 UTC,
+  catalog `20261109185406`**, on Whit's go, from the md5-checked proof stage
+  in one transaction (the catalog row carries the file's exact text, md5
+  `c5c9fed4…`), after its rolled-back proof (run 3 green, 26/26 mutants at
+  their own tag) and the 0119 regression against it (`regress0119`: baseline
+  green, 8/8 at their own tag). It also re-creates `volunteer_on_game_delete`
+  and `volunteer_outbox_take` and widens the outbox kind CHECK (review items 8
+  and 9). All 23 function bodies' md5(prosrc) match `volunteer-snack-build.ts
+  --md5`, one overload each; EXECUTE: the admin functions authenticated only,
+  the public/outbox functions service_role only, helpers and triggers no role
+  (PUBLIC, anon, dashboard_readonly false throughout); the four shift
+  triggers and the shack headcount trigger enabled. **It fixed a LIVE 0121
+  bug:** 0121's `volunteer_claims_one_target` exempted only `detached`
+  claims, but deleting a game (or shift) sets EVERY claim's target to null
+  through the FK, canceled ones included — so a game with a CANCELED sign-up
+  could not be deleted or regenerated (SRALL's acceptance test left one).
+  0122's CHECK: at most one target always, exactly one only while active
+  (proof SD3 + MS26). **Deploy order (met): 0122 was applied BEFORE the
+  code reached `main`** (the regenerate preview calls
+  `volunteer_shift_claim_counts`). **The latest migration applied.** See "Volunteer
+  sign-ups" → branch C.
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -5996,7 +6007,7 @@ Still open:
   all says "Reminders sent to N volunteers." ("Reminder sent to 1
   volunteer.") — `remindOutcome(raw, scope)`.
 - **Branch C — snack shack shifts (0122, `feat/volunteer-snack-shack`,
-  2026-11-09; proof NOT RUN, NOT APPLIED).** Decided: ANY family may take a
+  2026-11-09; 0122 APPLIED 2026-11-09 — see the Database section).** Decided: ANY family may take a
   spot on any shift (honor system — nothing checks the family's team against
   the shift's); a shift assigned to a team reads "For <team> families", one
   with no team is open to anyone. A shift's spots are its HEADCOUNT (0119's
@@ -6057,9 +6068,12 @@ Still open:
     preview's sign-up line; no horizontal scroll, no console errors.
   - **Proof:** `scripts/sim/volunteer-snack-sim.sql` (+
     `volunteer-snack-build.ts`; applies 0122 rolled back in the "test" org;
-    S1–SW1 + SD2/SD3/SG2 + G1, 25 mutants MS1–MS25). `volunteer-snack-build.ts regress0119`
+    S1–SW1 + SD2/SD3/SG2 + G1, 26 mutants MS1–MS26; MS26 restores 0121's
+    one_target CHECK and dies at SD1). `volunteer-snack-build.ts regress0119`
     re-runs the 0119 proof (0103 R-, 0104 N-, 0119 H-series and its 8
-    mutants) against 0122, H1 left out (0119's apply-time defaults).
+    mutants) against 0122, H1 left out (0119's apply-time defaults). Run
+    2026-11-09: run 1 a harness fault, run 2 found the 0121 one_target bug,
+    run 3 green 26/26; regress0119 green 8/8 — read the proof's RUN LOG.
 - **THE FENCE: `npm run sim:volunteer-leaks`** (+ `:mutants`, 7, each killed
   at its own assertion). F1 no outbound file (the daylight fence's list plus
   the activity log, its panel and the snack shack print) reaches

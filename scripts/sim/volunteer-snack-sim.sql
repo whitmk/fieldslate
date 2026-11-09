@@ -56,7 +56,9 @@
 --       different start, stays detached; the same END → no hours email
 --   SD2 (review item 9) a deleted shift that has already started: its
 --       sign-ups detach but NO spot_lost email
---   SD3 (review item 9) a deleted past GAME: the same — detached, no email
+--   SD3 (review item 9) a deleted past GAME: the same — detached, no email;
+--       and a CANCELED sign-up on it doesn't block the delete (the 0121 CHECK
+--       bug run 2 found; SD1's canceled spot on b2 covers shifts)
 --   SG1 regenerate: a shift whose end moves carries its sign-up; a removed
 --       shift's sign-up is lost; claims_carried / claims_lost say so; 0119's
 --       keys still there; (review item 8) the carried sign-up whose shift's
@@ -93,6 +95,7 @@
 --   MS23 a past shift's deletion emails spot_lost              → SD2
 --   MS24 a past game's deletion emails spot_lost               → SD3
 --   MS25 the take gives shift_changed no manage link           → SG2
+--   MS26 0121's one-target CHECK back (canceled blocks a delete) → SD1
 select set_config('lock_timeout', '3s', true), set_config('statement_timeout', '180s', true);
 
 create or replace function pg_temp.h122_as(p_sub uuid, p_role text, p_sql text) returns text language plpgsql as $f$
@@ -155,6 +158,7 @@ declare
   v_s  uuid := gen_random_uuid(); v_s2 uuid := gen_random_uuid();
   v_d  uuid := gen_random_uuid(); v_du uuid := gen_random_uuid(); v_d2 uuid := gen_random_uuid();
   v_t1 uuid := gen_random_uuid(); v_t2 uuid := gen_random_uuid(); v_tu uuid := gen_random_uuid(); v_tx uuid := gen_random_uuid();
+  v_tu2 uuid := gen_random_uuid();
   v_g1 uuid := gen_random_uuid(); v_gp uuid := gen_random_uuid(); cG uuid;
   v_snack uuid := gen_random_uuid();
   b1 uuid := gen_random_uuid(); b2 uuid := gen_random_uuid(); bo uuid := gen_random_uuid();
@@ -162,7 +166,7 @@ declare
   v_fp uuid; v_sb uuid; v_sr uuid;
   j jsonb; k jsonb; e jsonb; v_r text;
   cA uuid; cB uuid; cX1 uuid; cX2 uuid; cX3 uuid; cY uuid; cD uuid; cAdm uuid; cE uuid; cF uuid; cP1 uuid; cP2 uuid;
-  v_vp uuid; v_mt text; v_n integer; f text; r text;
+  v_vp uuid; v_mt text; v_n integer; f text; r text; cGx uuid;
 begin
   -- ── Fixture ─────────────────────────────────────────────────────────────
   insert into public.org_features (owner_id, feature, enabled) values (v_org, 'volunteers', true)
@@ -184,11 +188,11 @@ begin
     (v_d2, v_s2, 'ZZ Other',    '{}');
   insert into public.teams (id, league_id, division_id, name) values
     (v_t1, v_s, v_d, 'ZZ Team 1'), (v_t2, v_s, v_d, 'ZZ Team 2'),
-    (v_tu, v_s, v_du, 'ZZ Unlocked Team'), (v_tx, v_s2, v_d2, 'ZZ Other Team');
+    (v_tu, v_s, v_du, 'ZZ Unlocked Team'), (v_tu2, v_s, v_du, 'ZZ Unlocked Team 2'), (v_tx, v_s2, v_d2, 'ZZ Other Team');
   insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status)
     values (v_g1, v_s, v_t1, v_t2, (d3 + time '10:00') at time zone 'UTC', 'scheduled'),
            -- A past game in the UNLOCKED division (so it can be deleted) — SD3.
-           (v_gp, v_s, v_tu, null, ((v_now::date - 3) + time '10:00') at time zone 'UTC', 'scheduled');
+           (v_gp, v_s, v_tu, v_tu2, ((v_now::date - 3) + time '10:00') at time zone 'UTC', 'scheduled');
   update public.divisions set locked = true where id in (v_d, v_d2);
 
   insert into public.snack_shack_settings (id, season_id, start_date, end_date, people_per_shift)
@@ -535,7 +539,12 @@ begin
   -- ── SD3 a past game deleted: detached, no email ────────────────────────
   insert into public.volunteer_claims (owner_id, season_id, volunteer_id, family_team_id, game_id, role_id, position, created_by)
     values (v_org, v_s, v_vp, v_tu, v_gp, v_fp, 1, 'admin') returning id into cG;
+  insert into public.volunteer_claims (owner_id, season_id, volunteer_id, family_team_id, game_id, role_id, position, status, created_by)
+    values (v_org, v_s, v_vp, v_tu, v_gp, v_fp, 2, 'canceled', 'admin') returning id into cGx;
   delete from public.games where id = v_gp;
+  if exists (select 1 from public.games where id = v_gp) or (select status from public.volunteer_claims where id = cGx) <> 'canceled' then
+    return 'SD3 a canceled sign-up should not block deleting its game';
+  end if;
   if (select status from public.volunteer_claims where id = cG) <> 'detached' then
     return 'SD3 the past game''s sign-up should be detached';
   end if;
@@ -737,7 +746,10 @@ $r$, $r$$r$),
     ('MS23', 'SD2', $r$   where v_ahead;$r$, $r$   where true;$r$),
     ('MS24', 'SD3', $r$   -- 0122 (item 9): no email for a spot that has already started.
    where public.volunteer_spot_start$r$, $r$   where true or public.volunteer_spot_start$r$),
-    ('MS25', 'SG2', $r$'back_on', 'shift_changed') then$r$, $r$'back_on') then$r$)
+    ('MS25', 'SG2', $r$'back_on', 'shift_changed') then$r$, $r$'back_on') then$r$),
+    ('MS26', 'SD1', $r$  check (num_nonnulls(game_id, playoff_game_id, snack_shack_block_id) <= 1
+         and (status <> 'active' or num_nonnulls(game_id, playoff_game_id, snack_shack_block_id) = 1));$r$,
+                    $r$  check (status = 'detached' or num_nonnulls(game_id, playoff_game_id, snack_shack_block_id) = 1);$r$)
     ) as t(id, expect, find, repl)
   loop
     if (length(v_nover) - length(replace(v_nover, m.find, ''))) / greatest(length(m.find), 1) <> 1 then
@@ -777,3 +789,32 @@ end $h$;
 --   (select count(*) from leagues where name like 'ZZ122%') as fixture_leagues_must_be_0,
 --   (select count(*) from volunteer_settings) as settings_must_be_pre_run,
 --   (select count(*) from pg_stat_activity where state = 'idle in transaction') as idle_tx_must_be_0;
+--
+-- ── RUN LOG ───────────────────────────────────────────────────────────────
+-- 2026-11-09, against production, every run rolled back, on Whit's go.
+--   Run 1 — HARNESS FAULT: the fixture's past game had no away team, so the
+--     insert broke games_opponent_required and the baseline crashed before any
+--     assertion. Fixed: team v_tu2 is the past game's opponent.
+--   Run 2 — FOUND A LIVE 0121 BUG. Deleting a game or shift sets EVERY
+--     claim's target to null through its FK, canceled claims included, and
+--     0121's volunteer_claims_one_target exempted only 'detached' — so a game
+--     with a CANCELED sign-up could not be deleted or regenerated (SRALL's
+--     acceptance test had left one). 0122 now replaces the CHECK: at most one
+--     target always, exactly one only while active. Added SD3 (a canceled
+--     claim on a deleted game; the delete succeeds) and MS26 (0121's CHECK
+--     restored → dies at SD1).
+--   Run 3 — GREEN: baseline pass, 26/26 mutants KILLED at their own tag, every
+--     md5(prosrc) equal to `volunteer-snack-build.ts --md5`. Locks held (L1):
+--     AccessExclusive on volunteer_claims, volunteer_outbox, volunteer_roles,
+--     volunteer_trigger_failures; ShareRowExclusive on snack_shack_blocks and
+--     snack_shack_settings; RowExclusive/RowShare on leagues, divisions, teams,
+--     games, profiles and the fixture tables.
+--   regress0119 (the 0119 proof against 0122) — GREEN first run: baseline 0
+--     failures, HM1–HM6, PM1, PM6 8/8 KILLED at their own tag, regenerate md5
+--     a88fdb4d… (0122). Locks: snack_shack_blocks and snack_shack_settings
+--     ShareRowExclusive (+ RowExclusive, AccessShare), profiles RowShare.
+--   Leak check after both: clean (regenerate fd94fb29…, take 891fe7b7…,
+--     game delete d164b750… — the 0121/0119 bodies; no fixtures, no temp
+--     functions, 0121's constraints and trigger set unchanged, no idle
+--     transaction).
+--   Applied right after: catalog 20261109185406, md5s and grants verified.
