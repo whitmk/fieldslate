@@ -155,6 +155,11 @@ const TEMPLATES: Record<string, Renderer> = {
   shift_canceled: (p, ctx) =>
     single(ctx, W.EMAIL_ROLE_CANCEL_SUBJECT,
       p.reason === "headcount" ? W.EMAIL_HEADCOUNT_CANCEL_LEAD(league(ctx)) : W.EMAIL_ROLE_CANCEL_LEAD(league(ctx)), [], { pickNew: true }),
+  // 0122 (review item 8): a regenerate changed the shift's end; the spot is kept.
+  shift_changed: (p, ctx) =>
+    single(ctx, W.EMAIL_SHIFT_CHANGED_SUBJECT, W.EMAIL_SHIFT_CHANGED_LEAD(league(ctx)),
+      typeof p.was_end === "string" && clockLabel(p.was_end) ? [para(W.EMAIL_SHIFT_CHANGED_WAS(clockLabel(p.was_end)))] : [],
+      { needManage: true }),
   spot_lost: (_p, ctx) =>
     single(ctx, W.EMAIL_LOST_SUBJECT, first(ctx)?.kind === "shift" ? W.EMAIL_SHIFT_LOST_LEAD : W.EMAIL_LOST_LEAD, [], { pickNew: true }),
   game_moved: (_p, ctx) =>

@@ -49,13 +49,25 @@
 --   7. `volunteer_shift_claim_counts(season)` — members only: each shift's
 --      number of active sign-ups, for the regenerate preview (counts, never
 --      names).
+--   8. (Whit's review, 2026-11-09) A shift that comes back with the same
+--      date and start but a different END (a regenerate changed its hours)
+--      keeps its sign-ups and emails each volunteer the new hours: the new
+--      outbox kind `shift_changed` (payload: the claim and the old end), its
+--      manage link attached at send time — so `volunteer_outbox_take` is
+--      re-created VERBATIM from 0121 with that kind added to its list.
+--   9. (Whit's review, 2026-11-09) No "spot gone" email for a spot whose
+--      start has already passed — for shifts AND games. The sign-up is still
+--      detached (it's history); only the email is skipped.
+--      `volunteer_on_game_delete` is re-created VERBATIM from 0121 with that
+--      condition added.
 -- Nothing here writes a game, a division, a team, a season or a shift's
 -- own columns. The snack shack print, emails and exports read none of the
 -- volunteer tables (sim:snack-print goldens, sim:volunteer-leaks).
 --
 -- LOCKS when applied: ACCESS EXCLUSIVE on `volunteer_roles`,
--- `volunteer_claims` and `volunteer_trigger_failures` (constraints, a
--- column); SHARE ROW EXCLUSIVE on `snack_shack_blocks` and
+-- `volunteer_claims`, `volunteer_trigger_failures` and `volunteer_outbox`
+-- (constraints, a column) — `games` is not locked: only the body of its
+-- delete trigger's function is replaced; SHARE ROW EXCLUSIVE on `snack_shack_blocks` and
 -- `snack_shack_settings` (the triggers) — writes to those wait, reads don't.
 -- Well under a second.
 
@@ -90,6 +102,15 @@ alter table public.volunteer_trigger_failures drop constraint volunteer_trigger_
 alter table public.volunteer_trigger_failures add constraint volunteer_trigger_failures_trigger_name_check
   check (trigger_name in ('game_change', 'game_insert', 'shift_insert'));
 alter table public.volunteer_trigger_failures add column snack_shack_block_id uuid;
+
+-- A shift's hours changed under its sign-ups (item 8).
+alter table public.volunteer_outbox drop constraint volunteer_outbox_kind_check;
+alter table public.volunteer_outbox add constraint volunteer_outbox_kind_check
+  check (kind in ('signup_confirmed', 'manage_link', 'canceled_by_volunteer',
+                  'switched', 'admin_assigned', 'admin_canceled',
+                  'game_moved', 'rained_out', 'makeup_set', 'back_on',
+                  'spot_lost', 'shift_canceled', 'reminder', 'nudge',
+                  'shift_changed'));
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- 2. Shift helpers (callable by no role)
@@ -1069,14 +1090,21 @@ $$;
 -- A deleted shift's sign-ups DETACH (before the foreign key nulls them),
 -- remember what the shift was, and queue a spot_lost email held 10 minutes —
 -- long enough for a regenerate's same-start shift to take them back. 0121's
--- game rule. Not swallowed: if this fails the delete fails, visibly.
+-- game rule. A shift that has already started gets NO email (item 9) — its
+-- sign-ups are still detached, as history. Not swallowed: if this fails the
+-- delete fails, visibly.
 create or replace function public.volunteer_on_shift_delete()
 returns trigger
 language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
+declare
+  v_ahead boolean;
 begin
+  v_ahead := old.date + old.start_time > public.volunteer_org_now(
+    (select l.owner_id from public.snack_shack_settings s join public.leagues l on l.id = s.season_id
+      where s.id = old.snack_shack_id));
   with d as (
     update public.volunteer_claims c
        set status = 'detached',
@@ -1092,7 +1120,8 @@ begin
   insert into public.volunteer_outbox (owner_id, season_id, volunteer_id, kind, payload, coalesce_key, next_attempt_at)
   select d.owner_id, d.season_id, d.volunteer_id, 'spot_lost', jsonb_build_object('claim_id', d.id),
          'lost:' || d.id, now() + interval '10 minutes'
-    from d;
+    from d
+   where v_ahead;
   return old;
 end;
 $$;
@@ -1149,6 +1178,13 @@ begin
       update public.volunteer_outbox
          set status = 'superseded', error = 'reattached after a regenerate'
        where coalesce_key = 'lost:' || r.id and status = 'pending';
+      -- Item 8: the shift came back with a different END — the spot is kept
+      -- and the volunteer is told the new hours.
+      if r.detached_from ->> 'end' is distinct from to_char(new.date + new.end_time, 'YYYY-MM-DD"T"HH24:MI') then
+        insert into public.volunteer_outbox (owner_id, season_id, volunteer_id, kind, payload, coalesce_key)
+        values (r.owner_id, r.season_id, r.volunteer_id, 'shift_changed',
+                jsonb_build_object('claim_id', r.id, 'was_end', r.detached_from ->> 'end'), 'changed:' || r.id);
+      end if;
     end if;
   end loop;
   return null;
@@ -1249,6 +1285,146 @@ begin
               from public.volunteer_claims c
              where c.season_id = p_season_id and c.status = 'active' and c.snack_shack_block_id is not null
              group by c.snack_shack_block_id) x), '{}'::jsonb);
+end;
+$$;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 4b. Re-created from 0121 (verbatim + one edit each): the game delete skips
+--     the email for a spot already started (item 9); the take attaches a
+--     fresh manage link to shift_changed too (item 8)
+-- ────────────────────────────────────────────────────────────────────────────
+create or replace function public.volunteer_on_game_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  with d as (
+    update public.volunteer_claims c
+       set status = 'detached',
+           detached_at = now(),
+           detached_from = jsonb_build_object(
+             'game_id', old.id,
+             'start', to_char((old.scheduled_at at time zone 'UTC')::timestamp, 'YYYY-MM-DD"T"HH24:MI'),
+             'home_team_id', old.home_team_id, 'away_team_id', old.away_team_id,
+             'for_team_id', c.for_team_id, 'role_id', c.role_id, 'position', c.position)
+     where c.game_id = old.id and c.status = 'active'
+    returning c.id, c.owner_id, c.season_id, c.volunteer_id, c.role_id
+  )
+  insert into public.volunteer_outbox (owner_id, season_id, volunteer_id, kind, payload, coalesce_key, next_attempt_at)
+  select d.owner_id, d.season_id, d.volunteer_id, 'spot_lost', jsonb_build_object('claim_id', d.id),
+         'lost:' || d.id, now() + interval '10 minutes'
+    from d
+   -- 0122 (item 9): no email for a spot that has already started.
+   where public.volunteer_spot_start((old.scheduled_at at time zone 'UTC')::timestamp,
+                                     (select vr.lead_minutes from public.volunteer_roles vr where vr.id = d.role_id))
+         > public.volunteer_org_now(d.owner_id);
+  return old;
+end;
+$$;
+
+create or replace function public.volunteer_outbox_take(p_limit integer)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_limit integer := least(greatest(coalesce(p_limit, 0), 0), 100);
+  v_rows  jsonb;
+  v_out   jsonb := '[]'::jsonb;
+  r       jsonb;
+  v_ids   uuid[];
+  v_token text;
+begin
+  -- a. Rate-limit keys older than 23 hours go (privacy policy: up to 24h).
+  delete from public.volunteer_rate_events where at < now() - interval '23 hours';
+
+  -- b. A drain that died mid-send leaves rows `sending`; after 10 minutes
+  --    they are due again. The send carries an idempotency key per row, so a
+  --    row that did go out is not sent twice by the provider.
+  update public.volunteer_outbox
+     set status = 'pending', locked_at = null
+   where status = 'sending' and locked_at < now() - interval '10 minutes';
+
+  -- c. One email per coalesce key: every pending row older than the newest
+  --    pending row with the same key is superseded.
+  update public.volunteer_outbox o
+     set status = 'superseded', error = 'superseded by a newer change'
+   where o.status = 'pending'
+     and o.coalesce_key is not null
+     and exists (select 1 from public.volunteer_outbox n
+                  where n.coalesce_key = o.coalesce_key
+                    and n.status = 'pending'
+                    and (n.created_at, n.id) > (o.created_at, o.id));
+
+  -- d. Rows that must not be sent are failed, visibly, never silently kept.
+  update public.volunteer_outbox o
+     set status = 'failed', error = 'feature_off'
+   where o.status = 'pending'
+     and not public.org_feature_on(o.owner_id, 'volunteers');
+  update public.volunteer_outbox o
+     set status = 'failed', error = 'no_contact_email'
+   where o.status = 'pending'
+     and not exists (select 1 from public.volunteer_settings s
+                      where s.owner_id = o.owner_id and s.contact_email is not null);
+
+  -- e. Claim the due rows. SKIP LOCKED: a second drain running at the same
+  --    time takes different rows or none.
+  with due as (
+    select o.id
+      from public.volunteer_outbox o
+     where o.status = 'pending' and o.next_attempt_at <= now()
+     order by o.next_attempt_at, o.id
+     limit v_limit
+       for update skip locked
+  ), took as (
+    update public.volunteer_outbox o
+       set status = 'sending', locked_at = now(), attempts = o.attempts + 1
+      from due
+     where o.id = due.id
+    returning o.id, o.owner_id, o.season_id, o.volunteer_id, o.kind, o.payload, o.attempts
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', t.id,
+           'kind', t.kind,
+           'payload', t.payload,
+           'attempts', t.attempts,
+           'season_id', t.season_id,
+           'volunteer_id', t.volunteer_id,
+           'to', v.email_lc,
+           'league_name', p.org_name,
+           'reply_to', s.contact_email,
+           'signup_token', case when s.link_enabled then s.link_token end
+         ) order by t.id), '[]'::jsonb)
+    into v_rows
+    from took t
+    join public.volunteers v on v.id = t.volunteer_id
+    join public.profiles p on p.id = t.owner_id
+    left join public.volunteer_settings s on s.owner_id = t.owner_id;
+
+  -- f. Each row's spots, and a fresh manage link where the email needs one.
+  for r in select * from jsonb_array_elements(v_rows) loop
+    v_ids := case
+               when jsonb_typeof(r -> 'payload' -> 'claim_ids') = 'array'
+                 then array(select x::uuid from jsonb_array_elements_text(r -> 'payload' -> 'claim_ids') x)
+               when r -> 'payload' ? 'claim_id' then array[(r -> 'payload' ->> 'claim_id')::uuid]
+               else '{}'::uuid[]
+             end;
+    v_token := null;
+    if r ->> 'kind' in ('game_moved', 'rained_out', 'makeup_set', 'back_on', 'shift_changed') then  -- 0122: + shift_changed
+      v_token := encode(extensions.gen_random_bytes(32), 'hex');
+      insert into public.volunteer_manage_links (token_hash, volunteer_id, season_id)
+      values (encode(extensions.digest(v_token, 'sha256'), 'hex'), (r ->> 'volunteer_id')::uuid, (r ->> 'season_id')::uuid);
+    end if;
+    v_out := v_out || jsonb_build_array(
+      (r - 'volunteer_id')
+      || jsonb_build_object('spots', public.volunteer_email_spots(v_ids),
+                            'manage_token', coalesce(v_token, r -> 'payload' ->> 'manage_token')));
+  end loop;
+
+  return v_out;
 end;
 $$;
 
@@ -1522,6 +1698,7 @@ revoke execute on function public.volunteer_on_shift_delete() from public, anon,
 revoke execute on function public.volunteer_on_shift_insert() from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_on_shift_headcount() from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_on_shack_headcount() from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_on_game_delete() from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.save_volunteer_role(uuid, uuid, text, text, integer, integer, boolean, boolean, uuid[], boolean) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_admin_signups(uuid) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_admin_assign(uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, boolean, uuid) from public, anon, authenticated, service_role, dashboard_readonly;
@@ -1533,6 +1710,7 @@ revoke execute on function public.volunteer_signup_page(text, uuid) from public,
 revoke execute on function public.volunteer_claim(text, uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, text, text, boolean, uuid) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_manage_page(text) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_cancel(text, uuid) from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_outbox_take(integer) from public, anon, authenticated, service_role, dashboard_readonly;
 
 grant execute on function public.save_volunteer_role(uuid, uuid, text, text, integer, integer, boolean, boolean, uuid[], boolean) to authenticated;
 grant execute on function public.volunteer_admin_signups(uuid) to authenticated;
@@ -1545,6 +1723,7 @@ grant execute on function public.volunteer_signup_page(text, uuid) to service_ro
 grant execute on function public.volunteer_claim(text, uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, text, text, boolean, uuid) to service_role;
 grant execute on function public.volunteer_manage_page(text) to service_role;
 grant execute on function public.volunteer_cancel(text, uuid) to service_role;
+grant execute on function public.volunteer_outbox_take(integer) to service_role;
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- 7. Verify — RAISES if anything is not as stated
@@ -1576,7 +1755,8 @@ begin
     'public.volunteer_signup_page(text, uuid)',
     'public.volunteer_claim(text, uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, text, text, boolean, uuid)',
     'public.volunteer_manage_page(text)',
-    'public.volunteer_cancel(text, uuid)'] loop
+    'public.volunteer_cancel(text, uuid)',
+    'public.volunteer_outbox_take(integer)'] loop
     if not has_function_privilege('service_role', f, 'EXECUTE') then
       raise exception '0122 verify: service_role cannot execute %', f;
     end if;
@@ -1597,7 +1777,8 @@ begin
     'public.volunteer_on_shift_delete()',
     'public.volunteer_on_shift_insert()',
     'public.volunteer_on_shift_headcount()',
-    'public.volunteer_on_shack_headcount()'] loop
+    'public.volunteer_on_shack_headcount()',
+    'public.volunteer_on_game_delete()'] loop
     foreach r in array array['anon', 'authenticated', 'service_role', 'dashboard_readonly'] loop
       if has_function_privilege(r, f, 'EXECUTE') then
         raise exception '0122 verify: % can execute %', r, f;
@@ -1614,7 +1795,8 @@ begin
   if not (select prosecdef from pg_proc where oid = 'public.volunteer_on_shift_delete()'::regprocedure)
      or not (select prosecdef from pg_proc where oid = 'public.volunteer_on_shift_insert()'::regprocedure)
      or not (select prosecdef from pg_proc where oid = 'public.volunteer_on_shift_headcount()'::regprocedure)
-     or not (select prosecdef from pg_proc where oid = 'public.volunteer_on_shack_headcount()'::regprocedure) then
+     or not (select prosecdef from pg_proc where oid = 'public.volunteer_on_shack_headcount()'::regprocedure)
+     or not (select prosecdef from pg_proc where oid = 'public.volunteer_on_game_delete()'::regprocedure) then
     raise exception '0122 verify: a shift trigger function is not SECURITY DEFINER';
   end if;
   if (select count(*) from pg_trigger where tgrelid = 'public.snack_shack_blocks'::regclass and tgenabled = 'O'

@@ -29,7 +29,7 @@ import {
   type ScreenRole,
 } from "@/lib/volunteers/roles-screen";
 import { MAX_LEAD_MIN, MAX_SPOTS, type SlotGame } from "@/lib/volunteers/slots";
-import { snackSpotsLabel, snackTotalSpots, type ShiftRow } from "@/lib/volunteers/shifts";
+import { snackTotalSpots, type ShiftRow } from "@/lib/volunteers/shifts";
 import * as W from "@/lib/volunteers/words";
 
 export type RolesScreenData = {
@@ -75,7 +75,7 @@ export function RolesScreen({ data }: { data: RolesScreenData }) {
   // 0122: the snack shack row.
   const snackRole = data.snack.role;
   const snack = {
-    spots: snackSpotsLabel(data.snack.peoplePerShift, data.snack.shifts),
+    spots: W.SNACK_SPOTS,
     signups: snackRole ? (snackRole.signupsOpen ? W.SIGNUPS_ON : W.SIGNUPS_OFF) : "",
     filled: snackRole
       ? filledLabel(active ? active.get(snackRole.id) ?? 0 : null, snackTotalSpots(data.snack.shifts)) ?? W.FILLED_UNKNOWN

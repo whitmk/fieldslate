@@ -53,10 +53,15 @@
 --       spot_lost held 10 minutes
 --   SI1 a new shift with the same date and start takes them back (email
 --       withdrawn) when its headcount has room; a spot above it, or a
---       different start, stays detached
+--       different start, stays detached; the same END → no hours email
+--   SD2 (review item 9) a deleted shift that has already started: its
+--       sign-ups detach but NO spot_lost email
+--   SD3 (review item 9) a deleted past GAME: the same — detached, no email
 --   SG1 regenerate: a shift whose end moves carries its sign-up; a removed
 --       shift's sign-up is lost; claims_carried / claims_lost say so; 0119's
---       keys still there
+--       keys still there; (review item 8) the carried sign-up whose shift's
+--       END changed gets a shift_changed email with the old end
+--   SG2 (review item 8) the take sends that email with a fresh manage link
 --   SW1 archiving wipes the season's shift sign-ups and the snack shack role
 --   G1  privileges: helpers and triggers callable by no role; claim / page /
 --       manage / cancel service_role only; admin functions authenticated
@@ -83,6 +88,11 @@
 --   MS18 reminders skip shifts                                 → SR1
 --   MS19 no-show can't place a shift                           → SN1
 --   MS20 the admin list loses the block id                     → SL1
+--   MS21 no hours email when a carried shift's end changes     → SG1
+--   MS22 an hours email even when the end is the same          → SI1
+--   MS23 a past shift's deletion emails spot_lost              → SD2
+--   MS24 a past game's deletion emails spot_lost               → SD3
+--   MS25 the take gives shift_changed no manage link           → SG2
 select set_config('lock_timeout', '3s', true), set_config('statement_timeout', '180s', true);
 
 create or replace function pg_temp.h122_as(p_sub uuid, p_role text, p_sql text) returns text language plpgsql as $f$
@@ -145,7 +155,7 @@ declare
   v_s  uuid := gen_random_uuid(); v_s2 uuid := gen_random_uuid();
   v_d  uuid := gen_random_uuid(); v_du uuid := gen_random_uuid(); v_d2 uuid := gen_random_uuid();
   v_t1 uuid := gen_random_uuid(); v_t2 uuid := gen_random_uuid(); v_tu uuid := gen_random_uuid(); v_tx uuid := gen_random_uuid();
-  v_g1 uuid := gen_random_uuid();
+  v_g1 uuid := gen_random_uuid(); v_gp uuid := gen_random_uuid(); cG uuid;
   v_snack uuid := gen_random_uuid();
   b1 uuid := gen_random_uuid(); b2 uuid := gen_random_uuid(); bo uuid := gen_random_uuid();
   bp uuid := gen_random_uuid(); bs uuid := gen_random_uuid(); b11 uuid := gen_random_uuid(); b10 uuid := gen_random_uuid();
@@ -176,7 +186,9 @@ begin
     (v_t1, v_s, v_d, 'ZZ Team 1'), (v_t2, v_s, v_d, 'ZZ Team 2'),
     (v_tu, v_s, v_du, 'ZZ Unlocked Team'), (v_tx, v_s2, v_d2, 'ZZ Other Team');
   insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status)
-    values (v_g1, v_s, v_t1, v_t2, (d3 + time '10:00') at time zone 'UTC', 'scheduled');
+    values (v_g1, v_s, v_t1, v_t2, (d3 + time '10:00') at time zone 'UTC', 'scheduled'),
+           -- A past game in the UNLOCKED division (so it can be deleted) — SD3.
+           (v_gp, v_s, v_tu, null, ((v_now::date - 3) + time '10:00') at time zone 'UTC', 'scheduled');
   update public.divisions set locked = true where id in (v_d, v_d2);
 
   insert into public.snack_shack_settings (id, season_id, start_date, end_date, people_per_shift)
@@ -488,7 +500,7 @@ begin
   -- ── SI1 a same-start shift takes them back ─────────────────────────────
   v_r := pg_temp.h122_as(v_org, 'authenticated', format(
     'with u as (insert into public.snack_shack_blocks (id, snack_shack_id, date, start_time, end_time, people_needed)
-                values (%L, %L, %L, %L, %L, 1) returning 1) select count(*)::text from u', b11, v_snack, d3, '11:30', '14:00'));
+                values (%L, %L, %L, %L, %L, 1) returning 1) select count(*)::text from u', b11, v_snack, d3, '11:30', '13:30'));
   if (select snack_shack_block_id from public.volunteer_claims where id = cX2 and status = 'active') is distinct from b11
      or (select status from public.volunteer_outbox where kind = 'spot_lost' and payload ->> 'claim_id' = cX2::text) <> 'superseded' then
     return 'SI1 the same-start shift should take back position 1 and withdraw its email: ' || coalesce(v_r, 'null');
@@ -496,6 +508,9 @@ begin
   if (select status from public.volunteer_claims where id = cE) <> 'detached'
      or (select status from public.volunteer_outbox where kind = 'spot_lost' and payload ->> 'claim_id' = cE::text) <> 'pending' then
     return 'SI1 position 2 has no spot on a headcount-1 shift: it should stay detached, its email pending';
+  end if;
+  if exists (select 1 from public.volunteer_outbox where kind = 'shift_changed' and payload ->> 'claim_id' = cX2::text) then
+    return 'SI1 a shift back with the SAME end should send no hours email';
   end if;
   v_r := pg_temp.h122_as(v_org, 'authenticated', format(
     'with u as (delete from public.snack_shack_blocks where id = %L returning 1) select count(*)::text from u', bo));
@@ -506,12 +521,33 @@ begin
     return 'SI1 a shift at a different start should not take a sign-up back';
   end if;
 
+  -- ── SD2 a past shift deleted: detached, no email ───────────────────────
+  v_r := pg_temp.h122_as(v_org, 'authenticated', format(
+    'with u as (delete from public.snack_shack_blocks where id = %L returning 1) select count(*)::text from u', bp));
+  if v_r is distinct from '1'
+     or (select count(*) from public.volunteer_claims where id in (cP1, cP2) and status = 'detached') <> 2 then
+    return 'SD2 the past shift''s sign-ups should be detached: ' || coalesce(v_r, 'null');
+  end if;
+  if exists (select 1 from public.volunteer_outbox where kind = 'spot_lost' and payload ->> 'claim_id' in (cP1::text, cP2::text)) then
+    return 'SD2 a shift that already started should send no spot_lost email';
+  end if;
+
+  -- ── SD3 a past game deleted: detached, no email ────────────────────────
+  insert into public.volunteer_claims (owner_id, season_id, volunteer_id, family_team_id, game_id, role_id, position, created_by)
+    values (v_org, v_s, v_vp, v_tu, v_gp, v_fp, 1, 'admin') returning id into cG;
+  delete from public.games where id = v_gp;
+  if (select status from public.volunteer_claims where id = cG) <> 'detached' then
+    return 'SD3 the past game''s sign-up should be detached';
+  end if;
+  if exists (select 1 from public.volunteer_outbox where kind = 'spot_lost' and payload ->> 'claim_id' = cG::text) then
+    return 'SD3 a game that already started should send no spot_lost email';
+  end if;
+
   -- ── SG1 regenerate ─────────────────────────────────────────────────────
   j := pg_temp.h122_admin(v_org, format('select public.regenerate_snack_shack_shifts(%L::uuid, %L::jsonb)::text', v_snack,
     jsonb_build_array(
       jsonb_build_object('date', d3s, 'start', '09:30', 'end', '12:00', 'assigned_team_id', v_t1),
-      jsonb_build_object('date', to_char(v_now::date - 2, 'YYYY-MM-DD'), 'start', '09:00', 'end', '11:00', 'assigned_team_id', ''),
-      jsonb_build_object('date', d3s, 'start', '11:30', 'end', '14:00', 'assigned_team_id', ''),
+      jsonb_build_object('date', d3s, 'start', '11:30', 'end', '13:30', 'assigned_team_id', ''),
       jsonb_build_object('date', d3s, 'start', '10:00', 'end', '11:00', 'assigned_team_id', ''))::text));
   if (j ->> 'claims_carried')::int is distinct from 1 or (j ->> 'claims_lost')::int is distinct from 1
      or not (j ? 'kept') or not (j ? 'lost') then
@@ -521,6 +557,19 @@ begin
        where c.id = cAdm and c.status = 'active') is distinct from '12:00'::time
      or (select status from public.volunteer_claims where id = cD) <> 'detached' then
     return 'SG1 the carried sign-up should sit on the 09:30–12:00 shift; the removed shift''s should be detached';
+  end if;
+  if not exists (select 1 from public.volunteer_outbox o
+                  where o.kind = 'shift_changed' and o.status = 'pending' and o.payload ->> 'claim_id' = cAdm::text
+                    and o.payload ->> 'was_end' = d3s || 'T11:30') then
+    return 'SG1 the carried sign-up whose shift now ends at 12:00 should get a shift_changed email (was 11:30)';
+  end if;
+
+  -- ── SG2 the take sends it with a fresh manage link ─────────────────────
+  e := (select x from jsonb_array_elements(public.volunteer_outbox_take(100)) x
+         where x ->> 'kind' = 'shift_changed' and x -> 'payload' ->> 'claim_id' = cAdm::text);
+  if e is null or coalesce(e ->> 'manage_token', '') !~ '^[0-9a-f]{64}$'
+     or e -> 'spots' -> 0 ->> 'end' is distinct from d3s || 'T12:00' then
+    return 'SG2 the hours email should carry a fresh manage link and the new end: ' || coalesce(left(e::text, 300), 'null');
   end if;
 
   -- ── SW1 archive ────────────────────────────────────────────────────────
@@ -659,7 +708,11 @@ $r$, $r$$r$),
     ('MS8', 'SC5', $r$                                            v_shift.block_id is not null and v_shift.role_id = p_role_id,
                                             true, v_shift.signups_open);$r$, $r$                                            v_shift.block_id is not null,
                                             true, v_shift.signups_open);$r$),
-    ('MS9', 'SD1', $r$         'lost:' || d.id, now() + interval '10 minutes'$r$, $r$         'lost:' || d.id, now()$r$),
+    ('MS9', 'SD1', $r$         'lost:' || d.id, now() + interval '10 minutes'
+    from d
+   where v_ahead;$r$, $r$         'lost:' || d.id, now()
+    from d
+   where v_ahead;$r$),
     ('MS10', 'SI1', $r$       and c.detached_from ->> 'start' = v_wall
 $r$, $r$$r$),
     ('MS11', 'SI1', $r$    if r.position <= v_people
@@ -678,7 +731,13 @@ $r$, $r$$r$),
     ('MS18', 'SR1', $r$                    b.date + b.start_time) > v_now$r$, $r$                    null) > v_now$r$),
     ('MS19', 'SN1', $r$                  b.date + b.start_time) into v_start$r$, $r$                  null) into v_start$r$),
     ('MS20', 'SL1', $r$               'snack_shack_block_id', c.snack_shack_block_id, 'role_id', c.role_id,$r$,
-                    $r$               'role_id', c.role_id,$r$)
+                    $r$               'role_id', c.role_id,$r$),
+    ('MS21', 'SG1', $r$      if r.detached_from ->> 'end' is distinct from$r$, $r$      if false and r.detached_from ->> 'end' is distinct from$r$),
+    ('MS22', 'SI1', $r$      if r.detached_from ->> 'end' is distinct from$r$, $r$      if true or r.detached_from ->> 'end' is distinct from$r$),
+    ('MS23', 'SD2', $r$   where v_ahead;$r$, $r$   where true;$r$),
+    ('MS24', 'SD3', $r$   -- 0122 (item 9): no email for a spot that has already started.
+   where public.volunteer_spot_start$r$, $r$   where true or public.volunteer_spot_start$r$),
+    ('MS25', 'SG2', $r$'back_on', 'shift_changed') then$r$, $r$'back_on') then$r$)
     ) as t(id, expect, find, repl)
   loop
     if (length(v_nover) - length(replace(v_nover, m.find, ''))) / greatest(length(m.find), 1) <> 1 then
@@ -709,6 +768,10 @@ end $h$;
 --      'volunteer_on_shift_delete', 'volunteer_shift_claim_counts')) as new_functions_must_be_0,
 --   (select count(*) from pg_proc where proname = 'volunteer_claim') as claim_overloads_must_be_1,
 --   (select md5(prosrc) from pg_proc where proname = 'regenerate_snack_shack_shifts') as regen_must_be_0119_fd94fb29,
+--   (select md5(prosrc) from pg_proc where proname = 'volunteer_outbox_take') as take_must_be_0121_891fe7,
+--   (select md5(prosrc) from pg_proc where proname = 'volunteer_on_game_delete') as game_delete_must_be_0121_d164b7,
+--   (select count(*) from pg_constraint where conname = 'volunteer_outbox_kind_check'
+--      and pg_get_constraintdef(oid) like '%shift_changed%') as shift_changed_kind_must_be_0,
 --   (select count(*) from pg_trigger where tgname like 'volunteer_on_sh%') as shift_triggers_must_be_0,
 --   (select count(*) from pg_constraint where conname = 'volunteer_claims_v1_games_only') as v1_check_must_be_1,
 --   (select count(*) from leagues where name like 'ZZ122%') as fixture_leagues_must_be_0,

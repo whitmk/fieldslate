@@ -367,7 +367,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   throughout); RLS on all five new tables, only SELECT on roles and role
   divisions for authenticated; the three games triggers enabled. **The
   latest migration applied.** See "Volunteer sign-ups".
-- **0122 (volunteer snack shack shifts) WRITTEN, proof NOT RUN, NOT APPLIED**
+- **0122 (volunteer snack shack shifts) WRITTEN, proof NOT RUN, NOT APPLIED** (it
+  also re-creates `volunteer_on_game_delete` and `volunteer_outbox_take` and
+  widens the outbox kind CHECK — review items 8 and 9)
   (branch `feat/volunteer-snack-shack`, 2026-11-09). See "Volunteer sign-ups"
   → branch C. Expected md5(prosrc) from `npx tsx
   scripts/sim/volunteer-snack-build.ts --md5`. **Deploy order: apply 0122
@@ -5900,7 +5902,8 @@ Still open:
   that list honest); words in `words.ts`; a template that can't describe its
   spot, or lacks a required manage link, returns null and the row fails
   (`unknown_kind`) — never a blank email. Proof TK1 + MU59–MU61;
-  `sim:volunteer-email` T1–T5 (180 checks) + VE21–VE27 (27/27; T5 = shifts, 0122).
+  `sim:volunteer-email` T1–T5 (189 checks) + VE21–VE28 (28/28; T5 = shifts and
+  the hours-changed email, 0122; T1 reads 0122's outbox kinds).
 - **Screen 1 — Volunteer roles (`/dashboard/volunteers`, 2026-11-08,
   approved plan).** The sidebar item "Volunteers" (Elite tier) and the page
   exist only when `loadVolunteerFeature` (`src/lib/volunteers/feature-state.ts`
@@ -5988,7 +5991,7 @@ Still open:
   RM1). All go through `volunteer_admin_remind` (one email per volunteer, a
   fresh manage link, a waiting reminder replaced); a reply that isn't a
   readable count, or queues nothing, is a failure, never "sent". Harness
-  `sim:volunteer-signups` R1–R5, S8, W2 (76 checks) + VS12–VS20 (20/20; S8/W2 shifts, 0122).
+  `sim:volunteer-signups` R1–R5, S8, W2 (77 checks) + VS12–VS20 (20/20; S8/W2 shifts, 0122).
   Result words (2026-11-09): a row's Remind says "Reminder sent."; Remind
   all says "Reminders sent to N volunteers." ("Reminder sent to 1
   volunteer.") — `remindOutcome(raw, scope)`.
@@ -6004,7 +6007,8 @@ Still open:
     the public sign-up link". Its spots, lead and divisions are stored 1 / 0 /
     none whatever is sent; `snack_role_exists` refuses a second. The roles
     screen shows it as the Snack shack row ("Shifts come from the Snack shack
-    page", "2 per shift[, some shifts differ]", Filled = active sign-ups of
+    page", "Each shift's headcount on the Snack shack page" — no fixed number,
+    decided 2026-11-09 — Filled = active sign-ups of
     the sum of headcounts); its editor asks only for a name and the switch.
     No snack shack set up → the row links to the Snack shack page.
   - **Claims on shifts:** `volunteer_claims.snack_shack_block_id` (0121's v1
@@ -6035,13 +6039,25 @@ Still open:
     (`volunteer_shift_claim_counts`, members, counts only). The snack shack
     page, its prints and emails read NO volunteer data (`sim:game-notes`
     O1-snack-volunteer-*, `sim:snack-print` goldens unchanged).
-  - **Known, not done:** a shift whose END moves on a regenerate carries its
-    sign-ups without an email (the time the volunteer was told still starts
-    the same); a deleted PAST shift still emails spot_lost (0121's game rule
-    does the same).
+  - **A shift whose END moves on a regenerate** (same date + start) keeps
+    its sign-ups AND emails each volunteer the new hours — outbox kind
+    `shift_changed` (added to the outbox CHECK in 0122; payload: the claim
+    and the old end), with a fresh manage link attached by the take
+    (`volunteer_outbox_take` re-created verbatim from 0121 with that kind in
+    its list). Review item 8, 2026-11-09. The regenerate preview says so.
+  - **No "spot gone" email for a spot that has already started** — shifts
+    AND games (`volunteer_on_game_delete` re-created verbatim from 0121 with
+    the condition; the spot's start is the game's minus the role's lead).
+    The sign-up still detaches — it's history. Review item 9, 2026-11-09.
+  - **Checked in the browser 2026-11-09** on deleted throwaway routes with
+    stubbed replies, 1280px and 375px: roles row + editor + its add / not-set-up
+    variants, the sign-up page and form on a shift, who signed up (shift rows,
+    lost banner, the role filter's snack shack option, Assign sending
+    `p_game_id null` + `p_block_id`), the manage page, the regenerate
+    preview's sign-up line; no horizontal scroll, no console errors.
   - **Proof:** `scripts/sim/volunteer-snack-sim.sql` (+
     `volunteer-snack-build.ts`; applies 0122 rolled back in the "test" org;
-    S1–SW1 + G1, 20 mutants MS1–MS20). `volunteer-snack-build.ts regress0119`
+    S1–SW1 + SD2/SD3/SG2 + G1, 25 mutants MS1–MS25). `volunteer-snack-build.ts regress0119`
     re-runs the 0119 proof (0103 R-, 0104 N-, 0119 H-series and its 8
     mutants) against 0122, H1 left out (0119's apply-time defaults).
 - **THE FENCE: `npm run sim:volunteer-leaks`** (+ `:mutants`, 7, each killed

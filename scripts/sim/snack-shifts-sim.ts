@@ -809,10 +809,11 @@ section("F: past dates frozen, preview, upcoming staleness", () => {
   const sc = { u2: 2, u1: 1 };
   const planSC = buildRegeneratePlan({ derivation, stored, teams, preference: "prefer_off_days", index: assignmentIndexFromGames([], HOME), today: TODAY, signupCounts: sc });
   ok(planSC.signups?.carried === 2 && planSC.signups.lost === 0, "F13", "sign-ups on the changed shift move with it", JSON.stringify(planSC.signups));
-  ok(signupsLine(planSC.signups) === "2 volunteer sign-ups move with their changed shift.", "F13", "the carried line", signupsLine(planSC.signups) ?? "null");
+  ok(signupsLine(planSC.signups) === "2 volunteer sign-ups move with their changed shifts; each volunteer is emailed the new hours.", "F13", "the carried line", signupsLine(planSC.signups) ?? "null");
   const planSC2 = buildRegeneratePlan({ derivation: deriveShifts([], RULE, []), stored, teams, preference: "prefer_off_days", index: assignmentIndexFromGames([], HOME), today: TODAY, signupCounts: sc });
   ok((planSC2.signups?.lost ?? 0) >= 2 && planSC2.signups?.carried === 0, "F13", "sign-ups on removed shifts are lost", JSON.stringify(planSC2.signups));
-  ok((signupsLine(planSC2.signups) ?? "").includes("will be canceled — each volunteer is emailed"), "F13", "the lost line");
+  ok((signupsLine(planSC2.signups) ?? "").includes("will be canceled; each volunteer is emailed."), "F13", "the lost line");
+  ok(signupsLine({ carried: 1, lost: 1 }) === "1 volunteer sign-up moves with its changed shift; the volunteer is emailed the new hours. 1 volunteer sign-up is on a removed shift and will be canceled; the volunteer is emailed.", "F13", "singular lines");
   const planSC3 = buildRegeneratePlan({ derivation, stored, teams, preference: "prefer_off_days", index: assignmentIndexFromGames([], HOME), today: TODAY, signupCounts: null });
   ok(planSC3.signups === null && signupsLine(null) === "Couldn't count volunteer sign-ups on these shifts.", "F13", "unreadable counts say so");
   ok(signupsLine({ carried: 0, lost: 0 }) === null, "F13", "nothing to say → no line");

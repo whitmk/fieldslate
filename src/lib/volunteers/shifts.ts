@@ -63,13 +63,7 @@ export function shiftDetail(start: string, end: string, teamName: string | null 
   return [shiftTimes(start, end), shiftFor(teamName)].filter(Boolean).join(" · ");
 }
 
-/** The roles screen's snack shack row: "2 per shift" (or "some shifts
- *  differ" when any shift has its own number); total spots over the shifts. */
-export function snackSpotsLabel(peoplePerShift: number, shifts: readonly ShiftRow[]): string {
-  const varies = shifts.some((s) => s.people !== peoplePerShift);
-  return W.SNACK_SPOTS(peoplePerShift, varies);
-}
-
+/** Total spots over the shifts (the roles screen's Filled). */
 export function snackTotalSpots(shifts: readonly ShiftRow[]): number {
   return shifts.reduce((n, s) => n + s.people, 0);
 }

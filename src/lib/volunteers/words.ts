@@ -322,8 +322,8 @@ export const REMIND_FAILED = "Couldn't send the reminder. Nothing was sent — t
 export const SHIFT_FOR = (team: string) => `For ${team} families`;
 export const SNACK_ROLE_DEFAULT_NAME = "Snack shack";
 export const SNACK_SOURCE = "Shifts come from the Snack shack page";
-export const SNACK_SPOTS = (n: number, varies: boolean) =>
-  `${n} per shift${varies ? ", some shifts differ" : ""}`;
+// No fixed number (Whit's review, 2026-11-09): each shift has its own headcount.
+export const SNACK_SPOTS = "Each shift's headcount on the Snack shack page";
 export const SNACK_ADD = "Add snack shack sign-ups";
 export const SNACK_NOT_SET_UP = "Set up the snack shack first";
 export const SNACK_SETUP_LINK = "Snack shack page →";
@@ -341,3 +341,7 @@ export const EMAIL_HEADCOUNT_CANCEL_LEAD = (league: string) =>
   `${league} needs fewer people on this snack shack shift, so this spot no longer exists:`;
 export const EMAIL_SHIFT_LOST_LEAD = "This snack shack shift was removed from the schedule, so this spot no longer exists:";
 export const SHIFT_UNTIL = (time: string) => `until ${time}`;
+// A regenerate changed a shift's hours under its sign-ups (0122, review item 8).
+export const EMAIL_SHIFT_CHANGED_SUBJECT = (role: string, when: string) => `Shift hours changed: your ${role} spot, ${when}`;
+export const EMAIL_SHIFT_CHANGED_LEAD = (league: string) => `${league} changed the hours of this snack shack shift. Your spot is kept:`;
+export const EMAIL_SHIFT_CHANGED_WAS = (time: string) => `It used to end at ${time}.`;

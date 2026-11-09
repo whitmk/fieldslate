@@ -114,6 +114,7 @@ export function SignupsScreen({ data }: { data: SignupsScreenData }) {
           {data.roles.map((r) => (
             <option key={r.id} value={r.id}>{r.name}</option>
           ))}
+          {data.snackRole && <option value={data.snackRole.id}>{data.snackRole.name}</option>}
         </select>
         <select className={SELECT} value={filters.divisionId ?? ""} onChange={(e) => setFilters({ ...filters, divisionId: e.target.value || null })} aria-label="Division">
           <option value="">{W.FILTER_ALL_DIVISIONS}</option>

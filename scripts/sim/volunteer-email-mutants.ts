@@ -171,6 +171,12 @@ const MUTANTS: Mutant[] = [
     replace: "W.EMAIL_LOST_LEAD",
     expect: "T5",
   },
+  {
+    id: "VE28", what: "the hours email leaves out the old end", file: "src/lib/volunteers/email-templates.ts",
+    find: "      typeof p.was_end === \"string\" && clockLabel(p.was_end) ? [para(W.EMAIL_SHIFT_CHANGED_WAS(clockLabel(p.was_end)))] : [],",
+    replace: "      [],",
+    expect: "T5",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/volunteer-email-sim.ts", timezones: [undefined], mutants: MUTANTS });

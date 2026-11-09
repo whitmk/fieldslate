@@ -262,6 +262,8 @@ for (const f of ["src/app/(dashboard)/dashboard/volunteers/signups/page.tsx", "s
 }
 ok(comp.includes("p_game_id: row.blockId ? null : row.gameId,") && comp.includes("...(row.blockId ? { p_block_id: row.blockId } : {}),"),
   "W2", "Assign sends p_block_id only for a shift");
+ok(comp.includes("{data.snackRole && <option value={data.snackRole.id}>{data.snackRole.name}</option>}"), "W2",
+  "the role filter offers the snack shack role");
 
 for (const [k, v] of Object.entries(counters)) ok(v > 0, "VAC", `anti-vacuity counter ${k} is zero`);
 if (failures.length) {

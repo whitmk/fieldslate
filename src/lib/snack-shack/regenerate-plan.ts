@@ -232,8 +232,16 @@ export function buildRegeneratePlan(input: PlanInput): RegeneratePlan {
 export function signupsLine(s: RegeneratePlan["signups"]): string | null {
   if (s === null) return "Couldn't count volunteer sign-ups on these shifts.";
   const parts: string[] = [];
-  if (s.carried > 0) parts.push(`${s.carried} volunteer sign-up${s.carried === 1 ? "" : "s"} move with ${s.carried === 1 ? "its" : "their"} changed shift.`);
-  if (s.lost > 0) parts.push(`${s.lost} volunteer sign-up${s.lost === 1 ? " is" : "s are"} on removed shifts and will be canceled — each volunteer is emailed.`);
+  // A "changed" shift keeps its start and moves its end, so each carried
+  // volunteer is emailed the new hours (0122, review item 8).
+  if (s.carried > 0)
+    parts.push(s.carried === 1
+      ? "1 volunteer sign-up moves with its changed shift; the volunteer is emailed the new hours."
+      : `${s.carried} volunteer sign-ups move with their changed shifts; each volunteer is emailed the new hours.`);
+  if (s.lost > 0)
+    parts.push(s.lost === 1
+      ? "1 volunteer sign-up is on a removed shift and will be canceled; the volunteer is emailed."
+      : `${s.lost} volunteer sign-ups are on removed shifts and will be canceled; each volunteer is emailed.`);
   return parts.length ? parts.join(" ") : null;
 }
 

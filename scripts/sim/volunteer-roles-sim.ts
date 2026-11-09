@@ -20,7 +20,8 @@
 //   R8  roleErrorLine: each refusal key in words; unknown never shown raw
 //   R9  the snack shack row (0122): the draft needs only a name;
 //       shiftsFromRows takes each shift's own number, else the season's;
-//       "2 per shift" / ", some shifts differ"; total spots = the headcounts
+//       the spots label points at each shift's headcount (no fixed
+//       number); total spots = the headcounts
 //   W3  wiring (0122): the roles page reads shifts through loadSeasonShifts;
 //       the editor sends the snack shack kind and hides the game fields
 //   W1  wiring: the page 404s without the feature and gates Elite; the
@@ -46,7 +47,7 @@ import {
 } from "@/lib/volunteers/roles-screen";
 import type { SlotGame } from "@/lib/volunteers/slots";
 import * as W from "@/lib/volunteers/words";
-import { shiftsFromRows, snackSpotsLabel, snackTotalSpots } from "@/lib/volunteers/shifts";
+import { shiftsFromRows, snackTotalSpots } from "@/lib/volunteers/shifts";
 import { roleErrorLine } from "@/lib/volunteers/words";
 
 const ROOT = join(__dirname, "..", "..");
@@ -149,8 +150,8 @@ const SH = shiftsFromRows([
 ], 2);
 ok(SH.map((s) => `${s.id}:${s.start}-${s.end}:${s.people}`).join(",") === "b1:09:30-11:30:2,b2:11:30-13:30:3", "R9",
   "shifts in time order, own number else the season's", JSON.stringify(SH));
-ok(snackSpotsLabel(2, SH) === "2 per shift, some shifts differ" && snackSpotsLabel(2, [SH[0]]) === "2 per shift", "R9", "spots label",
-  snackSpotsLabel(2, SH));
+ok(W.SNACK_SPOTS === "Each shift's headcount on the Snack shack page" && !/\d/.test(W.SNACK_SPOTS), "R9",
+  "the spots label names the headcount, no fixed number");
 ok(snackTotalSpots(SH) === 5, "R9", "total spots");
 
 // W3
