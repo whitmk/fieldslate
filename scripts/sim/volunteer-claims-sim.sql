@@ -7,7 +7,7 @@
 -- on INSIDE the batch (rolled back with it) — never Santa Rosa American's data.
 --
 -- Parts 1–2 run 2026-11-08 on Whit's go — green, 31/31 (see RUN LOG). PART 3
--- (with the insert-trigger reattach and recorded failures): see RUN LOG.
+-- (insert-trigger reattach, recorded failures): run 4 green, 44/44 (RUN LOG).
 --
 -- LOCKS for the run (seconds; lock_timeout 3s): the migration's new FKs take
 -- SHARE ROW EXCLUSIVE on leagues, divisions, teams, games, playoff_games,
@@ -697,7 +697,8 @@ begin
      or (select status from public.volunteer_claims where id = v_claim_t) <> 'active' then
     return 'X1 inside 24 hours: ' || v_r::text;
   end if;
-  if (public.volunteer_cancel(v_a_tok, v_claim_b) ->> 'status') <> 'not_found'
+  v_r := public.volunteer_cancel(v_a_tok, v_claim_b);
+  if (v_r ->> 'status') <> 'not_found'
      or (select status from public.volunteer_claims where id = v_claim_b) <> 'active' then
     return 'X1 another volunteer''s spot';
   end if;
@@ -837,14 +838,19 @@ begin
     return 'K1 manage page shows no original time';
   end if;
   if (public.volunteer_keep_spot(v_tok, c6) ->> 'status') <> 'not_found' then return 'K1 kept another volunteer''s spot'; end if;
-  if (public.volunteer_keep_spot(v_tok, c1) ->> 'status') <> 'kept'
+  v_r := public.volunteer_keep_spot(v_tok, c1);
+  if (v_r ->> 'status') <> 'kept'
      or (select moved_from from public.volunteer_claims where id = c1) is not null then
-    return 'K1 keep';
+    return 'K1 keep: ' || coalesce(v_r::text, 'null');
   end if;
 
   -- D1 — delete a game with a sign-up: the delete succeeds, the claim is
   -- detached with what it was, spot_lost held 10 minutes.
-  delete from public.games where id = g5;
+  begin
+    delete from public.games where id = g5;
+  exception when others then
+    return 'D1 delete refused: ' || sqlerrm;
+  end;
   if (select status from public.volunteer_claims where id = c6) <> 'detached'
      or (select detached_from ->> 'home_team_id' from public.volunteer_claims where id = c6) <> v_t1::text
      or (select next_attempt_at from public.volunteer_outbox where coalesce_key = 'lost:' || c6) <= now() + interval '9 minutes' then
@@ -869,6 +875,9 @@ begin
   end if;
   -- R3 — detached more than 10 minutes ago: its email has gone; a matching
   -- game later doesn't take it back.
+  -- A second, recent detach at another time gets the insert past the trigger's
+  -- early exit, so R3 tests the loop's 10-minute window (MU43), not the exit.
+  delete from public.games where id = g3;
   update public.volunteer_claims set detached_at = now() - interval '11 minutes' where id = c2;
   insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status)
     values (gen_random_uuid(), v_s, v_t1, v_t2, (v_now + interval '4 days') at time zone 'UTC', 'scheduled');
@@ -878,7 +887,7 @@ begin
 
   -- L1 — a failing trigger never blocks the edit and is RECORDED (no
   -- personal data), and the count is there for the sign-up list.
-  alter table public.volunteer_outbox add constraint zz121_refuse_moves check (kind <> 'game_moved');
+  alter table public.volunteer_outbox add constraint zz121_refuse_moves check (kind <> 'game_moved') not valid;
   update public.games set scheduled_at = scheduled_at + interval '1 hour' where id = g4;
   if (select scheduled_at from public.games where id = g4) <> (v_now + interval '6 days 1 hour') at time zone 'UTC' then
     return 'L1 the schedule edit was blocked';
@@ -1154,3 +1163,38 @@ end $h$;
 --     outbox / rate-event rows, no calendar links on fixture teams, the wipe
 --     and finish back to 0120's live bodies (888ac9aa…, 8fe09939…), test org
 --     elite, no disabled trigger, no idle transaction.
+-- PARTS 1–3 — 2026-11-08 ~20:40–21:05 Pacific, against production on Whit's
+-- go ("run the next proof tonight as soon as the two changes are committed"),
+-- rolled back, "test" org. Staged as before: migration 70348bfa… ("\n" + the
+-- repo file at 5127541), harness pieces md5-checked, whole re-checked before
+-- each run (03e53734… run 1; then patched in place: 361323ba…, 75679bd7…,
+-- b7f1e34d…). Nothing else active on the database before the first run.
+--   L1 locks (every run): ACCESS SHARE + SHARE ROW EXCLUSIVE on leagues,
+--     divisions, teams, games, playoff_games, snack_shack_blocks, profiles.
+--   Run 1 — HARNESS fault: baseline stopped at K1 "keep". The check called
+--     volunteer_keep_spot and read moved_from in ONE IF expression, i.e. one
+--     statement, whose snapshot predates the function's update — so it still
+--     saw moved_from set. Split into two statements. Same shape found at X1
+--     ("another volunteer's spot": cancel, then "still active" in one
+--     expression — that half could never fail); split too. Parts 1–2 mutants
+--     and MU32–MU36, MU41 already killed at their own tag; the rest died at K1.
+--   Run 2 — two HARNESS faults: L1's temporary CHECK was added VALIDATED and
+--     failed on the game_moved rows T1/T2 had queued (now NOT VALID; MU42–44
+--     died there). MU37 (claim left active, no game) made the DELETE itself
+--     raise on the claim CHECK — the failure D1 exists to catch — but the
+--     error escaped instead of returning D1; the delete is now wrapped and
+--     reports 'D1 delete refused: …'. Baseline otherwise pass.
+--   Run 3 — BASELINE pass; 43/44 at their own tag. MU43 (the reattach's
+--     10-minute window removed from the LOOP) SURVIVED: the trigger also has
+--     the window in its early-exit guard, and R3 had no other recent detach,
+--     so the guard alone left the old one alone. The loop is the rule; the
+--     guard only saves work on a regenerate's inserts. R3 now first detaches
+--     a second sign-up recently, at another time (g3), so the insert gets
+--     past the guard and the loop's window decides.
+--   Run 4 — BASELINE pass; 44/44 killed at their own assertion. md5s printed
+--     match the repo file. Leak check after: 0 ZZ121 seasons / teams /
+--     volunteers, 0 outbox / rate-event / feature / settings rows, no 0121
+--     table, function or games trigger left, the six existing games triggers
+--     enabled, the wipe and finish back to 0120's live bodies (888ac9aa…,
+--     8fe09939…), test org elite, the temporary CHECK gone, stage schema
+--     dropped.

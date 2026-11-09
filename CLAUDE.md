@@ -5782,7 +5782,7 @@ Still open:
   `volunteer_outbox_finish` (re-created) drops it on sent/failed. Part 1 gained
   `volunteer_roles.lead_minutes` (0–120) and `volunteer_spot_start` (the
   shared table pins it). Proof: 31 mutants (15 new).
-- **0121 part 3 (commit 2c, NOT APPLIED, its proof NOT RUN).** Two `games`
+- **0121 part 3 (commit 2c, NOT APPLIED; parts 1–3 proof run 2026-11-08, run 4 green 44/44 — read its RUN LOG: three runs of harness faults, incl. a snapshot read inside one IF and a mutant hidden by the trigger's early exit).** Two `games`
   triggers, both SECURITY DEFINER (members write games from the browser and
   hold nothing on the volunteer tables), neither writing games, divisions or
   teams — the lock and "Sent to parents" are untouched.
@@ -5810,7 +5810,7 @@ Still open:
   `volunteer_failure_count(season)` (member only) feeds the sign-up list and
   the daily check. `volunteer_keep_spot`
   (service_role) clears `moved_from`. Season delete sends nothing: it needs an
-  archived season, and archiving already wiped the sign-ups. Proof: 44 mutants (13 for part 3). Applying takes SHARE ROW EXCLUSIVE on `games`
+  archived season, and archiving already wiped the sign-ups. Proof: 44 mutants (13 for part 3), all killed at their own tag. Applying takes SHARE ROW EXCLUSIVE on `games`
   for the three CREATE TRIGGERs, plus the part-1 FKs.
 - **Mockup decisions (2026-11-08, boards in `docs/mockups/volunteer-signup/`).**
   Where the boards and the written decisions disagree, the decisions win.
