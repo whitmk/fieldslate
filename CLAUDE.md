@@ -385,15 +385,23 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   0122's CHECK: at most one target always, exactly one only while active
   (proof SD3 + MS26). **Deploy order (met): 0122 was applied BEFORE the
   code reached `main`** (the regenerate preview calls
-  `volunteer_shift_claim_counts`). **The latest migration applied.** See "Volunteer
+  `volunteer_shift_claim_counts`). See "Volunteer
   sign-ups" → branch C.
-- **0123 (volunteer tracker) WRITTEN, proof NOT RUN, NOT APPLIED** (branch
-  `feat/volunteer-tracker`, 2026-11-09). Five tables, nine functions, the
-  archive wipe re-created, `volunteers.family_id` dropped. See "Volunteer
-  sign-ups" → branch D. Expected md5(prosrc) from `npx tsx
-  scripts/sim/volunteer-tracker-build.ts --md5`. **Deploy order: apply 0123
-  BEFORE the code reaches `main`** — the tracker page calls
-  `volunteer_tracker` (without it the page shows its error card).
+- **0123 (volunteer tracker) APPLIED 2026-11-09 20:19 UTC, catalog
+  `20261109201948`**, on Whit's go, from the md5-checked proof stage in one
+  transaction (catalog row = the file's exact text, md5 `50bdea00…`), after
+  its rolled-back proof (run 4 green, 27/27 mutants at their own tag — read
+  its RUN LOG) and the 0121 / 0122 proofs re-run against it (`regress0121`,
+  `regress0122`: baselines green, their re-targeted wipe mutants killed at
+  W1 / SW1). All ten function bodies' md5(prosrc) match
+  `volunteer-tracker-build.ts --md5`, one overload each, `search_path=public,
+  pg_temp`; EXECUTE: the eight admin functions authenticated only,
+  `volunteer_tracker_families` and the wipe callable by no role (PUBLIC,
+  anon, service_role, dashboard_readonly false); RLS on the five tables, no
+  privilege for any role; `volunteers.family_id` gone; the wipe trigger
+  enabled; `game_umpires` byte-identical. **Deploy order (met): 0123 was
+  applied BEFORE the tracker reached `main`.** **The latest migration
+  applied.** See "Volunteer sign-ups" → branch D.
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -6081,8 +6089,8 @@ Still open:
     mutants) against 0122, H1 left out (0119's apply-time defaults). Run
     2026-11-09: run 1 a harness fault, run 2 found the 0121 one_target bug,
     run 3 green 26/26; regress0119 green 8/8 — read the proof's RUN LOG.
-- **Branch D — the tracker (0123, `feat/volunteer-tracker`, 2026-11-09; proof
-  NOT RUN, NOT APPLIED).** Plan with Whit's decisions:
+- **Branch D — the tracker (0123, `feat/volunteer-tracker`, 2026-11-09; 0123
+  APPLIED 2026-11-09 — see the Database section).** Plan with Whit's decisions:
   `docs/plans/volunteer-tracker-0123.md`. Page `/dashboard/volunteers/tracker`
   (same gates; linked from the roles page and Who signed up).
   - **The counting rule lives ONCE, in `volunteer_tracker_families`** (SQL,
@@ -6125,10 +6133,11 @@ Still open:
     `scripts/sim/volunteer-tracker-sim.sql` (+ `volunteer-tracker-build.ts`;
     rolled back in "test"; 27 mutants MT1–MT27); `regress0121` /
     `regress0122` run those proofs' assertions against 0123 (the wipe is
-    re-created) with their wipe mutants re-targeted. Screens checked on a
+    re-created) with their wipe mutants re-targeted; `regress0121` also
+    updates the two signatures 0122 changed and removes the "test" org's
+    switch row inside the run (that proof predates the switch being on). Screens checked on a
     deleted scratch route at 1280px and 375px with stubbed replies.
-  - **Privacy:** the three sentences are on `docs/privacy-volunteer-tracker`
-    (held) and ship before this branch.
+  - **Privacy:** the three sentences shipped first (a0e3bf9, 2026-11-09).
 - **THE FENCE: `npm run sim:volunteer-leaks`** (+ `:mutants`, 7, each killed
   at its own assertion). F1 no outbound file (the daylight fence's list plus
   the activity log, its panel and the snack shack print) reaches

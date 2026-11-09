@@ -24,7 +24,8 @@
 --   Brooks  vB: P GameChanger (worked), a past shift (worked); + official u2
 --               joined by EMAIL (P → worked)                       → 3/0/0/0
 --   Adams   vA: P GameChanger (worked), P Field prep (role doesn't count),
---               F GameChanger (upcoming), a rained-out game (held)  → 1/1/0/1
+--               F GameChanger (upcoming), a FUTURE rained-out game (held —
+--               future, so counting it as upcoming would show; run 3)  → 1/1/0/1
 --   M Patel vM: TODAY's GameChanger (upcoming, not worked)          → 0/1/0/0
 --   R Patel vR: F GameChanger, family team Owls                     → 0/1/0/0
 --   Xu      vX: P GameChanger, no-show                              → 0/0/1/0
@@ -146,9 +147,9 @@ declare
   dP date; dT date; dF date;
   v_s  uuid := gen_random_uuid(); v_s2 uuid := gen_random_uuid();
   v_d  uuid := gen_random_uuid(); v_d2 uuid := gen_random_uuid();
-  tE uuid := gen_random_uuid(); tP uuid := gen_random_uuid(); tO uuid := gen_random_uuid(); tX uuid := gen_random_uuid();
+  tE uuid := gen_random_uuid(); tP uuid := gen_random_uuid(); tOw uuid := gen_random_uuid(); tX uuid := gen_random_uuid(); tX2 uuid := gen_random_uuid();
   gP uuid := gen_random_uuid(); gT uuid := gen_random_uuid(); gF uuid := gen_random_uuid(); gC uuid := gen_random_uuid();
-  gO uuid := gen_random_uuid();
+  gO uuid := gen_random_uuid(); gC2 uuid := gen_random_uuid();
   v_snack uuid := gen_random_uuid(); bP uuid := gen_random_uuid();
   rGC uuid := gen_random_uuid(); rFP uuid := gen_random_uuid(); rSS uuid := gen_random_uuid(); rO uuid := gen_random_uuid();
   vA uuid := gen_random_uuid(); vB uuid := gen_random_uuid(); vM uuid := gen_random_uuid(); vR uuid := gen_random_uuid();
@@ -176,13 +177,14 @@ begin
     (v_d, v_s, 'ZZ Minors', '{"game_duration": 90, "buffer_minutes": 15}'),
     (v_d2, v_s2, 'ZZ Other', '{}');
   insert into public.teams (id, league_id, division_id, name) values
-    (tE, v_s, v_d, 'ZZ Expos'), (tP, v_s, v_d, 'ZZ Pirates'), (tO, v_s, v_d, 'ZZ Owls'), (tX, v_s2, v_d2, 'ZZ Other Team');
+    (tE, v_s, v_d, 'ZZ Expos'), (tP, v_s, v_d, 'ZZ Pirates'), (tOw, v_s, v_d, 'ZZ Owls'), (tX, v_s2, v_d2, 'ZZ Other Team'), (tX2, v_s2, v_d2, 'ZZ Other Team 2');
   insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status) values
     (gP, v_s, tE, tP, (dP + time '10:00') at time zone 'UTC', 'scheduled'),
-    (gT, v_s, tE, tO, (dT + time '10:00') at time zone 'UTC', 'scheduled'),
+    (gT, v_s, tE, tOw, (dT + time '10:00') at time zone 'UTC', 'scheduled'),
     (gF, v_s, tE, tP, (dF + time '10:00') at time zone 'UTC', 'scheduled'),
-    (gC, v_s, tE, tO, ((v_now::date - 2) + time '10:00') at time zone 'UTC', 'cancelled'),
-    (gO, v_s2, tX, null, (dP + time '12:00') at time zone 'UTC', 'scheduled');
+    (gC, v_s, tE, tOw, ((v_now::date - 2) + time '10:00') at time zone 'UTC', 'cancelled'),
+    (gC2, v_s, tP, tOw, ((v_now::date + 2) + time '10:00') at time zone 'UTC', 'cancelled'),
+    (gO, v_s2, tX, tX2, (dP + time '12:00') at time zone 'UTC', 'scheduled');
   update public.divisions set locked = true where id in (v_d, v_d2);
 
   insert into public.snack_shack_settings (id, season_id, start_date, end_date, people_per_shift)
@@ -213,9 +215,9 @@ begin
     (v_org, v_s, vA, tE, gP, null, rGC, tP, 1, 'active', false, 'volunteer', now() - interval '8 days', null, null, null),
     (v_org, v_s, vA, tE, gP, null, rFP, null, 1, 'active', false, 'volunteer', now() - interval '8 days', null, null, null),
     (v_org, v_s, vA, tE, gF, null, rGC, tE, 1, 'active', false, 'volunteer', now() - interval '8 days', null, null, null),
-    (v_org, v_s, vA, tE, gC, null, rGC, tE, 1, 'active', false, 'volunteer', now() - interval '8 days', null, null, null),
+    (v_org, v_s, vA, tE, gC2, null, rGC, tP, 1, 'active', false, 'volunteer', now() - interval '8 days', null, null, null),
     (v_org, v_s, vM, tP, gT, null, rGC, tE, 1, 'active', false, 'volunteer', now() - interval '7 days', null, null, null),
-    (v_org, v_s, vR, tO, gF, null, rGC, tP, 1, 'active', false, 'volunteer', now() - interval '6 days', null, null, null),
+    (v_org, v_s, vR, tOw, gF, null, rGC, tP, 1, 'active', false, 'volunteer', now() - interval '6 days', null, null, null),
     (v_org, v_s, vX, tE, gP, null, rGC, tE, 2, 'active', true,  'volunteer', now() - interval '5 days', null, null, null),
     (v_org, v_s, vC, tE, gF, null, rGC, tE, 2, 'canceled', false, 'volunteer', now() - interval '4 days', now(), null, null),
     (v_org, v_s, vD, tE, null, null, rGC, tE, 1, 'detached', false, 'volunteer', now() - interval '3 days', null,
@@ -337,7 +339,7 @@ begin
   if pg_temp.h123_n(j, vA) <> '1/1/0/1' or pg_temp.h123_n(j, vR) <> '0/1/0/0' then
     return 'TR1 Adams ' || pg_temp.h123_n(j, vA) || ', R Patel ' || pg_temp.h123_n(j, vR);
   end if;
-  if (pg_temp.h123_fam(j, vR) -> 'team_ids') <> jsonb_build_array(tO)
+  if (pg_temp.h123_fam(j, vR) -> 'team_ids') <> jsonb_build_array(tOw)
      or (pg_temp.h123_fam(j, vB) -> 'team_ids') <> jsonb_build_array(tE) then
     return 'TR1 team ids: R Patel ' || (pg_temp.h123_fam(j, vR) -> 'team_ids')::text || ', Brooks ' || (pg_temp.h123_fam(j, vB) -> 'team_ids')::text;
   end if;
@@ -704,3 +706,35 @@ end $h$;
 --   (select count(*) from leagues where name like 'ZZ123%') as fixture_leagues_must_be_0,
 --   (select count(*) from volunteers where email_lc like '%@zz123.test') as fixture_volunteers_must_be_0,
 --   (select count(*) from pg_stat_activity where state = 'idle in transaction') as idle_tx_must_be_0;
+--
+-- ── RUN LOG ───────────────────────────────────────────────────────────────
+-- 2026-11-09, against production, every run rolled back, on Whit's go
+-- (sent as a comment-stripped copy — harness only; the migration byte-exact,
+-- md5-checked on the server before each run).
+--   Run 1 — HARNESS FAULT: a variable named `tO` is the PL/pgSQL keyword
+--     `to`; the case function didn't compile, nothing ran. Renamed `tOw`.
+--   Run 2 — HARNESS FAULT: the other season's game had no opponent
+--     (games_opponent_required — 0122's run 1 hit the same). Added team tX2.
+--   Run 3 — baseline PASS; 26/27 killed at their own tag; MT3 SURVIVED: the
+--     rained-out spot was in the PAST, so counting held spots as upcoming
+--     changed nothing (a fixture gap). Adams's held spot moved to a FUTURE
+--     rained-out game gC2 (Jo's past one stays — MT7 needs it).
+--   Run 4 — GREEN: baseline pass, 27/27 KILLED at their own tag, md5(prosrc)
+--     of all ten functions = `volunteer-tracker-build.ts --md5`. Locks held
+--     (L1): SHARE ROW EXCLUSIVE on profiles, leagues, teams, umpires,
+--     game_umpires, volunteers; ACCESS EXCLUSIVE on volunteers and the five
+--     new tables; row locks on the fixture tables.
+--   regress0122 — GREEN first run: baseline pass; MSW (wipe keeps roles)
+--     KILLED at SW1.
+--   regress0121 — run 1: baseline crashed at G2, which names 0121's
+--     13-argument volunteer_claim (0122 replaced it; everything before G2,
+--     W1 included, passed); MU15 KILLED at W1. The builder now updates the
+--     two signatures 0122 changed (claim, admin_assign) and removes the
+--     "test" org's switch row first (the proof predates the switch being on
+--     there). Run 2 — GREEN: baseline pass through all five parts; MU15
+--     KILLED at W1.
+--   Leak check after all runs: identical to the pre-run snapshot (wipe
+--     04dd2bd2…, family_id present, no new tables or functions, no ZZ
+--     fixtures, volunteer counts unchanged, game_umpires md5 unchanged, no
+--     idle transaction).
+--   Applied right after: catalog 20261109201948, md5s and grants verified.

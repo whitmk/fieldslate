@@ -61,9 +61,15 @@ if (mode === "--md5") {
 }
 
 type Retarget = { id: string; expect: string; find: string; repl: string };
+type Patch = { find: string; repl: string; count: number };
 
-function regress(harnessFile: string, caseFn: string, label: string, mutants: Retarget[]): string {
-  const h = readFileSync(join(ROOT, harnessFile), "utf8");
+function regress(harnessFile: string, caseFn: string, label: string, mutants: Retarget[], prep = "", patches: Patch[] = []): string {
+  let h = readFileSync(join(ROOT, harnessFile), "utf8");
+  for (const p of patches) {
+    const n = h.split(p.find).length - 1;
+    if (n !== p.count) die(`${label}: patch text found ${n} times (want ${p.count}): ${p.find}`);
+    h = h.split(p.find).join(p.repl);
+  }
   const cut = h.indexOf("\ndo $h$");
   if (cut < 0 || h.indexOf("\ndo $h$", cut + 1) >= 0) die(`${harnessFile}: expected exactly one "do $h$" driver block`);
   for (const m of mutants) {
@@ -88,7 +94,7 @@ ${QUOTE};
 begin
   v_nover := split_part(v_body, '-- 5. Verify', 1);
   begin
-    execute v_body;
+    ${prep}execute v_body;
     v_res := pg_temp.${caseFn}();
     v_out := v_out || 'BASELINE ' || v_res || E'\\n';
     raise exception 'HREGROLLBACK';
@@ -107,7 +113,7 @@ ${values}
       continue;
     end if;
     begin
-      execute replace(v_nover, m.find, m.repl);
+      ${prep}execute replace(v_nover, m.find, m.repl);
       v_res := pg_temp.${caseFn}();
       raise exception 'HREGCASE:%', v_res;
     exception when others then
@@ -129,6 +135,21 @@ if (mode === "regress0121") {
   process.stdout.write(
     regress("scripts/sim/volunteer-claims-sim.sql", "h121_case", "the 0121 proof against 0123", [
       { id: "MU15", expect: "W1", find: "  delete from public.volunteer_claims where season_id = new.id;\n", repl: "" },
+    ],
+    // The 0121 proof was written before any org had the volunteer switch: its
+    // F1 expects the "test" org's switch OFF and its fixture inserts the row.
+    // The switch is on there now (2026-11-09), so the row is removed inside
+    // the rolled-back run first.
+    "delete from public.org_features where owner_id = 'bbf9afe1-9e62-41e0-becc-895085bfc9d6' and feature = 'volunteers';\n    ",
+    // 0122 gave volunteer_claim and volunteer_admin_assign a last
+    // `p_block_id uuid DEFAULT NULL` and dropped the old signatures: the
+    // proof's privilege checks name them by signature (positional calls
+    // still work through the default).
+    [
+      { find: "public.volunteer_claim(text, uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, text, text, boolean)",
+        repl: "public.volunteer_claim(text, uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, text, text, boolean, uuid)", count: 3 },
+      { find: "public.volunteer_admin_assign(uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, boolean)",
+        repl: "public.volunteer_admin_assign(uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, boolean, uuid)", count: 2 },
     ]),
   );
   process.exit(0);
