@@ -16,7 +16,14 @@ import {
   dayFull,
   fmtClock,
   fmtDateOnly,
+  blackoutDuplicateLine,
 } from "@/components/umpires/official-profile-sections";
+import {
+  addAvailabilityWindows,
+  addBlackouts,
+  unaddedDraftLine,
+  windowDraftProblem,
+} from "@/lib/umpires/profile-writes";
 
 // Staged availability rows, written to official_availability /
 // official_blackouts after the umpire insert returns the new id.
@@ -54,6 +61,9 @@ export function AddUmpireButton({ seasons }: Props) {
   const [winStart, setWinStart] = useState("17:00");
   const [winEnd, setWinEnd] = useState("20:00");
   const [winError, setWinError] = useState("");
+  // The window fields are a DRAFT until "Add" is clicked. Touched + not added
+  // refuses the save (unaddedDraftLine) — it used to be dropped silently.
+  const [winTouched, setWinTouched] = useState(false);
   const [boDate, setBoDate] = useState("");
   const [boNote, setBoNote] = useState("");
   const [boError, setBoError] = useState("");
@@ -98,6 +108,7 @@ export function AddUmpireButton({ seasons }: Props) {
     setWinDay("Mo");
     setWinStart("17:00");
     setWinEnd("20:00");
+    setWinTouched(false);
     setWinError("");
     setBoDate("");
     setBoNote("");
@@ -108,12 +119,14 @@ export function AddUmpireButton({ seasons }: Props) {
 
   function addWindow() {
     setWinError("");
-    if (!winStart || !winEnd) return;
-    if (winEnd <= winStart) {
-      setWinError("End time must be after start time.");
+    const draft = { day: winDay, start: winStart, end: winEnd };
+    const problem = windowDraftProblem(draft);
+    if (problem) {
+      setWinError(problem);
       return;
     }
-    setWindows((prev) => [...prev, { day: winDay, start: winStart, end: winEnd }]);
+    setWindows((prev) => [...prev, draft]);
+    setWinTouched(false);
   }
 
   function addBlackout() {
@@ -134,6 +147,13 @@ export function AddUmpireButton({ seasons }: Props) {
     e.preventDefault();
     if (detailFailure) return;
     if (!name.trim() || !seasonId) return;
+    // A draft window or date that was never added refuses BEFORE anything is
+    // written (2026-11-09) — it used to vanish without a word.
+    const unadded = unaddedDraftLine({ windowDraftTouched: winTouched, blackoutDraftDate: boDate });
+    if (unadded) {
+      setError(unadded);
+      return;
+    }
     setSaving(true);
     setError("");
 
@@ -166,31 +186,12 @@ export function AddUmpireButton({ seasons }: Props) {
     // whole save failed: resubmitting would duplicate the official.
     const newId = (inserted as { id: string }).id;
     const detailErrors: string[] = [];
-    if (windows.length > 0) {
-      const { error: availErr } = await supabase
-        .from("official_availability")
-        .insert(
-          windows.map((w) => ({
-            umpire_id: newId,
-            day_of_week: w.day,
-            start_time: w.start,
-            end_time: w.end,
-          })) as never[],
-        );
-      if (availErr) detailErrors.push(`availability windows (${availErr.message})`);
-    }
-    if (blackouts.length > 0) {
-      const { error: boErr } = await supabase
-        .from("official_blackouts")
-        .insert(
-          blackouts.map((b) => ({
-            umpire_id: newId,
-            date: b.date,
-            note: b.note.trim() || null,
-          })) as never[],
-        );
-      if (boErr) detailErrors.push(`blackout dates (${boErr.message})`);
-    }
+    // Counted writes (profile-writes.ts): an error or a reply without the
+    // rows sent is a failure, never a silent success.
+    const avail = await addAvailabilityWindows(supabase, newId, windows);
+    if (!avail.ok) detailErrors.push(`availability windows (${avail.message})`);
+    const bo = await addBlackouts(supabase, newId, blackouts, blackoutDuplicateLine);
+    if (!bo.ok) detailErrors.push(`blackout dates (${bo.message})`);
 
     setSaving(false);
     if (detailErrors.length > 0) {
@@ -435,7 +436,10 @@ export function AddUmpireButton({ seasons }: Props) {
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
                         <select
                           value={winDay}
-                          onChange={(e) => setWinDay(e.target.value)}
+                          onChange={(e) => {
+                            setWinDay(e.target.value);
+                            setWinTouched(true);
+                          }}
                           aria-label="Day of week"
                           className="h-11 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
                         >
@@ -448,14 +452,20 @@ export function AddUmpireButton({ seasons }: Props) {
                         <input
                           type="time"
                           value={winStart}
-                          onChange={(e) => setWinStart(e.target.value)}
+                          onChange={(e) => {
+                            setWinStart(e.target.value);
+                            setWinTouched(true);
+                          }}
                           aria-label="Start time"
                           className="h-11 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
                         />
                         <input
                           type="time"
                           value={winEnd}
-                          onChange={(e) => setWinEnd(e.target.value)}
+                          onChange={(e) => {
+                            setWinEnd(e.target.value);
+                            setWinTouched(true);
+                          }}
                           aria-label="End time"
                           className="h-11 rounded-lg border border-gray-200 px-3 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
                         />

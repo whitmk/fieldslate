@@ -4102,9 +4102,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   grid (it only shows availability-configured venues).
 - **The shared editor contains NO `<form>` element — by design.** This is
   the generalized official-profile-sections lesson: a component built for
-  reuse must not depend on implicit form submission, because React submit
-  events bubble through nested forms and any host `<form>` would capture
-  them. All its buttons are explicit `type="button"`. Keep both properties
+  reuse must not depend on implicit form submission — a `<form>` nested in a
+  host `<form>` gets NO React `onSubmit` at all in this app's React build, and
+  the browser does a native submit that reloads the page (the officials
+  edit modal lost every availability save that way, 2026-07-14 → 2026-11-09). All its buttons are explicit `type="button"`. Keep both properties
   when extending it, and hold any new reusable form-ish component to the
   same rule.
 - **The practice surface gets venue EDIT only** — no deletion there, and
@@ -5083,12 +5084,35 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   (0073, officials' conflict-of-interest links) is unrelated to
   `conflict_overrides` (0064, the game-scheduling override audit trail).
   Don't mix them up.
-- **The `official-profile-sections.tsx` add-forms call `e.stopPropagation()`
-  in `handleAdd` — never remove it.** Those sections are reused inside the
-  edit-official modal's `<form>`; React submit events bubble through nested
-  forms, so without it, adding a window/blackout also fires the modal's
-  profile save and closes it. Verify event handling any time a component
-  with a form is reused inside another form.
+- **`official-profile-sections.tsx` RENDERS NO `<form>` (2026-11-09, branch
+  `fix/official-availability-save`).** Its sections are reused inside the
+  edit-official modal's `<form>`. Each add panel used to be its own `<form>`
+  with `e.stopPropagation()` in `handleAdd`, and this file said that made the
+  nesting safe. **It never did:** with a `<form>` nested in a `<form>`, the
+  bundled React (Next 14's 18.3 canary) ran NEITHER `onSubmit`, and the
+  browser fell back to a native submit that reloaded the page — no insert,
+  no error. From 794577e (2026-07-14) the edit modal never saved one window
+  or blackout date: all 6 windows and 2 blackouts in production were written
+  by the ADD modal, in the same second as the official (verified
+  2026-11-09). Reproduced in Chromium on a scratch route (the inner form's
+  submit fired, `defaultPrevented` stayed false, the page unloaded); the
+  standalone detail-page copy worked. Now each panel is `AddPanel` (a `div`;
+  Enter in a field saves that panel and is stopped so it can't submit the
+  host form) and Save is `type="button"`.
+  - **Every window/blackout write is `src/lib/umpires/profile-writes.ts`**
+    (`addAvailabilityWindows`, `addBlackouts`) — the sections AND the
+    add-official modal. The insert asks for its ids back: an error is shown,
+    and a reply without exactly the rows sent is "Nothing was saved. Try
+    again." — never success.
+  - **The add-official modal's window and date fields are a DRAFT until
+    "Add" is clicked.** A touched window draft or a picked date that was
+    never added used to be dropped without a word; now the save refuses
+    BEFORE inserting the official (`unaddedDraftLine`).
+  - Harness: `npm run sim:official-profile-writes` (22 checks, 5 counters:
+    no `<form>` N1, Save is a button N2, the writes W1–W6/B1–B3, the draft
+    refusal D1, wiring S1–S2) + `:mutants` (11, PW1 = the nested `<form>`
+    put back; each killed at its own assertion). Conflicts and
+    certifications use the same panels; their writes were not moved.
 - **EVERY OFFICIALS READ THAT DECIDES ELIGIBILITY FAILS CLOSED (2026-11-06,
   branch `fix/umpire-checks-fail-closed`).** Before, each discarded its error:
   the manual double-booking and blackout checks read a failed read as "no

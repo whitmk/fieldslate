@@ -22,6 +22,12 @@ import {
   COI_RELATIONSHIP_OPTIONS,
   coiRelationshipLabel,
 } from "@/lib/umpires/coi";
+import {
+  addAvailabilityWindows,
+  addBlackouts,
+  DATE_REQUIRED,
+  windowDraftProblem,
+} from "@/lib/umpires/profile-writes";
 
 // Availability / blackout / certification sections for the per-official page
 // (tables from migration 0062). Rows are fetched server-side by the page and
@@ -89,6 +95,13 @@ export function fmtClock(t: string): string {
 export function fmtDateOnly(iso: string): string {
   const [y, mo, d] = iso.split("-").map(Number);
   return `${MONTHS_SHORT[(mo ?? 1) - 1]} ${d}, ${y}`;
+}
+
+/** UNIQUE(umpire_id, date) refusal, shared with the add-official modal. */
+export function blackoutDuplicateLine(date: string): string {
+  return date.includes(",")
+    ? "One of those dates is already marked unavailable."
+    : `${fmtDateOnly(date)} is already marked unavailable.`;
 }
 
 function pad2(n: number) {
@@ -196,11 +209,47 @@ function FormError({ message }: { message: string }) {
   );
 }
 
+// An add panel is a plain <div>, NEVER a <form> (2026-11-09). These sections
+// are rendered inside the edit-official modal's <form>; with a nested <form>
+// the bundled React ran neither onSubmit and the browser did a native submit
+// that reloaded the page — nothing was saved and nothing was said, from
+// 794577e (2026-07-14) until this fix. Save is an explicit type="button"
+// click; Enter in a field saves this panel and is stopped here, so it can
+// never submit (and close) the host form. sim:official-profile-writes [N1]
+// fails on a <form> anywhere in this file.
+function AddPanel({
+  onSave,
+  className,
+  children,
+}: {
+  onSave: () => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={className}
+      onKeyDown={(e) => {
+        const tag = (e.target as HTMLElement).tagName;
+        if (e.key === "Enter" && (tag === "INPUT" || tag === "SELECT")) {
+          e.preventDefault();
+          e.stopPropagation();
+          onSave();
+        }
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function FormActions({
   saving,
+  onSave,
   onCancel,
 }: {
   saving: boolean;
+  onSave: () => void;
   onCancel: () => void;
 }) {
   return (
@@ -214,7 +263,8 @@ function FormActions({
         Cancel
       </button>
       <button
-        type="submit"
+        type="button"
+        onClick={onSave}
         disabled={saving}
         className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#22C55E] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50 md:min-h-0 md:flex-none md:py-1.5"
       >
@@ -254,27 +304,19 @@ export function AvailabilitySection({
       a.start_time.localeCompare(b.start_time),
   );
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    // Rendered inside the edit modal's <form>: without this, the submit
-    // bubbles up and triggers the modal's profile save + close.
-    e.stopPropagation();
+  async function handleAdd() {
     setError(null);
-    if (!start || !end) return;
-    if (end <= start) {
-      setError("End time must be after start time.");
+    const draft = { day, start, end };
+    const problem = windowDraftProblem(draft);
+    if (problem) {
+      setError(problem);
       return;
     }
     setSaving(true);
-    const supabase = createClient();
-    const { error: insertErr } = await supabase
-      .from("official_availability")
-      .insert([
-        { umpire_id: umpireId, day_of_week: day, start_time: start, end_time: end },
-      ] as never[]);
+    const outcome = await addAvailabilityWindows(createClient(), umpireId, [draft]);
     setSaving(false);
-    if (insertErr) {
-      setError(insertErr.message);
+    if (!outcome.ok) {
+      setError(outcome.message);
       return;
     }
     setAdding(false);
@@ -333,8 +375,8 @@ export function AvailabilitySection({
         {error && <FormError message={error} />}
 
         {adding ? (
-          <form
-            onSubmit={handleAdd}
+          <AddPanel
+            onSave={handleAdd}
             className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-gray-50/60 p-3"
           >
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -369,12 +411,13 @@ export function AvailabilitySection({
             </div>
             <FormActions
               saving={saving}
+              onSave={handleAdd}
               onCancel={() => {
                 setAdding(false);
                 setError(null);
               }}
             />
-          </form>
+          </AddPanel>
         ) : (
           <AddRowButton onClick={() => setAdding(true)} label="Add window" />
         )}
@@ -404,26 +447,22 @@ export function BlackoutsSection({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  async function handleAdd() {
     setError(null);
-    if (!date) return;
+    if (!date) {
+      setError(DATE_REQUIRED);
+      return;
+    }
     setSaving(true);
-    const supabase = createClient();
-    const { error: insertErr } = await supabase
-      .from("official_blackouts")
-      .insert([
-        { umpire_id: umpireId, date, note: note.trim() || null },
-      ] as never[]);
+    const outcome = await addBlackouts(
+      createClient(),
+      umpireId,
+      [{ date, note }],
+      blackoutDuplicateLine,
+    );
     setSaving(false);
-    if (insertErr) {
-      // UNIQUE(umpire_id, date)
-      setError(
-        insertErr.code === "23505" || /duplicate key|unique/i.test(insertErr.message)
-          ? `${fmtDateOnly(date)} is already marked unavailable.`
-          : insertErr.message,
-      );
+    if (!outcome.ok) {
+      setError(outcome.message);
       return;
     }
     setAdding(false);
@@ -480,8 +519,8 @@ export function BlackoutsSection({
         {error && <FormError message={error} />}
 
         {adding ? (
-          <form
-            onSubmit={handleAdd}
+          <AddPanel
+            onSave={handleAdd}
             className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-gray-50/60 p-3"
           >
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -503,12 +542,13 @@ export function BlackoutsSection({
             </div>
             <FormActions
               saving={saving}
+              onSave={handleAdd}
               onCancel={() => {
                 setAdding(false);
                 setError(null);
               }}
             />
-          </form>
+          </AddPanel>
         ) : (
           <AddRowButton onClick={() => setAdding(true)} label="Add date" />
         )}
@@ -552,11 +592,7 @@ export function ConflictsSection({
     }
   }
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    // Rendered inside the edit modal's <form> when reused there: without this,
-    // the submit bubbles up and triggers the modal's profile save + close.
-    e.stopPropagation();
+  async function handleAdd() {
     setError(null);
     if (!teamId) return;
     setSaving(true);
@@ -646,8 +682,8 @@ export function ConflictsSection({
         {error && <FormError message={error} />}
 
         {adding ? (
-          <form
-            onSubmit={handleAdd}
+          <AddPanel
+            onSave={handleAdd}
             className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-gray-50/60 p-3"
           >
             {teamOptions === null ? (
@@ -696,12 +732,13 @@ export function ConflictsSection({
             )}
             <FormActions
               saving={saving}
+              onSave={handleAdd}
               onCancel={() => {
                 setAdding(false);
                 setError(null);
               }}
             />
-          </form>
+          </AddPanel>
         ) : (
           <AddRowButton onClick={openAddForm} label="Add conflict" />
         )}
@@ -728,9 +765,7 @@ function CertificationsSection({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  async function handleAdd() {
     setError(null);
     if (!name.trim()) return;
     setSaving(true);
@@ -822,8 +857,8 @@ function CertificationsSection({
         {error && <FormError message={error} />}
 
         {adding ? (
-          <form
-            onSubmit={handleAdd}
+          <AddPanel
+            onSave={handleAdd}
             className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-gray-50/60 p-3"
           >
             <input
@@ -861,12 +896,13 @@ function CertificationsSection({
             </div>
             <FormActions
               saving={saving}
+              onSave={handleAdd}
               onCancel={() => {
                 setAdding(false);
                 setError(null);
               }}
             />
-          </form>
+          </AddPanel>
         ) : (
           <AddRowButton onClick={() => setAdding(true)} label="Add certification" />
         )}
