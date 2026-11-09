@@ -151,8 +151,10 @@ mutant restoring `getHours()` killed only outside UTC.
   divisions ON DELETE CASCADE, primary key both)`. No rows = all divisions.
   Same season enforced (division's league = official's season), by the write
   function. Authenticated SELECT under RLS; writes through a function.
-- `official_signup_settings(season_id pk → leagues, enabled bool default
-  false, contact_email text)`. The officials contact email is the reply-to on
+- `official_signup_settings(owner_id pk → profiles, enabled bool default
+  false, contact_email text)` — PER LEAGUE (the org), not per season: one
+  on/off and one officials contact email for every season, like the volunteer
+  settings. The officials contact email is the reply-to on
   every officials email AND the address the coordinator's notices go to (the
   drop email, the daily digest). Link use needs Elite + the switch + a contact
   email + the setting on. NEVER falls back to an account email (the volunteer
