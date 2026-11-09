@@ -5744,7 +5744,7 @@ Still open:
   `scripts/sim/volunteer-claims-sim.sql` (the 0121 proof file; its body
   arrives with the migration). `npm run sim:volunteer-slots` (132 checks × 3
   zones, 12 counters) + `:mutants` (14, each killed at its own assertion).
-- **0121 part 1 (commit 2a, NOT APPLIED; proof run 2026-11-08, run 3 green, 16/16 — read its RUN LOG: run 1 caught a real SQL/TS drift on `pending_interleague`).**
+- **0121 part 1 (commit 2a, NOT APPLIED; proof run 2026-11-08, run 3 green, 16/16 — read its RUN LOG: run 1 caught a real SQL/TS drift on `pending_interleague`; re-proven with part 2).**
   `supabase/migrations/0121_volunteer_game_roles.sql`: `volunteer_roles`
   (per season, `per_game`/`per_team`, 1–10 spots, name unique trimmed +
   case-insensitive), `volunteer_role_divisions`, `volunteer_claims` (one row
@@ -5760,7 +5760,7 @@ Still open:
   `shift_canceled` email each; kind can't change under claims. The archive
   wipe now deletes claims and roles too. Proof: `volunteer-claims-sim.sql`
   (+ build script; 16 mutants).
-- **0121 part 2 (commit 2b, NOT APPLIED, its proof NOT RUN).** Public
+- **0121 part 2 (commit 2b, NOT APPLIED; parts 1–2 proof run 2026-11-08, run 2 green 31/31 — read its RUN LOG).** Public
   functions, service_role ONLY (the routes add Turnstile and pass
   sha256(salt + IP / email)); each answers `{status}` and never raises for a
   refusal. `volunteer_signup_page(token, season)` — unknown (no link, off, or
@@ -5768,7 +5768,8 @@ Still open:
   seasons (picker), LOCKED divisions and their teams, roles with sign-ups on,
   and spots whose SHIFTED start is ahead, each with `spots` and a `taken`
   COUNT — never a name or email. `volunteer_claim(…)` — input check → rate
-  limits (20/hour per IP, 10/23h per email; every attempt past input counts)
+  limits (100/hour per IP — decided 2026-11-08, shared IPs at league
+  meetings and on carrier NAT; 10/23h per email; every attempt past input counts)
   → the family team in that LOCKED division of the game's season → a per-spot-
   set advisory lock → the shared refusal → already_signed_up → overlap (generic
   `overlap_confirm_needed`, overridable) → lowest free position (the unique

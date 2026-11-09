@@ -6,8 +6,7 @@
 -- the "test" proof org (bbf9afe1…, Elite), with the volunteers switch turned
 -- on INSIDE the batch (rolled back with it) — never Santa Rosa American's data.
 --
--- Part 1 run 2026-11-08 on Whit's go (see RUN LOG). PARTS 1–2 TOGETHER: NOT RUN
--- YET — part 2 (and part 1's lead / manage-link changes) needs its own run.
+-- Parts 1–2 run 2026-11-08 on Whit's go — green, 31/31 (see RUN LOG).
 --
 -- LOCKS for the run (seconds; lock_timeout 3s): the migration's new FKs take
 -- SHARE ROW EXCLUSIVE on leagues, divisions, teams, games, playoff_games,
@@ -65,7 +64,8 @@
 --   C5  the same email on the same spot set → already_signed_up
 --   C6  overlap → overlap_confirm_needed, naming nothing; confirmed → claimed
 --   C7  rained_out / unpublished / past (shifted) / past / signups_closed
---   C8  20 attempts an hour from one IP → rate_limited
+--   C8  the 100th attempt in an hour from one IP → rate_limited; the
+--       100th itself (99 before it) still passes
 --   P3  no name or email anywhere on the page; taken is a count
 --   M1  manage page: own spots only, contact email; unknown and revoked
 --       links → unknown
@@ -496,10 +496,12 @@ begin
   insert into public.leagues (id, name, sport, season, owner_id, start_date, end_date) values
     (v_s,  'ZZ121 P2',  'Baseball', 'Fall 2026', v_org, v_now::date - 30, v_now::date + 60),
     (v_s2, 'ZZ121 P2b', 'Baseball', 'Fall 2026', v_org, v_now::date - 10, v_now::date + 60);
+  -- Divisions are made UNLOCKED and locked after the games go in: the 0082
+  -- lock trigger (correctly) refuses a game insert into a locked division.
   insert into public.divisions (id, league_id, name, team_count, settings, status, locked) values
-    (v_d1, v_s,  'ZZ Majors', 2, '{"game_duration": 90}'::jsonb, 'active', true),
+    (v_d1, v_s,  'ZZ Majors', 2, '{"game_duration": 90}'::jsonb, 'active', false),
     (v_d2, v_s,  'ZZ Minors', 2, '{"game_duration": 90}'::jsonb, 'active', false),
-    (v_d3, v_s2, 'ZZ AAA',    2, '{}'::jsonb, 'active', true);
+    (v_d3, v_s2, 'ZZ AAA',    2, '{}'::jsonb, 'active', false);
   insert into public.teams (id, league_id, name, division_id) values
     (v_t1, v_s, 'ZZ Expos', v_d1), (v_t2, v_s, 'ZZ Mets', v_d1),
     (v_t3, v_s, 'ZZ Cubs', v_d2), (v_t4, v_s, 'ZZ Rays', v_d2),
@@ -513,6 +515,7 @@ begin
     (g_s, v_s, v_t1, v_t2, (v_now + interval '30 minutes') at time zone 'UTC', 'scheduled'),
     (g_t, v_s, v_t1, v_t2, (v_now + interval '20 hours') at time zone 'UTC', 'scheduled'),
     (g_x, v_s2, v_t5, v_t6, (v_now + interval '5 days') at time zone 'UTC', 'scheduled');
+  update public.divisions set locked = true where id in (v_d1, v_d3);
   insert into public.volunteer_roles (id, owner_id, season_id, name, kind, spots, lead_minutes, signups_open) values
     (r_gc,  v_org, v_s, 'ZZ GameChanger', 'per_team', 1, 0,  true),
     (r_fp,  v_org, v_s, 'ZZ Field prep',  'per_game', 2, 45, true),
@@ -624,8 +627,12 @@ begin
     return 'C7 a refusal did not reach the volunteer';
   end if;
 
-  -- C8 — rate limit per IP (20 an hour).
-  insert into public.volunteer_rate_events (kind, key_hash) select 'claim_ip', repeat('9', 64) from generate_series(1, 20);
+  -- C8 — rate limit per IP (100 an hour): 99 earlier attempts still pass,
+  -- the 100th recorded one blocks.
+  insert into public.volunteer_rate_events (kind, key_hash) select 'claim_ip', repeat('9', 64) from generate_series(1, 99);
+  if (public.volunteer_claim(v_tok, g_a, r_gc, v_t2, v_d1, v_t2, 'E', 'Echo', 'zz121-e@example.org', true, repeat('9', 64), repeat('6', 64), false) ->> 'status') = 'rate_limited' then
+    return 'C8 refused below the limit';
+  end if;
   if (public.volunteer_claim(v_tok, g_a, r_gc, v_t2, v_d1, v_t2, 'E', 'Echo', 'zz121-e@example.org', true, repeat('9', 64), repeat('6', 64), false) ->> 'status') <> 'rate_limited' then
     return 'C8 rate limit';
   end if;
@@ -819,7 +826,7 @@ begin
     ('MU22', 'C2', $r$  select min(n) into v_pos$r$, $r$  select 1 into v_pos$r$),
     ('MU23', 'C3', $r$                    and d.league_id = v_season and d.locked) then$r$, $r$                    and d.league_id = v_season) then$r$),
     ('MU24', 'C6', $r$    if not coalesce(p_confirm_overlap, false) and exists ($r$, $r$    if false and exists ($r$),
-    ('MU25', 'C8', $r$       where e.kind = 'claim_ip' and e.key_hash = p_ip_hash and e.at > now() - interval '1 hour') >= 20$r$,
+    ('MU25', 'C8', $r$       where e.kind = 'claim_ip' and e.key_hash = p_ip_hash and e.at > now() - interval '1 hour') >= 100$r$,
                    $r$       where e.kind = 'claim_ip' and e.key_hash = p_ip_hash and e.at > now() - interval '1 hour') >= 1000000$r$),
     ('MU26', 'P3', $r$               'spots', sp.spots, 'taken', least(sp.taken, sp.spots))$r$,
                    $r$               'spots', sp.spots, 'taken', least(sp.taken, sp.spots),
@@ -888,5 +895,25 @@ end $h$;
 --     match the repo file. Leak check after: 0 ZZ121 seasons, 0 new tables /
 --     functions, 0 feature rows / volunteers / outbox rows, wipe md5 back to
 --     0120's 888ac9aa…, test org elite, no disabled trigger, no idle tx.
--- PARTS 1–2 — not run yet (part 1 changed with them: lead_minutes, the
--- manage-links table, save_volunteer_role's new argument).
+-- PARTS 1–2 — 2026-11-08 ~19:45–20:40 Pacific, against production on Whit's
+-- go (with the per-IP limit raised to 100), rolled back, "test" org.
+--   The batch (~107 KB) was too big for one call, so it was STAGED: the
+--   migration and the harness were inserted in ~19 KB pieces into a scratch
+--   schema `zz_proof` (no API exposure; every role's access revoked), each
+--   piece's md5 checked against the local file, the wholes checked (migration
+--   56c45636… = "\n" + the repo file; harness 9e76036e…), and the run
+--   refused unless both matched. Dropped after (leak check).
+--   L1 locks: ACCESS SHARE + SHARE ROW EXCLUSIVE on leagues, divisions,
+--     teams, games, playoff_games, snack_shack_blocks, profiles.
+--   Run 1 — part 1 green (MU1–MU18 killed at their own tag, incl. the new
+--     lead ones). Part 2's baseline stopped on a HARNESS fault: its fixture
+--     made the divisions locked BEFORE inserting games, and the 0082 lock
+--     trigger (correctly) refused the insert; MU19–MU31 died there. Fixed:
+--     games go in while unlocked, then the divisions are locked (the staged
+--     harness piece patched in place; whole md5 dd5d9e8d…, re-checked).
+--   Run 2 — BASELINE pass; 31/31 killed at their own assertion. md5s printed
+--     match the repo file. Leak check after: 0 ZZ121 seasons, 0 new tables /
+--     functions, stage schema gone, 0 feature / settings / volunteer /
+--     outbox / rate-event rows, no calendar links on fixture teams, the wipe
+--     and finish back to 0120's live bodies (888ac9aa…, 8fe09939…), test org
+--     elite, no disabled trigger, no idle transaction.

@@ -790,9 +790,12 @@ begin
   end if;
 
   -- Rate limits (windows ≤ 23 hours — the take prunes at 23). Every attempt
-  -- that gets this far counts, refused or not.
+  -- that gets this far counts, refused or not. 100 an hour per IP (decided
+  -- 2026-11-08: families at a league meeting or on carrier NAT share one IP;
+  -- the captcha and the per-email limit carry the spam load), 10 a day per
+  -- email.
   if (select count(*) from public.volunteer_rate_events e
-       where e.kind = 'claim_ip' and e.key_hash = p_ip_hash and e.at > now() - interval '1 hour') >= 20
+       where e.kind = 'claim_ip' and e.key_hash = p_ip_hash and e.at > now() - interval '1 hour') >= 100
      or (select count(*) from public.volunteer_rate_events e
           where e.kind = 'claim_email' and e.key_hash = p_email_hash and e.at > now() - interval '23 hours') >= 10 then
     return jsonb_build_object('status', 'rate_limited');
