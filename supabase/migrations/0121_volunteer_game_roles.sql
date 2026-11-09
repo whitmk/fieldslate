@@ -11,6 +11,8 @@
 --          delete that detaches sign-ups; the insert that reattaches them
 --          after a regenerate), failures recorded, and "Keep it".
 --   PART 4: the auto-archive hold-back read.
+--   PART 5: the admin's sign-up list (names and emails, members only) and its
+--          actions: assign, cancel, no-show, reminders.
 -- Nothing here writes a game, a division, a team or a season, and nothing is
 -- visible to a league whose org_features switch is off.
 --
@@ -1365,6 +1367,286 @@ end;
 $$;
 
 -- ────────────────────────────────────────────────────────────────────────────
+-- 8c. PART 5 — the admin's sign-up list and its actions (authenticated)
+-- ────────────────────────────────────────────────────────────────────────────
+-- Every function goes through volunteer_admin_gate (member → switch → Elite →
+-- not archived). Volunteer names and emails leave the database ONLY through
+-- volunteer_admin_signups (admins) and volunteer_manage_page (the volunteer
+-- themself). Nothing here writes the activity log (sim:volunteer-leaks A1).
+
+-- Every claim of the season, any status, with its volunteer — the "Who
+-- signed up" list, the roles screen's Filled counts and the admin CSV.
+create or replace function public.volunteer_admin_signups(p_season_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_owner uuid := public.volunteer_admin_gate(p_season_id, false);
+begin
+  return jsonb_build_object(
+    'season_id', p_season_id,
+    'today', to_char(public.volunteer_org_now(v_owner), 'YYYY-MM-DD"T"HH24:MI'),
+    'claims', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'claim_id', c.id, 'status', c.status, 'game_id', c.game_id, 'role_id', c.role_id,
+               'for_team_id', c.for_team_id, 'position', c.position, 'family_team_id', c.family_team_id,
+               'created_by', c.created_by, 'created_at', c.created_at, 'canceled_at', c.canceled_at,
+               'no_show', c.no_show, 'last_reminded_at', c.last_reminded_at,
+               'detached_from', c.detached_from, 'detached_at', c.detached_at, 'moved_from', c.moved_from,
+               'volunteer_id', v.id, 'first_initial', v.first_initial, 'last_name', v.last_name,
+               'email', v.email_lc)
+             order by c.created_at, c.id)
+        from public.volunteer_claims c
+        join public.volunteers v on v.id = c.volunteer_id
+       where c.season_id = p_season_id), '[]'::jsonb));
+end;
+$$;
+
+-- The admin fills an open spot for someone. The same spot rules as the
+-- public claim (slot exists, not rained out, not closed or past, division
+-- published, a free position), except a role with sign-ups off can still be
+-- filled by an admin. The family's team must be in the season. The admin
+-- confirms the volunteer is 18 or older. The volunteer is emailed
+-- (admin_assigned) with their manage link. Statuses: assigned, invalid_input,
+-- no_slot, rained_out, closed, past, unpublished, wrong_team,
+-- already_signed_up, overlap_confirm_needed, just_taken.
+create or replace function public.volunteer_admin_assign(
+  p_season_id       uuid,
+  p_game_id         uuid,
+  p_role_id         uuid,
+  p_for_team_id     uuid,
+  p_team_id         uuid,
+  p_first_initial   text,
+  p_last_name       text,
+  p_email           text,
+  p_adult           boolean,
+  p_confirm_overlap boolean
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_owner   uuid := public.volunteer_admin_gate(p_season_id, true);
+  v_initial text := upper(btrim(coalesce(p_first_initial, '')));
+  v_last    text := btrim(coalesce(p_last_name, ''));
+  v_email   text := lower(btrim(coalesce(p_email, '')));
+  v_now     timestamp;
+  v_spot    record;
+  v_why     text;
+  v_vol     uuid;
+  v_pos     integer;
+  v_claim   uuid;
+  v_token   text;
+begin
+  if v_initial !~ '^[A-Z]$'
+     or length(v_last) not between 1 and 60 or v_last ~ '[[:cntrl:]<>]'
+     or length(v_email) > 254
+     or v_email !~ '^[^@[:space:][:cntrl:]<>"(),;:\\]+@[^@[:space:][:cntrl:]<>"(),;:\\]+\.[^@[:space:][:cntrl:]<>"(),;:\\]+$'
+     or not coalesce(p_adult, false) then
+    return jsonb_build_object('status', 'invalid_input');
+  end if;
+  if not exists (select 1 from public.games g where g.id = p_game_id and g.league_id = p_season_id) then
+    return jsonb_build_object('status', 'no_slot');
+  end if;
+  if not exists (select 1 from public.teams t join public.divisions d on d.id = t.division_id
+                  where t.id = p_team_id and d.league_id = p_season_id) then
+    return jsonb_build_object('status', 'wrong_team');
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(p_game_id::text || ':' || coalesce(p_role_id::text, '') || ':'
+                                                 || coalesce(p_for_team_id::text, ''), 121));
+
+  v_now := public.volunteer_org_now(v_owner);
+  select * into v_spot from public.volunteer_season_spots(p_season_id) sp
+   where sp.game_id = p_game_id and sp.role_id = p_role_id
+     and sp.for_team_id is not distinct from p_for_team_id;
+  select g.status into v_why from public.games g where g.id = p_game_id;
+  v_why := public.volunteer_claim_refusal(v_why, v_spot.spot_start, v_now, v_spot.game_id is not null,
+                                          v_spot.division_locked, true);
+  if v_why is not null then
+    return jsonb_build_object('status', v_why);
+  end if;
+
+  select v.id into v_vol from public.volunteers v where v.owner_id = v_owner and v.email_lc = v_email;
+  if v_vol is not null then
+    if exists (select 1 from public.volunteer_claims c
+                where c.volunteer_id = v_vol and c.status = 'active' and c.game_id = p_game_id
+                  and c.role_id = p_role_id and c.for_team_id is not distinct from p_for_team_id) then
+      return jsonb_build_object('status', 'already_signed_up');
+    end if;
+    if not coalesce(p_confirm_overlap, false) and exists (
+         select 1
+           from public.volunteer_claims c
+           join public.games g on g.id = c.game_id
+           join public.volunteer_roles vr on vr.id = c.role_id
+           join public.teams ht on ht.id = g.home_team_id
+           join public.divisions hd on hd.id = ht.division_id
+          where c.volunteer_id = v_vol and c.status = 'active'
+            and public.volunteer_spot_start((g.scheduled_at at time zone 'UTC')::timestamp, vr.lead_minutes) < v_spot.game_end
+            and v_spot.spot_start < (g.scheduled_at at time zone 'UTC')::timestamp
+                                    + make_interval(secs => public.volunteer_game_minutes(hd.settings) * 60)) then
+      return jsonb_build_object('status', 'overlap_confirm_needed');
+    end if;
+  end if;
+
+  select min(n) into v_pos
+    from generate_series(1, v_spot.spots) n
+   where not exists (select 1 from public.volunteer_claims c
+                      where c.game_id = p_game_id and c.role_id = p_role_id and c.status = 'active'
+                        and c.for_team_id is not distinct from p_for_team_id and c.position = n);
+  if v_pos is null then
+    return jsonb_build_object('status', 'just_taken');
+  end if;
+
+  if v_vol is null then
+    insert into public.volunteers (owner_id, email_lc, first_initial, last_name, adult_confirmed_at)
+    values (v_owner, v_email, v_initial, v_last, now())
+    returning id into v_vol;
+  end if;
+
+  begin
+    insert into public.volunteer_claims (owner_id, season_id, volunteer_id, family_team_id, game_id, role_id,
+                                         for_team_id, position, created_by)
+    values (v_owner, p_season_id, v_vol, p_team_id, p_game_id, p_role_id, p_for_team_id, v_pos, 'admin')
+    returning id into v_claim;
+  exception when unique_violation then
+    return jsonb_build_object('status', 'just_taken');
+  end;
+
+  v_token := encode(extensions.gen_random_bytes(32), 'hex');
+  insert into public.volunteer_manage_links (token_hash, volunteer_id, season_id)
+  values (encode(extensions.digest(v_token, 'sha256'), 'hex'), v_vol, p_season_id);
+  insert into public.volunteer_outbox (owner_id, season_id, volunteer_id, kind, payload)
+  values (v_owner, p_season_id, v_vol, 'admin_assigned',
+          jsonb_build_object('claim_id', v_claim, 'manage_token', v_token));
+
+  return jsonb_build_object('status', 'assigned', 'claim_id', v_claim, 'position', v_pos);
+end;
+$$;
+
+-- The admin cancels a sign-up (active or detached). p_notify emails the
+-- volunteer (admin_canceled); either way any email still waiting about that
+-- spot is withdrawn. Statuses: canceled, not_found.
+create or replace function public.volunteer_admin_cancel(p_claim_id uuid, p_notify boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_season uuid;
+  v_owner  uuid;
+  v_claim  public.volunteer_claims%rowtype;
+begin
+  select c.season_id into v_season from public.volunteer_claims c where c.id = p_claim_id;
+  if v_season is null then
+    return jsonb_build_object('status', 'not_found');
+  end if;
+  v_owner := public.volunteer_admin_gate(v_season, true);
+  update public.volunteer_claims c set status = 'canceled', canceled_at = now()
+   where c.id = p_claim_id and c.status in ('active', 'detached')
+  returning c.* into v_claim;
+  if v_claim.id is null then
+    return jsonb_build_object('status', 'not_found');
+  end if;
+  update public.volunteer_outbox o set status = 'superseded', error = 'sign-up canceled by an admin'
+   where o.status = 'pending' and o.payload ->> 'claim_id' = p_claim_id::text;
+  if coalesce(p_notify, false) then
+    insert into public.volunteer_outbox (owner_id, season_id, volunteer_id, kind, payload)
+    values (v_owner, v_season, v_claim.volunteer_id, 'admin_canceled',
+            jsonb_build_object('claim_id', v_claim.id, 'game_id', v_claim.game_id));
+  end if;
+  return jsonb_build_object('status', 'canceled');
+end;
+$$;
+
+-- No-show: only for an active game sign-up whose spot date has passed in the
+-- league's timezone. Admin-only; the volunteer is never told. Statuses:
+-- saved, not_found, not_past.
+create or replace function public.volunteer_set_no_show(p_claim_id uuid, p_no_show boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_season uuid;
+  v_owner  uuid;
+  v_start  timestamp;
+begin
+  select c.season_id into v_season from public.volunteer_claims c where c.id = p_claim_id;
+  if v_season is null then
+    return jsonb_build_object('status', 'not_found');
+  end if;
+  v_owner := public.volunteer_admin_gate(v_season, false);
+  select public.volunteer_spot_start((g.scheduled_at at time zone 'UTC')::timestamp, vr.lead_minutes) into v_start
+    from public.volunteer_claims c
+    join public.games g on g.id = c.game_id
+    join public.volunteer_roles vr on vr.id = c.role_id
+   where c.id = p_claim_id and c.status = 'active';
+  if v_start is null then
+    return jsonb_build_object('status', 'not_found');
+  end if;
+  if v_start::date >= public.volunteer_org_now(v_owner)::date then
+    return jsonb_build_object('status', 'not_past');
+  end if;
+  update public.volunteer_claims set no_show = coalesce(p_no_show, false) where id = p_claim_id;
+  return jsonb_build_object('status', 'saved');
+end;
+$$;
+
+-- Reminders: one email per volunteer for the given sign-ups of the season
+-- that are active and still ahead, each with a fresh manage link. Asking
+-- again before it goes out replaces the waiting one (coalesce key per
+-- volunteer). Marks last_reminded_at. Returns {queued, reminded, skipped}:
+-- emails queued, sign-ups covered, sign-ups left out (not active, past, or
+-- not this season's).
+create or replace function public.volunteer_admin_remind(p_season_id uuid, p_claim_ids uuid[])
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_owner  uuid := public.volunteer_admin_gate(p_season_id, true);
+  v_now    timestamp := public.volunteer_org_now(v_owner);
+  v_asked  integer := coalesce(cardinality(p_claim_ids), 0);
+  v_vol    record;
+  v_token  text;
+  v_queued integer := 0;
+  v_covered integer := 0;
+begin
+  for v_vol in
+    select c.volunteer_id, array_agg(c.id order by c.id) as claim_ids
+      from public.volunteer_claims c
+      join public.games g on g.id = c.game_id
+      join public.volunteer_roles vr on vr.id = c.role_id
+     where c.id = any (coalesce(p_claim_ids, '{}'::uuid[])) and c.season_id = p_season_id and c.status = 'active'
+       and public.volunteer_spot_start((g.scheduled_at at time zone 'UTC')::timestamp, vr.lead_minutes) > v_now
+     group by c.volunteer_id
+  loop
+    v_token := encode(extensions.gen_random_bytes(32), 'hex');
+    insert into public.volunteer_manage_links (token_hash, volunteer_id, season_id)
+    values (encode(extensions.digest(v_token, 'sha256'), 'hex'), v_vol.volunteer_id, p_season_id);
+    update public.volunteer_outbox o set status = 'superseded', error = 'replaced by a newer reminder'
+     where o.status = 'pending' and o.coalesce_key = 'remind:' || v_vol.volunteer_id;
+    insert into public.volunteer_outbox (owner_id, season_id, volunteer_id, kind, payload, coalesce_key)
+    values (v_owner, p_season_id, v_vol.volunteer_id, 'reminder',
+            jsonb_build_object('claim_ids', to_jsonb(v_vol.claim_ids), 'manage_token', v_token),
+            'remind:' || v_vol.volunteer_id);
+    update public.volunteer_claims set last_reminded_at = now() where id = any (v_vol.claim_ids);
+    v_queued := v_queued + 1;
+    v_covered := v_covered + cardinality(v_vol.claim_ids);
+  end loop;
+  return jsonb_build_object('queued', v_queued, 'reminded', v_covered, 'skipped', v_asked - v_covered);
+end;
+$$;
+
+-- ────────────────────────────────────────────────────────────────────────────
 -- 9. Function privileges
 -- ────────────────────────────────────────────────────────────────────────────
 revoke execute on function public.volunteer_slot_state(text) from public, anon, authenticated, service_role, dashboard_readonly;
@@ -1393,6 +1675,11 @@ revoke execute on function public.volunteer_record_failure(uuid, uuid, text, tex
 revoke execute on function public.volunteer_failure_count(uuid) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_keep_spot(text, uuid) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_archive_holds(uuid[]) from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_admin_signups(uuid) from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_admin_assign(uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, boolean) from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_admin_cancel(uuid, boolean) from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_set_no_show(uuid, boolean) from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_admin_remind(uuid, uuid[]) from public, anon, authenticated, service_role, dashboard_readonly;
 
 grant execute on function public.save_volunteer_role(uuid, uuid, text, text, integer, integer, boolean, boolean, uuid[], boolean) to authenticated;
 grant execute on function public.delete_volunteer_role(uuid, boolean) to authenticated;
@@ -1404,6 +1691,11 @@ grant execute on function public.volunteer_outbox_finish(bigint, boolean, text, 
 grant execute on function public.volunteer_failure_count(uuid) to authenticated;
 grant execute on function public.volunteer_keep_spot(text, uuid) to service_role;
 grant execute on function public.volunteer_archive_holds(uuid[]) to authenticated;
+grant execute on function public.volunteer_admin_signups(uuid) to authenticated;
+grant execute on function public.volunteer_admin_assign(uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, boolean) to authenticated;
+grant execute on function public.volunteer_admin_cancel(uuid, boolean) to authenticated;
+grant execute on function public.volunteer_set_no_show(uuid, boolean) to authenticated;
+grant execute on function public.volunteer_admin_remind(uuid, uuid[]) to authenticated;
 
 -- Verify, or the whole migration rolls back.
 do $v$
@@ -1417,7 +1709,12 @@ begin
     'public.save_volunteer_role(uuid, uuid, text, text, integer, integer, boolean, boolean, uuid[], boolean)',
     'public.delete_volunteer_role(uuid, boolean)',
     'public.volunteer_failure_count(uuid)',
-    'public.volunteer_archive_holds(uuid[])'] loop
+    'public.volunteer_archive_holds(uuid[])',
+    'public.volunteer_admin_signups(uuid)',
+    'public.volunteer_admin_assign(uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, boolean)',
+    'public.volunteer_admin_cancel(uuid, boolean)',
+    'public.volunteer_set_no_show(uuid, boolean)',
+    'public.volunteer_admin_remind(uuid, uuid[])'] loop
     if not has_function_privilege('authenticated', f, 'EXECUTE') then
       raise exception '0121 verify: authenticated cannot execute %', f;
     end if;

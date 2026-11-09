@@ -5844,6 +5844,25 @@ Still open:
   count — they are history). Every named season must exist and belong to an
   org the caller is a member of, else `not_authorized`. The switch is not
   consulted. Proof AH1–AH3 + MU45–MU47 in `volunteer-claims-sim.sql`.
+- **0121 part 5 (commit 2e, NOT APPLIED, its proof cases NOT RUN):** the
+  admin's sign-up list and its actions, all authenticated, all through
+  `volunteer_admin_gate` (member → switch → Elite → not archived), none
+  writing the activity log. `volunteer_admin_signups(season)` — every claim,
+  any status, with first initial, last name and email: the ONLY admin path
+  to names and emails (the who-signed-up list, the roles screen's Filled
+  counts, the admin CSV). `volunteer_admin_assign(…)` — the public claim's
+  spot rules except a role with sign-ups off can be filled; the family team
+  must be in the season; the admin confirms 18+; `created_by 'admin'`; emails
+  `admin_assigned` with a manage token. `volunteer_admin_cancel(claim,
+  notify)` — active or detached → canceled, withdraws that claim's waiting
+  email, emails `admin_canceled` only when asked. `volunteer_set_no_show` —
+  an active game sign-up whose spot date has passed (league timezone).
+  `volunteer_admin_remind(season, claims)` — one `reminder` per volunteer for
+  spots still ahead, a fresh manage link each, a waiting reminder replaced
+  (`remind:<volunteer>`), `last_reminded_at` set. Proof AS1–AS2, AD1, RM1,
+  NS1, AC1, G4 + MU48–MU58. **The email templates for these kinds (and
+  `signup_confirmed`) are not written yet** — the drain refuses an unknown
+  kind, so until they land these emails fail, never send blank.
 - **THE FENCE: `npm run sim:volunteer-leaks`** (+ `:mutants`, 7, each killed
   at its own assertion). F1 no outbound file (the daylight fence's list plus
   the activity log, its panel and the snack shack print) reaches

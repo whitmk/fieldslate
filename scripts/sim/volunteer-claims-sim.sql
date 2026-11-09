@@ -123,6 +123,17 @@
 --   MU45 archive holds answer a non-member                     → AH2
 --   MU46 archive holds count active claims only                → AH1
 --   MU47 archive holds callable by anon                        → AH3
+--   MU48 the admin list skips the gate                         → AD1
+--   MU49 assign skips the 18+ confirmation                     → AS1
+--   MU50 assign ignores "published"                            → AS2
+--   MU51 assign takes a team from another season               → AS1
+--   MU52 assign records the volunteer as the author            → AS1
+--   MU53 cancel leaves waiting email                           → AC1
+--   MU54 cancel always notifies                                → AC1
+--   MU55 no-show on a future spot                              → NS1
+--   MU56 reminders include past spots                          → RM1
+--   MU57 a second reminder doesn't replace the first           → RM1
+--   MU58 the admin list callable by anon                       → G4
 --   PART 3 (own fixture): T1 a move → one game_moved per claim, coalesced,
 --   original kept; T2 moved again keeps the FIRST original; T1b a field
 --   change is a move; T3 rainout; T4 makeup (new time); T5 back on (same
@@ -138,6 +149,15 @@
 --   claim (a season with only a canceled claim is held; one with none is
 --   not); AH2 a non-member, or an id that is no season → not_authorized;
 --   AH3 authenticated only.
+--   PART 5: AS1 admin assign — refuses an unconfirmed adult, another season's
+--   team, a non-member, a full spot and a past game; fills a role with
+--   sign-ups off; stores created_by admin, the volunteer and an
+--   admin_assigned email with a manage token; AS2 an unpublished division
+--   can't be filled; AD1 the list (names + emails) for members only, switch
+--   on; RM1 reminders: one email per volunteer for spots still ahead, asked
+--   again → the waiting one is replaced; NS1 no-show only on a past spot;
+--   AC1 admin cancel withdraws waiting email and notifies only when asked,
+--   non-members refused; G4 privileges (authenticated only).
 -- (MU31 alters a grant, which only part 2's G2 checks; the verify block is
 -- left out of every mutant's text, as in 0120's proof.)
 select set_config('lock_timeout', '3s', true), set_config('statement_timeout', '120s', true);
@@ -170,6 +190,11 @@ begin
   drop function if exists public.volunteer_on_game_insert();
   drop function if exists public.volunteer_failure_count(uuid);
   drop function if exists public.volunteer_archive_holds(uuid[]);
+  drop function if exists public.volunteer_admin_signups(uuid);
+  drop function if exists public.volunteer_admin_assign(uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, boolean);
+  drop function if exists public.volunteer_admin_cancel(uuid, boolean);
+  drop function if exists public.volunteer_set_no_show(uuid, boolean);
+  drop function if exists public.volunteer_admin_remind(uuid, uuid[]);
   drop function if exists public.volunteer_record_failure(uuid, uuid, text, text);
   drop table if exists public.volunteer_trigger_failures;
   drop function if exists public.volunteer_keep_spot(text, uuid);
@@ -957,6 +982,167 @@ begin
                  where has_function_privilege(ro, 'public.volunteer_archive_holds(uuid[])', 'EXECUTE')) then
     return 'AH3 archive holds privileges';
   end if;
+  return pg_temp.h121_case4();
+end;
+$f$;
+
+-- PART 5 — the admin's sign-up list and its actions.
+create or replace function pg_temp.h121_case4() returns text language plpgsql as $f$
+declare
+  v_org uuid := 'bbf9afe1-9e62-41e0-becc-895085bfc9d6';
+  v_now timestamp;
+  v_s uuid := gen_random_uuid(); v_sx uuid := gen_random_uuid();
+  v_d uuid := gen_random_uuid(); v_du uuid := gen_random_uuid(); v_dx uuid := gen_random_uuid();
+  v_t1 uuid := gen_random_uuid(); v_t2 uuid := gen_random_uuid(); v_t3 uuid := gen_random_uuid();
+  v_t4 uuid := gen_random_uuid(); v_tx uuid := gen_random_uuid();
+  g1 uuid := gen_random_uuid(); g2 uuid := gen_random_uuid(); gu uuid := gen_random_uuid(); gp uuid := gen_random_uuid();
+  r_fp uuid := gen_random_uuid(); r_off uuid := gen_random_uuid();
+  v_vol uuid := gen_random_uuid();
+  c1 uuid; c2 uuid; cp uuid; cq uuid;
+  v_txt text; v_r jsonb;
+begin
+  insert into public.org_features (owner_id, feature, enabled) values (v_org, 'volunteers', true)
+    on conflict (owner_id, feature) do update set enabled = true;
+  update public.profiles set plan = 'elite' where id = v_org;
+  v_now := public.volunteer_org_now(v_org);
+  insert into public.leagues (id, name, sport, season, owner_id, start_date, end_date) values
+    (v_s,  'ZZ121 P5',  'Baseball', 'Fall 2026', v_org, v_now::date - 30, v_now::date + 60),
+    (v_sx, 'ZZ121 P5x', 'Baseball', 'Fall 2026', v_org, v_now::date - 30, v_now::date + 60);
+  insert into public.divisions (id, league_id, name, team_count, settings, status) values
+    (v_d,  v_s,  'ZZ Majors', 2, '{"game_duration": 90}'::jsonb, 'active'),
+    (v_du, v_s,  'ZZ Minors', 2, '{"game_duration": 90}'::jsonb, 'active'),
+    (v_dx, v_sx, 'ZZ Other',  1, '{}'::jsonb, 'active');
+  insert into public.teams (id, league_id, name, division_id) values
+    (v_t1, v_s, 'ZZ Expos', v_d), (v_t2, v_s, 'ZZ Mets', v_d),
+    (v_t3, v_s, 'ZZ Cubs', v_du), (v_t4, v_s, 'ZZ Rays', v_du), (v_tx, v_sx, 'ZZ Other', v_dx);
+  insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status) values
+    (g1, v_s, v_t1, v_t2, (v_now + interval '3 days') at time zone 'UTC', 'scheduled'),
+    (g2, v_s, v_t1, v_t2, (v_now + interval '5 days') at time zone 'UTC', 'scheduled'),
+    (gu, v_s, v_t3, v_t4, (v_now + interval '3 days') at time zone 'UTC', 'scheduled'),
+    (gp, v_s, v_t1, v_t2, (v_now - interval '2 days') at time zone 'UTC', 'scheduled');
+  update public.divisions set locked = true where id = v_d;
+  insert into public.volunteer_roles (id, owner_id, season_id, name, kind, spots, signups_open) values
+    (r_fp,  v_org, v_s, 'ZZ Field prep', 'per_game', 1, true),
+    (r_off, v_org, v_s, 'ZZ Announcer',  'per_game', 1, false);
+  insert into public.volunteer_role_divisions values (r_fp, v_d), (r_fp, v_du), (r_off, v_d);
+
+  -- AS1 — assign: refusals first, then the assignment itself.
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format(
+    'select public.volunteer_admin_assign(%L, %L, %L, null, %L, %L, %L, %L, false, false)::text',
+    v_s, g1, r_fp, v_t1, 'P', 'Papa', 'zz121-p5@example.org'));
+  if v_txt not like '%invalid_input%' then return 'AS1 adult not confirmed: ' || coalesce(v_txt, 'null'); end if;
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format(
+    'select public.volunteer_admin_assign(%L, %L, %L, null, %L, %L, %L, %L, true, false)::text',
+    v_s, g1, r_fp, v_tx, 'P', 'Papa', 'zz121-p5@example.org'));
+  if v_txt not like '%wrong_team%' then return 'AS1 another season''s team: ' || coalesce(v_txt, 'null'); end if;
+  v_txt := pg_temp.h121_as(gen_random_uuid(), 'authenticated', format(
+    'select public.volunteer_admin_assign(%L, %L, %L, null, %L, %L, %L, %L, true, false)::text',
+    v_s, g1, r_fp, v_t1, 'P', 'Papa', 'zz121-p5@example.org'));
+  if v_txt not like '%not_authorized%' then return 'AS1 non-member: ' || coalesce(v_txt, 'null'); end if;
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format(
+    'select public.volunteer_admin_assign(%L, %L, %L, null, %L, %L, %L, %L, true, false)::text',
+    v_s, g1, r_fp, v_t1, 'p', ' Papa ', ' ZZ121-P5@Example.org '));
+  if v_txt like 'ERR%' or v_txt::jsonb ->> 'status' <> 'assigned' then return 'AS1 assign: ' || coalesce(v_txt, 'null'); end if;
+  c1 := (v_txt::jsonb ->> 'claim_id')::uuid;
+  if (select created_by from public.volunteer_claims where id = c1) <> 'admin'
+     or (select email_lc || '/' || first_initial || '/' || last_name from public.volunteers
+          where id = (select volunteer_id from public.volunteer_claims where id = c1)) <> 'zz121-p5@example.org/P/Papa'
+     or (select payload ->> 'manage_token' from public.volunteer_outbox where kind = 'admin_assigned' and payload ->> 'claim_id' = c1::text) !~ '^[0-9a-f]{64}$' then
+    return 'AS1 the assignment, volunteer or email';
+  end if;
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format(
+    'select public.volunteer_admin_assign(%L, %L, %L, null, %L, %L, %L, %L, true, true)::text',
+    v_s, g1, r_off, v_t1, 'P', 'Papa', 'zz121-p5@example.org'));
+  if v_txt::jsonb ->> 'status' is distinct from 'assigned' then return 'AS1 a role with sign-ups off: ' || coalesce(v_txt, 'null'); end if;
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format(
+    'select public.volunteer_admin_assign(%L, %L, %L, null, %L, %L, %L, %L, true, false)::text',
+    v_s, g1, r_fp, v_t2, 'Q', 'Quebec', 'zz121-p5q@example.org'));
+  if v_txt::jsonb ->> 'status' is distinct from 'just_taken' then return 'AS1 a full spot: ' || coalesce(v_txt, 'null'); end if;
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format(
+    'select public.volunteer_admin_assign(%L, %L, %L, null, %L, %L, %L, %L, true, false)::text',
+    v_s, gp, r_fp, v_t1, 'Q', 'Quebec', 'zz121-p5q@example.org'));
+  if v_txt::jsonb ->> 'status' is distinct from 'past' then return 'AS1 a past game: ' || coalesce(v_txt, 'null'); end if;
+  -- AS2 — a division that isn't published can't be filled, by an admin either.
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format(
+    'select public.volunteer_admin_assign(%L, %L, %L, null, %L, %L, %L, %L, true, false)::text',
+    v_s, gu, r_fp, v_t3, 'Q', 'Quebec', 'zz121-p5q@example.org'));
+  if v_txt::jsonb ->> 'status' is distinct from 'unpublished' then return 'AS2 unpublished: ' || coalesce(v_txt, 'null'); end if;
+
+  -- AD1 — the list: members only, names and emails included.
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format('select public.volunteer_admin_signups(%L)::text', v_s));
+  if v_txt like 'ERR%' or jsonb_array_length(v_txt::jsonb -> 'claims') <> 2
+     or not exists (select 1 from jsonb_array_elements(v_txt::jsonb -> 'claims') x
+                     where x ->> 'last_name' = 'Papa' and x ->> 'email' = 'zz121-p5@example.org' and x ->> 'created_by' = 'admin') then
+    return 'AD1 list: ' || left(coalesce(v_txt, 'null'), 200);
+  end if;
+  v_txt := pg_temp.h121_as(gen_random_uuid(), 'authenticated', format('select public.volunteer_admin_signups(%L)::text', v_s));
+  if v_txt not like '%not_authorized%' then return 'AD1 non-member: ' || left(coalesce(v_txt, 'null'), 200); end if;
+  update public.org_features set enabled = false where owner_id = v_org;
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format('select public.volunteer_admin_signups(%L)::text', v_s));
+  update public.org_features set enabled = true where owner_id = v_org;
+  if v_txt not like '%feature_off%' then return 'AD1 switch off: ' || left(coalesce(v_txt, 'null'), 200); end if;
+
+  -- RM1 — reminders: one email per volunteer, ahead-only, replaced if asked again.
+  insert into public.volunteer_claims (id, owner_id, season_id, volunteer_id, game_id, role_id, position, created_by)
+    values (gen_random_uuid(), v_org, v_s, (select volunteer_id from public.volunteer_claims where id = c1), g2, r_fp, 1, 'volunteer')
+    returning id into c2;
+  insert into public.volunteer_claims (id, owner_id, season_id, volunteer_id, game_id, role_id, position, created_by)
+    values (gen_random_uuid(), v_org, v_s, (select volunteer_id from public.volunteer_claims where id = c1), gp, r_fp, 1, 'volunteer')
+    returning id into cp;
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format(
+    'select public.volunteer_admin_remind(%L, array[%L, %L, %L]::uuid[])::text', v_s, c1, c2, cp));
+  if v_txt like 'ERR%' or (v_txt::jsonb ->> 'queued') <> '1' or (v_txt::jsonb ->> 'reminded') <> '2' or (v_txt::jsonb ->> 'skipped') <> '1' then
+    return 'RM1 remind: ' || coalesce(v_txt, 'null');
+  end if;
+  if (select count(*) from public.volunteer_outbox where kind = 'reminder' and status = 'pending' and season_id = v_s) <> 1
+     or (select last_reminded_at from public.volunteer_claims where id = cp) is not null
+     or (select last_reminded_at from public.volunteer_claims where id = c2) is null then
+    return 'RM1 the reminder rows';
+  end if;
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format(
+    'select public.volunteer_admin_remind(%L, array[%L]::uuid[])::text', v_s, c1));
+  if (select count(*) from public.volunteer_outbox where kind = 'reminder' and status = 'pending' and season_id = v_s) <> 1
+     or (select count(*) from public.volunteer_outbox where kind = 'reminder' and status = 'superseded' and season_id = v_s) <> 1 then
+    return 'RM1 asked twice: two reminders waiting';
+  end if;
+
+  -- NS1 — no-show: past spots only.
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format('select public.volunteer_set_no_show(%L, true)::text', c2));
+  if v_txt::jsonb ->> 'status' is distinct from 'not_past' or (select no_show from public.volunteer_claims where id = c2) then
+    return 'NS1 a future spot: ' || coalesce(v_txt, 'null');
+  end if;
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format('select public.volunteer_set_no_show(%L, true)::text', cp));
+  if v_txt::jsonb ->> 'status' is distinct from 'saved' or not (select no_show from public.volunteer_claims where id = cp) then
+    return 'NS1 a past spot: ' || coalesce(v_txt, 'null');
+  end if;
+
+  -- AC1 — cancel: withdraws waiting email; notifies only when asked.
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format('select public.volunteer_admin_cancel(%L, false)::text', c1));
+  if v_txt::jsonb ->> 'status' is distinct from 'canceled' or (select status from public.volunteer_claims where id = c1) <> 'canceled'
+     or exists (select 1 from public.volunteer_outbox where kind = 'admin_canceled' and payload ->> 'claim_id' = c1::text)
+     or (select status from public.volunteer_outbox where kind = 'admin_assigned' and payload ->> 'claim_id' = c1::text) <> 'superseded' then
+    return 'AC1 cancel without notice: ' || coalesce(v_txt, 'null');
+  end if;
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format('select public.volunteer_admin_cancel(%L, true)::text', c2));
+  if (select count(*) from public.volunteer_outbox where kind = 'admin_canceled' and payload ->> 'claim_id' = c2::text) <> 1 then
+    return 'AC1 cancel with notice: ' || coalesce(v_txt, 'null');
+  end if;
+  v_txt := pg_temp.h121_as(gen_random_uuid(), 'authenticated', format('select public.volunteer_admin_cancel(%L, true)::text', cp));
+  if v_txt not like '%not_authorized%' or (select status from public.volunteer_claims where id = cp) <> 'active' then
+    return 'AC1 non-member: ' || coalesce(v_txt, 'null');
+  end if;
+
+  -- G4 — privileges.
+  if exists (select 1 from unnest(array['public.volunteer_admin_signups(uuid)',
+                                        'public.volunteer_admin_assign(uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, boolean)',
+                                        'public.volunteer_admin_cancel(uuid, boolean)', 'public.volunteer_set_no_show(uuid, boolean)',
+                                        'public.volunteer_admin_remind(uuid, uuid[])']) f
+              where not has_function_privilege('authenticated', f, 'EXECUTE')
+                 or has_function_privilege('anon', f, 'EXECUTE')
+                 or has_function_privilege('service_role', f, 'EXECUTE')
+                 or has_function_privilege('dashboard_readonly', f, 'EXECUTE')) then
+    return 'G4 part-5 privileges';
+  end if;
   return 'pass';
 end;
 $f$;
@@ -1132,7 +1318,38 @@ $r$, $r$$r$),
     ('MU46', 'AH1', $r$     where c.season_id = any (p_season_ids)), '{}'::uuid[]);$r$,
                     $r$     where c.season_id = any (p_season_ids) and c.status = 'active'), '{}'::uuid[]);$r$),
     ('MU47', 'AH3', $r$grant execute on function public.volunteer_archive_holds(uuid[]) to authenticated;$r$,
-                    $r$grant execute on function public.volunteer_archive_holds(uuid[]) to authenticated, anon;$r$)
+                    $r$grant execute on function public.volunteer_archive_holds(uuid[]) to authenticated, anon;$r$),
+    ('MU48', 'AD1', $r$  v_owner uuid := public.volunteer_admin_gate(p_season_id, false);
+begin
+  return jsonb_build_object($r$, $r$  v_owner uuid := (select l.owner_id from public.leagues l where l.id = p_season_id);
+begin
+  return jsonb_build_object($r$),
+    ('MU49', 'AS1', $r$     or not coalesce(p_adult, false) then
+    return jsonb_build_object('status', 'invalid_input');
+  end if;
+  if not exists (select 1 from public.games g where g.id = p_game_id and g.league_id = p_season_id) then$r$,
+                    $r$     or false then
+    return jsonb_build_object('status', 'invalid_input');
+  end if;
+  if not exists (select 1 from public.games g where g.id = p_game_id and g.league_id = p_season_id) then$r$),
+    ('MU50', 'AS2', $r$                                          v_spot.division_locked, true);$r$,
+                    $r$                                          true, true);$r$),
+    ('MU51', 'AS1', $r$                  where t.id = p_team_id and d.league_id = p_season_id) then$r$,
+                    $r$                  where t.id = p_team_id) then$r$),
+    ('MU52', 'AS1', $r$    values (v_owner, p_season_id, v_vol, p_team_id, p_game_id, p_role_id, p_for_team_id, v_pos, 'admin')$r$,
+                    $r$    values (v_owner, p_season_id, v_vol, p_team_id, p_game_id, p_role_id, p_for_team_id, v_pos, 'volunteer')$r$),
+    ('MU53', 'AC1', $r$  update public.volunteer_outbox o set status = 'superseded', error = 'sign-up canceled by an admin'
+   where o.status = 'pending' and o.payload ->> 'claim_id' = p_claim_id::text;
+$r$, $r$$r$),
+    ('MU54', 'AC1', $r$  if coalesce(p_notify, false) then$r$, $r$  if coalesce(p_notify, true) or true then$r$),
+    ('MU55', 'NS1', $r$  if v_start::date >= public.volunteer_org_now(v_owner)::date then$r$, $r$  if false then$r$),
+    ('MU56', 'RM1', $r$       and public.volunteer_spot_start((g.scheduled_at at time zone 'UTC')::timestamp, vr.lead_minutes) > v_now
+     group by c.volunteer_id$r$, $r$     group by c.volunteer_id$r$),
+    ('MU57', 'RM1', $r$    update public.volunteer_outbox o set status = 'superseded', error = 'replaced by a newer reminder'
+     where o.status = 'pending' and o.coalesce_key = 'remind:' || v_vol.volunteer_id;
+$r$, $r$$r$),
+    ('MU58', 'G4', $r$grant execute on function public.volunteer_admin_signups(uuid) to authenticated;$r$,
+                   $r$grant execute on function public.volunteer_admin_signups(uuid) to authenticated, anon;$r$)
   ) as t(id, expect, find, repl)
   loop
     if (length(v_body) - length(replace(v_body, m.find, ''))) / greatest(length(m.find), 1) <> 1 then
