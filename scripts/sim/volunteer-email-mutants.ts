@@ -124,9 +124,9 @@ const MUTANTS: Mutant[] = [
     expect: "C3",
   },
   {
-    id: "VE20", what: "a failed read still renders the card", file: "src/app/(dashboard)/dashboard/settings/page.tsx",
-    find: "    console.error(\"[settings] volunteer card read failed:\", error.message);\n    return null;\n",
-    replace: "    console.error(\"[settings] volunteer card read failed:\", error.message);\n    return { elite: false, settings: null };\n",
+    id: "VE20", what: "a failed read still renders the card", file: "src/lib/volunteers/feature-state.ts",
+    find: "    console.error(`[${where}] volunteer feature read failed:`, error.message);\n    return null;\n",
+    replace: "    console.error(`[${where}] volunteer feature read failed:`, error.message);\n    return { elite: false, settings: null };\n",
     expect: "S6",
   },
 ];

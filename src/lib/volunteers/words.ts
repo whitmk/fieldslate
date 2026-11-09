@@ -52,3 +52,76 @@ export function settingsErrorLine(message: string | null | undefined): string {
   if (m.includes("not_authorized")) return "You don't have access to this league's settings.";
   return "Couldn't save. Nothing changed — please try again.";
 }
+
+// ── Admin: volunteer roles (/dashboard/volunteers) ───────────────────────────
+export const NAV_LABEL = "Volunteers";
+export const ROLES_TITLE = "Volunteer roles";
+export const WHO_SIGNED_UP_LINK = "Who signed up →";
+export const NO_SEASON = "Create a season to set up volunteer roles.";
+export const ROLES_READ_FAILED = "Couldn't load this season's volunteer roles. Nothing is shown rather than a partial list — try again.";
+
+export const STRIP_TITLE = "Public sign-up link";
+export const STRIP_DETAIL =
+  "Post it on your league site or send it to families. Shows only roles with sign-ups on. Names are never shown, only \"Taken.\"";
+export const STRIP_ON = "Link is on";
+export const STRIP_OFF = "Link is off";
+export const STRIP_COPY = "Copy link";
+export const STRIP_COPIED = "Copied";
+export const STRIP_OPEN = "Open ↗";
+export const STRIP_SETTINGS = "Settings →";
+export const STRIP_NO_LINK = "Turn the sign-up link on in Settings to share it.";
+
+export const ROLES_TABLE_TITLE = "Roles this season";
+export const ADD_ROLE = "+ Add role";
+export const COL_ROLE = "Role";
+export const COL_SLOTS = "Slots";
+export const COL_DIVISIONS = "Divisions";
+export const COL_SIGNUPS = "Sign-ups";
+export const COL_FILLED = "Filled";
+export const SIGNUPS_ON = "On";
+export const SIGNUPS_OFF = "Off";
+export const NO_ROLES = "No roles yet. Add one — for example GameChanger, field prep or announcer.";
+export const FILLED_UNKNOWN = "Couldn't count";
+
+export const UMPIRES_ROLE = "Umpires";
+export const UMPIRES_SOURCE = "From the Umpires page roster";
+export const UMPIRES_SLOTS = "Per division setting";
+export const UMPIRES_SIGNUPS = "Assigned by admin";
+export const UMPIRES_LINK = "Umpires page →";
+export const UMPIRES_FOOTNOTE =
+  "Umpires never use the public link. A later phase adds personal links for rostered umpires, so they can claim open slots they're eligible for.";
+
+export const EDIT_ROLE_TITLE = (name: string) => `Edit role: ${name}`;
+export const NEW_ROLE_TITLE = "Add a role";
+export const FIELD_NAME = "Role name";
+export const FIELD_KIND = "Slots are created";
+export const KIND_PER_GAME = "Per game";
+export const KIND_PER_GAME_DETAIL = "Like field prep or announcer. Home games only.";
+export const KIND_PER_TEAM = "Per our team in the game";
+export const KIND_PER_TEAM_DETAIL =
+  "Two of our teams playing each other gets 2 slots. An interleague game gets 1, for our team only.";
+export const KIND_LOCKED = "Can't change while people are signed up for this role.";
+export const FIELD_SPOTS = "How many each";
+export const FIELD_DIVISIONS = "Divisions";
+export const FIELD_LEAD = "Starts before the game";
+export const LEAD_DETAIL = "Minutes before the first pitch the spot starts (0–120). It ends when the game ends.";
+export const FIELD_OPEN = "Open on the public sign-up link";
+export const SAVE_ROLE = "Save role";
+export const CANCEL = "Cancel";
+export const DELETE_ROLE = "Delete role";
+export const PARTNER_NOTE = "Games waiting on a partner league's answer get slots once they're agreed.";
+
+/** A role refusal from save/delete_volunteer_role, in words. */
+export function roleErrorLine(message: string | null | undefined): string {
+  const m = message ?? "";
+  if (m.includes("name_required")) return "Give the role a name.";
+  if (m.includes("name_taken")) return "This season already has a role with that name.";
+  if (m.includes("invalid_spots")) return "Choose 1 to 10 spots.";
+  if (m.includes("invalid_lead")) return "Choose 0 to 120 minutes.";
+  if (m.includes("invalid_kind")) return "Choose how slots are created.";
+  if (m.includes("division_not_in_season")) return "One of those divisions isn't in this season. Reload and try again.";
+  if (m.includes("kind_locked")) return KIND_LOCKED;
+  if (m.includes("role_not_found")) return "This role was deleted. Reload to see the current roles.";
+  if (m.includes("season_archived")) return "This season is archived.";
+  return settingsErrorLine(m);
+}

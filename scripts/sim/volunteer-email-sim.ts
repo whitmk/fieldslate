@@ -338,9 +338,11 @@ async function main() {
     const page = readFileSync(join(ROOT, "src/app/(dashboard)/dashboard/settings/page.tsx"), "utf8");
     ok(page.includes("{volunteers && <VolunteersCard orgId={currentOrgId} data={volunteers} />}"), "S6",
       "the card renders only when the loader returned data");
-    ok(/if \(error\) \{\s*console\.error\("\[settings\] volunteer card read failed:", error\.message\);\s*return null;/.test(page),
+    const loader = readFileSync(join(ROOT, "src/lib/volunteers/feature-state.ts"), "utf8");
+    ok(page.includes('loadVolunteerFeature(supabase, currentOrgId, "settings")'), "S6", "Settings reads through the shared loader");
+    ok(/if \(error\) \{\s*console\.error\(`\[\$\{where\}\] volunteer feature read failed:`, error\.message\);\s*return null;/.test(loader),
       "S6", "a failed read means no card");
-    ok(page.includes("return cardDataFromAdminState(data);"), "S6", "the reply goes through cardDataFromAdminState");
+    ok(loader.includes("return cardDataFromAdminState(data);"), "S6", "the reply goes through cardDataFromAdminState");
   });
 
   for (const [k, v] of Object.entries(counters)) ok(v > 0, "VAC", `anti-vacuity counter ${k} is zero`);

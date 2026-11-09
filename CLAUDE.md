@@ -5863,6 +5863,24 @@ Still open:
   NS1, AC1, G4 + MU48–MU58. **The email templates for these kinds (and
   `signup_confirmed`) are not written yet** — the drain refuses an unknown
   kind, so until they land these emails fail, never send blank.
+- **Screen 1 — Volunteer roles (`/dashboard/volunteers`, 2026-11-08,
+  approved plan).** The sidebar item "Volunteers" (Elite tier) and the page
+  exist only when `loadVolunteerFeature` (`src/lib/volunteers/feature-state.ts`
+  — the ONE read of `volunteer_admin_state`; Settings, the layout and the page
+  all use it) returns data: otherwise no item and the page 404s. Not Elite →
+  `FeatureLockedCard`. Reads are complete-or-throw (one error card, never a
+  partial list); Filled comes from `volunteer_admin_signups` and says
+  "Couldn't count" if that read fails. Rules: `roles-screen.ts`; words:
+  `words.ts`; slot counts through `slots.ts` (never a copy). The editor calls
+  `save_volunteer_role` / `delete_volunteer_role` with `p_commit false` FIRST
+  and confirms any cancellation before committing; a reply that isn't a
+  readable preview is an error. Differences from the board (approved): no
+  snack shack row until branch C; spots 1–10; "Starts before the game"
+  0–120; the kind locks once anyone signed up (unknown counts lock too); the
+  link strip shows status, Copy, Open and a Settings link (on/off, contact,
+  Reset stay in Settings). Harness `npm run sim:volunteer-roles` (53 checks
+  × 3 zones) + `:mutants` (9). Checked on a deleted scratch route at 1280px
+  and 375px with the RPCs stubbed. **Needs 0121 applied before `main`.**
 - **THE FENCE: `npm run sim:volunteer-leaks`** (+ `:mutants`, 7, each killed
   at its own assertion). F1 no outbound file (the daylight fence's list plus
   the activity log, its panel and the snack shack print) reaches

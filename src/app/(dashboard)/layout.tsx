@@ -6,6 +6,7 @@ import { MobileSidebarProvider } from "@/components/dashboard/mobile-sidebar";
 import { getCurrentOrgId, listMemberships } from "@/lib/orgs/context";
 import { getOrgPlan, getOrgSetupDismissed } from "@/lib/plan/get-org-plan";
 import { getActiveSeasonCount } from "@/lib/plan/counts";
+import { loadVolunteerFeature } from "@/lib/volunteers/feature-state";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
@@ -48,10 +49,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }
   }
 
+  // The Volunteers nav item: only when the org's switch is on (null otherwise,
+  // including any read failure — the item never appears by accident).
+  const volunteerFeature = await loadVolunteerFeature(supabase, currentOrgId, "layout");
+
   return (
     <MobileSidebarProvider>
       <div className="flex h-dvh overflow-hidden bg-gray-50 print:h-auto print:overflow-visible print:bg-white">
-        <Sidebar plan={plan} orgId={currentOrgId} />
+        <Sidebar plan={plan} orgId={currentOrgId} volunteers={volunteerFeature !== null} />
         <div className="flex flex-1 flex-col overflow-hidden print:overflow-visible">
           <Topbar />
           <main className="flex-1 overflow-y-auto p-4 md:p-6 print:overflow-visible print:p-0">{children}</main>
