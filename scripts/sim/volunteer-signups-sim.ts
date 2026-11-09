@@ -10,8 +10,9 @@
 //       position (a canceled one never shows); per-team titles; the role's
 //       lead moves the start; rained-out and move-pending notes; time order
 //   S3  filters: role, division, open only, filled only
-//   S4  splitByTime: upcoming from now on; past = filled spots on dates
-//       before today (today's started spots are in neither)
+//   S4  splitByTime: upcoming = every spot dated today or later — one that
+//       started today stays, tagged "Started"; past = filled spots on dates
+//       before today (the no-show tick appears from the next day)
 //   S5  lost banner: detached sign-ups grouped by division and day, words
 //   S6  CSV: header, one line per spot, "Open" for an open one, quoting, a
 //       formula-looking cell made inert
@@ -31,6 +32,7 @@ import {
   lostTitle,
   signupsCsv,
   splitByTime,
+  startedTag,
   type ScreenGame,
   type ScreenRoleRow,
   type ScreenTeam,
@@ -119,9 +121,13 @@ ok(openOnly.every((r) => !r.claim) && filledOnly.every((r) => r.claim) && openOn
 
 // S4
 const { upcoming, past } = splitByTime(rows, "2027-03-06T10:00");
-ok(upcoming.every((r) => r.start >= "2027-03-06T10:00") && upcoming.some((r) => r.gameId === "g2"), "S4", "upcoming from now on");
+ok(upcoming.every((r) => r.start.slice(0, 10) >= "2027-03-06") && upcoming.some((r) => r.gameId === "g2"), "S4", "upcoming = today or later");
+const g1Up = upcoming.filter((r) => r.gameId === "g1");
+ok(g1Up.length === 4 && g1Up.every((r) => startedTag(r, "2027-03-06T10:00") === "Started"), "S4", "today's started spots stay listed, tagged Started",
+  JSON.stringify(g1Up.map((r) => [r.title, startedTag(r, "2027-03-06T10:00")])));
+ok(upcoming.filter((r) => r.gameId === "g2").every((r) => startedTag(r, "2027-03-06T10:00") === null), "S4", "a later spot today isn't Started");
 ok(past.length === 1 && past[0].claim?.claim_id === "c4", "S4", "past = filled, before today", JSON.stringify(past.map((r) => r.claim?.claim_id)));
-ok(!upcoming.concat(past).some((r) => r.gameId === "g1"), "S4", "today's started spots are in neither list");
+ok(!past.some((r) => r.gameId === "g1"), "S4", "no no-show tick on today's spots");
 counters.past = past.length;
 
 // S5

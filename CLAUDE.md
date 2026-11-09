@@ -5888,9 +5888,11 @@ Still open:
   `signups-screen.ts` — one row per spot position from `slots.ts`, an ACTIVE
   claim in its own position, notes for rained-out and move-pending games,
   role / division / open-filled filters, upcoming from the league's "now"
-  (the read's `today`), the No-show list = filled spots on dates before
-  today (today's started spots are in neither list — the database refuses a
-  no-show on today), the "N sign-ups lost" banner from detached claims
+  (the read's `today`): every spot dated today or later stays listed — one
+  that already started today is tagged "Started" until the day ends
+  (decided 2026-11-08); the No-show list = filled spots on dates before
+  today (the database refuses a no-show on today, so the tick appears from
+  the next day); the "N sign-ups lost" banner from detached claims
   grouped by division and day, and the admin CSV (`signupsCsv`; formula
   cells made inert; it lives in `src/lib/volunteers`, so the leak fence needs
   no allowance). Actions: Assign (`volunteer_admin_assign`, 18+ checkbox,
@@ -5899,7 +5901,7 @@ Still open:
   (`volunteer_set_no_show`) — each trusts only an `assigned` / `canceled` /
   `saved` reply. Not here (approved): Merge family (cut), the Volunteers tab
   (branch D), reminders (built last). Harness `npm run sim:volunteer-signups`
-  (43 checks × 3 zones) + `:mutants` (9). Checked on a deleted scratch route
+  (45 checks × 3 zones) + `:mutants` (11). Checked on a deleted scratch route
   at 1280px and 375px.
 - **THE FENCE: `npm run sim:volunteer-leaks`** (+ `:mutants`, 7, each killed
   at its own assertion). F1 no outbound file (the daylight fence's list plus

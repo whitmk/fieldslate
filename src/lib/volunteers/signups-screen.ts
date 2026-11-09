@@ -144,15 +144,24 @@ export function applyFilters(rows: readonly SpotRow[], f: Filters): SpotRow[] {
   );
 }
 
-/** Upcoming = the spot starts at or after now (league wall clock); past
- *  rows feed the No-show list (filled only), and only those whose DATE has
- *  passed — the database refuses a no-show on today's spot. */
+/** Upcoming = every spot dated TODAY or later (league wall clock) — a spot
+ *  that already started today stays listed, tagged Started, until the day
+ *  ends (decided 2026-11-08). The No-show list = filled spots on dates
+ *  before today: the database refuses a no-show on today's spot, so the tick
+ *  appears from the next day. */
 export function splitByTime(rows: readonly SpotRow[], nowWall: string): { upcoming: SpotRow[]; past: SpotRow[] } {
   const today = nowWall.slice(0, 10);
   return {
-    upcoming: rows.filter((r) => r.start >= nowWall),
+    upcoming: rows.filter((r) => r.start.slice(0, 10) >= today),
     past: rows.filter((r) => r.claim !== null && r.start.slice(0, 10) < today).reverse(),
   };
+}
+
+export const STARTED_TAG = "Started";
+
+/** "Started" for an upcoming row whose spot has begun, else null. */
+export function startedTag(row: Pick<SpotRow, "start">, nowWall: string): string | null {
+  return row.start < nowWall ? STARTED_TAG : null;
 }
 
 /** The "sign-ups lost" banner: detached sign-ups grouped by the division of

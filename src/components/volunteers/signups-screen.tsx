@@ -20,6 +20,7 @@ import {
   lostTitle,
   signupsCsv,
   splitByTime,
+  startedTag,
   volunteerName,
   type Filters,
   type ScreenGame,
@@ -128,7 +129,10 @@ export function SignupsScreen({ data }: { data: SignupsScreenData }) {
           <tbody className="divide-y divide-gray-100 text-sm">
             {upcoming.map((r) => (
               <tr key={r.key} className="align-top">
-                <td className="whitespace-nowrap px-3 py-3 text-gray-700">{fmtWhen(r.start)}</td>
+                <td className="whitespace-nowrap px-3 py-3 text-gray-700">
+                  {fmtWhen(r.start)}
+                  <StartedChip row={r} nowWall={data.nowWall} />
+                </td>
                 <td className="px-3 py-3">
                   <div className="font-semibold text-[#0C1F3F]">{r.title}</div>
                   <div className="text-xs text-gray-500">{r.detail}</div>
@@ -153,7 +157,10 @@ export function SignupsScreen({ data }: { data: SignupsScreenData }) {
             <li key={r.key} className="px-4 py-3 text-sm">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-gray-500">{fmtWhen(r.start)}</div>
+                  <div className="text-gray-500">
+                    {fmtWhen(r.start)}
+                    <StartedChip row={r} nowWall={data.nowWall} />
+                  </div>
                   <div className="font-semibold text-[#0C1F3F]">{r.title}</div>
                   <div className="text-xs text-gray-500">{r.detail}</div>
                 </div>
@@ -194,6 +201,11 @@ export function SignupsScreen({ data }: { data: SignupsScreenData }) {
       )}
     </div>
   );
+}
+
+function StartedChip({ row, nowWall }: { row: SpotRow; nowWall: string }) {
+  const tag = startedTag(row, nowWall);
+  return tag ? <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{tag}</span> : null;
 }
 
 function RowAction({ row, onAssign, onChange }: { row: SpotRow; onAssign: (r: SpotRow) => void; onChange: (r: SpotRow) => void }) {

@@ -35,6 +35,18 @@ const MUTANTS: Mutant[] = [
     expect: "S4",
   },
   {
+    id: "VS10", what: "today's started spots drop off the list (the old rule)", file: SS,
+    find: "    upcoming: rows.filter((r) => r.start.slice(0, 10) >= today),",
+    replace: "    upcoming: rows.filter((r) => r.start >= nowWall),",
+    expect: "S4",
+  },
+  {
+    id: "VS11", what: "started spots not tagged", file: SS,
+    find: "  return row.start < nowWall ? STARTED_TAG : null;",
+    replace: "  return null;",
+    expect: "S4",
+  },
+  {
     id: "VS6", what: "lost sign-ups not grouped by day", file: SS,
     find: "    const k = `${name}|${day}`;",
     replace: "    const k = `${name}|${day}|${c.claim_id}`;",
