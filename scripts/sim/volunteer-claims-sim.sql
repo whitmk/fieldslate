@@ -120,6 +120,9 @@
 --   MU44 a trigger failure not recorded                       → L1
 --   MU41 Keep it reaches another volunteer's spot             → K1
 --   MU42 Keep it callable by anon                             → G3
+--   MU45 archive holds answer a non-member                     → AH2
+--   MU46 archive holds count active claims only                → AH1
+--   MU47 archive holds callable by anon                        → AH3
 --   PART 3 (own fixture): T1 a move → one game_moved per claim, coalesced,
 --   original kept; T2 moved again keeps the FIRST original; T1b a field
 --   change is a move; T3 rainout; T4 makeup (new time); T5 back on (same
@@ -131,6 +134,10 @@
 --   is NOT reattached; R3 a spot lost over 10 minutes ago is left alone; L1 a
 --   failing change trigger lets the edit through and RECORDS the failure (no
 --   personal data), counted for members only; G3 privileges.
+--   PART 4: AH1 volunteer_archive_holds names exactly the seasons with any
+--   claim (a season with only a canceled claim is held; one with none is
+--   not); AH2 a non-member, or an id that is no season → not_authorized;
+--   AH3 authenticated only.
 -- (MU31 alters a grant, which only part 2's G2 checks; the verify block is
 -- left out of every mutant's text, as in 0120's proof.)
 select set_config('lock_timeout', '3s', true), set_config('statement_timeout', '120s', true);
@@ -162,6 +169,7 @@ begin
   drop trigger if exists volunteer_on_game_insert on public.games;
   drop function if exists public.volunteer_on_game_insert();
   drop function if exists public.volunteer_failure_count(uuid);
+  drop function if exists public.volunteer_archive_holds(uuid[]);
   drop function if exists public.volunteer_record_failure(uuid, uuid, text, text);
   drop table if exists public.volunteer_trigger_failures;
   drop function if exists public.volunteer_keep_spot(text, uuid);
@@ -753,6 +761,8 @@ declare
   gp uuid := gen_random_uuid(); g5 uuid := gen_random_uuid();
   v_role uuid := gen_random_uuid(); v_vol uuid := gen_random_uuid(); v_vol2 uuid := gen_random_uuid();
   c1 uuid; c2 uuid; c3 uuid; cp uuid; c5 uuid; c6 uuid;
+  v_s3 uuid := gen_random_uuid(); v_s4 uuid := gen_random_uuid(); v_txt text;
+  v_d4 uuid := gen_random_uuid(); v_t4 uuid := gen_random_uuid(); v_t5 uuid := gen_random_uuid(); g4b uuid := gen_random_uuid();
   v_tok text := encode(extensions.gen_random_bytes(32), 'hex');
   v_n integer; v_r jsonb; v_start text;
 begin
@@ -917,6 +927,35 @@ begin
                               unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) pr
                  where has_table_privilege(ro, 'public.volunteer_trigger_failures', pr)) then
     return 'G3 part-3 privileges';
+  end if;
+
+  -- AH1–AH3 — the auto-archive hold-back read (part 4).
+  insert into public.leagues (id, name, sport, season, owner_id, start_date, end_date) values
+    (v_s3, 'ZZ121 P4 empty',    'Baseball', 'Fall 2026', v_org, v_now::date - 60, v_now::date - 5),
+    (v_s4, 'ZZ121 P4 canceled', 'Baseball', 'Fall 2026', v_org, v_now::date - 60, v_now::date - 5);
+  insert into public.volunteer_roles (id, owner_id, season_id, name, kind, spots) values (gen_random_uuid(), v_org, v_s4, 'ZZ P4', 'per_game', 1)
+    returning id into v_role;
+  insert into public.divisions (id, league_id, name, team_count, settings, status) values (v_d4, v_s4, 'ZZ P4', 2, '{}'::jsonb, 'active');
+  insert into public.teams (id, league_id, name, division_id) values (v_t4, v_s4, 'ZZ P4 Owls', v_d4), (v_t5, v_s4, 'ZZ P4 Bees', v_d4);
+  insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status)
+    values (g4b, v_s4, v_t4, v_t5, (v_now - interval '10 days') at time zone 'UTC', 'scheduled');
+  insert into public.volunteer_claims (id, owner_id, season_id, volunteer_id, game_id, role_id, status, position, created_by)
+    values (gen_random_uuid(), v_org, v_s4, v_vol, g4b, v_role, 'canceled', 1, 'volunteer');
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format(
+    'select public.volunteer_archive_holds(array[%L, %L, %L]::uuid[])::text', v_s, v_s3, v_s4));
+  if v_txt is distinct from (select array_agg(x order by x)::text from unnest(array[v_s, v_s4]) x) then
+    return 'AH1 holds: ' || coalesce(v_txt, 'null');
+  end if;
+  v_txt := pg_temp.h121_as(gen_random_uuid(), 'authenticated', format(
+    'select public.volunteer_archive_holds(array[%L]::uuid[])::text', v_s));
+  if v_txt not like '%not_authorized%' then return 'AH2 non-member: ' || coalesce(v_txt, 'null'); end if;
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format(
+    'select public.volunteer_archive_holds(array[%L, %L]::uuid[])::text', v_s, gen_random_uuid()));
+  if v_txt not like '%not_authorized%' then return 'AH2 unknown season: ' || coalesce(v_txt, 'null'); end if;
+  if not has_function_privilege('authenticated', 'public.volunteer_archive_holds(uuid[])', 'EXECUTE')
+     or exists (select 1 from unnest(array['anon', 'service_role', 'dashboard_readonly']) ro
+                 where has_function_privilege(ro, 'public.volunteer_archive_holds(uuid[])', 'EXECUTE')) then
+    return 'AH3 archive holds privileges';
   end if;
   return 'pass';
 end;
@@ -1087,7 +1126,13 @@ $r$, $r$$r$),
                    $r$grant execute on function public.volunteer_keep_spot(text, uuid) to service_role, anon;$r$),
     ('MU41', 'K1', $r$   where c.id = p_claim_id and c.volunteer_id = v_link.volunteer_id and c.season_id = v_link.season_id
      and c.status = 'active' and c.moved_from is not null;$r$, $r$   where c.id = p_claim_id and c.season_id = v_link.season_id
-     and c.status = 'active';$r$)
+     and c.status = 'active';$r$),
+    ('MU45', 'AH2', $r$              where l.id is null or not public.is_org_member(l.owner_id)) then$r$,
+                    $r$              where l.id is null) then$r$),
+    ('MU46', 'AH1', $r$     where c.season_id = any (p_season_ids)), '{}'::uuid[]);$r$,
+                    $r$     where c.season_id = any (p_season_ids) and c.status = 'active'), '{}'::uuid[]);$r$),
+    ('MU47', 'AH3', $r$grant execute on function public.volunteer_archive_holds(uuid[]) to authenticated;$r$,
+                    $r$grant execute on function public.volunteer_archive_holds(uuid[]) to authenticated, anon;$r$)
   ) as t(id, expect, find, repl)
   loop
     if (length(v_body) - length(replace(v_body, m.find, ''))) / greatest(length(m.find), 1) <> 1 then

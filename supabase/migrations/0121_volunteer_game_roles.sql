@@ -1332,6 +1332,39 @@ end;
 $$;
 
 -- ────────────────────────────────────────────────────────────────────────────
+-- 8b. PART 4 — auto-archive holds back a season with volunteer data
+-- ────────────────────────────────────────────────────────────────────────────
+-- Archiving deletes a season's sign-ups (the wipe, section 6), and the app
+-- archives a finished season by itself on the next dashboard visit. So the
+-- app asks first: which of these seasons hold volunteer data? Those stay open
+-- until an admin archives them by hand (decided 2026-11-08, option b).
+-- "Volunteer data" = any claim row of the season, whatever its status — a
+-- canceled or detached claim is history the tracker and the CSV read. The
+-- switch is NOT consulted: data a league collected while it was on is still
+-- deleted at archive if it's off now. authenticated; every season named must
+-- belong to an org the caller is a member of, or nothing is answered
+-- (not_authorized), so the app reads a refusal as "unknown" and holds them all.
+create or replace function public.volunteer_archive_holds(p_season_ids uuid[])
+returns uuid[]
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if exists (select 1 from unnest(coalesce(p_season_ids, '{}'::uuid[])) s(id)
+              left join public.leagues l on l.id = s.id
+              where l.id is null or not public.is_org_member(l.owner_id)) then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  return coalesce((
+    select array_agg(distinct c.season_id order by c.season_id)
+      from public.volunteer_claims c
+     where c.season_id = any (p_season_ids)), '{}'::uuid[]);
+end;
+$$;
+
+-- ────────────────────────────────────────────────────────────────────────────
 -- 9. Function privileges
 -- ────────────────────────────────────────────────────────────────────────────
 revoke execute on function public.volunteer_slot_state(text) from public, anon, authenticated, service_role, dashboard_readonly;
@@ -1359,6 +1392,7 @@ revoke execute on function public.volunteer_on_game_insert() from public, anon, 
 revoke execute on function public.volunteer_record_failure(uuid, uuid, text, text) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_failure_count(uuid) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_keep_spot(text, uuid) from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_archive_holds(uuid[]) from public, anon, authenticated, service_role, dashboard_readonly;
 
 grant execute on function public.save_volunteer_role(uuid, uuid, text, text, integer, integer, boolean, boolean, uuid[], boolean) to authenticated;
 grant execute on function public.delete_volunteer_role(uuid, boolean) to authenticated;
@@ -1369,6 +1403,7 @@ grant execute on function public.volunteer_cancel(text, uuid) to service_role;
 grant execute on function public.volunteer_outbox_finish(bigint, boolean, text, text, boolean) to service_role;
 grant execute on function public.volunteer_failure_count(uuid) to authenticated;
 grant execute on function public.volunteer_keep_spot(text, uuid) to service_role;
+grant execute on function public.volunteer_archive_holds(uuid[]) to authenticated;
 
 -- Verify, or the whole migration rolls back.
 do $v$
@@ -1381,7 +1416,8 @@ begin
   foreach f in array array[
     'public.save_volunteer_role(uuid, uuid, text, text, integer, integer, boolean, boolean, uuid[], boolean)',
     'public.delete_volunteer_role(uuid, boolean)',
-    'public.volunteer_failure_count(uuid)'] loop
+    'public.volunteer_failure_count(uuid)',
+    'public.volunteer_archive_holds(uuid[])'] loop
     if not has_function_privilege('authenticated', f, 'EXECUTE') then
       raise exception '0121 verify: authenticated cannot execute %', f;
     end if;

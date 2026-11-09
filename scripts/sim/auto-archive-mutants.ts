@@ -8,6 +8,9 @@
 // the real fail-open shape, now caught by [U1]. AA10 died at [I1], not the
 // [TZ1] it was first tagged with: the last-day season never reaches the
 // decision (endDatePassed skips it first), so I1 is its true catcher.
+// 2026-11-08: AA13–AA17 (0121 part 4, the volunteer hold). First pass: all
+// five killed at their own tag, but AA8 had gone STALE (its line now returns
+// NOTHING) — re-aimed; then 17/17 at their own assertion.
 import { runMutants, type Mutant } from "./mutant-runner";
 
 const DEC = "src/lib/seasons/archive-decision.ts";
@@ -59,8 +62,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "AA8", what: "an unreadable timezone falls back to Pacific", file: IO,
-    find: "  if (profileError || typeof tz !== \"string\" || !tz) return;",
-    replace: "  if (false) return;",
+    find: "  if (profileError || typeof tz !== \"string\" || !tz) return NOTHING;",
+    replace: "  if (false) return NOTHING;",
     expect: "I2",
   },
   {
@@ -89,6 +92,36 @@ const MUTANTS: Mutant[] = [
     find: "input.playoffGames.filter((g) => g.status !== NOT_NEEDED)",
     replace: "input.playoffGames",
     expect: "N1",
+  },
+  {
+    id: "AA13", what: "volunteer data ignored — the season archives and its sign-ups are wiped", file: DEC,
+    find: "  if (input.volunteerData) {\n    return { archive: false, reason: \"volunteer_data\"",
+    replace: "  if (false) {\n    return { archive: false, reason: \"volunteer_data\"",
+    expect: "VD1",
+  },
+  {
+    id: "AA14", what: "unreadable volunteer data treated as none (fail open)", file: DEC,
+    find: "  if (input.volunteerData === null) {\n",
+    replace: "  if (false) {\n",
+    expect: "VD2",
+  },
+  {
+    id: "AA15", what: "the volunteer hold checked FIRST, so the banner names seasons still running", file: DEC,
+    find: "  if (today === null) return { archive: false, reason: \"unreadable\"",
+    replace: "  if (input.volunteerData) return { archive: false, reason: \"volunteer_data\", detail: \"\" };\n  if (today === null) return { archive: false, reason: \"unreadable\"",
+    expect: "VD3",
+  },
+  {
+    id: "AA16", what: "the helper never passes the holds to the decision", file: IO,
+    find: "    const volunteerData = holds === null ? null : holds.includes(season.id);",
+    replace: "    const volunteerData = holds === null ? null : false;",
+    expect: "VH1",
+  },
+  {
+    id: "AA17", what: "a failed holds call becomes no holds", file: IO,
+    find: "    if (!error && Array.isArray(reply) && reply.every((x: unknown) => typeof x === \"string\")) holds = reply as string[];",
+    replace: "    holds = Array.isArray(reply) ? (reply as string[]) : [];",
+    expect: "VH2",
   },
 ];
 
