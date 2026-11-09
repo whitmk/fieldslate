@@ -119,6 +119,8 @@
     "sim:home-faq": "npx tsx scripts/sim/home-faq-sim.ts",
     "sim:daylight-leaks": "npx tsx scripts/sim/daylight-leaks-sim.ts",
     "sim:daylight-leaks:mutants": "npx tsx scripts/sim/daylight-leaks-mutants.ts",
+    "sim:volunteer-leaks": "npx tsx scripts/sim/volunteer-leaks-sim.ts",
+    "sim:volunteer-leaks:mutants": "npx tsx scripts/sim/volunteer-leaks-mutants.ts",
     "sim:volunteer-email": "npx tsx scripts/sim/volunteer-email-sim.ts",
     "sim:volunteer-email:mutants": "npx tsx scripts/sim/volunteer-email-mutants.ts",
     "sim:volunteer-slots": "TZ=UTC npx tsx scripts/sim/volunteer-slots-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/volunteer-slots-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/volunteer-slots-sim.ts",

@@ -3263,8 +3263,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   season day); (2) no game of any kind — regular season of ANY status, or a
   dated playoff game — is dated today or later; (3) no playoff game is
   unfinished: no result (completed, a winner or a score — 0107's test) OR no
-  date at all. Anything unreadable (timezone, games, playoff games) → NO
-  archive. It returns `{archive, reason, detail}`.
+  date at all; (4) the season holds NO volunteer data — any
+  `volunteer_claims` row, any status (0121 part 4, branch
+  `feat/volunteer-game-roles`, decided 2026-11-08, option b): archiving
+  deletes sign-ups, so such a season stays open until an admin archives it by
+  hand. Rule 4 is checked LAST, so `reason: "volunteer_data"` only ever names
+  a season that is otherwise done (the hold banner's list). Anything
+  unreadable (timezone, games, playoff games, volunteer holds) → NO archive.
+  It returns `{archive, reason, detail}`.
 - **Regular-season STATUS and SCORES are deliberately not read.** Leagues
   don't enter regular-season results; requiring them would stop every season
   from ever archiving. A regular-season game matters only by its DATE.
@@ -3277,9 +3283,16 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   unarchived seasons with an end date and the org's timezone; skips every
   season whose end date hasn't passed (`endDatePassed`, the decision's own
   rule — running seasons cost no further reads); for the rest reads every
-  game date and every playoff game (`fetchAllRows`, complete or throw), asks
-  `decideAutoArchive`, and archives only on yes (one UPDATE per season,
-  `.is("archived_at", null)`). Never put a second copy of the rule in a caller.
+  game date and every playoff game (`fetchAllRows`, complete or throw), makes
+  ONE `volunteer_archive_holds(season_ids)` call for all past-end seasons
+  (authenticated, member of every named season or `not_authorized`; a failed
+  or malformed reply holds them all), asks `decideAutoArchive`, and archives
+  only on yes (one UPDATE per season, `.is("archived_at", null)`). It returns
+  `{archived, heldForVolunteers}` (the callers ignore it until the banner is
+  built). Never put a second copy of the rule in a caller. **Deploy order:
+  0121 must be applied BEFORE this code reaches `main`** — without the
+  function every holds call fails, so NO season would ever auto-archive (the
+  safe direction, but a silent stop).
 - **The end date is editable on the season page** (header: "Ends Oct 25,
   2026 · Change end date", unarchived seasons only — the Unarchive modal owns
   an archived season's end date). Rules and words: `src/lib/seasons/end-date.ts`
@@ -3290,8 +3303,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   the last game, whichever is later — the 0112 rule). A plain
   browser UPDATE (0110 allows `end_date`), `.select("id")`, zero rows →
   "Nothing was saved". No migration.
-- **Harness: `npm run sim:auto-archive`** (36 checks × 3 host zones, 4
-  counters; fixed NOW = 2026-10-26 03:00Z, 8pm Oct 25 in Pacific) drives the
+- **Harness: `npm run sim:auto-archive`** (50 checks × 3 host zones, 5
+  counters incl. heldForVolunteers; VD1–VD3 the decision's volunteer rule,
+  VH1–VH2 the helper's one holds call and its fail-closed replies; fixed NOW = 2026-10-26 03:00Z, 8pm Oct 25 in Pacific) drives the
   decision and the REAL helper against a small fake client: playoffs after the
   end date, undated playoff games, results all in, a future regular-season
   game (even cancelled), a game today, past unscored games, the Pacific
@@ -5691,13 +5705,13 @@ Still open:
   UPDATE OF archived_at trigger on `leagues`, NULL → set only, SECURITY
   DEFINER on purpose (archiving is a browser write by a member who holds no
   DELETE here; as INVOKER the archive would fail) — 0121 re-creates it to
-  delete claims, roles and goals too. **Auto-archive skipping seasons with
-  volunteer data (option b) and its banner land IN branch B (0121), in the
-  same change as the claims — never after it.** Auto-archive runs on every
-  dashboard load, and this trigger fires on it like any other archive, so
-  once claims exist a season past its end date would lose its volunteer data
-  the moment an admin opens the dashboard. Today nothing writes `volunteers`
-  or the outbox, so there is nothing to lose until 0121.
+  delete claims, roles and goals too. **Auto-archive skips seasons with
+  volunteer data (option b) — 0121 part 4 + `decideAutoArchive` rule 4, in
+  the same change as the claims (see "Auto-archive").** Auto-archive runs on
+  every dashboard load, and this trigger fires on it like any other archive,
+  so without the hold a season past its end date would lose its volunteer
+  data the moment an admin opens the dashboard. The hold BANNER is not built
+  yet (design owed to Whit, 2026-11-08).
   Proof: `scripts/sim/volunteers-foundation-sim.sql` (+ build script; rolled
   back in "test" with "Test 2"; 16 mutants; each mutant drops and re-creates
   the 0120 objects in its own rolled-back sub-run). Run 2026-11-08 (read its
@@ -5812,6 +5826,26 @@ Still open:
   (service_role) clears `moved_from`. Season delete sends nothing: it needs an
   archived season, and archiving already wiped the sign-ups. Proof: 44 mutants (13 for part 3), all killed at their own tag. Applying takes SHARE ROW EXCLUSIVE on `games`
   for the three CREATE TRIGGERs, plus the part-1 FKs.
+- **0121 part 4 (commit 2d, NOT APPLIED, its proof cases NOT RUN):**
+  `volunteer_archive_holds(p_season_ids uuid[]) returns uuid[]` — SECURITY
+  DEFINER, `search_path = public, pg_temp`, EXECUTE authenticated only; the
+  seasons among those named that have ANY claim row (canceled and detached
+  count — they are history). Every named season must exist and belong to an
+  org the caller is a member of, else `not_authorized`. The switch is not
+  consulted. Proof AH1–AH3 + MU45–MU47 in `volunteer-claims-sim.sql`.
+- **THE FENCE: `npm run sim:volunteer-leaks`** (+ `:mutants`, 7, each killed
+  at its own assertion). F1 no outbound file (the daylight fence's list plus
+  the activity log, its panel and the snack shack print) reaches
+  `src/lib/volunteers` / `src/components/volunteers` through any import
+  chain; W1 none names a volunteer table, function or personal column; A1 no
+  volunteer code reaches `src/lib/activity-log.ts`, and no database function
+  (latest body) both reads volunteer data and writes `activity_log`; D1 no
+  `get_*_by_token` body names a volunteer table; V1 `volunteer_signup_page`
+  and `volunteer_season_spots` never name `last_name` / `first_initial` /
+  `email_lc`; S1 wiring. Allowed: `src/app/api/volunteers/**` and
+  `src/app/v/**` (the sign-up and manage routes). **The admin CSV, when
+  built, goes in its `CSV_ALLOWED` list with the decision's date.** A new
+  outbound file belongs in its fence list.
 - **Mockup decisions (2026-11-08, boards in `docs/mockups/volunteer-signup/`).**
   Where the boards and the written decisions disagree, the decisions win.
   (1) The overlap warning is GENERIC and names no spot (the board names one).
