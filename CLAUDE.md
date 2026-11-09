@@ -2076,6 +2076,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   all read files that "only change classes". `5f114a2` ("className changes
   only") broke two golden assertions and ran nothing.
 
+- **A SQL MUTANT MUST TARGET THE LIVE DEFINITION — `sim:mutant-targets`
+  fails one that doesn't (2026-11-09).** When a later migration re-creates a
+  function, every older copy of its body is dead text: a mutant aimed there
+  still matches its file once but mutates nothing a reader sees.
+  `scripts/sim/sql-latest.ts` is the ONE resolver of "which migration holds
+  the live body" (by function name, all overloads together); the mutant
+  runner checks every migration mutant against it in both modes (SHADOWED),
+  and the leak fence takes its latest bodies from it. Re-creating a function
+  means re-targeting its mutants in the same change. Found because
+  sim:volunteer-leaks VL4/VL6 sat shadowed from the 0122 merge until
+  2026-11-09. Proof: `npm run sim:sql-latest` (11 checks, incl. the old VL4
+  run through the real targets check) + `:mutants` (5/5).
 - **NEVER run another sim, the dev server or a build while a mutation pass
   is running — wait for it to finish.** A `:mutants` pass REWRITES the real
   source files (one mutant at a time, restored after each), so anything else
