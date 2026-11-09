@@ -23,7 +23,10 @@ const MUTANTS: Mutant[] = [
     expect: "A1",
   },
   {
-    id: "VL4", what: "(0121) saving a role logs to the activity log", file: "supabase/migrations/0121_volunteer_game_roles.sql",
+    // Re-targeted 2026-11-09: 0122 redefines save_volunteer_role, so a
+    // mutant in 0121's body no longer reaches the latest definition the
+    // fence reads (it SURVIVED — a stale mutant on main since 0122).
+    id: "VL4", what: "(0122) saving a role logs to the activity log", file: "supabase/migrations/0122_volunteer_snack_shack.sql",
     find: "    raise exception 'name_taken' using errcode = 'P0001';",
     replace: "    insert into public.activity_log (owner_id, message) values (v_owner, 'role clash'); raise exception 'name_taken' using errcode = 'P0001';",
     expect: "A1",
@@ -35,7 +38,8 @@ const MUTANTS: Mutant[] = [
     expect: "D1",
   },
   {
-    id: "VL6", what: "(0121) the public sign-up page names who took a spot", file: "supabase/migrations/0121_volunteer_game_roles.sql",
+    // Re-targeted 2026-11-09 for the same reason (0122 redefines the page).
+    id: "VL6", what: "(0122) the public sign-up page names who took a spot", file: "supabase/migrations/0122_volunteer_snack_shack.sql",
     find: "               'spots', sp.spots, 'taken', least(sp.taken, sp.spots))",
     replace: "               'spots', sp.spots, 'taken', least(sp.taken, sp.spots), 'who', (select max(v.last_name) from public.volunteers v))",
     expect: "V1",
@@ -45,6 +49,18 @@ const MUTANTS: Mutant[] = [
     find: 'import { runVolunteerDrain } from "@/lib/volunteers/drain-runner";',
     replace: 'import { runVolunteerDrain } from "../../../../../lib/volunteers/drain-runner";',
     expect: "S1",
+  },
+  {
+    id: "VL8", what: "(0123) auto-assign reads the tracker rules", file: "src/lib/umpires/auto-assign.ts",
+    find: "import { createClient } from \"@/lib/supabase/client\";",
+    replace: "import { createClient } from \"@/lib/supabase/client\";\nimport { familyStatus } from \"@/lib/volunteers/tracker\";\nvoid familyStatus;",
+    expect: "U1",
+  },
+  {
+    id: "VL9", what: "(0123) the paid toggle skips no-show officials", file: "supabase/migrations/0062_officials_schema_expansion.sql",
+    find: "  set paid = not paid\n  where id = p_assignment_id\n",
+    replace: "  set paid = not paid\n  where id = p_assignment_id\n    and not exists (select 1 from public.volunteer_official_no_shows n where n.game_umpire_id = p_assignment_id)\n",
+    expect: "U1",
   },
 ];
 

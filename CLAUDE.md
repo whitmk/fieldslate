@@ -387,6 +387,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   code reached `main`** (the regenerate preview calls
   `volunteer_shift_claim_counts`). **The latest migration applied.** See "Volunteer
   sign-ups" → branch C.
+- **0123 (volunteer tracker) WRITTEN, proof NOT RUN, NOT APPLIED** (branch
+  `feat/volunteer-tracker`, 2026-11-09). Five tables, nine functions, the
+  archive wipe re-created, `volunteers.family_id` dropped. See "Volunteer
+  sign-ups" → branch D. Expected md5(prosrc) from `npx tsx
+  scripts/sim/volunteer-tracker-build.ts --md5`. **Deploy order: apply 0123
+  BEFORE the code reaches `main`** — the tracker page calls
+  `volunteer_tracker` (without it the page shows its error card).
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -6074,6 +6081,54 @@ Still open:
     mutants) against 0122, H1 left out (0119's apply-time defaults). Run
     2026-11-09: run 1 a harness fault, run 2 found the 0121 one_target bug,
     run 3 green 26/26; regress0119 green 8/8 — read the proof's RUN LOG.
+- **Branch D — the tracker (0123, `feat/volunteer-tracker`, 2026-11-09; proof
+  NOT RUN, NOT APPLIED).** Plan with Whit's decisions:
+  `docs/plans/volunteer-tracker-0123.md`. Page `/dashboard/volunteers/tracker`
+  (same gates; linked from the roles page and Who signed up).
+  - **The counting rule lives ONCE, in `volunteer_tracker_families`** (SQL,
+    callable by no role; the tracker read and the nudge both use it). A spot
+    is WORKED when active, dated before today (league timezone) and not a
+    no-show; UPCOMING when active and dated today or later; HELD when its
+    game is rained out (neither). Only roles with `counts_toward_goal`.
+    Canceled and detached sign-ups never count, but their families ARE
+    listed (decided: 0 worked, short, nudgeable).
+  - **Families are per SEASON** (`volunteer_family_members`; no row = a
+    volunteer on their own). A merge writes ONE new key on every member of
+    both families, so families never chain; separate takes one member out
+    (an official gets a self row, which also beats an email match).
+    `volunteers.family_id` (org-wide, never used) was dropped.
+  - **Officials count only with "Counts for [team]"**
+    (`volunteer_official_links`, set on the tracker's officials panel). An
+    email match NEVER makes an official count — it only puts a counted
+    official in that volunteer's family. Regular season only (game_umpires
+    references games). A missed game is a no-show
+    (`volunteer_official_no_shows`, past games only). **umpires and
+    game_umpires are never written, and officials code never reads these
+    tables** — sim:volunteer-leaks U1 (runs before A1) and the proof's TO2
+    (game_umpires byte-identical). No-shows are not on the officials pages
+    (decided).
+  - **Status buckets are TypeScript** (`src/lib/volunteers/tracker.ts`):
+    exclusive — met (worked ≥ goal), on track (worked + upcoming ≥ goal),
+    short N (N = goal − both). Board conflicts resolved as approved: a team's
+    progress is "of <its family count>"; merge lives on the tracker only.
+  - **The nudge** (`volunteer_admin_nudge`): one email per VOLUNTEER (an
+    official-only family can't be nudged), payload `{goal, worked,
+    upcoming}` only, refused while the sign-up link is off (`link_off`) or no
+    goal is set (`no_goal`), at most once per volunteer per season every 72
+    hours (read from the outbox log). Template `nudge` in email-templates.ts.
+  - **The admin CSV** (`trackerCsv`) lives in src/lib/volunteers, inside the
+    fence by construction, formula cells made inert.
+  - **Harnesses:** `npm run sim:volunteer-tracker` (83 checks × 3 zones) +
+    `:mutants` (20/20); sim:volunteer-email T6 (nudge); sim:volunteer-leaks
+    U1 + VL8/VL9 (and VL4/VL6 re-targeted at 0122 — they had SURVIVED since
+    the 0122 merge because 0122 redefined their functions). Proof:
+    `scripts/sim/volunteer-tracker-sim.sql` (+ `volunteer-tracker-build.ts`;
+    rolled back in "test"; 27 mutants MT1–MT27); `regress0121` /
+    `regress0122` run those proofs' assertions against 0123 (the wipe is
+    re-created) with their wipe mutants re-targeted. Screens checked on a
+    deleted scratch route at 1280px and 375px with stubbed replies.
+  - **Privacy:** the three sentences are on `docs/privacy-volunteer-tracker`
+    (held) and ship before this branch.
 - **THE FENCE: `npm run sim:volunteer-leaks`** (+ `:mutants`, 7, each killed
   at its own assertion). F1 no outbound file (the daylight fence's list plus
   the activity log, its panel and the snack shack print) reaches
@@ -6084,9 +6139,13 @@ Still open:
   `get_*_by_token` body names a volunteer table; V1 `volunteer_signup_page`
   and `volunteer_season_spots` never name `last_name` / `first_initial` /
   `email_lc`; S1 wiring. Allowed: `src/app/api/volunteers/**` and
-  `src/app/v/**` (the sign-up and manage routes). **The admin CSV, when
-  built, goes in its `CSV_ALLOWED` list with the decision's date.** A new
-  outbound file belongs in its fence list.
+  `src/app/v/**` (the sign-up and manage routes). The admin CSVs
+  (`signupsCsv`, `trackerCsv`) live in `src/lib/volunteers`, inside the
+  fence; a CSV built anywhere else goes in `CSV_ALLOWED` with the decision's
+  date. **U1 (0123):** no officials file (src/lib/umpires,
+  src/components/umpires, the officials pages) reaches the volunteer code,
+  and no SQL function outside the volunteer set reads the officials'
+  tracker tables. A new outbound file belongs in its fence list.
 - **Mockup decisions (2026-11-08, boards in `docs/mockups/volunteer-signup/`).**
   Where the boards and the written decisions disagree, the decisions win.
   (1) The overlap warning is GENERIC and names no spot (the board names one).

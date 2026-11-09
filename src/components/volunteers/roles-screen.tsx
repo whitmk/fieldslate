@@ -133,9 +133,14 @@ export function RolesScreen({ data }: { data: RolesScreenData }) {
           <p className="text-sm text-gray-500">{data.seasonName} · {W.NAV_LABEL}</p>
           <h1 className="text-2xl font-bold text-[#0C1F3F]">{W.ROLES_TITLE}</h1>
         </div>
-        <Link href="/dashboard/volunteers/signups" className="text-sm font-semibold text-[#0C1F3F] hover:underline">
-          {W.WHO_SIGNED_UP_LINK}
-        </Link>
+        <div className="flex flex-wrap gap-4">
+          <Link href="/dashboard/volunteers/signups" className="text-sm font-semibold text-[#0C1F3F] hover:underline">
+            {W.WHO_SIGNED_UP_LINK}
+          </Link>
+          <Link href="/dashboard/volunteers/tracker" className="text-sm font-semibold text-[#0C1F3F] hover:underline">
+            {W.TRACKER_LINK}
+          </Link>
+        </div>
       </div>
 
       <LinkStrip link={data.link} />

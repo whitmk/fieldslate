@@ -97,9 +97,14 @@ export function SignupsScreen({ data }: { data: SignupsScreenData }) {
           </Link>
           <h1 className="text-2xl font-bold text-[#0C1F3F]">{W.SIGNUPS_TITLE}</h1>
         </div>
-        <button type="button" onClick={exportCsv} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-[#0C1F3F] hover:bg-gray-50">
-          {W.EXPORT_CSV}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href="/dashboard/volunteers/tracker" className="text-sm font-semibold text-[#0C1F3F] hover:underline">
+            {W.TRACKER_LINK}
+          </Link>
+          <button type="button" onClick={exportCsv} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-[#0C1F3F] hover:bg-gray-50">
+            {W.EXPORT_CSV}
+          </button>
+        </div>
       </div>
 
       {lost.map((g) => (
