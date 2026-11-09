@@ -5920,6 +5920,28 @@ Still open:
   (branch D), reminders (built last). Harness `npm run sim:volunteer-signups`
   (45 checks × 3 zones) + `:mutants` (11). Checked on a deleted scratch route
   at 1280px and 375px.
+- **Screen 2 — the public sign-up page (`/v/<token>`, 2026-11-08, approved
+  plan).** A client shell (noindex, NOT framable, outside the middleware like
+  `/s/`) fetching `GET /api/volunteers/signup/<token>[?season=]`
+  (`volunteer_signup_page` through the admin client; COUNTS only; no-store;
+  a read error → 503, the page says it couldn't load — never an empty list)
+  and posting to `POST …/claim`. **The claim route FAILS CLOSED, in this
+  order:** `TURNSTILE_SECRET_KEY` and `VOLUNTEER_HASH_SALT` (≥ 16 chars) set,
+  else 503 and nothing touched → link shape → body shape (`parseClaimBody`)
+  → Turnstile (`verifyTurnstile`: only `success === true`) → the database
+  (`volunteer_claim`), with the IP and email passed only as
+  `sha256(salt|ip:…)` / `sha256(salt|email:…)`. On `claimed` it drains up
+  to 5 outbox rows so the confirmation goes out at once (the cron retries a
+  failure). `NEXT_PUBLIC_TURNSTILE_SITE_KEY` renders the widget (explicit
+  render, reset after every attempt — tokens are single-use). Rules:
+  `signup-page.ts`; server pieces: `public-server.ts`; the drain wiring:
+  `drain-runner.ts` (shared with the cron route). Differences from the board
+  (decided): the overlap warning is generic; no snack shack shifts until
+  branch C; a season picker for two open seasons. Harness `npm run
+  sim:volunteer-signup-page` (87 checks × 3 zones) + `:mutants` (10).
+  Checked on a deleted scratch route at 375px with the data and claim
+  stubbed and Cloudflare's always-pass TEST site key; the real claim route
+  answered 503 locally (no keys in .env.local).
 - **THE FENCE: `npm run sim:volunteer-leaks`** (+ `:mutants`, 7, each killed
   at its own assertion). F1 no outbound file (the daylight fence's list plus
   the activity log, its panel and the snack shack print) reaches

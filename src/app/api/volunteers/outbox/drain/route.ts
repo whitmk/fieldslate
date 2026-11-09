@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { sendEmail } from "@/lib/email";
-import { drainOutbox } from "@/lib/volunteers/outbox-drain";
-import { renderVolunteerEmail } from "@/lib/volunteers/email-templates";
+import { runVolunteerDrain } from "@/lib/volunteers/drain-runner";
 
 // Sends the volunteer outbox (migration 0120). Called by Vercel Cron every 5
 // minutes (vercel.json — needs the Pro plan) with
@@ -35,26 +32,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_STORE });
   }
 
-  const admin = createAdminClient();
-  const summary = await drainOutbox({
-    envFrom: process.env.RESEND_FROM_EMAIL,
-    take: async (limit) => {
-      const { data, error } = await admin.rpc("volunteer_outbox_take" as never, { p_limit: limit } as never);
-      return error ? { ok: false, error: error.message } : { ok: true, rows: data };
-    },
-    finish: async ({ id, ok, resendId, error, retry }) => {
-      const { error: rpcErr } = await admin.rpc(
-        "volunteer_outbox_finish" as never,
-        { p_id: id, p_ok: ok, p_resend_id: resendId, p_error: error, p_retry: retry } as never,
-      );
-      return rpcErr ? { ok: false, error: rpcErr.message } : { ok: true };
-    },
-    send: ({ to, subject, html, text, from, replyTo, idempotencyKey }) =>
-      sendEmail(to, subject, html, text, { from, replyTo, idempotencyKey }),
-    render: renderVolunteerEmail,
-    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-    log: (m) => console.error(m),
-  });
+  const summary = await runVolunteerDrain();
 
   return NextResponse.json(summary, { status: summary.error ? 500 : 200, headers: NO_STORE });
 }

@@ -218,3 +218,56 @@ export const EMAIL_BACK_ON_LEAD = "The game is back on at its original time. You
 
 export const EMAIL_REMINDER_SUBJECT = (n: number) => (n === 1 ? "Reminder: your volunteer spot" : `Reminder: your ${n} volunteer spots`);
 export const EMAIL_REMINDER_LEAD = (league: string) => `A reminder from ${league} — you're signed up for:`;
+
+// ── Public sign-up page (/v/<token>) ─────────────────────────────────────────
+export const PUB_TITLE = "Volunteer sign-ups";
+export const PUB_SUBTITLE = (season: string) => `${season} · pick an open spot`;
+export const PUB_ALL = "All";
+export const PUB_SIGN_UP = "Sign up";
+export const PUB_TAKEN = "Taken";
+export const PUB_ONE_SPOT_OPEN = "1 spot open";
+export const PUB_SPOTS_OPEN = (open: number, of: number) => `${open} of ${of} spots open`;
+export const PUB_TAG_MAY_MOVE = "May move";
+export const PUB_TAG_RAINED_OUT = "Rained out";
+export const PUB_FOOTER = "Spots move with the schedule. If a game changes, we email you. · Powered by FieldSlate";
+export const PUB_NO_SPOTS = "No open spots right now. Check back later.";
+export const PUB_NO_MATCH = "No spots match. Try another filter.";
+export const PUB_BACK = "← All spots";
+export const PUB_YOURE_SIGNING_UP = "You're signing up for";
+export const PUB_DIVISION = "Division";
+export const PUB_CHOOSE_DIVISION = "Choose a division";
+export const PUB_TEAM = "Team";
+export const PUB_CHOOSE_TEAM = "Choose your child's team";
+export const PUB_FIRST_INITIAL = "First initial";
+export const PUB_LAST_NAME = "Last name";
+export const PUB_EMAIL = "Email";
+export const PUB_EMAIL_NOTE = "We'll send a confirmation with a link to change or cancel.";
+export const PUB_ADULT = "I'm 18 or older";
+export const PUB_CONFIRM = "Confirm sign-up";
+export const PUB_PRIVACY = "Only league admins see your name, team and email. Everyone else sees this spot as \"Taken.\"";
+export const PUB_OVERLAP_TITLE = "This email already has a spot at an overlapping time";
+export const PUB_OVERLAP_DETAIL = "Signing someone else up? That's fine, just confirm.";
+export const PUB_OVERLAP_YES = "Yes, take both spots";
+export const PUB_DONE_TITLE = "You're signed up";
+export const PUB_DONE_EMAILED = (email: string) =>
+  `We emailed ${email} a confirmation. Use the link in it to change or cancel. If this game moves or rains out, we'll email you.`;
+export const PUB_ANOTHER = "Sign up for another spot";
+export const PUB_SEASON = "Season";
+export const PUB_NEED_DIVISION = "Choose a division.";
+export const PUB_NEED_TEAM = "Choose a team.";
+export const PUB_NEED_INITIAL = "Enter your first initial (one letter).";
+export const PUB_NEED_LAST = "Enter your last name.";
+export const PUB_NEED_EMAIL = "Enter one email address.";
+export const PUB_NEED_ADULT = "Volunteers must be 18 or older.";
+export const PUB_JUST_TAKEN = "Someone just took this spot. Pick another one.";
+export const PUB_ALREADY = "This email already has this spot.";
+export const PUB_WRONG_TEAM = "That team isn't in this season. Reload and try again.";
+export const PUB_INVALID = "Check your name and email and try again.";
+export const PUB_RATE_LIMITED = "Too many sign-ups from here just now. Wait a little and try again.";
+export const PUB_CAPTCHA = "We couldn't confirm you're not a bot. Try again.";
+export const PUB_SPOT_GONE = "This spot isn't open anymore. Pick another one.";
+export const PUB_LINK_OFF = "This sign-up link isn't working right now. Ask your league for a new one.";
+export const PUB_FAILED = "Couldn't sign you up. Nothing was saved — please try again.";
+export const PUB_UNKNOWN = "This sign-up link isn't recognized. Ask your league for the current link.";
+export const PUB_LOAD_FAILED = "We couldn't load the sign-up page right now. Please try again in a minute.";
+export const PUB_UNAVAILABLE = "Sign-ups are temporarily unavailable. Please try again later.";

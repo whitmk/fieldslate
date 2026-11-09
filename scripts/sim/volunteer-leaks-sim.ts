@@ -251,7 +251,7 @@ let wired = 0;
 {
   const SURFACES: [string, RegExp][] = [
     ["src/components/settings/volunteers-card.tsx", /from\s+["']@\/lib\/volunteers\//],
-    ["src/app/api/volunteers/outbox/drain/route.ts", /from\s+["']@\/lib\/volunteers\/outbox-drain["']/],
+    ["src/app/api/volunteers/outbox/drain/route.ts", /from\s+["']@\/lib\/volunteers\/drain-runner["']/],
   ];
   for (const [f, re] of SURFACES) {
     const has = existsSync(join(ROOT, f)) && re.test(read(f));

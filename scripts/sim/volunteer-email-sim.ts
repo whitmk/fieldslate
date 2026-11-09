@@ -346,8 +346,9 @@ async function main() {
       "no CRON_SECRET → 503 before anything else");
     ok(src.includes("timingSafeEqual") && src.includes("bearerMatches(request.headers.get(\"authorization\"), secret)"),
       "S2", "the bearer is compared in constant time");
-    ok(src.includes("drainOutbox(") && src.includes("NextResponse.json(summary"), "S3",
-      "the reply is the drain summary (counts only)");
+    const runner = readFileSync(join(ROOT, "src/lib/volunteers/drain-runner.ts"), "utf8");
+    ok(src.includes("await runVolunteerDrain()") && runner.includes("return drainOutbox(") && src.includes("NextResponse.json(summary"), "S3",
+      "the reply is the drain summary (counts only), through the one drain runner");
     ok(!/from\(\s*["']volunteer/.test(src), "S4", "the route reads no volunteer table directly");
     const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as { crons?: { path: string; schedule: string }[] };
     eq(vercel.crons?.find((c) => c.path === "/api/volunteers/outbox/drain")?.schedule, "*/5 * * * *", "S5",

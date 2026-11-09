@@ -42,8 +42,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "VL7", what: "the outbox drain stops using the volunteer drain (wiring)", file: "src/app/api/volunteers/outbox/drain/route.ts",
-    find: 'import { drainOutbox } from "@/lib/volunteers/outbox-drain";',
-    replace: 'import { drainOutbox } from "../../../../../lib/volunteers/outbox-drain";',
+    find: 'import { runVolunteerDrain } from "@/lib/volunteers/drain-runner";',
+    replace: 'import { runVolunteerDrain } from "../../../../../lib/volunteers/drain-runner";',
     expect: "S1",
   },
 ];
