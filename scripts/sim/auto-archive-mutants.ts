@@ -11,6 +11,7 @@
 // 2026-11-08: AA13–AA17 (0121 part 4, the volunteer hold). First pass: all
 // five killed at their own tag, but AA8 had gone STALE (its line now returns
 // NOTHING) — re-aimed; then 17/17 at their own assertion.
+// AA18–AA21 (the hold banner and archive confirm): 21/21 at their own tag.
 import { runMutants, type Mutant } from "./mutant-runner";
 
 const DEC = "src/lib/seasons/archive-decision.ts";
@@ -122,6 +123,30 @@ const MUTANTS: Mutant[] = [
     find: "    if (!error && Array.isArray(reply) && reply.every((x: unknown) => typeof x === \"string\")) holds = reply as string[];",
     replace: "    holds = Array.isArray(reply) ? (reply as string[]) : [];",
     expect: "VH2",
+  },
+  {
+    id: "AA18", what: "the season page's read-only check archives the season", file: IO,
+    find: "    if (!write) continue;\n",
+    replace: "",
+    expect: "VH3",
+  },
+  {
+    id: "AA19", what: "the confirm button never says it deletes sign-ups", file: "src/lib/seasons/volunteer-hold.ts",
+    find: "  return state === \"has\" ? \"Archive and delete sign-ups\" : \"Archive season\";",
+    replace: "  return state === \"has\" ? \"Archive season\" : \"Archive season\";",
+    expect: "B1",
+  },
+  {
+    id: "AA20", what: "a failed sign-up check reads as no sign-ups", file: "src/lib/seasons/volunteer-hold.ts",
+    find: "  if (reply.error || !Array.isArray(reply.data) || !reply.data.every((x) => typeof x === \"string\")) return \"unknown\";",
+    replace: "  if (reply.error || !Array.isArray(reply.data) || !reply.data.every((x) => typeof x === \"string\")) return \"none\";",
+    expect: "B2",
+  },
+  {
+    id: "AA21", what: "the confirm can archive before the sign-up check answers", file: "src/components/seasons/archive-modals.tsx",
+    find: "          disabled={busy || signups === \"checking\"}",
+    replace: "          disabled={busy}",
+    expect: "B3",
   },
 ];
 

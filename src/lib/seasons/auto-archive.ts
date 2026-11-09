@@ -49,13 +49,37 @@ export async function autoArchivePastSeasons(
   ownerId: string,
   now: Date = new Date(),
 ): Promise<AutoArchiveResult> {
-  const { data: seasonsRaw, error: seasonsError } = await supabase
+  return runAutoArchive(supabase, ownerId, now, null, true);
+}
+
+/** The season page's question, answered by the SAME reads and decision:
+ *  is this one season held open only because it has volunteer sign-ups?
+ *  Writes nothing. Any unreadable input → false (no banner). */
+export async function seasonHeldForVolunteers(
+  supabase: SupabaseClient<Database>,
+  ownerId: string,
+  seasonId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const r = await runAutoArchive(supabase, ownerId, now, seasonId, false);
+  return r.heldForVolunteers.includes(seasonId);
+}
+
+async function runAutoArchive(
+  supabase: SupabaseClient<Database>,
+  ownerId: string,
+  now: Date,
+  onlySeasonId: string | null,
+  write: boolean,
+): Promise<AutoArchiveResult> {
+  let seasonsQuery = supabase
     .from("leagues")
     .select("id, end_date")
     .eq("owner_id", ownerId)
     .is("archived_at", null)
-    .not("end_date", "is", null)
-    .order("id", { ascending: true });
+    .not("end_date", "is", null);
+  if (onlySeasonId !== null) seasonsQuery = seasonsQuery.eq("id", onlySeasonId);
+  const { data: seasonsRaw, error: seasonsError } = await seasonsQuery.order("id", { ascending: true });
   if (seasonsError || !seasonsRaw || seasonsRaw.length === 0) return NOTHING;
   const seasons = seasonsRaw as unknown as { id: string; end_date: string }[];
 
@@ -128,6 +152,7 @@ export async function autoArchivePastSeasons(
     const decision = decideAutoArchive({ endDate: season.end_date, today, gameTimes, playoffGames, volunteerData });
     if (decision.reason === "volunteer_data") result.heldForVolunteers.push(season.id);
     if (!decision.archive) continue;
+    if (!write) continue;
 
     const { error } = await supabase
       .from("leagues")

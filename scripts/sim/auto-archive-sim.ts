@@ -43,6 +43,14 @@
 //        is listed as held; ONE holds call, naming only past-end seasons
 //   VH2  the holds call fails, or answers something that isn't a list of ids
 //        → nothing archived
+//   VH3  seasonHeldForVolunteers (the season page's banner): true only for a
+//        season held for volunteers — not one with playoffs left, not one
+//        without sign-ups — and it writes NOTHING
+//   B1   the banner / confirm words: the button says "Archive and delete
+//        sign-ups" only when the season has sign-ups
+//   B2   the confirm reads the holds reply fail-safe: an error or a malformed
+//        reply is "unknown" (the warning shows), never "none"
+//   B3   the confirm's button waits while the check runs and renders the label
 // ANTI-VACUITY: archived, blocked by a game, blocked by playoffs, blocked by a
 // read failure, held for volunteers — each must happen at least once through
 // the real helper.
@@ -51,7 +59,17 @@ import {
   decideAutoArchive,
   type PlayoffGameForArchive,
 } from "@/lib/seasons/archive-decision";
-import { autoArchivePastSeasons } from "@/lib/seasons/auto-archive";
+import { autoArchivePastSeasons, seasonHeldForVolunteers } from "@/lib/seasons/auto-archive";
+import {
+  ARCHIVE_SIGNUPS_UNKNOWN_LINE,
+  ARCHIVE_WITH_SIGNUPS_LINE,
+  archiveButtonLabel,
+  archiveSignupsLine,
+  archiveSignupsState,
+  holdBannerLine,
+} from "@/lib/seasons/volunteer-hold";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { END_DATE_NOTE, endDateEditCheck } from "@/lib/seasons/end-date";
 import { todayInTimezone } from "@/lib/utils/org-today";
 
@@ -306,6 +324,39 @@ async function main() {
       check("VH2", fx.updates.length === 0 && r.archived.length === 0, `${what}: wrote ${JSON.stringify(fx.updates)}`);
       if (fx.updates.length === 0) counters.blockedByReadFailure++;
     }
+  });
+
+  await section("VH3", async () => {
+    const db = baseDb();
+    db.volunteer_claims = [{ id: "c1", season_id: "ready", status: "active" }, { id: "c2", season_id: "playoffs", status: "active" }];
+    const f = fakeClient(db, new Set());
+    const ready = await seasonHeldForVolunteers(f.client, ORG, "ready", NOW);
+    const playoffs = await seasonHeldForVolunteers(f.client, ORG, "playoffs", NOW);
+    check("VH3", ready === true && playoffs === false, `ready ${ready}, playoffs ${playoffs}`);
+    check("VH3", f.updates.length === 0, `the season page's check wrote ${JSON.stringify(f.updates)}`);
+    const clean = fakeClient(baseDb(), new Set());
+    check("VH3", (await seasonHeldForVolunteers(clean.client, ORG, "ready", NOW)) === false && clean.updates.length === 0,
+      "a ready season without sign-ups is not held (and the page writes nothing)");
+    const broken = fakeClient(db, new Set(["rpc"]));
+    check("VH3", (await seasonHeldForVolunteers(broken.client, ORG, "ready", NOW)) === false, "an unreadable hold shows no banner");
+  });
+
+  await section("B", () => {
+    check("B1", archiveButtonLabel("has") === "Archive and delete sign-ups", archiveButtonLabel("has"));
+    for (const s of ["none", "unknown", "checking"] as const) check("B1", archiveButtonLabel(s) === "Archive season", `${s}: ${archiveButtonLabel(s)}`);
+    check("B1", archiveSignupsLine("has") === ARCHIVE_WITH_SIGNUPS_LINE && archiveSignupsLine("unknown") === ARCHIVE_SIGNUPS_UNKNOWN_LINE
+      && archiveSignupsLine("none") === null && archiveSignupsLine("checking") === null, "confirm lines");
+    check("B1", ARCHIVE_WITH_SIGNUPS_LINE.includes("unarchiving won't bring them back"), ARCHIVE_WITH_SIGNUPS_LINE);
+    const line = holdBannerLine("2026-10-25");
+    check("B1", line.startsWith("This season ended Oct 25, 2026.") && line.includes("archiving deletes volunteer names, emails and sign-ups"), line);
+    check("B2", archiveSignupsState("s1", { data: ["s1"], error: null }) === "has", "has");
+    check("B2", archiveSignupsState("s1", { data: [], error: null }) === "none", "none");
+    check("B2", archiveSignupsState("s1", { data: null, error: { message: "x" } }) === "unknown", "error → unknown");
+    check("B2", archiveSignupsState("s1", { data: [{ id: "s1" }], error: null }) === "unknown", "malformed → unknown");
+    const modal = readFileSync(join(__dirname, "..", "..", "src/components/seasons/archive-modals.tsx"), "utf8");
+    check("B3", modal.includes('disabled={busy || signups === "checking"}') && modal.includes("{archiveButtonLabel(signups)}")
+      && modal.includes('supabase.rpc("volunteer_archive_holds", { p_season_ids: [seasonId] })'),
+      "the archive confirm waits for the sign-up check and renders the shared label");
   });
 
   await section("ED", () => {

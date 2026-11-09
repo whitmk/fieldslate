@@ -3288,8 +3288,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (authenticated, member of every named season or `not_authorized`; a failed
   or malformed reply holds them all), asks `decideAutoArchive`, and archives
   only on yes (one UPDATE per season, `.is("archived_at", null)`). It returns
-  `{archived, heldForVolunteers}` (the callers ignore it until the banner is
-  built). Never put a second copy of the rule in a caller. **Deploy order:
+  `{archived, heldForVolunteers}`; `seasonHeldForVolunteers(…, seasonId)`
+  runs the SAME reads and decision for one season and writes nothing (the
+  season page's banner). Never put a second copy of the rule in a caller. **Deploy order:
   0121 must be applied BEFORE this code reaches `main`** — without the
   function every holds call fails, so NO season would ever auto-archive (the
   safe direction, but a silent stop).
@@ -3303,7 +3304,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   the last game, whichever is later — the 0112 rule). A plain
   browser UPDATE (0110 allows `end_date`), `.select("id")`, zero rows →
   "Nothing was saved". No migration.
-- **Harness: `npm run sim:auto-archive`** (50 checks × 3 host zones, 5
+- **Harness: `npm run sim:auto-archive`** (66 checks × 3 host zones, 5
   counters incl. heldForVolunteers; VD1–VD3 the decision's volunteer rule,
   VH1–VH2 the helper's one holds call and its fail-closed replies; fixed NOW = 2026-10-26 03:00Z, 8pm Oct 25 in Pacific) drives the
   decision and the REAL helper against a small fake client: playoffs after the
@@ -5710,8 +5711,18 @@ Still open:
   the same change as the claims (see "Auto-archive").** Auto-archive runs on
   every dashboard load, and this trigger fires on it like any other archive,
   so without the hold a season past its end date would lose its volunteer
-  data the moment an admin opens the dashboard. The hold BANNER is not built
-  yet (design owed to Whit, 2026-11-08).
+  data the moment an admin opens the dashboard. **The hold surfaces (approved
+  2026-11-08), words in `src/lib/seasons/volunteer-hold.ts`, rendered
+  verbatim:** the season page's neutral `VolunteerHoldBanner` (only for a
+  season `seasonHeldForVolunteers` says is held; its button opens the shared
+  archive confirm); the Seasons list tag "Open: volunteer sign-ups" (from
+  `autoArchivePastSeasons`' `heldForVolunteers`); and the ARCHIVE CONFIRM on
+  every surface: it asks `volunteer_archive_holds([season])` on open, the
+  button waits while it answers, and a season with sign-ups gets the deletion
+  line and the button **"Archive and delete sign-ups"** (decided 2026-11-08);
+  an unreadable answer shows the "couldn't check" line, never silence.
+  Harness: `sim:auto-archive` VH3, B1–B3 (+ AA18–AA21). Checked on a deleted
+  scratch route at 1280px and 375px with the reply stubbed.
   Proof: `scripts/sim/volunteers-foundation-sim.sql` (+ build script; rolled
   back in "test" with "Test 2"; 16 mutants; each mutant drops and re-creates
   the 0120 objects in its own rolled-back sub-run). Run 2026-11-08 (read its
