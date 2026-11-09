@@ -15,6 +15,8 @@ import {
   type PriorityDivision,
 } from "@/components/umpires/division-priority-card";
 import { AutoAssignSeasonButton } from "@/components/umpires/auto-assign-season-button";
+import { loadOfficialSignup } from "@/lib/officials-signup/feature-state";
+import { AskForHelpButton } from "@/components/umpires/ask-for-help-button";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
@@ -98,6 +100,8 @@ export default async function UmpiresPage() {
   ]);
 
   const umpires = (rawUmpires as unknown as UmpireRow[] | null) ?? [];
+  // Officials self-sign-up (0124): null unless the org has the switch on.
+  const officialSignup = seasonId ? await loadOfficialSignup(supabase, currentOrgId, "umpires") : null;
 
   // Single-season view — the season column never applies anymore.
   const showSeasonColumn = false;
@@ -179,6 +183,13 @@ export default async function UmpiresPage() {
               Print all schedules
             </Link>
           )}
+          {officialSignup && seasonId && umpires.length > 0 && (
+            <AskForHelpButton
+              seasonId={seasonId}
+              enabled={officialSignup.enabled}
+              officials={umpires.map((u) => ({ id: u.id, name: u.name, email: u.email }))}
+            />
+          )}
           <AddUmpireButton seasons={simpleSeasons} />
         </div>
       </div>
@@ -202,6 +213,14 @@ export default async function UmpiresPage() {
               umpires={umpires}
               showSeasonColumn={showSeasonColumn}
               seasonPaySettings={seasonPaySettings}
+              signup={
+                officialSignup && seasonId
+                  ? {
+                      enabled: officialSignup.enabled,
+                      divisions: (divisionsBySeason.get(seasonId) ?? []).map((d) => ({ id: d.id, name: d.name })),
+                    }
+                  : null
+              }
             />
           )}
         </CardContent>

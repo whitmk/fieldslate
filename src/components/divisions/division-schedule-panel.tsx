@@ -69,6 +69,7 @@ import {
   padRoleLabels,
 } from "@/lib/utils/official-title";
 import { byeTeamsByWeek, weekKeyFromIsoDate } from "@/lib/venues/game-days";
+import { officialDivisionLists, selfClaimedIds } from "@/lib/officials-signup/slot-extras";
 
 
 type PrintMode = "games";
@@ -343,7 +344,9 @@ export function DivisionSchedulePanel({
         .from("official_roles")
         .select("name")
         .eq("season_id", leagueId)
-        .order("sort_order"),
+        // Sort order, then name — the slot order claims and auto-assign use.
+        .order("sort_order")
+        .order("name"),
     ]);
 
     const divData = divDataRaw as unknown as {
@@ -429,7 +432,10 @@ export function DivisionSchedulePanel({
         : Promise.resolve({ data: [] as unknown[], error: null }),
     ]);
     setOfficialsReadFailed(!!(seasonRolesErr || umpiresErr || assignsErr));
-    setUmpireRoster((umpiresRaw ?? []) as UmpireOption[]);
+    // Each official's division list (0124) — the picker's warning only, fail-soft.
+    const roster = (umpiresRaw ?? []) as UmpireOption[];
+    const lists = await officialDivisionLists(supabase, roster.map((u) => u.id));
+    setUmpireRoster(roster.map((u) => ({ ...u, divisions: lists.get(u.id) ?? null })));
     type AssignRow = {
       id: string;
       game_id: string;
@@ -439,6 +445,8 @@ export function DivisionSchedulePanel({
     const assigns = ((assignsRaw as unknown as AssignRow[] | null) ?? []).filter(
       (r) => r.umpire,
     );
+    // "Signed up" tag (0124) — display only, fail-soft.
+    const claimed = await selfClaimedIds(supabase, assigns.map((a) => a.id));
     const map = new Map<string, SlotAssignment[]>();
     for (const a of assigns) {
       const slot: SlotAssignment = {
@@ -446,6 +454,7 @@ export function DivisionSchedulePanel({
         umpire_id: a.umpire!.id,
         umpire_name: a.umpire!.name,
         role: a.role,
+        self_claimed: claimed.has(a.id),
       };
       if (!map.has(a.game_id)) map.set(a.game_id, []);
       map.get(a.game_id)!.push(slot);
@@ -1647,6 +1656,7 @@ export function DivisionSchedulePanel({
                               away_team_name: opponentName(game),
                               home_team_id: game.home_team_id,
                               away_team_id: game.away_team_id,
+                              division_id: divisionId,
                             }}
                             seasonId={leagueId}
                             roles={umpireRoles}

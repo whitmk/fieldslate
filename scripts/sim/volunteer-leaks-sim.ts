@@ -37,7 +37,10 @@
 //       database function outside the volunteer set (latest body) reads
 //       volunteer_official_links / volunteer_official_no_shows: the tracker
 //       counts officials' games, but assignment, auto-assign and pay never
-//       read what it stores.
+//       read what it stores. Since 2026-11-09 it also fences the officials
+//       self-sign-up code (src/lib/officials-signup, its components, the /o/
+//       page and /api/officials) and the shared league-email module
+//       (src/lib/outbound-email), which both features import.
 //   S1  WIRING (anti-vacuity) — the Settings card, the outbox drain and the
 //       tracker page use the volunteer code, so the fence is not guarding
 //       nothing.
@@ -205,7 +208,11 @@ const latest = latestSqlBodies(); // fn → latest body, comments stripped
 // ── U1: the officials fence (0123) ──────────────────────────────────────
 let officialFiles = 0;
 {
-  const files = [...walk("src/lib/umpires"), ...walk("src/components/umpires"), ...walk("src/app/(dashboard)/dashboard/umpires")];
+  const files = [
+    ...walk("src/lib/umpires"), ...walk("src/components/umpires"), ...walk("src/app/(dashboard)/dashboard/umpires"),
+    ...walk("src/lib/officials-signup"), ...walk("src/components/officials-signup"), ...walk("src/app/o"),
+    ...walk("src/app/api/officials"), ...walk("src/lib/outbound-email"),
+  ];
   const bad: string[] = [];
   for (const f of files) {
     officialFiles++;

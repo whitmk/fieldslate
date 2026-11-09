@@ -12,6 +12,6 @@ export async function middleware(request: NextRequest) {
 // reason: anonymous, token-addressed, never signed in.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|s/|v/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|s/|v/|o/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

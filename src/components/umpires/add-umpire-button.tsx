@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CalendarOff, ChevronDown, Clock, Plus, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { PARENT_EMAIL_HINT, PARENT_EMAIL_LABEL } from "@/lib/officials-signup/words";
 import { getOfficialTitleLower } from "@/lib/utils/official-title";
 import {
   coachTeamLabel,
@@ -308,7 +309,7 @@ export function AddUmpireButton({ seasons }: Props) {
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-gray-700">
-                  Email <span className="font-normal text-gray-400">(optional)</span>
+                  {designation === "youth" ? PARENT_EMAIL_LABEL : "Email"} <span className="font-normal text-gray-400">(optional)</span>
                 </label>
                 <input
                   type="email"
@@ -317,6 +318,7 @@ export function AddUmpireButton({ seasons }: Props) {
                   onChange={(e) => setEmail(e.target.value)}
                   className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
                 />
+                {designation === "youth" && <p className="text-xs text-gray-500">{PARENT_EMAIL_HINT}</p>}
               </div>
 
               <div className="flex flex-col gap-1.5">

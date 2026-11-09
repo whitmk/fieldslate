@@ -9,6 +9,8 @@ import { PublicScheduleCard, type PublicScheduleCardData } from "@/components/se
 import { DaylightCard } from "@/components/settings/daylight-card";
 import { VolunteersCard } from "@/components/settings/volunteers-card";
 import { loadVolunteerFeature } from "@/lib/volunteers/feature-state";
+import { OfficialSignupCard } from "@/components/settings/official-signup-card";
+import { loadOfficialSignup } from "@/lib/officials-signup/feature-state";
 import { loadDaylight } from "@/lib/daylight/load";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/calendar/timezones";
@@ -40,6 +42,7 @@ export default async function SettingsPage() {
   const publicSchedule = await loadPublicScheduleCard(supabase, currentOrgId);
   const daylight = await loadDaylight(supabase, currentOrgId);
   const volunteers = await loadVolunteerFeature(supabase, currentOrgId, "settings");
+  const officialSignup = await loadOfficialSignup(supabase, currentOrgId, "settings");
   const profile = rawProfile as Profile | null;
   const orgTimezone =
     (orgRow as { timezone: string } | null)?.timezone ?? DEFAULT_ORG_TIMEZONE;
@@ -73,6 +76,8 @@ export default async function SettingsPage() {
       <PublicScheduleCard orgId={currentOrgId} orgName={orgName} plan={plan} data={publicSchedule} />
 
       {volunteers && <VolunteersCard orgId={currentOrgId} data={volunteers} />}
+
+      {officialSignup && <OfficialSignupCard orgId={currentOrgId} data={officialSignup} />}
 
       <Card>
         <CardHeader>

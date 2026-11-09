@@ -6,6 +6,8 @@ import Link from "next/link";
 import { ChevronDown, Pencil, Trash2, X, Loader2, CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
+import { PARENT_EMAIL_HINT, PARENT_EMAIL_LABEL } from "@/lib/officials-signup/words";
+import { OfficialSignupSection, type SignupDivision } from "@/components/umpires/official-signup-section";
 import { getOfficialTitleLower } from "@/lib/utils/official-title";
 import {
   coachTeamLabel,
@@ -48,6 +50,10 @@ interface Props {
   umpires: UmpireRow[];
   showSeasonColumn: boolean;
   seasonPaySettings: SeasonPaySettings[];
+  /** Officials self-sign-up (0124): present only when the org has the
+   *  feature — adds the divisions control and "Copy new link" to the edit
+   *  modal. */
+  signup?: { enabled: boolean; divisions: SignupDivision[] } | null;
 }
 
 function getPaySettings(seasonId: string, settings: SeasonPaySettings[]): SeasonPaySettings | null {
@@ -64,7 +70,7 @@ function availabilityHint(u: UmpireRow): string {
   return windows > 0 ? "Availability set" : "Blackout dates set";
 }
 
-export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Props) {
+export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings, signup = null }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState<UmpireRow | null>(null);
   const [deleting, setDeleting] = useState<UmpireRow | null>(null);
@@ -267,6 +273,7 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Pro
       {editing && (
         <EditUmpireModal
           umpire={editing}
+          signup={signup}
           paySettings={getPaySettings(editing.season_id, seasonPaySettings)}
           onClose={() => setEditing(null)}
           onSaved={() => {
@@ -292,11 +299,13 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings }: Pro
 
 function EditUmpireModal({
   umpire,
+  signup,
   paySettings,
   onClose,
   onSaved,
 }: {
   umpire: UmpireRow;
+  signup: { enabled: boolean; divisions: SignupDivision[] } | null;
   paySettings: SeasonPaySettings | null;
   onClose: () => void;
   onSaved: () => void;
@@ -498,7 +507,7 @@ function EditUmpireModal({
           )}
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-gray-700">
-              Email <span className="font-normal text-gray-400">(optional)</span>
+              {designation === "youth" ? PARENT_EMAIL_LABEL : "Email"} <span className="font-normal text-gray-400">(optional)</span>
             </label>
             <input
               type="email"
@@ -507,6 +516,7 @@ function EditUmpireModal({
               onChange={(e) => setEmail(e.target.value)}
               className="h-11 w-full rounded-lg border border-gray-200 px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
             />
+            {designation === "youth" && <p className="text-xs text-gray-500">{PARENT_EMAIL_HINT}</p>}
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-gray-700">
@@ -570,6 +580,10 @@ function EditUmpireModal({
               className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#22C55E] focus:outline-none focus:ring-2 focus:ring-[#22C55E]/20"
             />
           </div>
+
+          {signup && (
+            <OfficialSignupSection umpireId={umpire.id} divisions={signup.divisions} enabled={signup.enabled} />
+          )}
 
           <div className="rounded-lg border border-gray-200">
             <button

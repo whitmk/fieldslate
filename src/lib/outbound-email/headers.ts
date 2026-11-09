@@ -12,9 +12,10 @@
 // open a second address), no bidi controls (they can make the name read as
 // something else), whitespace collapsed, at most 60 characters.
 //
-// The address shape below is the SAME rule as the CHECKs in migration 0120
-// (volunteer_settings.contact_email, volunteers.email_lc). sim:volunteer-email
-// [X1] reads the migration and fails if the two drift.
+// The address shape below is the SAME rule as the email CHECKs in migrations
+// 0120 (the volunteer contact and volunteer addresses) and 0124 (the
+// officials contact). sim:volunteer-email [X1] reads 0120 and fails if the
+// two drift.
 
 /** One @, no whitespace, control characters, quotes, angle brackets, commas,
  *  semicolons, colons, parentheses or backslashes; a dot after the @. */
