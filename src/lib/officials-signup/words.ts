@@ -67,11 +67,13 @@ export const helpSkippedLine = (name: string, reason: string) =>
 export const HELP_OFF = "Turn on officials sign-up in Settings first.";
 export const HELP_FAILED = "Couldn't send the emails. Nobody was emailed. Try again.";
 
-export const COPY_LINK = "Copy new link (the old one stops working)";
-export const COPIED = "New link copied. The old one no longer works.";
-export const COPY_SHOW = "Couldn't copy automatically. Here's the new link — the old one no longer works:";
-export const COPY_FAILED = "Couldn't make a new link. The old one still works. Try again.";
-export const COPY_OFF = "Turn on officials sign-up in Settings to make a link.";
+export const CREATE_LINK = "Create new link (the old one stops working)";
+export const LINK_CREATED = "New link made. The old one no longer works. Copy it and send it to them:";
+export const LINK_COPY = "Copy";
+export const LINK_COPIED = "Copied";
+export const LINK_COPY_REFUSED = "Couldn't copy. Select the link above and copy it.";
+export const LINK_FAILED = "Couldn't make a new link. The old one still works. Try again.";
+export const LINK_OFF = "Turn on officials sign-up in Settings to make a link.";
 
 export const DIVISIONS_LABEL = "Divisions they can work";
 export const DIVISIONS_ALL = "All divisions";

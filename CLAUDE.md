@@ -6327,6 +6327,17 @@ Still open:
   revoked, switch off, setting off, a Pro league, an archived season → the
   page reads "This link isn't working". The page names nobody else
   (proof OK1: exact key sets).
+- **The link is made, then copied, in TWO clicks (2026-11-09, branch
+  `fix/official-link-copy`).** "Create new link (the old one stops working)"
+  calls `official_issue_link` and SHOWS the link in a selectable field; a
+  separate "Copy" button calls `copyLink` (`src/lib/officials-signup/
+  link-copy.ts`), which writes the clipboard as the first thing the click
+  does. **Never write the clipboard after an await** — Safari refuses it (the
+  old single button awaited the RPC first; reproduced in Playwright's WebKit
+  2026-11-09: refused, the link shown as the fallback). The button turns
+  "Copied"; a refusal says to select the link in the field. Harness:
+  `sim:official-signup-page` L1–L4 + SP12–SP16 (SP13 = the await put back).
+  Real Safari was not driven (safaridriver needs "Allow remote automation").
 - **Display-only reads are fail-soft** (`slot-extras.ts`): the "Signed up"
   tag and the picker's "not set to work this division" flag show nothing when
   their read fails, so the officials screens don't break before 0124 is
