@@ -5909,9 +5909,10 @@ Still open:
   snack shack row until branch C; spots 1–10; "Starts before the game"
   0–120; the kind locks once anyone signed up (unknown counts lock too); the
   link strip shows status, Copy, Open and a Settings link (on/off, contact,
-  Reset stay in Settings). Harness `npm run sim:volunteer-roles` (58 checks
-  × 3 zones) + `:mutants` (10; W2 pins the editor's "How spots are made"
-  words, approved 2026-11-09). Checked on a deleted scratch route at 1280px
+  Reset stay in Settings). Harness `npm run sim:volunteer-roles` (70 checks
+  × 3 zones) + `:mutants` (11; W2 pins the editor's "How spots are made"
+  words, approved 2026-11-09, and fails on any volunteer string that says
+  "slot" — people see "spots"; code identifiers stay). Checked on a deleted scratch route at 1280px
   and 375px with the RPCs stubbed. **Deploy order (met 2026-11-09): 0121 was applied before `main`.**
 - **Screen 4 — Who signed up (`/dashboard/volunteers/signups`, 2026-11-08,
   approved plan).** Same gates as screen 1. Names and emails ONLY from

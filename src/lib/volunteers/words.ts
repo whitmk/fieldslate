@@ -75,7 +75,7 @@ export const STRIP_NO_LINK = "Turn the sign-up link on in Settings to share it."
 export const ROLES_TABLE_TITLE = "Roles this season";
 export const ADD_ROLE = "+ Add role";
 export const COL_ROLE = "Role";
-export const COL_SLOTS = "Slots";
+export const COL_SLOTS = "Spots";
 export const COL_DIVISIONS = "Divisions";
 export const COL_SIGNUPS = "Sign-ups";
 export const COL_FILLED = "Filled";
@@ -90,7 +90,7 @@ export const UMPIRES_SLOTS = "Per division setting";
 export const UMPIRES_SIGNUPS = "Assigned by admin";
 export const UMPIRES_LINK = "Umpires page →";
 export const UMPIRES_FOOTNOTE =
-  "Umpires never use the public link. A later phase adds personal links for rostered umpires, so they can claim open slots they're eligible for.";
+  "Umpires never use the public link. A later phase adds personal links for rostered umpires, so they can claim open spots they're eligible for.";
 
 export const EDIT_ROLE_TITLE = (name: string) => `Edit role: ${name}`;
 export const NEW_ROLE_TITLE = "Add a role";
@@ -110,7 +110,7 @@ export const FIELD_OPEN = "Open on the public sign-up link";
 export const SAVE_ROLE = "Save role";
 export const CANCEL = "Cancel";
 export const DELETE_ROLE = "Delete role";
-export const PARTNER_NOTE = "Games waiting on a partner league's answer get slots once they're agreed.";
+export const PARTNER_NOTE = "Games waiting on a partner league's answer get spots once they're agreed.";
 
 /** A role refusal from save/delete_volunteer_role, in words. */
 export function roleErrorLine(message: string | null | undefined): string {

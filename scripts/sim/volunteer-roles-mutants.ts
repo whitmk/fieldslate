@@ -64,6 +64,12 @@ const MUTANTS: Mutant[] = [
     replace: "{k === \"per_game\" ? \"Like field prep or announcer. Home games only.\" : W.KIND_PER_TEAM_DETAIL}",
     expect: "W2",
   },
+  {
+    id: "VR11", what: "a volunteer sentence says slots again", file: "src/lib/volunteers/words.ts",
+    find: "answer get spots once they're agreed.",
+    replace: "answer get slots once they're agreed.",
+    expect: "W2",
+  },
 ];
 
 runMutants({

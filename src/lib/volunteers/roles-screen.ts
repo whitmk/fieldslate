@@ -46,9 +46,9 @@ export function slotCount(
   return { spots, games: withSlots };
 }
 
-/** "This creates 96 slots across 48 games." */
+/** "This creates 96 spots across 48 games." */
 export function createsLine(count: { spots: number; games: number }): string {
-  const s = count.spots === 1 ? "slot" : "slots";
+  const s = count.spots === 1 ? "spot" : "spots";
   const g = count.games === 1 ? "game" : "games";
   return `This creates ${count.spots} ${s} across ${count.games} ${g}.`;
 }
@@ -124,7 +124,7 @@ export function cancelLine(n: number): string {
 }
 
 export function deleteLine(name: string): string {
-  return `Delete ${name}? Its open slots disappear from the sign-up page.`;
+  return `Delete ${name}? Its open spots disappear from the sign-up page.`;
 }
 
 /** A commit's reply is success only when it says committed. */
