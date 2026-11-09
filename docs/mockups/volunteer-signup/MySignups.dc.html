@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>My sign-ups</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#0C1F3F}a:hover{color:#16a34a}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; overflow-y: auto; box-sizing: border-box; background: #f4f5f0; font-family: Manrope, system-ui, sans-serif; color: #0C1F3F">
+
+<div style="background: #0C1F3F; color: #ffffff; padding: 20px 20px 18px; display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #c7d2e3">Example Little League</div>
+<div style="font-size: 22px; font-weight: 800">My sign-ups</div>
+<div style="font-size: 13px; color: #c7d2e3">A. Garcia · Majors Expos</div>
+</div>
+
+<div style="padding: 16px 16px 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 13px; color: #4b5563; line-height: 1.5">This page is private to you. Anyone with this link can change these sign-ups, so don't share it. Changes close 24 hours before each spot.</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-direction: column; gap: 3px">
+<div style="font-size: 15px; font-weight: 800">GameChanger · Expos</div>
+<div style="font-size: 13px; color: #4b5563">Tomorrow · Sat, Mar 6 · 9:00 AM · Expos vs Pirates · Field 1</div>
+</div>
+<div style="font-size: 13px; color: #374151; background: #f4f5f0; border-radius: 10px; padding: 10px 12px; line-height: 1.5"><b>Less than 24 hours away.</b> Online changes are closed. To cancel, contact the league: <a href="mailto:volunteers@exampleleague.org">volunteers@exampleleague.org</a></div>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #f59e0b; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-direction: column; gap: 3px">
+<div style="font-size: 12px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.05em">Game moved</div>
+<div style="font-size: 15px; font-weight: 800">Snack shack · Shift 1</div>
+<div style="font-size: 13px; color: #4b5563">Now Sun, Mar 14 · 12:30–3:30 PM · Main Park</div>
+<div style="font-size: 13px; color: #4b5563">Was Sat, Mar 13 · 8:30–11:30 AM</div>
+</div>
+<div style="font-size: 13px; color: #374151">You're still signed up. Can't make the new time?</div>
+<div style="display: flex; gap: 8px">
+<button type="button" style="flex: 1; min-height: 44px; border-radius: 10px; border: none; background: #0C1F3F; color: #ffffff; font: 700 14px Manrope, system-ui, sans-serif">Keep it</button>
+<button type="button" style="flex: 1; min-height: 44px; border-radius: 10px; border: 1px solid #b91c1c; background: #ffffff; color: #b91c1c; font: 700 14px Manrope, system-ui, sans-serif">Cancel</button>
+</div>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 6px">
+<div style="font-size: 12px; font-weight: 800; color: #374151; text-transform: uppercase; letter-spacing: 0.05em">Rained out</div>
+<div style="font-size: 15px; font-weight: 800">Field prep</div>
+<div style="font-size: 13px; color: #4b5563">Sat, Mar 20 · 8:15 AM · Expos vs Cubs · Field 1</div>
+<div style="font-size: 13px; color: #374151">Your spot is held. When the game gets a new date, we'll email you to confirm.</div>
+</div>
+
+<a href="Main.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 48px; border-radius: 10px; border: 1px solid #0C1F3F; background: #ffffff; color: #0C1F3F; font: 700 15px Manrope, system-ui, sans-serif; text-decoration: none">Sign up for more spots</a>
+
+<div style="font-size: 12px; color: #4b5563; text-align: center; line-height: 1.5">Your total this season: 3 spots<br>Questions? Reply to any sign-up email to reach the league.</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

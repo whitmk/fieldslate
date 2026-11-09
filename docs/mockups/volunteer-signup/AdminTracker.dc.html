@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin: volunteer tracker</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#0C1F3F}a:hover{color:#16a34a}
+</style>
+</helmet>
+<div style="min-height: 1650px; box-sizing: border-box; background: #f4f5f0; font-family: Manrope, system-ui, sans-serif; color: #0C1F3F; padding: 32px 24px 48px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<a href="AdminSignups.dc.html" style="font-size: 13px; font-weight: 700; color: #4b5563; text-decoration: none">← Who signed up</a>
+<h1 style="margin: 0; font-size: 28px; font-weight: 800">Volunteer tracker</h1>
+</div>
+<button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 14px Manrope, system-ui, sans-serif">Export CSV</button>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<div style="flex: 2 1 420px; background: #ffffff; border: 1px solid #dfe2da; border-radius: 14px; padding: 18px 20px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 12px; font-weight: 800; color: #4b5563; text-transform: uppercase; letter-spacing: 0.05em">Season goal</div>
+<div style="font-size: 20px; font-weight: 800">2 shifts per family</div>
+<div style="display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center"><span style="font-size: 13px; font-weight: 700; color: #4b5563">What counts:</span><label style="display: flex; gap: 6px; align-items: center; font-size: 14px; min-height: 36px"><input type="checkbox" checked="{{ true }}" style="width: 18px; height: 18px; margin: 0"> Snack shack</label><label style="display: flex; gap: 6px; align-items: center; font-size: 14px; min-height: 36px"><input type="checkbox" checked="{{ true }}" style="width: 18px; height: 18px; margin: 0"> GameChanger</label><label style="display: flex; gap: 6px; align-items: center; font-size: 14px; min-height: 36px"><input type="checkbox" checked="{{ true }}" style="width: 18px; height: 18px; margin: 0"> Field prep</label><label style="display: flex; gap: 6px; align-items: center; font-size: 14px; min-height: 36px"><input type="checkbox" style="width: 18px; height: 18px; margin: 0"> Umpire</label></div><div style="font-size: 12px; color: #4b5563">All counted shifts are equal. No-shows never count.</div>
+</div>
+<button type="button" style="min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #0C1F3F; background: #ffffff; color: #0C1F3F; font: 700 14px Manrope, system-ui, sans-serif">Edit goal</button>
+</div>
+<div style="flex: 1 1 300px; background: #ffffff; border: 1px solid #dfe2da; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 12px; font-weight: 800; color: #4b5563; text-transform: uppercase; letter-spacing: 0.05em">Families per team (optional)</div>
+<div style="font-size: 14px">Enter each team's family count in the table below to see how many haven't signed up.</div>
+<div style="font-size: 12px; color: #4b5563">Leave a team blank and it's tracked by sign-ups only. Just a number: no names or emails.</div>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px">
+<div style="flex: 1 1 200px; background: #ffffff; border: 1px solid #dfe2da; border-radius: 12px; padding: 14px 16px">
+<div style="font-size: 28px; font-weight: 800; color: #14532d">41</div>
+<div style="font-size: 13px; color: #4b5563; font-weight: 700">Goal met</div>
+</div>
+<div style="flex: 1 1 200px; background: #ffffff; border: 1px solid #dfe2da; border-radius: 12px; padding: 14px 16px">
+<div style="font-size: 28px; font-weight: 800">29</div>
+<div style="font-size: 13px; color: #4b5563; font-weight: 700">On track (upcoming spots cover it)</div>
+</div>
+<div style="flex: 1 1 200px; background: #ffffff; border: 1px solid #dfe2da; border-radius: 12px; padding: 14px 16px">
+<div style="font-size: 28px; font-weight: 800; color: #92400e">18</div>
+<div style="font-size: 13px; color: #4b5563; font-weight: 700">Short</div>
+</div>
+<div style="flex: 1 1 200px; background: #ffffff; border: 1px solid #dfe2da; border-radius: 12px; padding: 14px 16px">
+<div style="font-size: 28px; font-weight: 800; color: #b91c1c">6</div>
+<div style="font-size: 13px; color: #4b5563; font-weight: 700">Families not signed up yet</div>
+<div style="font-size: 12px; color: #4b5563">From teams with a family count</div>
+</div>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 14px; overflow-x: auto">
+<div style="padding: 16px 20px 4px; display: flex; flex-direction: column; gap: 2px"><div style="font-size: 16px; font-weight: 800">By team</div><div style="font-size: 12px; color: #4b5563">Teams with a family count show progress against all families; teams without one use sign-ups only.</div></div>
+<table style="width: 100%; border-collapse: collapse; font-size: 14px; min-width: 720px">
+<thead>
+<tr style="text-align: left; color: #4b5563; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em">
+<th style="padding: 12px 20px; font-weight: 800">Team</th>
+<th style="padding: 12px 12px; font-weight: 800">Families</th>
+<th style="padding: 12px 12px; font-weight: 800">Signed up</th>
+<th style="padding: 12px 12px; font-weight: 800; width: 36%">Progress</th>
+<th style="padding: 12px 12px; font-weight: 800">Short</th>
+<th style="padding: 12px 20px; font-weight: 800">Not signed up</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 12px 20px"><b>Majors Expos</b></td>
+<td style="padding: 8px 12px"><input aria-label="Families on Majors Expos" value="12" placeholder="—" inputmode="numeric" style="width: 64px; min-height: 40px; padding: 0 10px; border: 1px solid #c9cdc4; border-radius: 8px; font: 500 16px Manrope, system-ui, sans-serif; color: #0C1F3F; box-sizing: border-box"></td>
+<td style="padding: 12px 12px">10</td>
+<td style="padding: 12px 12px"><div style="display: flex; gap: 10px; align-items: center"><div style="flex: 1; height: 10px; border-radius: 999px; background: #eceee8; overflow: hidden; display: flex"><div style="width: 58%; background: #16a34a"></div><div style="width: 17%; background: #86efac"></div></div><span style="font-size: 13px; color: #4b5563; white-space: nowrap">7 met · 2 on track of 12</span></div></td>
+<td style="padding: 12px 12px">1</td>
+<td style="padding: 12px 20px">2</td>
+</tr>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 12px 20px"><b>Majors Pirates</b></td>
+<td style="padding: 8px 12px"><input aria-label="Families on Majors Pirates" value="12" placeholder="—" inputmode="numeric" style="width: 64px; min-height: 40px; padding: 0 10px; border: 1px solid #c9cdc4; border-radius: 8px; font: 500 16px Manrope, system-ui, sans-serif; color: #0C1F3F; box-sizing: border-box"></td>
+<td style="padding: 12px 12px">8</td>
+<td style="padding: 12px 12px"><div style="display: flex; gap: 10px; align-items: center"><div style="flex: 1; height: 10px; border-radius: 999px; background: #eceee8; overflow: hidden; display: flex"><div style="width: 25%; background: #16a34a"></div><div style="width: 17%; background: #86efac"></div></div><span style="font-size: 13px; color: #4b5563; white-space: nowrap">3 met · 2 on track of 12</span></div></td>
+<td style="padding: 12px 12px; color: #92400e; font-weight: 800">3</td>
+<td style="padding: 12px 20px"><span style="color: #b91c1c; font-weight: 800">4</span></td>
+</tr>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 12px 20px"><b>AAA Rays</b></td>
+<td style="padding: 8px 12px"><input aria-label="Families on AAA Rays" value="" placeholder="—" inputmode="numeric" style="width: 64px; min-height: 40px; padding: 0 10px; border: 1px solid #c9cdc4; border-radius: 8px; font: 500 16px Manrope, system-ui, sans-serif; color: #0C1F3F; box-sizing: border-box"></td>
+<td style="padding: 12px 12px">9</td>
+<td style="padding: 12px 12px"><div style="display: flex; gap: 10px; align-items: center"><div style="flex: 1; height: 10px; border-radius: 999px; background: #eceee8; overflow: hidden; display: flex"><div style="width: 56%; background: #16a34a"></div><div style="width: 33%; background: #86efac"></div></div><span style="font-size: 13px; color: #4b5563; white-space: nowrap">5 met · 3 on track of 9 signed up</span></div></td>
+<td style="padding: 12px 12px">1</td>
+<td style="padding: 12px 20px"><span style="color: #4b5563">No count set</span></td>
+</tr>
+</tbody>
+</table>
+<div style="padding: 10px 20px 16px; font-size: 12px; color: #4b5563; display: flex; gap: 16px; flex-wrap: wrap">
+<span style="display: flex; gap: 6px; align-items: center"><span style="width: 12px; height: 12px; border-radius: 3px; background: #16a34a"></span>Goal met (shifts worked)</span>
+<span style="display: flex; gap: 6px; align-items: center"><span style="width: 12px; height: 12px; border-radius: 3px; background: #86efac"></span>On track (includes upcoming spots)</span>
+</div>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 14px; overflow: hidden">
+<div style="padding: 16px 20px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; border-bottom: 1px solid #eceee8">
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<button type="button" style="min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 13px Manrope, system-ui, sans-serif">All</button>
+<button type="button" style="min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 13px Manrope, system-ui, sans-serif">Goal met</button>
+<button type="button" style="min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #0C1F3F; background: #0C1F3F; color: #ffffff; font: 700 13px Manrope, system-ui, sans-serif">Short</button>
+</div>
+<button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: none; background: #0C1F3F; color: #ffffff; font: 700 14px Manrope, system-ui, sans-serif">Email 2 selected a nudge</button>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 14px; min-width: 760px">
+<thead>
+<tr style="text-align: left; color: #4b5563; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em">
+<th style="padding: 12px 20px; font-weight: 800; width: 44px"><span style="position: absolute; left: -9999px">Select</span></th>
+<th style="padding: 12px 12px; font-weight: 800">Family</th>
+<th style="padding: 12px 12px; font-weight: 800">Team(s)</th>
+<th style="padding: 12px 12px; font-weight: 800">Worked</th>
+<th style="padding: 12px 12px; font-weight: 800">Upcoming</th>
+<th style="padding: 12px 12px; font-weight: 800">No-shows</th>
+<th style="padding: 12px 20px; font-weight: 800">Status</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 12px 20px"><input type="checkbox" checked="{{ true }}" aria-label="Select Patel" style="width: 20px; height: 20px; margin: 0"></td>
+<td style="padding: 12px 12px"><b>Patel</b><div style="font-size: 12px; color: #4b5563">M. Patel</div></td>
+<td style="padding: 12px 12px">Majors Pirates, AA Owls</td>
+<td style="padding: 12px 12px">0</td>
+<td style="padding: 12px 12px">1</td>
+<td style="padding: 12px 12px; color: #b91c1c; font-weight: 800">1</td>
+<td style="padding: 12px 20px"><span style="padding: 4px 10px; border-radius: 999px; background: #fef3c7; color: #78350f; font-weight: 700; font-size: 13px">Short 1</span></td>
+</tr>
+<tr style="border-top: 1px solid #eceee8">
+<td style="padding: 12px 20px"><input type="checkbox" checked="{{ true }}" aria-label="Select Brooks" style="width: 20px; height: 20px; margin: 0"></td>
+<td style="padding: 12px 12px"><b>Brooks</b><div style="font-size: 12px; color: #4b5563">T. Brooks</div></td>
+<td style="padding: 12px 12px">Majors Pirates</td>
+<td style="padding: 12px 12px">1</td>
+<td style="padding: 12px 12px">0</td>
+<td style="padding: 12px 12px">0</td>
+<td style="padding: 12px 20px"><span style="padding: 4px 10px; border-radius: 999px; background: #fef3c7; color: #78350f; font-weight: 700; font-size: 13px">Short 1</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div style="padding: 12px 20px 16px; font-size: 12px; color: #4b5563; border-top: 1px solid #eceee8">Nudges go only to volunteers who've already signed up, with the public sign-up link. Names, emails and counts are deleted when the season is archived.</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1650}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

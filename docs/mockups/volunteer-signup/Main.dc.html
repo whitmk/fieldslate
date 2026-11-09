@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Volunteer sign-up</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#0C1F3F}a:hover{color:#16a34a}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; overflow-y: auto; box-sizing: border-box; background: #f4f5f0; font-family: Manrope, system-ui, sans-serif; color: #0C1F3F">
+
+<div style="background: #0C1F3F; color: #ffffff; padding: 20px 20px 18px; display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #c7d2e3">Example Little League</div>
+<div style="font-size: 22px; font-weight: 800">Volunteer sign-ups</div>
+<div style="font-size: 13px; color: #c7d2e3">Spring 2027 · pick an open spot</div>
+</div>
+
+<sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
+<div style="padding: 16px 16px 24px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<sc-for list="{{ chips }}" as="chip" hint-placeholder-count="4">
+<button type="button" onClick="{{ chip.pick }}" style="{{ chip.style }}">{{ chip.label }}</button>
+</sc-for>
+</div>
+<sc-for list="{{ groups }}" as="group" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 13px; font-weight: 800; color: #374151; text-transform: uppercase; letter-spacing: 0.05em">{{ group.date }}</div>
+<sc-for list="{{ group.items }}" as="item" hint-placeholder-count="3">
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 12px; padding: 12px 14px; display: flex; gap: 12px; align-items: center">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+<div style="font-size: 15px; font-weight: 800">{{ item.title }}</div>
+<div style="font-size: 13px; color: #4b5563">{{ item.time }} · {{ item.detail }}</div>
+<sc-if value="{{ item.hasTag }}" hint-placeholder-val="{{ false }}">
+<div style="font-size: 12px; font-weight: 700; color: #92400e">{{ item.tag }}</div>
+</sc-if>
+</div>
+<sc-if value="{{ item.isOpen }}" hint-placeholder-val="{{ true }}">
+<button type="button" onClick="{{ item.pick }}" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: none; background: #0C1F3F; color: #ffffff; font: 700 14px Manrope, system-ui, sans-serif; cursor: pointer">Sign up</button>
+</sc-if>
+<sc-if value="{{ item.isTaken }}" hint-placeholder-val="{{ false }}">
+<span style="padding: 6px 12px; border-radius: 999px; background: #e5e7eb; color: #374151; font-size: 13px; font-weight: 700">Taken</span>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</sc-for>
+<div style="font-size: 12px; color: #4b5563; text-align: center; padding-top: 4px">Spots move with the schedule. If a game changes, we email you. · Powered by FieldSlate</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isForm }}" hint-placeholder-val="{{ false }}">
+<div style="padding: 16px 16px 24px; display: flex; flex-direction: column; gap: 14px">
+<button type="button" onClick="{{ back }}" style="align-self: flex-start; min-height: 44px; padding: 0 4px; border: none; background: none; color: #0C1F3F; font: 700 14px Manrope, system-ui, sans-serif; cursor: pointer">← All spots</button>
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 3px">
+<div style="font-size: 12px; font-weight: 700; color: #14532d; text-transform: uppercase; letter-spacing: 0.05em">You're signing up for</div>
+<div style="font-size: 16px; font-weight: 800">{{ picked.title }}</div>
+<div style="font-size: 13px; color: #4b5563">{{ picked.date }} · {{ picked.time }} · {{ picked.detail }}</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="f-div" style="font-size: 14px; font-weight: 700">Division</label>
+<select id="f-div" value="{{ division }}" onChange="{{ onDivision }}" style="min-height: 48px; padding: 0 12px; border: 1px solid #c9cdc4; border-radius: 10px; background: #ffffff; font: 500 16px Manrope, system-ui, sans-serif; color: #0C1F3F">
+<option value="">Choose a division</option>
+<sc-for list="{{ divisions }}" as="d" hint-placeholder-count="3">
+<option value="{{ d.id }}">{{ d.name }}</option>
+</sc-for>
+</select>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="f-team" style="font-size: 14px; font-weight: 700">Team</label>
+<select id="f-team" value="{{ team }}" disabled="{{ teamDisabled }}" onChange="{{ onTeam }}" style="{{ teamStyle }}">
+<option value="">{{ teamPrompt }}</option>
+<sc-for list="{{ teams }}" as="t" hint-placeholder-count="4">
+<option value="{{ t }}">{{ t }}</option>
+</sc-for>
+</select>
+</div>
+
+<div style="display: flex; gap: 10px">
+<div style="width: 92px; display: flex; flex-direction: column; gap: 6px">
+<label for="f-init" style="font-size: 14px; font-weight: 700">First initial</label>
+<input id="f-init" value="{{ initial }}" onChange="{{ onInitial }}" maxlength="1" autocomplete="off" style="min-height: 48px; padding: 0 12px; border: 1px solid #c9cdc4; border-radius: 10px; font: 500 16px Manrope, system-ui, sans-serif; text-transform: uppercase; box-sizing: border-box; width: 100%">
+</div>
+<div style="flex: 1; display: flex; flex-direction: column; gap: 6px">
+<label for="f-last" style="font-size: 14px; font-weight: 700">Last name</label>
+<input id="f-last" value="{{ last }}" onChange="{{ onLast }}" autocomplete="family-name" style="min-height: 48px; padding: 0 12px; border: 1px solid #c9cdc4; border-radius: 10px; font: 500 16px Manrope, system-ui, sans-serif; box-sizing: border-box; width: 100%">
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="f-email" style="font-size: 14px; font-weight: 700">Email</label>
+<input id="f-email" type="email" value="{{ email }}" onChange="{{ onEmail }}" autocomplete="email" style="min-height: 48px; padding: 0 12px; border: 1px solid #c9cdc4; border-radius: 10px; font: 500 16px Manrope, system-ui, sans-serif; box-sizing: border-box; width: 100%">
+<div style="font-size: 12px; color: #4b5563">We'll send a confirmation with a link to change or cancel.</div>
+</div>
+
+<label for="f-adult" style="display: flex; gap: 10px; align-items: center; min-height: 44px; font-size: 14px; font-weight: 700; cursor: pointer">
+<input id="f-adult" type="checkbox" checked="{{ adult }}" onChange="{{ onAdult }}" style="width: 22px; height: 22px; margin: 0">
+I'm 18 or older
+</label>
+
+<sc-if value="{{ hasClash }}" hint-placeholder-val="{{ false }}">
+<div role="alert" style="background: #fffbeb; border: 1px solid #f59e0b; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 14px; font-weight: 800; color: #78350f">This email already has a spot at this time</div>
+<div style="font-size: 13px; color: #78350f; line-height: 1.5">Snack shack · Shift 1, Sat Mar 6, 8:30–11:30 AM. Signing someone else up? That's fine, just confirm.</div>
+<label for="f-both" style="display: flex; gap: 10px; align-items: center; min-height: 40px; font-size: 14px; font-weight: 700; color: #78350f; cursor: pointer">
+<input id="f-both" type="checkbox" checked="{{ both }}" onChange="{{ onBoth }}" style="width: 20px; height: 20px; margin: 0">
+Yes, take both spots
+</label>
+</div>
+</sc-if>
+<button type="button" onClick="{{ submit }}" disabled="{{ cannotSubmit }}" style="{{ submitStyle }}">Confirm sign-up</button>
+
+<div style="font-size: 12px; color: #4b5563; line-height: 1.5; background: #ffffff; border: 1px solid #dfe2da; border-radius: 10px; padding: 10px 12px">Only league admins see your name, team and email. Everyone else sees this spot as "Taken."</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+<div style="padding: 32px 20px; display: flex; flex-direction: column; gap: 16px; align-items: flex-start">
+<div style="width: 52px; height: 52px; border-radius: 999px; background: #dcfce7; display: grid; place-items: center">
+<svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#14532d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</div>
+<div style="font-size: 24px; font-weight: 800">You're signed up</div>
+<div style="background: #ffffff; border: 1px solid #dfe2da; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 3px; align-self: stretch">
+<div style="font-size: 16px; font-weight: 800">{{ picked.title }}</div>
+<div style="font-size: 13px; color: #4b5563">{{ picked.date }} · {{ picked.time }} · {{ picked.detail }}</div>
+<div style="font-size: 13px; color: #4b5563">{{ whoLine }}</div>
+</div>
+<div style="font-size: 14px; line-height: 1.55; color: #374151">We emailed <b>{{ emailShown }}</b> a confirmation. Use the link in it to change or cancel. If this game moves or rains out, we'll email you.</div>
+<button type="button" onClick="{{ reset }}" style="min-height: 48px; padding: 0 18px; border-radius: 10px; border: 1px solid #0C1F3F; background: #ffffff; color: #0C1F3F; font: 700 15px Manrope, system-ui, sans-serif; cursor: pointer">Sign up for another spot</button>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var defaults = { screen: 'list', role: 'all', pickedId: null, division: '', team: '', initial: '', last: '', email: '', adult: false, both: false };
+    var s = Object.assign({}, defaults, this.state || {});
+    var self = this;
+    var divisions = [
+      { id: 'majors', name: 'Majors', teams: ['Expos', 'Pirates', 'Giants', 'Cubs'] },
+      { id: 'aaa', name: 'AAA', teams: ['Rays', 'Mets', 'Twins', 'Reds'] },
+      { id: 'aa', name: 'AA', teams: ['Sharks', 'Owls', 'Bees'] }
+    ];
+    var slots = [
+      { id: 1, date: 'Sat, Mar 6', role: 'snack', title: 'Snack shack · Shift 1', time: '8:30–11:30 AM', detail: 'Main Park · 1 of 2 spots open', status: 'open', tag: '' },
+      { id: 2, date: 'Sat, Mar 6', role: 'snack', title: 'Snack shack · Shift 2', time: '11:30 AM–2:30 PM', detail: 'Main Park · 2 spots', status: 'taken', tag: '' },
+      { id: 3, date: 'Sat, Mar 6', role: 'prep', title: 'Field prep', time: '8:15 AM', detail: 'Expos vs Pirates · Field 1', status: 'open', tag: '' },
+      { id: 4, date: 'Sat, Mar 6', role: 'gc', title: 'GameChanger · Expos', time: '9:00 AM', detail: 'Majors · Expos vs Pirates · Field 1', status: 'open', tag: '' },
+      { id: 5, date: 'Sat, Mar 6', role: 'gc', title: 'GameChanger · Pirates', time: '9:00 AM', detail: 'Majors · Expos vs Pirates · Field 1', status: 'taken', tag: '' },
+      { id: 6, date: 'Sat, Mar 6', role: 'gc', title: 'GameChanger · Giants', time: '12:00 PM', detail: 'Majors · Giants at Westside (interleague)', status: 'open', tag: 'This game may move. If it does, we\'ll email you.' },
+      { id: 7, date: 'Sun, Mar 7', role: 'gc', title: 'GameChanger · Rays', time: '1:00 PM', detail: 'AAA · Rays vs Mets · Field 2', status: 'open', tag: '' },
+      { id: 8, date: 'Sun, Mar 7', role: 'gc', title: 'GameChanger · Mets', time: '1:00 PM', detail: 'AAA · Rays vs Mets · Field 2', status: 'taken', tag: '' },
+      { id: 9, date: 'Sun, Mar 7', role: 'snack', title: 'Snack shack · Shift 1', time: '12:30–3:30 PM', detail: 'Main Park · 2 spots', status: 'open', tag: 'For Rays families' }
+    ];
+    var chipDefs = [
+      { id: 'all', label: 'All' },
+      { id: 'snack', label: 'Snack shack' },
+      { id: 'gc', label: 'GameChanger' },
+      { id: 'prep', label: 'Field prep' }
+    ];
+    var on = 'min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #0C1F3F; background: #0C1F3F; color: #ffffff; font: 700 13px Manrope, system-ui, sans-serif; cursor: pointer';
+    var off = 'min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #c9cdc4; background: #ffffff; color: #0C1F3F; font: 700 13px Manrope, system-ui, sans-serif; cursor: pointer';
+    var chips = chipDefs.map(function (c) {
+      return { label: c.label, style: s.role === c.id ? on : off, pick: function () { self.setState({ role: c.id }); } };
+    });
+    var shown = slots.filter(function (x) { return s.role === 'all' || x.role === s.role; });
+    var groups = [];
+    shown.forEach(function (x) {
+      var g = groups.find(function (gg) { return gg.date === x.date; });
+      if (!g) { g = { date: x.date, items: [] }; groups.push(g); }
+      g.items.push({
+        title: x.title, time: x.time, detail: x.detail,
+        isOpen: x.status === 'open', isTaken: x.status === 'taken',
+        hasTag: !!x.tag, tag: x.tag,
+        pick: function () { self.setState({ screen: 'form', pickedId: x.id, division: '', team: '', initial: '', last: '', email: '', adult: false, both: false }); }
+      });
+    });
+    var picked = slots.find(function (x) { return x.id === s.pickedId; }) || slots[3];
+    var div = divisions.find(function (d) { return d.id === s.division; });
+    var teams = div ? div.teams : [];
+    var emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email);
+    var clash = s.email.trim().toLowerCase() === 'agarcia@example.com' && picked.date === 'Sat, Mar 6';
+    var ok = !!div && !!s.team && s.initial.length === 1 && s.last.trim().length > 0 && emailOk && s.adult && (!clash || s.both);
+    var fieldBase = 'min-height: 48px; padding: 0 12px; border: 1px solid #c9cdc4; border-radius: 10px; font: 500 16px Manrope, system-ui, sans-serif; ';
+    return {
+      isList: s.screen === 'list', isForm: s.screen === 'form', isDone: s.screen === 'done',
+      chips: chips, groups: groups, picked: picked,
+      divisions: divisions, teams: teams,
+      division: s.division, team: s.team, initial: s.initial, last: s.last, email: s.email, adult: s.adult,
+      teamDisabled: !div,
+      teamPrompt: div ? 'Choose a team' : 'Pick a division first',
+      teamStyle: fieldBase + (div ? 'background: #ffffff; color: #0C1F3F' : 'background: #eef0eb; color: #4b5563'),
+      cannotSubmit: !ok,
+      submitStyle: 'min-height: 52px; border-radius: 12px; border: none; font: 800 16px Manrope, system-ui, sans-serif; ' + (ok ? 'background: #0C1F3F; color: #ffffff; cursor: pointer' : 'background: #d4d8cf; color: #4b5563; cursor: not-allowed'),
+      whoLine: (s.initial ? s.initial.toUpperCase() + '. ' : '') + s.last + (s.team ? ' · ' + (div ? div.name + ' ' : '') + s.team : ''),
+      emailShown: s.email,
+      onDivision: function (e) { self.setState({ division: e.target.value, team: '' }); },
+      onTeam: function (e) { self.setState({ team: e.target.value }); },
+      onInitial: function (e) { self.setState({ initial: (e.target.value || '').replace(/[^a-zA-Z]/g, '').slice(0, 1).toUpperCase() }); },
+      onLast: function (e) { self.setState({ last: e.target.value }); },
+      onEmail: function (e) { self.setState({ email: e.target.value }); },
+      onAdult: function (e) { self.setState({ adult: e.target.checked }); },
+      onBoth: function (e) { self.setState({ both: e.target.checked }); },
+      hasClash: clash, both: s.both,
+      submit: function () { if (ok) { self.setState({ screen: 'done' }); } },
+      back: function () { self.setState({ screen: 'list' }); },
+      reset: function () { self.setState({ screen: 'list', pickedId: null }); }
+    };
+  }
+}
+</script>
+</body>
+</html>
