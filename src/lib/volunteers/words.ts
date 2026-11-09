@@ -125,3 +125,49 @@ export function roleErrorLine(message: string | null | undefined): string {
   if (m.includes("season_archived")) return "This season is archived.";
   return settingsErrorLine(m);
 }
+
+// ── Admin: who signed up (/dashboard/volunteers/signups) ─────────────────────
+export const SIGNUPS_TITLE = "Who signed up";
+export const BACK_TO_ROLES = "← Volunteer roles";
+export const EXPORT_CSV = "Export CSV";
+export const SIGNUPS_READ_FAILED =
+  "Couldn't load this season's sign-ups. Nothing is shown rather than a list that could be missing someone — try again.";
+export const SEE_WHO = "See who";
+export const HIDE_WHO = "Hide";
+export const FILTER_ALL_ROLES = "All roles";
+export const FILTER_ALL_DIVISIONS = "All divisions";
+export const SHOW_ALL = "Open and filled";
+export const SHOW_OPEN = "Open only";
+export const SHOW_FILLED = "Filled only";
+export const COL_WHEN = "When";
+export const COL_SPOT = "Spot";
+export const COL_VOLUNTEER = "Volunteer";
+export const COL_TEAM = "Team";
+export const COL_EMAIL = "Email";
+export const COL_FILLED_BY = "Filled by";
+export const COL_ACTIONS = "Actions";
+export const OPEN_SPOT = "Open";
+export const BY_VOLUNTEER = "Volunteer";
+export const BY_ADMIN = "Admin";
+export const ASSIGN = "Assign";
+export const CHANGE = "Change";
+export const NO_UPCOMING = "No upcoming spots match these filters.";
+export const PAST_TITLE = "Past spots: mark who didn't show";
+export const PAST_DETAIL =
+  "Everyone counts as showed up unless you tick No-show. Only on dates that have passed. Admin-only; volunteers aren't notified. Deleted at archive like everything else.";
+export const NO_SHOW = "No-show";
+export const NO_SHOW_FAILED = "Couldn't save the no-show. Try again.";
+export const ASSIGN_TITLE = "Assign this spot";
+export const ASSIGN_FAMILY_TEAM = "Family's team";
+export const ASSIGN_PICK_TEAM = "Choose a team";
+export const ASSIGN_FIRST_INITIAL = "First initial";
+export const ASSIGN_LAST_NAME = "Last name";
+export const ASSIGN_EMAIL = "Email";
+export const ASSIGN_ADULT = "This volunteer is 18 or older";
+export const ASSIGN_EMAIL_NOTE = "We'll email them a confirmation with a link to change or cancel.";
+export const ASSIGN_ANYWAY = "Assign anyway";
+export const CHANGE_TITLE = "Change this sign-up";
+export const CHANGE_NOTIFY = "Email the volunteer that their spot was canceled";
+export const CHANGE_CANCEL = "Cancel sign-up";
+export const CHANGE_REASSIGN = "Cancel and assign someone else";
+export const CHANGE_FAILED = "Couldn't cancel this sign-up. Nothing changed — try again.";

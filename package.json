@@ -123,6 +123,8 @@
     "sim:volunteer-leaks:mutants": "npx tsx scripts/sim/volunteer-leaks-mutants.ts",
     "sim:volunteer-roles": "TZ=UTC npx tsx scripts/sim/volunteer-roles-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/volunteer-roles-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/volunteer-roles-sim.ts",
     "sim:volunteer-roles:mutants": "npx tsx scripts/sim/volunteer-roles-mutants.ts",
+    "sim:volunteer-signups": "TZ=UTC npx tsx scripts/sim/volunteer-signups-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/volunteer-signups-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/volunteer-signups-sim.ts",
+    "sim:volunteer-signups:mutants": "npx tsx scripts/sim/volunteer-signups-mutants.ts",
     "sim:volunteer-email": "npx tsx scripts/sim/volunteer-email-sim.ts",
     "sim:volunteer-email:mutants": "npx tsx scripts/sim/volunteer-email-mutants.ts",
     "sim:volunteer-slots": "TZ=UTC npx tsx scripts/sim/volunteer-slots-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/volunteer-slots-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/volunteer-slots-sim.ts",
