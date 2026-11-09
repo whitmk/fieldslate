@@ -4,8 +4,9 @@
 // (auto-assign-season-sim.ts) covers every other invariant and runs its
 // fixtures with "now" BEFORE the season, so this rule needs its own.
 //
-// TZ=UTC is mandatory, same as the officials harness (the engine's
-// availability / week math is client-local; that is not what this proves).
+// Runs under UTC, Los Angeles and Kiritimati (npm run sim:auto-assign-past).
+// It pinned TZ=UTC until 2026-11-09, when the engine's date math moved to the
+// wall-clock rule (eligibility.ts) — every answer is now zone-independent.
 //
 // THE FIXTURE. "Now" is 2026-10-10 05:30Z — still FRIDAY Oct 9 in Los Angeles
 // (the league's timezone) but already Saturday Oct 10 in UTC. One division,
@@ -45,15 +46,8 @@
 //   AP3  past games dropped from bookings / weekly load too     → [P3]
 //   AP4  an unreadable timezone falls back to the UTC date      → [P5]
 
-process.env.TZ = "UTC";
-
 import { autoAssignUmpires } from "@/lib/umpires/auto-assign";
 import { FakeClient, type Db } from "./officials-fake";
-
-if (new Date("2026-10-10T00:00:00Z").getTimezoneOffset() !== 0) {
-  console.error("Run with TZ=UTC: TZ=UTC npx tsx scripts/sim/auto-assign-past-sim.ts");
-  process.exit(1);
-}
 
 let checks = 0;
 let fails = 0;

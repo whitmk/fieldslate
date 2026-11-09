@@ -1,5 +1,5 @@
 // Mutation pass for auto-assign-past-sim.ts. Each mutant is applied to the
-// REAL engine source, the sim runs (TZ=UTC), the source is restored and
+// REAL engine source, the sim runs (three zones), the source is restored and
 // verified byte-for-byte, and the mutant counts as killed only if the FIRST
 // failing assertion is the one written for it.
 import { runMutants, type Mutant } from "./mutant-runner";
@@ -35,6 +35,6 @@ const MUTANTS: Mutant[] = [
 
 runMutants({
   sim: "scripts/sim/auto-assign-past-sim.ts",
-  timezones: ["UTC"],
+  timezones: ["UTC", "America/Los_Angeles", "Pacific/Kiritimati"],
   mutants: MUTANTS,
 });

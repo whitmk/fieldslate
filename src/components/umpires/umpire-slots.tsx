@@ -16,8 +16,8 @@ import {
   type UmpireBookingRow,
 } from "@/lib/umpires/conflicts";
 import {
+  gameDateKey,
   isWithinAvailability,
-  localDateKey,
   type AvailabilityWindow,
 } from "@/lib/umpires/eligibility";
 import { ensureSeasonRoleIds } from "@/lib/umpires/roles";
@@ -138,8 +138,9 @@ export function UmpireSlots({
   // Pre-click eligibility per option, from feed-embedded data (no per-option
   // queries). Advisory only for flags; the save-time hard blocks below stay —
   // a second admin can create a conflict between render and click.
-  const gameStart = new Date(game.scheduled_at);
-  const gameDateKey = localDateKey(gameStart);
+  // Wall-clock date of the stored time (eligibility.ts) — never the instant
+  // read in the browser's zone.
+  const gameDate = gameDateKey(game.scheduled_at);
   const decorated: DecoratedOption[] = umpires.map((u) => {
     const conflict = findConflictInBookings(
       candidate,
@@ -153,7 +154,7 @@ export function UmpireSlots({
         suffix: ` — already assigned ${conflict.home_team_name} vs ${conflict.away_team_name}, ${formatConflictTime(conflict.scheduled_at)}`,
       };
     }
-    if ((u.blackouts ?? []).some((b) => b.date === gameDateKey)) {
+    if ((u.blackouts ?? []).some((b) => b.date === gameDate)) {
       return { u, disabled: true, rank: 2, suffix: " — unavailable (blackout)" };
     }
 
@@ -164,7 +165,7 @@ export function UmpireSlots({
     const windows = u.availability ?? [];
     if (
       windows.length > 0 &&
-      !isWithinAvailability(windows, gameStart, candidate.duration_minutes)
+      !isWithinAvailability(windows, game.scheduled_at, candidate.duration_minutes)
     ) {
       flags.push("outside listed availability");
     }

@@ -5,9 +5,9 @@ import {
   type GameTimeInfo,
 } from "./conflicts";
 import {
+  gameDateKey,
+  gameWeekKey,
   isWithinAvailability,
-  localDateKey,
-  weekKey,
   type AvailabilityWindow,
 } from "./eligibility";
 import { ensureSeasonRoleIds } from "./roles";
@@ -383,7 +383,7 @@ export async function autoAssignUmpires(
       home_team_name: "",
       away_team_name: "",
     });
-    const wk = weekKey(new Date(e.game.scheduled_at));
+    const wk = gameWeekKey(e.game.scheduled_at);
     const weeks = weeklyLoad.get(e.umpire_id)!;
     weeks.set(wk, (weeks.get(wk) ?? 0) + 1);
   }
@@ -429,9 +429,10 @@ export async function autoAssignUmpires(
   const overWeeklyLimitNames = new Set<string>();
 
   for (const g of divisionGames) {
-    const gameStart = new Date(g.scheduled_at);
-    const gameDateKey = localDateKey(gameStart);
-    const gameWeek = weekKey(gameStart);
+    // Wall-clock date and week of the stored time (eligibility.ts) — never
+    // the instant read in the browser's zone.
+    const gameDate = gameDateKey(g.scheduled_at);
+    const gameWeek = gameWeekKey(g.scheduled_at);
     const candidateInfo: GameTimeInfo = {
       id: g.id,
       scheduled_at: g.scheduled_at,
@@ -468,7 +469,7 @@ export async function autoAssignUmpires(
             slotReasons.add("conflict");
             continue;
           }
-          if (blackoutsByUmpire.get(candidate.id)?.has(gameDateKey)) {
+          if (blackoutsByUmpire.get(candidate.id)?.has(gameDate)) {
             slotReasons.add("blackout");
             continue;
           }
@@ -502,7 +503,7 @@ export async function autoAssignUmpires(
           if (
             !isWithinAvailability(
               availabilityByUmpire.get(candidate.id) ?? [],
-              gameStart,
+              g.scheduled_at,
               divisionDuration,
             )
           ) {

@@ -1,12 +1,23 @@
 // Officials scheduling constraints (migration 0062): weekly availability
-// windows, blackout dates, and max_games_per_week buckets. All date math is
-// done in the browser's local timezone — the same zone the schedule UI
-// renders game times in, so "blacked out on Jun 14" means the Jun 14 the
-// league admin sees on screen.
+// windows, blackout dates, and max_games_per_week buckets.
 //
-// CLIENT-SIDE ONLY: on a server (Vercel) "local" is UTC, which silently
-// shifts day/week boundaries. If this is ever needed from a server action
-// or route, these helpers must grow an explicit timezone parameter first.
+// WALL-CLOCK ONLY (2026-11-09, fix/officials-wall-clock). A game's
+// `scheduled_at` is stored as the league's wall-clock time with a +00 suffix
+// ("2026-10-10T09:00:00+00:00" is a 9:00 AM game), so its date, weekday and
+// minutes come from the STRING — never from `new Date(...)` and the host's
+// zone. Before this, these helpers took a parsed Date and read
+// getHours()/getDay() in the BROWSER's zone: from a Pacific browser a 9:00 AM
+// Saturday game was checked as 2:00 AM, so an evening window never matched an
+// evening game, and a morning window (Sa 08:00–12:00) accepted a 3–7 PM game —
+// an assignment outside stated availability. `sim:officials` ran pinned to
+// TZ=UTC, where local equals UTC, so nothing saw it. `sim:officials-wall-clock`
+// now runs under UTC, Los Angeles and Kiritimati with literal expected values.
+//
+// These helpers are host-zone independent: the same answer in the browser,
+// on a server, and in SQL (`wallClockDate`'s rule, src/lib/utils/org-today.ts).
+
+import { wallClockDate } from "@/lib/utils/org-today";
+import { weekKeyFromIsoDate } from "@/lib/venues/game-days";
 
 export type AvailabilityWindow = {
   day_of_week: string; // 'Mo'..'Su' (official_availability check constraint)
@@ -16,26 +27,28 @@ export type AvailabilityWindow = {
 
 const DAY_CODES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] as const;
 
-export function dayCode(date: Date): string {
-  return DAY_CODES[date.getDay()];
+/** The weekday code ('Mo'..'Su') of a stored game time's wall-clock date. */
+export function gameDayCode(scheduledAt: string): string {
+  const [y, m, d] = wallClockDate(scheduledAt).split("-").map(Number);
+  // UTC arithmetic on fields we set ourselves — no host zone involved.
+  return DAY_CODES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
 }
 
-/** Local-timezone YYYY-MM-DD, matching official_blackouts.date semantics. */
-export function localDateKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+/** The game's wall-clock date, "YYYY-MM-DD" — what official_blackouts.date
+ *  is compared with. */
+export function gameDateKey(scheduledAt: string): string {
+  return wallClockDate(scheduledAt);
 }
 
-/**
- * Monday-of-week local date key — buckets games into the Mon–Sun week used
- * for max_games_per_week.
- */
-export function weekKey(date: Date): string {
-  const monday = new Date(date);
-  monday.setDate(date.getDate() - ((date.getDay() + 6) % 7));
-  return localDateKey(monday);
+/** The Monday of the game's Mon–Sun week, for max_games_per_week. The app's
+ *  ONE week definition (`weekKeyFromIsoDate`, game-days.ts). */
+export function gameWeekKey(scheduledAt: string): string {
+  return weekKeyFromIsoDate(scheduledAt);
+}
+
+/** Minutes after midnight of the game's wall-clock start. */
+export function gameStartMinutes(scheduledAt: string): number {
+  return timeToMinutes(scheduledAt.substring(11, 16));
 }
 
 function timeToMinutes(t: string): number {
@@ -50,12 +63,12 @@ function timeToMinutes(t: string): number {
  */
 export function isWithinAvailability(
   windows: AvailabilityWindow[],
-  gameStart: Date,
+  scheduledAt: string,
   durationMinutes: number,
 ): boolean {
   if (windows.length === 0) return true;
-  const code = dayCode(gameStart);
-  const startMins = gameStart.getHours() * 60 + gameStart.getMinutes();
+  const code = gameDayCode(scheduledAt);
+  const startMins = gameStartMinutes(scheduledAt);
   const endMins = startMins + durationMinutes;
   return windows.some(
     (w) =>

@@ -2660,9 +2660,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   report actually-scheduled games (venue game-days, Sports Connect, Reports).
   The two carry mutual DRIFT-HAZARD comments naming each other; keep both, and
   keep them apart.
-- **Week bucketing is one of FOUR consumers of `weekKeyFromIsoDate`** (alongside
-  Sports Connect `RoundNo`, the venue game-days derivation, and the
-  week-by-field view mode). Never invent a
+- **Week bucketing is one of FIVE consumers of `weekKeyFromIsoDate`** (alongside
+  Sports Connect `RoundNo`, the venue game-days derivation, the
+  week-by-field view mode, and officials' weekly caps via `gameWeekKey`,
+  2026-11-09). Never invent a
   second week definition — wall-clock date substring only, never parse the
   instant (house convention; see the `game-days.ts` header).
 - **KNOWN GAP — reads `games`, NOT `playoff_games`.** `playoff_games` is a
@@ -5059,10 +5060,24 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   and the per-division button — share the confirmation dialog copy via
   `auto-assign-button.tsx` so wording can't drift. Don't rebuild a
   relaxation tier or any machine path around availability/caps.
-- **All eligibility date math is client-timezone-only by design** (see the
-  `eligibility.ts` header). On a server, "local" is UTC and day/week
-  boundaries shift silently — any server-side or DB-side use must add an
-  explicit timezone parameter first.
+- **OFFICIALS' DATE MATH IS WALL-CLOCK (2026-11-09, branch
+  `fix/officials-wall-clock`).** Availability windows, blackout dates and the
+  weekly-cap week read a game's date, weekday and minutes from the STORED
+  STRING (`eligibility.ts`: `gameDayCode`, `gameStartMinutes`, `gameDateKey`,
+  `gameWeekKey`, `isWithinAvailability(windows, scheduledAt, minutes)`) —
+  never `new Date(scheduled_at)` read in the host's zone. Auto-assign, the
+  manual picker (`umpire-slots.tsx`), the manual save's blackout check
+  (`findUmpireBlackout`) and the conflict sentence's time
+  (`formatConflictTime`) all go through them. **What it closed:** the old
+  helpers read the parsed instant in the BROWSER's zone, so from a Pacific
+  browser a 9:00 AM Saturday game was checked as 2:00 AM — a morning window
+  (Sa 08:00–12:00) accepted a 3:00 PM game (an assignment outside stated
+  availability, which the engine must never make) and an evening window
+  never matched an evening game; the manual refusal named "2:00 AM". Every
+  officials harness pinned TZ=UTC, where the two readings agree, which is
+  why nothing saw it. The same answer now holds in a browser, on a server
+  and in SQL. `gamesOverlap` still compares instants — correct, because both
+  sides are stored the same way.
 - **Naming traps:** `blackout_dates` is season-level scheduling blackouts;
   `official_blackouts` is per-official unavailable dates. `official_conflicts`
   (0073, officials' conflict-of-interest links) is unrelated to
@@ -5218,9 +5233,16 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   `npm run sim:officials` — its fake client lives in
   `scripts/sim/officials-fake.ts` (shared with `auto-assign-past-sim.ts`) and
   its fixtures run with "now" BEFORE the June 2026 season so every game is
-  upcoming. TZ=UTC is mandatory (the harness exits
-  otherwise) — it pins the engine's client-local date math for Node; never
-  "fix" a harness date issue by adding timezone handling to the engine.
+  upcoming. **It runs under UTC, Los Angeles and Kiritimati** (it pinned
+  TZ=UTC until 2026-11-09, which hid the wall-clock bug above); so do
+  `sim:auto-assign-past` and `sim:umpire-reads` and their mutation passes.
+  Its invariant checks use the engine's own helpers, so they cannot catch a
+  zone bug on their own — **`npm run sim:officials-wall-clock`** is the
+  literal-value proof (32 checks × 3 zones, 5 counters: helpers H1–H5, the
+  real engine A1–A6, the manual path M1–M4, a source scan S1) + `:mutants`
+  (10, each putting back one host-zone read; every one passes under UTC and
+  dies at its own line in another zone — read the MUTATION LOG: run 1 had
+  WC1/WC2 caught first by the source scan, a harness ordering fault).
   It fakes only the Supabase client (the exact query/embed subset the
   engine issues, enforcing the game_umpires uniques), runs every shape in
   the engine's single strict mode on fresh fixtures (single-mode since the

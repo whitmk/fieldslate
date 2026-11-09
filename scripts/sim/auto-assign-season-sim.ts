@@ -10,10 +10,14 @@
  * conflict-of-interest rows, weekly caps, and time grids designed to force
  * scarcity.
  *
- * Run with:  TZ=UTC npx tsx scripts/sim/auto-assign-season-sim.ts
- * (or `npm run sim:officials`). TZ=UTC pins the engine's client-timezone
- * date math (see src/lib/umpires/eligibility.ts) so day/week boundaries are
- * unambiguous in Node; the harness refuses to run in any other zone.
+ * Run with:  npm run sim:officials — UTC, America/Los_Angeles and
+ * Pacific/Kiritimati in turn. Until 2026-11-09 this harness pinned TZ=UTC,
+ * which HID a real bug: the engine read game times in the host's zone, and
+ * under UTC that equals the stored wall-clock. The engine now reads the
+ * wall-clock from the string (eligibility.ts), so every answer here must be
+ * the same in all three zones. The literal-value proof of that rule is
+ * sim:officials-wall-clock; this harness's invariant checks use the same
+ * helpers as the engine, so on their own they cannot catch a zone bug.
  *
  * The engine is strict-only — the fallback opt-in was removed 2026-07-21,
  * so there is exactly one mode and its guarantees are unconditional.
@@ -40,29 +44,20 @@
  * invariant must be exercised, not just never triggered.
  */
 
-process.env.TZ = "UTC";
-
 import { autoAssignUmpires } from "@/lib/umpires/auto-assign";
 import {
   autoAssignSeason,
   type SeasonAutoAssignResult,
 } from "@/lib/umpires/auto-assign-season";
 import {
+  gameDateKey,
+  gameWeekKey,
   isWithinAvailability,
-  localDateKey,
-  weekKey,
   type AvailabilityWindow,
 } from "@/lib/umpires/eligibility";
 import { gamesOverlap } from "@/lib/umpires/conflicts";
 import { padRoleLabels } from "@/lib/utils/official-title";
 
-if (new Date("2026-06-13T00:00:00Z").getTimezoneOffset() !== 0) {
-  console.error(
-    "This harness must run with TZ=UTC (client-timezone date math would " +
-      "shift day/week boundaries). Re-run as: TZ=UTC npx tsx scripts/sim/auto-assign-season-sim.ts",
-  );
-  process.exit(1);
-}
 
 // ── Tiny assertion framework ────────────────────────────────────────────────
 
@@ -82,7 +77,8 @@ import { FakeClient, type Db, type Row } from "./officials-fake";
 
 const SEASON_ID = "season-1";
 const SPORT = "baseball";
-// Saturday. All times UTC; with TZ=UTC pinned, local == UTC exactly.
+// Saturday. Stored as wall-clock with a Z suffix (toISOString), the way the
+// database stores game times — the engine reads the wall-clock from the string.
 const BASE_DATE = Date.UTC(2026, 5, 13, 0, 0, 0);
 // The org that owns the season, and "now" for every run: BEFORE the fixture
 // season, so every fixture game is upcoming — auto-assign skips past games
@@ -351,7 +347,7 @@ function checkInvariants(
     for (const r of list) {
       if (beforeIds.has(r.id as string)) continue;
       const g = gameById.get(r.game_id as string)!;
-      const dateKey = localDateKey(new Date(g.scheduled_at as string));
+      const dateKey = gameDateKey(g.scheduled_at as string);
       assert(
         !blackoutsByUmp.get(umpId)?.has(dateKey),
         ctx(`official ${umpId} assigned to ${g.id} on blackout date ${dateKey}`),
@@ -384,7 +380,7 @@ function checkInvariants(
     const weeksGained = new Set<string>();
     for (const r of rows) {
       const g = gameById.get(r.game_id as string)!;
-      const key = `${r.umpire_id}|${weekKey(new Date(g.scheduled_at as string))}`;
+      const key = `${r.umpire_id}|${gameWeekKey(g.scheduled_at as string)}`;
       weekCount.set(key, (weekCount.get(key) ?? 0) + 1);
       if (beforeIds.has(r.id as string)) {
         preWeekCount.set(key, (preWeekCount.get(key) ?? 0) + 1);
@@ -396,7 +392,7 @@ function checkInvariants(
       const g = gameById.get(r.game_id as string)!;
       return !isWithinAvailability(
         availByUmp.get(r.umpire_id as string) ?? [],
-        new Date(g.scheduled_at as string),
+        g.scheduled_at as string,
         gameDurationOf(db, g),
       );
     });
@@ -620,8 +616,8 @@ async function runShape(
 
 // ── Shapes ──────────────────────────────────────────────────────────────────
 
-const SAT1 = localDateKey(gameTime(0)); // 2026-06-13
-const SUN1 = localDateKey(gameTime(4)); // 2026-06-14
+const SAT1 = gameDateKey(gameTime(0).toISOString()); // 2026-06-13
+const SUN1 = gameDateKey(gameTime(4).toISOString()); // 2026-06-14
 const ALL_DAY_WEEKEND: AvailabilityWindow[] = [
   { day_of_week: "Sa", start_time: "08:00:00", end_time: "22:00:00" },
   { day_of_week: "Su", start_time: "08:00:00", end_time: "22:00:00" },
@@ -755,7 +751,7 @@ function randomSpec(rand: () => number, idx: number): SeasonSpec {
   const totalTeams = divisions.reduce((n, d) => n + d.teamCount, 0);
   const maxGames = Math.max(...divisions.map((d) => d.gameCount));
   const gridDates = Array.from(
-    new Set(Array.from({ length: maxGames }, (_, i) => localDateKey(gameTime(i)))),
+    new Set(Array.from({ length: maxGames }, (_, i) => gameDateKey(gameTime(i).toISOString()))),
   );
 
   const officialCount = int(2, 10);
