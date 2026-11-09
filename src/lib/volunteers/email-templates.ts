@@ -178,6 +178,21 @@ const TEMPLATES: Record<string, Renderer> = {
       para(W.EMAIL_MANAGE_NOTE),
     ]);
   },
+  // 0123: the league asks a family to sign up for more. Numbers only (the
+  // payload holds no name); null without the sign-up link — the email is
+  // pointless without it.
+  nudge: (p, ctx) => {
+    const n = (x: unknown) => (typeof x === "number" && Number.isInteger(x) && x >= 0 ? x : null);
+    const goal = n(p.goal);
+    const worked = n(p.worked);
+    const upcoming = n(p.upcoming);
+    if (goal === null || goal < 1 || worked === null || upcoming === null) return null;
+    if (!ctx.signupToken || !TOKEN.test(ctx.signupToken)) return null;
+    return assemble(W.EMAIL_NUDGE_SUBJECT(league(ctx)), league(ctx), [
+      para(W.EMAIL_NUDGE_LEAD(worked, goal, upcoming)),
+      link(W.EMAIL_NUDGE_LINK, signupUrl(ctx.signupToken)),
+    ]);
+  },
 };
 
 export function renderVolunteerEmail(kind: string, payload: Record<string, unknown>, ctx: RenderCtx): RenderedEmail | null {

@@ -287,7 +287,7 @@ async function main() {
     // D10 — a kind with no template, or a template that can't describe its
     // spot (no details attached), fails as unknown_kind: never a blank email.
     {
-      const f = fakeDeps([row(1, { kind: "nudge" }), row(2, { kind: "signup_confirmed" })], {}, { render: renderVolunteerEmail });
+      const f = fakeDeps([row(1, { kind: "switched" }), row(2, { kind: "signup_confirmed" })], {}, { render: renderVolunteerEmail });
       await drainOutbox(f.deps, { gapMs: 0 });
       eq([f.sends.length, f.finishes.map((x) => x.error)], [0, ["unknown_kind", "unknown_kind"]], "D10",
         "no template, or no spot details → failed, nothing sent");
@@ -311,7 +311,7 @@ async function main() {
     ok(kinds0122.length === kinds0120.length + 1 && kinds0122.includes("shift_changed") && kinds0120.every((k) => kinds0122.includes(k)),
       "T1", "0122's outbox kinds = 0120's + shift_changed", kinds0122.join(","));
     const kinds = kinds0122;
-    const NOT_YET = ["manage_link", "switched", "nudge"];
+    const NOT_YET = ["manage_link", "switched"];
     ok(kinds.length >= 14, "T1", "the outbox kinds were read from 0120", String(kinds.length));
     const unaccounted = kinds.filter((k) => !TEMPLATE_KINDS.includes(k) && !NOT_YET.includes(k));
     ok(unaccounted.length === 0, "T1", "every outbox kind has a template or is listed as not built yet", unaccounted.join(", "));
@@ -319,7 +319,7 @@ async function main() {
     const ctx = { leagueName: "Majors LL", spots: [spot], manageToken: tok, signupToken: sig };
     const NEED_MANAGE = ["signup_confirmed", "admin_assigned", "game_moved", "rained_out", "makeup_set", "back_on", "reminder", "shift_changed"];
     const PICK_NEW = ["admin_canceled", "shift_canceled", "spot_lost"];
-    for (const kind of TEMPLATE_KINDS) {
+    for (const kind of TEMPLATE_KINDS.filter((k) => k !== "nudge")) {
       const e = renderVolunteerEmail(kind, {}, ctx);
       ok(e !== null, "T2", `${kind} renders`);
       if (!e) continue;
@@ -363,6 +363,20 @@ async function main() {
        ch?.text ?? "");
     ok(renderVolunteerEmail("shift_changed", { was_end: "2027-03-06T11:00" }, { ...sctx, manageToken: null }) === null, "T5",
       "hours changed without its manage link → no email");
+    // T6 — the nudge (0123): the family's numbers and the sign-up link, never
+    //      a name; nothing without the link or with a malformed number.
+    const np = { goal: 3, worked: 1, upcoming: 1 };
+    const nudge = renderVolunteerEmail("nudge", np, { leagueName: "Majors LL", spots: [], signupToken: sig });
+    ok(!!nudge && nudge.subject === "Majors LL: can your family sign up for more?", "T6", "nudge subject", nudge?.subject ?? "");
+    ok(!!nudge && nudge.text.includes("Your family has worked 1 of the 3 shifts the league asks for, with 1 more coming up.") &&
+       nudge.text.includes(signupUrl(sig)) && !nudge.text.includes("/v/m/"), "T6", "nudge: numbers, sign-up link, no manage link",
+       nudge?.text ?? "");
+    ok(renderVolunteerEmail("nudge", { goal: 1, worked: 0, upcoming: 0 }, { leagueName: "X", signupToken: sig })?.text
+         .includes("of the 1 shift the league") === true, "T6", "nudge: one shift is singular");
+    ok(renderVolunteerEmail("nudge", np, { leagueName: "Majors LL", signupToken: null }) === null, "T6", "nudge without the link → no email");
+    ok(renderVolunteerEmail("nudge", { goal: 0, worked: 1, upcoming: 1 }, { leagueName: "X", signupToken: sig }) === null &&
+       renderVolunteerEmail("nudge", { goal: 3, worked: "1", upcoming: 1 }, { leagueName: "X", signupToken: sig }) === null &&
+       renderVolunteerEmail("nudge", {}, { leagueName: "X", signupToken: sig }) === null, "T6", "nudge with bad numbers → no email");
     // T4 — the parser carries what the take attached.
     const parsed = parseOutboxRows([{ id: 7, kind: "game_moved", payload: {}, spots: [spot, 3], manage_token: tok, signup_token: sig }]).rows[0];
     ok(parsed?.spots.length === 1 && parsed.manageToken === tok && parsed.signupToken === sig, "T4", "spots and tokens parsed",

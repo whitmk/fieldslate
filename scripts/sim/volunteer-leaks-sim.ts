@@ -19,6 +19,8 @@
 //       personal column (volunteer_claims, volunteer_signup_page, email_lc,
 //       first_initial, …). Plain "volunteer" is allowed: the marketing copy and
 //       the snack shack wizard use the ordinary word.
+//   (U1, below, runs here — before A1 — so an officials file that reaches
+//   the volunteer code dies at U1 even when it also reaches the log.)
 //   A1  ACTIVITY LOG — no file that imports the volunteer code imports the
 //       activity log, and no migration function body (latest definition,
 //       comments stripped) both names a volunteer table and writes
@@ -29,15 +31,25 @@
 //       volunteer_season_spots (latest bodies) never name last_name,
 //       first_initial or email_lc: a filled spot reads "Taken", never a name.
 //       (The manage page shows the volunteer their OWN name — allowed.)
-//   S1  WIRING (anti-vacuity) — the Settings card and the outbox drain use the
-//       volunteer code, so the fence is not guarding nothing.
+//   U1  THE OFFICIALS FENCE (0123, decided 2026-11-09) — nothing under
+//       src/lib/umpires, src/components/umpires or the officials pages
+//       reaches the volunteer code or names a volunteer table, and no
+//       database function outside the volunteer set (latest body) reads
+//       volunteer_official_links / volunteer_official_no_shows: the tracker
+//       counts officials' games, but assignment, auto-assign and pay never
+//       read what it stores.
+//   S1  WIRING (anti-vacuity) — the Settings card, the outbox drain and the
+//       tracker page use the volunteer code, so the fence is not guarding
+//       nothing.
 //   then COUNTERS: files fenced, token functions scanned, volunteer
 //   functions scanned — a zero fails the run.
 //
 // Source greps are weak by nature (as in sim:daylight-leaks); the import
 // fence and the latest-body scans are the strong half. The live catalog's
 // "no names on the page" is the SQL proof's P3 (volunteer-claims-sim.sql).
-// When the admin CSV lands, list it in CSV_ALLOWED with the decision's date.
+// The admin CSVs (signupsCsv 2026-11-08, trackerCsv 2026-11-09) live inside
+// src/lib/volunteers, so they are inside the fence by construction; a CSV
+// built anywhere else goes in CSV_ALLOWED with the decision's date.
 
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -127,8 +139,9 @@ const outbound = [...new Set([...OUTBOUND_DIRS.flatMap(walk), ...OUTBOUND_FILES]
 
 const IN_VOLUNTEERS = /^src\/(lib|components)\/volunteers\//;
 const VOLUNTEER_WORDS =
-  /volunteer_(claims|roles|role_divisions|settings|outbox|manage_links|rate_events|trigger_failures|signup_page|season_spots|claim|cancel|keep_spot|manage_page|archive_holds|failure_count|admin_state)\b|\bfrom\(\s*["']volunteers["']\)|\bfirst_initial\b|\bemail_lc\b|@\/(lib|components)\/volunteers\//;
-const VOLUNTEER_TABLES = /\bvolunteer_(claims|roles|role_divisions|manage_links|outbox|settings)\b|\bpublic\.volunteers\b/;
+  /volunteer_(claims|roles|role_divisions|settings|outbox|manage_links|rate_events|trigger_failures|signup_page|season_spots|claim|cancel|keep_spot|manage_page|archive_holds|failure_count|admin_state|goals|team_family_counts|family_members|official_links|official_no_shows|tracker|tracker_families|admin_nudge)\b|\b(set_volunteer_goal|set_team_family_count|set_official_counts_for|set_official_no_show|merge_volunteer_families|separate_volunteer_family_member)\b|\bfrom\(\s*["']volunteers["']\)|\bfirst_initial\b|\bemail_lc\b|@\/(lib|components)\/volunteers\//;
+const VOLUNTEER_TABLES =
+  /\bvolunteer_(claims|roles|role_divisions|manage_links|outbox|settings|goals|team_family_counts|family_members|official_links|official_no_shows)\b|\bpublic\.volunteers\b/;
 
 // ── F1: import fence (follows every import chain) ───────────────────────
 const IMPORT_SPEC = /(?:import|export)\s[^;]*?from\s+["']([^"']+)["']/g;
@@ -205,6 +218,25 @@ const latest = new Map<string, string>(); // fn → body (last definition wins),
   }
 }
 
+// ── U1: the officials fence (0123) ──────────────────────────────────────
+let officialFiles = 0;
+{
+  const files = [...walk("src/lib/umpires"), ...walk("src/components/umpires"), ...walk("src/app/(dashboard)/dashboard/umpires")];
+  const bad: string[] = [];
+  for (const f of files) {
+    officialFiles++;
+    const via = reach(f);
+    const hit = [...via.keys()].find((x) => IN_VOLUNTEERS.test(x));
+    if (hit || VOLUNTEER_WORDS.test(read(f))) bad.push(hit ? `${f} → ${hit}` : f);
+  }
+  ok(bad.length === 0, "[U1] no officials file reaches the volunteer code or names a volunteer table", bad.join(", "));
+  const VOLUNTEER_SET = /^(volunteer_|set_volunteer_goal$|set_team_family_count$|set_official_counts_for$|set_official_no_show$|merge_volunteer_families$|separate_volunteer_family_member$|wipe_volunteer_data_on_archive$)/;
+  const badSql = [...latest]
+    .filter(([fn, body]) => !VOLUNTEER_SET.test(fn) && /\bvolunteer_official_(links|no_shows)\b/.test(body))
+    .map(([fn]) => fn);
+  ok(badSql.length === 0, "[U1] no database function outside the volunteer set reads the officials' tracker tables", badSql.join(", "));
+}
+
 // ── A1: the activity log ────────────────────────────────────────────────
 {
   const all = walk("src");
@@ -252,6 +284,7 @@ let wired = 0;
   const SURFACES: [string, RegExp][] = [
     ["src/components/settings/volunteers-card.tsx", /from\s+["']@\/lib\/volunteers\//],
     ["src/app/api/volunteers/outbox/drain/route.ts", /from\s+["']@\/lib\/volunteers\/drain-runner["']/],
+    ["src/app/(dashboard)/dashboard/volunteers/tracker/page.tsx", /from\s+["']@\/lib\/volunteers\/tracker["']/],
   ];
   for (const [f, re] of SURFACES) {
     const has = existsSync(join(ROOT, f)) && re.test(read(f));
@@ -264,7 +297,8 @@ let wired = 0;
 ok(fenced >= 60, "[COUNT-fenced] outbound files fenced", String(fenced));
 ok(tokenFns >= 6, "[COUNT-tokenFns] token functions scanned", String(tokenFns));
 ok(volunteerFns >= 2, "[COUNT-volunteerFns] public sign-up functions scanned", String(volunteerFns));
-ok(wired >= 2, "[COUNT-wired] volunteer surfaces wired", String(wired));
+ok(wired >= 3, "[COUNT-wired] volunteer surfaces wired", String(wired));
+ok(officialFiles >= 20, "[COUNT-officialFiles] officials files fenced", String(officialFiles));
 
 console.log(`volunteer-leaks: ${checks} checks, ${failures} failed (fenced ${fenced} files, ${visits} module visits, ${tokenFns} token functions, ${volunteerFns} sign-up functions, ${wired} surfaces)`);
 process.exit(failures ? 1 : 0);
