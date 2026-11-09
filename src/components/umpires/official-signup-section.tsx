@@ -6,17 +6,19 @@
 //     Read on open; an unreadable list shows an error and can't be saved
 //     (saving over a list we couldn't read would be a guess). Saved through
 //     set_official_divisions, which writes immediately.
-//   * "Copy new link (the old one stops working)" — official_issue_link mints
-//     a fresh link and revokes the old one; the new one is copied, or shown
-//     when the browser refuses the clipboard. Only its hash is stored, so a
-//     link can never be shown twice.
+//   * "Create new link (the old one stops working)" — official_issue_link
+//     mints a fresh link and revokes the old one; the new link is SHOWN in a
+//     selectable field (only its hash is stored, so it can never be shown
+//     again). A separate "Copy" button copies it: copyLink writes the
+//     clipboard as the first thing the click does — Safari refuses a write
+//     made after an await (src/lib/officials-signup/link-copy.ts).
 // No <form> here: this sits inside the modal's <form> (see
 // official-profile-sections.tsx — a nested form loses its submit).
 
 import { useEffect, useState } from "react";
-import { Link2, Loader2 } from "lucide-react";
+import { Check, Copy, Link2, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { officialLinkUrl } from "@/lib/officials-signup/page";
+import { copyLink, copyResultLine, issueLinkOutcome } from "@/lib/officials-signup/link-copy";
 import * as W from "@/lib/officials-signup/words";
 
 export type SignupDivision = { id: string; name: string };
@@ -38,6 +40,7 @@ export function OfficialSignupSection({
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkNotice, setLinkNotice] = useState<{ ok: boolean; line: string } | null>(null);
   const [shownLink, setShownLink] = useState<string | null>(null);
+  const [copyNotice, setCopyNotice] = useState<{ ok: boolean; line: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,9 +82,10 @@ export function OfficialSignupSection({
     setDivNotice({ ok: true, line: W.DIVISIONS_SAVED });
   }
 
-  async function copyNewLink() {
+  async function createLink() {
     setLinkBusy(true);
     setLinkNotice(null);
+    setCopyNotice(null);
     setShownLink(null);
     const { data, error } = await createClient().rpc(
       // @ts-expect-error — RPC isn't in the hand-maintained types (0124)
@@ -89,19 +93,22 @@ export function OfficialSignupSection({
       { p_umpire_id: umpireId },
     );
     setLinkBusy(false);
-    const token = (data as { token?: unknown } | null)?.token;
-    if (error || typeof token !== "string" || !/^[0-9a-f]{64}$/.test(token)) {
-      setLinkNotice({ ok: false, line: W.adminErrorLine(error?.message, W.COPY_FAILED) });
+    const out = issueLinkOutcome(data, error);
+    if (!out.ok) {
+      setLinkNotice({ ok: false, line: out.line });
       return;
     }
-    const url = officialLinkUrl(token);
-    try {
-      await navigator.clipboard.writeText(url);
-      setLinkNotice({ ok: true, line: W.COPIED });
-    } catch {
-      setLinkNotice({ ok: true, line: W.COPY_SHOW });
-      setShownLink(url);
-    }
+    setLinkNotice({ ok: true, line: W.LINK_CREATED });
+    setShownLink(out.url);
+  }
+
+  // Not async, and the clipboard write comes first: Safari only allows it
+  // while the click is still being handled.
+  function copyShownLink() {
+    if (!shownLink) return;
+    void copyLink(shownLink, typeof navigator === "undefined" ? null : navigator.clipboard).then((r) =>
+      setCopyNotice(copyResultLine(r)),
+    );
   }
 
   return (
@@ -162,24 +169,38 @@ export function OfficialSignupSection({
       <div className="flex flex-col gap-2 border-t border-gray-100 pt-3">
         <button
           type="button"
-          onClick={copyNewLink}
+          onClick={createLink}
           disabled={linkBusy || !enabled}
-          title={enabled ? undefined : W.COPY_OFF}
+          title={enabled ? undefined : W.LINK_OFF}
           className="inline-flex min-h-[40px] w-fit items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-medium text-[#0C1F3F] disabled:opacity-50"
         >
           {linkBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-          {W.COPY_LINK}
+          {W.CREATE_LINK}
         </button>
-        {!enabled && <p className="text-xs text-gray-500">{W.COPY_OFF}</p>}
+        {!enabled && <p className="text-xs text-gray-500">{W.LINK_OFF}</p>}
         {linkNotice && <p className={`text-xs ${linkNotice.ok ? "text-[#16a34a]" : "text-red-600"}`}>{linkNotice.line}</p>}
         {shownLink && (
-          <input
-            readOnly
-            value={shownLink}
-            onFocus={(e) => e.currentTarget.select()}
-            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              readOnly
+              value={shownLink}
+              aria-label="New sign-up link"
+              data-official-link
+              onFocus={(e) => e.currentTarget.select()}
+              onClick={(e) => e.currentTarget.select()}
+              className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800"
+            />
+            <button
+              type="button"
+              onClick={copyShownLink}
+              className="inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-lg bg-[#0C1F3F] px-3 text-sm font-semibold text-white"
+            >
+              {copyNotice?.ok ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              {copyNotice?.ok ? W.LINK_COPIED : W.LINK_COPY}
+            </button>
+          </div>
         )}
+        {copyNotice && !copyNotice.ok && <p role="status" className="text-xs text-red-600">{copyNotice.line}</p>}
       </div>
     </div>
   );

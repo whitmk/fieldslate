@@ -9,6 +9,8 @@ const MAIL = "src/lib/officials-signup/email-templates.ts";
 const RUNNER = "src/lib/officials-signup/drain-runner.ts";
 const CRON = "src/lib/outbound-email/cron-auth.ts";
 const ROUTE = "src/app/api/officials/signup/[token]/route.ts";
+const COPY = "src/lib/officials-signup/link-copy.ts";
+const SECTION = "src/components/umpires/official-signup-section.tsx";
 
 const MUTANTS: Mutant[] = [
   { id: "SP1", what: "a malformed game on the list is skipped, not an error", file: PAGE,
@@ -39,6 +41,21 @@ const MUTANTS: Mutant[] = [
   { id: "SP11", what: "the page data is cached", file: ROUTE,
     find: "const NO_STORE = { \"Cache-Control\": \"no-store\", \"X-Robots-Tag\": \"noindex, nofollow\" };",
     replace: "const NO_STORE = { \"Cache-Control\": \"public, max-age=60\", \"X-Robots-Tag\": \"noindex, nofollow\" };", expect: "F1" },
+  { id: "SP12", what: "the create reply accepts any string token", file: COPY,
+    find: "  if (error || typeof token !== \"string\" || !/^[0-9a-f]{64}$/.test(token)) {",
+    replace: "  if (error || typeof token !== \"string\") {", expect: "L1" },
+  { id: "SP13", what: "copyLink writes the clipboard after an await (the Safari bug)", file: COPY,
+    find: "    write = clipboard.writeText(url);",
+    replace: "    write = Promise.resolve().then(() => clipboard.writeText(url));", expect: "L2" },
+  { id: "SP14", what: "a refused copy read as copied", file: COPY,
+    find: "    () => \"refused\" as const,\n  );",
+    replace: "    () => \"copied\" as const,\n  );", expect: "L3" },
+  { id: "SP15", what: "the Copy click awaits before copying", file: SECTION,
+    find: "  function copyShownLink() {\n    if (!shownLink) return;",
+    replace: "  async function copyShownLink() {\n    if (!shownLink) return;\n    await Promise.resolve();", expect: "L4" },
+  { id: "SP16", what: "the new link is not put in the field after it is made", file: SECTION,
+    find: "    setLinkNotice({ ok: true, line: W.LINK_CREATED });\n    setShownLink(out.url);",
+    replace: "    setLinkNotice({ ok: true, line: W.LINK_CREATED });", expect: "L4" },
 ];
 
 runMutants({

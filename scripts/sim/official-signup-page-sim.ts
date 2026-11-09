@@ -26,6 +26,15 @@
 //   D1  the drain's parser reads link_token, game, spots and claims; a row
 //       without an id is dropped
 //   C1  the cron gate: no secret → 503, wrong bearer → 401, right → runs
+//   L1  the "Create new link" reply: only a 64-hex token makes a www /o/ link;
+//       an error, a missing or malformed token says the old link still works
+//   L2  copyLink writes the clipboard BEFORE it returns — nothing awaited
+//       first (Safari refuses a write made after an await; 2026-11-09)
+//   L3  copy results: a write that resolves is "copied"; a refusal, a write
+//       that throws, or no clipboard is "refused", never a throw
+//   L4  SOURCE (weak by nature): the Copy click handler is not async and calls
+//       copyLink first; the create handler never touches the clipboard; the
+//       created link is put in the field on success, not only on a refusal
 //   F1  SOURCE (weak by nature): the page route, claim/drop handler and
 //       drain use the admin client only through the 0124 functions; the
 //       routes send no-store; the page is noindex with no referrer; the
@@ -40,6 +49,9 @@
 // SURVIVED — F1 looked for the substring "no-store", which the route's
 // `fetchCache = "force-no-store"` still contained. A harness fault: F1 now
 // requires the exact `"Cache-Control": "no-store"` header.
+// Run 2 (2026-11-09, link copy): SP12–SP16 each killed at its own line, 16/16.
+// The first L4 run was red on the real code: the component's own comment
+// says "clipboard", so the comment-blind check fired — L4 now strips comments.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -55,6 +67,7 @@ import {
 import { renderOfficialEmail, OFFICIAL_EMAIL_KINDS, type OfficialOutboxRow } from "@/lib/officials-signup/email-templates";
 import { parseOfficialRows } from "@/lib/officials-signup/drain-runner";
 import { cronRefusal } from "@/lib/outbound-email/cron-auth";
+import { copyLink, copyResultLine, issueLinkOutcome } from "@/lib/officials-signup/link-copy";
 import * as W from "@/lib/officials-signup/words";
 
 const ROOT = join(__dirname, "../..");
@@ -67,7 +80,7 @@ function ok(cond: boolean, name: string, detail = "") {
     console.log(`  FAIL: ${name}${detail ? ` — ${detail}` : ""}`);
   }
 }
-const counters = { wholePage: 0, claimRefused: 0, dropClosed: 0, kindsRendered: 0 };
+const counters = { wholePage: 0, claimRefused: 0, dropClosed: 0, kindsRendered: 0, copyRefused: 0, copyDone: 0 };
 const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
 
 const G = { game_id: "g1", start: "2026-11-14T09:00", minutes: 90, division: "Majors", home: "Expos", away: "Pirates", field: "Monroe — Field 2", role: "Plate" };
@@ -92,7 +105,7 @@ const row = (over: Partial<OfficialOutboxRow>): OfficialOutboxRow => ({
   linkToken: "a".repeat(64), game: G, spots: [G], claims: [], ...over,
 });
 
-function main() {
+async function main() {
   // ── P ───────────────────────────────────────────────────────────────────
   const r = readSignupReply(PAGE);
   ok(r.kind === "ok" && r.page.mine.length === 3 && r.page.open.length === 3 && r.page.youth, "[P1]", JSON.stringify(r).slice(0, 200));
@@ -175,6 +188,50 @@ function main() {
   ok(cronRefusal(undefined, "Bearer x")?.status === 503 && cronRefusal("s3cret", "Bearer nope")?.status === 401 &&
      cronRefusal("s3cret", null)?.status === 401 && cronRefusal("s3cret", "Bearer s3cret") === null, "[C1]", "cron gate");
 
+  // ── L ───────────────────────────────────────────────────────────────────
+  {
+    const tok = "c".repeat(64);
+    const good = issueLinkOutcome({ token: tok }, null);
+    const bad = [
+      issueLinkOutcome(null, { message: "boom" }),
+      issueLinkOutcome({ token: tok }, { message: "boom" }),
+      issueLinkOutcome({ token: "abc" }, null),
+      issueLinkOutcome({ token: "C".repeat(64) }, null),
+      issueLinkOutcome({}, null),
+      issueLinkOutcome(null, null),
+    ];
+    ok(good.ok && good.url === `https://www.thefieldslate.com/o/${tok}` &&
+       bad.every((b) => !b.ok && b.line === W.LINK_FAILED && /still works/.test(b.line)), "[L1]",
+      JSON.stringify([good, ...bad]).slice(0, 240));
+
+    let written: string | null = null;
+    const syncClip = { writeText: (t: string) => { written = t; return Promise.resolve(); } };
+    const pending = copyLink("https://www.thefieldslate.com/o/x", syncClip);
+    ok(written === "https://www.thefieldslate.com/o/x", "[L2] the clipboard is written before copyLink returns", String(written));
+
+    const copied = await pending;
+    const refusedReject = await copyLink("u", { writeText: () => Promise.reject(new Error("NotAllowedError")) });
+    const refusedThrow = await copyLink("u", { writeText: () => { throw new Error("sync"); } });
+    const refusedNone = await copyLink("u", undefined);
+    const lines = [copyResultLine("copied"), copyResultLine("refused")];
+    if (copied === "copied") counters.copyDone++;
+    if (refusedReject === "refused") counters.copyRefused++;
+    ok(copied === "copied" && refusedReject === "refused" && refusedThrow === "refused" && refusedNone === "refused" &&
+       lines[0].ok && lines[0].line === W.LINK_COPIED && !lines[1].ok && lines[1].line === W.LINK_COPY_REFUSED,
+      "[L3]", JSON.stringify({ copied, refusedReject, refusedThrow, refusedNone }));
+
+    // Comments stripped: the file's own comments name the clipboard.
+    const comp = read("src/components/umpires/official-signup-section.tsx").replace(/^\s*\/\/.*$/gm, "");
+    const copyFn = comp.slice(comp.indexOf("function copyShownLink("), comp.indexOf("return (", comp.indexOf("function copyShownLink(")));
+    const createFn = comp.slice(comp.indexOf("async function createLink("), comp.indexOf("function copyShownLink("));
+    const beforeCopy = copyFn.slice(0, copyFn.indexOf("copyLink("));
+    ok(copyFn.length > 0 && !/async\s+function\s+copyShownLink/.test(comp) && copyFn.includes("copyLink(") &&
+       !/await/.test(beforeCopy) && createFn.length > 0 && !/clipboard/.test(createFn) &&
+       /W\.LINK_CREATED[\s\S]*setShownLink\(out\.url\)/.test(createFn) &&
+       !/navigator\.clipboard\.writeText/.test(comp) && /onClick=\{copyShownLink\}/.test(comp),
+      "[L4]", "copy handler wiring");
+  }
+
   // ── F ───────────────────────────────────────────────────────────────────
   {
     const route = read("src/app/api/officials/signup/[token]/route.ts");
@@ -197,9 +254,7 @@ function main() {
   process.exit(fails ? 1 : 0);
 }
 
-try {
-  main();
-} catch (e) {
+main().catch((e) => {
   console.log(`  FAIL: [CRASH] ${(e as Error).stack ?? e}`);
   process.exit(1);
-}
+});

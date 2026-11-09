@@ -51,7 +51,7 @@ interface Props {
   showSeasonColumn: boolean;
   seasonPaySettings: SeasonPaySettings[];
   /** Officials self-sign-up (0124): present only when the org has the
-   *  feature — adds the divisions control and "Copy new link" to the edit
+   *  feature — adds the divisions control and "Create new link" to the edit
    *  modal. */
   signup?: { enabled: boolean; divisions: SignupDivision[] } | null;
 }
