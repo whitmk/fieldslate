@@ -302,3 +302,14 @@ export const MY_GONE = "That spot isn't on your list anymore. Reload to see your
 export const MY_ACTION_FAILED = "Couldn't save that. Nothing changed — please try again.";
 export const MY_UNKNOWN = "This link isn't recognized. Use the link in your most recent sign-up email.";
 export const MY_LOAD_FAILED = "We couldn't load your sign-ups right now. Please try again in a minute.";
+
+// ── Reminders (who signed up) ────────────────────────────────────────────────
+export const REMIND = "Remind";
+export const REMINDED_ON = (date: string) => `Reminded ${date}`;
+export const NEXT_UP = (when: string, n: number) => `Next up: ${when} · ${n} volunteer${n === 1 ? "" : "s"} signed up`;
+export const NEXT_UP_NOT_SENT = "Reminder not sent yet. Each reminder includes the volunteer's link to change or cancel.";
+export const NEXT_UP_SENT = (date: string) => `Reminder sent ${date}. Each reminder includes the volunteer's link to change or cancel.`;
+export const REMIND_ALL = (n: number, when: string) => `Remind ${n === 1 ? "1 volunteer" : `all ${n}`} for ${when}`;
+export const REMIND_SENT = (n: number) => `Reminder on its way to ${n} volunteer${n === 1 ? "" : "s"}.`;
+export const REMIND_SKIPPED = (n: number) => ` ${n} spot${n === 1 ? " was" : "s were"} left out — already started or canceled.`;
+export const REMIND_FAILED = "Couldn't send the reminder. Nothing was sent — try again.";

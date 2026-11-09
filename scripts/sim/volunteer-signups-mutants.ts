@@ -47,6 +47,30 @@ const MUTANTS: Mutant[] = [
     expect: "S4",
   },
   {
+    id: "VS12", what: "the banner says sent when only some were reminded", file: SS,
+    find: "  const sentOn = dates.every((d) => d !== null) ? (dates as string[]).sort()[0] : null;",
+    replace: "  const sentOn = dates.some((d) => d !== null) ? (dates.filter(Boolean) as string[]).sort()[0] : null;",
+    expect: "R1",
+  },
+  {
+    id: "VS13", what: "a started spot offered a reminder", file: SS,
+    find: "  return row.claim !== null && row.start >= nowWall;",
+    replace: "  return row.claim !== null;",
+    expect: "R1",
+  },
+  {
+    id: "VS14", what: "nothing queued reads as sent", file: SS,
+    find: "  if (q === 0) return { ok: false, line: W.REMIND_FAILED + (s > 0 ? W.REMIND_SKIPPED(s) : \"\") };\n",
+    replace: "",
+    expect: "R4",
+  },
+  {
+    id: "VS15", what: "reminded date from the raw UTC timestamp", file: SS,
+    find: "  return c.last_reminded_on ? W.REMINDED_ON(shortDate(c.last_reminded_on)) : null;",
+    replace: "  return c.last_reminded_on ? W.REMINDED_ON(shortDate((c as { last_reminded_at?: string }).last_reminded_at ?? \"\")) : null;",
+    expect: "R5",
+  },
+  {
     id: "VS6", what: "lost sign-ups not grouped by day", file: SS,
     find: "    const k = `${name}|${day}`;",
     replace: "    const k = `${name}|${day}|${c.claim_id}`;",

@@ -11,6 +11,7 @@
 // Not here: "Possible same family / Merge" (cut), the Volunteers tab
 // (branch D), reminders (built last in branch B).
 import { slotTargets, spotStartWall, type SlotGame, type VolunteerRole } from "./slots";
+import * as W from "./words";
 
 export type SignupClaim = {
   claim_id: string;
@@ -23,6 +24,8 @@ export type SignupClaim = {
   created_by: "volunteer" | "admin";
   no_show: boolean;
   last_reminded_at: string | null;
+  /** The reminder's date in the LEAGUE's timezone ("YYYY-MM-DD"), from the database. */
+  last_reminded_on?: string | null;
   detached_from: { start?: string; home_team_id?: string; away_team_id?: string | null } | null;
   detached_at: string | null;
   moved_from: { start?: string } | null;
@@ -243,4 +246,64 @@ export function signupsCsv(rows: readonly SpotRow[], teams: readonly ScreenTeam[
     );
   }
   return lines.join("\r\n");
+}
+
+// ── Reminders ────────────────────────────────────────────────────────────────
+
+/** "Mar 4" from "YYYY-MM-DD". */
+export function shortDate(day: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(day);
+  if (!m) return day;
+  return `${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][+m[2] - 1]} ${+m[3]}`;
+}
+
+/** "Sat, Mar 6" from a wall clock. */
+export function dayLabel(wall: string): string {
+  const w = fmtWhen(wall).split(" · ")[0];
+  return `${w.split(" ")[0]}, ${shortDate(wall)}`;
+}
+
+/** A filled spot that hasn't started can be reminded. */
+export function remindable(row: SpotRow, nowWall: string): boolean {
+  return row.claim !== null && row.start >= nowWall;
+}
+
+export type NextUp = { day: string; claimIds: string[]; volunteers: number; sentOn: string | null };
+
+/** The earliest day with filled spots still ahead: its sign-ups, how many
+ *  volunteers, and the date a reminder went to ALL of them (null if any is
+ *  still unreminded). */
+export function nextUp(rows: readonly SpotRow[], nowWall: string): NextUp | null {
+  const ahead = rows.filter((r) => remindable(r, nowWall));
+  if (ahead.length === 0) return null;
+  const day = ahead.reduce((d, r) => (r.start.slice(0, 10) < d ? r.start.slice(0, 10) : d), ahead[0].start.slice(0, 10));
+  const onDay = ahead.filter((r) => r.start.slice(0, 10) === day);
+  const claims = onDay.map((r) => r.claim!);
+  const dates = claims.map((c) => c.last_reminded_on ?? null);
+  const sentOn = dates.every((d) => d !== null) ? (dates as string[]).sort()[0] : null;
+  return { day, claimIds: claims.map((c) => c.claim_id), volunteers: new Set(claims.map((c) => c.volunteer_id)).size, sentOn };
+}
+
+export function nextUpLines(n: NextUp): { title: string; status: string; button: string } {
+  const when = dayLabel(`${n.day}T00:00`);
+  return {
+    title: W.NEXT_UP(when, n.volunteers),
+    status: n.sentOn ? W.NEXT_UP_SENT(shortDate(n.sentOn)) : W.NEXT_UP_NOT_SENT,
+    button: W.REMIND_ALL(n.volunteers, shortDate(n.day)),
+  };
+}
+
+export function remindedLine(c: Pick<SignupClaim, "last_reminded_on">): string | null {
+  return c.last_reminded_on ? W.REMINDED_ON(shortDate(c.last_reminded_on)) : null;
+}
+
+/** volunteer_admin_remind's reply → what the screen says. A reply that isn't
+ *  a readable count is a failure, never "sent". */
+export function remindOutcome(raw: unknown): { ok: boolean; line: string } {
+  const r = (raw && typeof raw === "object" ? raw : null) as Record<string, unknown> | null;
+  const q = r?.queued;
+  const s = r?.skipped;
+  if (!r || typeof q !== "number" || typeof s !== "number" || q < 0 || s < 0) return { ok: false, line: W.REMIND_FAILED };
+  if (q === 0) return { ok: false, line: W.REMIND_FAILED + (s > 0 ? W.REMIND_SKIPPED(s) : "") };
+  return { ok: true, line: W.REMIND_SENT(q) + (s > 0 ? W.REMIND_SKIPPED(s) : "") };
 }

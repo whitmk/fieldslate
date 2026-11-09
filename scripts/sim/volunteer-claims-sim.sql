@@ -1140,6 +1140,11 @@ begin
      or (select last_reminded_at from public.volunteer_claims where id = c2) is null then
     return 'RM1 the reminder rows';
   end if;
+  v_txt := pg_temp.h121_as(v_org, 'authenticated', format('select public.volunteer_admin_signups(%L)::text', v_s));
+  if (select x ->> 'last_reminded_on' from jsonb_array_elements(v_txt::jsonb -> 'claims') x where x ->> 'claim_id' = c2::text)
+     is distinct from to_char(now() at time zone (select timezone from public.profiles where id = v_org), 'YYYY-MM-DD') then
+    return 'RM1 the list''s reminded date isn''t the league''s today';
+  end if;
   v_txt := pg_temp.h121_as(v_org, 'authenticated', format(
     'select public.volunteer_admin_remind(%L, array[%L]::uuid[])::text', v_s, c1));
   if (select count(*) from public.volunteer_outbox where kind = 'reminder' and status = 'pending' and season_id = v_s) <> 1

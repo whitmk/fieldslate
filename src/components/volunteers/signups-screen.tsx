@@ -18,6 +18,11 @@ import {
   lostDetail,
   lostGroups,
   lostTitle,
+  nextUp,
+  nextUpLines,
+  remindable,
+  remindedLine,
+  remindOutcome,
   signupsCsv,
   splitByTime,
   startedTag,
@@ -93,6 +98,8 @@ export function SignupsScreen({ data }: { data: SignupsScreenData }) {
         <LostBanner key={`${g.divisionName}|${g.day}`} group={g} />
       ))}
 
+      <NextUpBanner seasonId={data.seasonId} rows={rows} nowWall={data.nowWall} />
+
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         <select className={SELECT} value={filters.roleId ?? ""} onChange={(e) => setFilters({ ...filters, roleId: e.target.value || null })} aria-label="Role">
           <option value="">{W.FILTER_ALL_ROLES}</option>
@@ -142,10 +149,14 @@ export function SignupsScreen({ data }: { data: SignupsScreenData }) {
                 <td className="px-3 py-3 text-gray-700">{r.claim ? teamLabel(r.claim) : "—"}</td>
                 <td className="px-3 py-3 text-gray-700">
                   {r.claim?.email ?? ""}
+                  {r.claim && remindedLine(r.claim) && <div className="text-xs text-gray-500">{remindedLine(r.claim)}</div>}
                 </td>
                 <td className="px-3 py-3 text-gray-700">{r.claim ? (r.claim.created_by === "admin" ? W.BY_ADMIN : W.BY_VOLUNTEER) : ""}</td>
                 <td className="px-3 py-3">
-                  <RowAction row={r} onAssign={setAssignFor} onChange={setChangeFor} />
+                  <div className="flex flex-wrap gap-2">
+                    {remindable(r, data.nowWall) && <RemindButton seasonId={data.seasonId} claimIds={[r.claim!.claim_id]} />}
+                    <RowAction row={r} onAssign={setAssignFor} onChange={setChangeFor} />
+                  </div>
                 </td>
               </tr>
             ))}
@@ -172,6 +183,12 @@ export function SignupsScreen({ data }: { data: SignupsScreenData }) {
                   <>
                     {volunteerName(r.claim)} · {teamLabel(r.claim)}
                     <div className="break-all text-gray-600">{r.claim.email}</div>
+                    {remindedLine(r.claim) && <div className="text-xs text-gray-500">{remindedLine(r.claim)}</div>}
+                    {remindable(r, data.nowWall) && (
+                      <div className="mt-2">
+                        <RemindButton seasonId={data.seasonId} claimIds={[r.claim.claim_id]} />
+                      </div>
+                    )}
                   </>
                 ) : (
                   <span className="text-gray-500">{W.OPEN_SPOT}</span>
@@ -206,6 +223,70 @@ export function SignupsScreen({ data }: { data: SignupsScreenData }) {
 function StartedChip({ row, nowWall }: { row: SpotRow; nowWall: string }) {
   const tag = startedTag(row, nowWall);
   return tag ? <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{tag}</span> : null;
+}
+
+async function sendReminder(seasonId: string, claimIds: string[]): Promise<{ ok: boolean; line: string }> {
+  // @ts-expect-error — RPCs aren't in the hand-maintained Functions map.
+  const r = await createClient().rpc("volunteer_admin_remind", { p_season_id: seasonId, p_claim_ids: claimIds });
+  return r.error ? remindOutcome(null) : remindOutcome(r.data);
+}
+
+function RemindButton({ seasonId, claimIds }: { seasonId: string; claimIds: string[] }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; line: string } | null>(null);
+  return (
+    <span className="inline-flex flex-col">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          const out = await sendReminder(seasonId, claimIds);
+          setBusy(false);
+          setNote(out);
+          if (out.ok) router.refresh();
+        }}
+        className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-semibold text-[#0C1F3F] hover:bg-gray-50 disabled:opacity-50"
+      >
+        {W.REMIND}
+      </button>
+      {note && <span className={`mt-1 text-xs ${note.ok ? "text-green-700" : "text-red-700"}`}>{note.line}</span>}
+    </span>
+  );
+}
+
+function NextUpBanner({ seasonId, rows, nowWall }: { seasonId: string; rows: SpotRow[]; nowWall: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; line: string } | null>(null);
+  const next = nextUp(rows, nowWall);
+  if (!next) return null;
+  const lines = nextUpLines(next);
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p className="font-semibold text-[#0C1F3F]">{lines.title}</p>
+        <p className="text-gray-600">{lines.status}</p>
+        {note && <p className={`mt-1 ${note.ok ? "text-green-700" : "text-red-700"}`}>{note.line}</p>}
+      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          const out = await sendReminder(seasonId, next.claimIds);
+          setBusy(false);
+          setNote(out);
+          if (out.ok) router.refresh();
+        }}
+        className="inline-flex flex-shrink-0 items-center justify-center gap-2 rounded-lg bg-[#0C1F3F] px-4 py-2 font-semibold text-white disabled:opacity-50"
+      >
+        {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+        {lines.button}
+      </button>
+    </div>
+  );
 }
 
 function RowAction({ row, onAssign, onChange }: { row: SpotRow; onAssign: (r: SpotRow) => void; onChange: (r: SpotRow) => void }) {

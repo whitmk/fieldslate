@@ -1401,6 +1401,8 @@ begin
                'for_team_id', c.for_team_id, 'position', c.position, 'family_team_id', c.family_team_id,
                'created_by', c.created_by, 'created_at', c.created_at, 'canceled_at', c.canceled_at,
                'no_show', c.no_show, 'last_reminded_at', c.last_reminded_at,
+               'last_reminded_on', to_char(c.last_reminded_at at time zone
+                                     (select p.timezone from public.profiles p where p.id = v_owner), 'YYYY-MM-DD'),
                'detached_from', c.detached_from, 'detached_at', c.detached_at, 'moved_from', c.moved_from,
                'volunteer_id', v.id, 'first_initial', v.first_initial, 'last_name', v.last_name,
                'email', v.email_lc)

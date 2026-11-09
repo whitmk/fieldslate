@@ -17,6 +17,13 @@
 //   S6  CSV: header, one line per spot, "Open" for an open one, quoting, a
 //       formula-looking cell made inert
 //   S7  assignStatusLine: every status worded; unknown → generic
+//   R1  nextUp: the earliest day with filled spots still ahead, its
+//       sign-ups and volunteers (distinct); "sent" only when ALL were reminded
+//   R2  nextUpLines: the banner's words, one volunteer or several
+//   R3  remindable: filled and not started
+//   R4  remindOutcome: a count → sent (and what was left out); none queued
+//       or an unreadable reply → failure, never "sent"
+//   R5  remindedLine reads the league-timezone date, never the raw timestamp
 //   W1  wiring: the page fails closed on the sign-up read; the component
 //       trusts only an "assigned" / "canceled" / "saved" reply
 // ANTI-VACUITY: filled, open, noted, past and lost rows must all occur.
@@ -30,6 +37,11 @@ import {
   lostDetail,
   lostGroups,
   lostTitle,
+  nextUp,
+  nextUpLines,
+  remindable,
+  remindedLine,
+  remindOutcome,
   signupsCsv,
   splitByTime,
   startedTag,
@@ -153,6 +165,35 @@ for (const s of ["invalid_input", "wrong_team", "already_signed_up", "overlap_co
 }
 ok(assignStatusLine("assigned") === null, "S7", "assigned → no line");
 ok(assignStatusLine("weird")?.startsWith("Couldn't save") === true, "S7", "unknown → generic");
+
+// R1–R5
+{
+  const now = "2027-03-05T10:00";
+  const n1 = nextUp(rows, now);
+  // Mar 6 filled: c1 (A. Garcia, volunteer v-c1), c2 (M. Patel, v-c2) → 2 volunteers
+  ok(n1?.day === "2027-03-06" && n1.volunteers === 2 && n1.claimIds.length === 2 && n1.sentOn === null, "R1", "next day, not sent", JSON.stringify(n1));
+  const reminded = rows.map((r) => (r.claim && r.start.startsWith("2027-03-06") ? { ...r, claim: { ...r.claim, last_reminded_on: r.claim.claim_id === "c1" ? "2027-03-04" : null } } : r));
+  ok(nextUp(reminded, now)?.sentOn === null, "R1", "one of two reminded → not sent");
+  const allR = rows.map((r) => (r.claim && r.start.startsWith("2027-03-06") ? { ...r, claim: { ...r.claim, last_reminded_on: r.claim.claim_id === "c1" ? "2027-03-04" : "2027-03-03" } } : r));
+  ok(nextUp(allR, now)?.sentOn === "2027-03-03", "R1", "all reminded → the earliest date", JSON.stringify(nextUp(allR, now)));
+  ok(nextUp(rows, "2027-03-30T00:00") === null, "R1", "nothing ahead → no banner");
+  const l = nextUpLines(n1!);
+  ok(l.title === "Next up: Sat, Mar 6 · 2 volunteers signed up" && l.button === "Remind all 2 for Mar 6" && l.status.startsWith("Reminder not sent yet."),
+    "R2", "banner words", JSON.stringify(l));
+  ok(nextUpLines({ ...n1!, volunteers: 1 }).button === "Remind 1 volunteer for Mar 6", "R2", "one volunteer");
+  ok(nextUpLines({ ...n1!, sentOn: "2027-03-04" }).status.startsWith("Reminder sent Mar 4."), "R2", "sent status");
+  const filledAhead = rows.find((r) => r.claim && r.start >= now)!;
+  ok(remindable(filledAhead, now) && !remindable(filledAhead, "2027-03-06T09:30") && !remindable(rows.find((r) => !r.claim)!, now), "R3",
+    "filled and not started only");
+  ok(remindOutcome({ queued: 2, reminded: 3, skipped: 0 }).ok && remindOutcome({ queued: 2, reminded: 3, skipped: 0 }).line === "Reminder on its way to 2 volunteers.", "R4", "sent");
+  ok(remindOutcome({ queued: 1, reminded: 1, skipped: 1 }).line.includes("1 spot was left out"), "R4", "skipped named");
+  ok(!remindOutcome({ queued: 0, reminded: 0, skipped: 2 }).ok, "R4", "none queued → failure");
+  ok(!remindOutcome(null).ok && !remindOutcome({ queued: "2" }).ok, "R4", "unreadable → failure");
+  ok(remindedLine({ last_reminded_on: "2027-03-04" }) === "Reminded Mar 4" && remindedLine({ last_reminded_on: null }) === null, "R5", "league date");
+  const comp = read("src/components/volunteers/signups-screen.tsx");
+  ok(comp.includes('rpc("volunteer_admin_remind", { p_season_id: seasonId, p_claim_ids: claimIds })') && comp.includes("if (out.ok) router.refresh();"),
+    "R5", "the screen sends through volunteer_admin_remind and trusts only a readable count");
+}
 
 // W1
 const page = read("src/app/(dashboard)/dashboard/volunteers/signups/page.tsx");

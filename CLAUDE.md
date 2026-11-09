@@ -5956,6 +5956,16 @@ Still open:
   one is held. No Switch (cut). Harness `npm run sim:volunteer-manage-page`
   (32 checks × 3 zones) + `:mutants` (6; MP5 first survived — read the sim's
   MUTATION LOG). Checked on a deleted scratch route at 375px.
+- **Reminders (who signed up, 2026-11-08, built last in branch B).** The
+  "Next up" banner (`nextUp`: the earliest day with filled spots still
+  ahead; "Reminder sent <date>" only when EVERY sign-up that day was
+  reminded) with "Remind all N for <date>", a Remind button on every filled
+  spot not yet started, and "Reminded <date>" — the date in the LEAGUE's
+  timezone, from `volunteer_admin_signups`' `last_reminded_on` (0121; proof
+  RM1). All go through `volunteer_admin_remind` (one email per volunteer, a
+  fresh manage link, a waiting reminder replaced); a reply that isn't a
+  readable count, or queues nothing, is a failure, never "sent". Harness
+  `sim:volunteer-signups` R1–R5 (59 checks) + VS12–VS15 (15/15).
 - **THE FENCE: `npm run sim:volunteer-leaks`** (+ `:mutants`, 7, each killed
   at its own assertion). F1 no outbound file (the daylight fence's list plus
   the activity log, its panel and the snack shack print) reaches
