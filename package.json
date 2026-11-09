@@ -17,6 +17,8 @@
     "sim:officials-wall-clock:mutants": "npx tsx scripts/sim/officials-wall-clock-mutants.ts",
     "sim:official-profile-writes": "npx tsx scripts/sim/official-profile-writes-sim.ts",
     "sim:official-profile-writes:mutants": "npx tsx scripts/sim/official-profile-writes-mutants.ts",
+    "sim:official-claim-rules": "TZ=UTC npx tsx scripts/sim/official-claim-rules-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/official-claim-rules-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/official-claim-rules-sim.ts",
+    "sim:official-claim-rules:mutants": "npx tsx scripts/sim/official-claim-rules-mutants.ts",
     "sim:umpire-reads:mutants": "npx tsx scripts/sim/umpire-reads-failclosed-mutants.ts",
     "sim:assignment-loss": "TZ=UTC npx tsx scripts/sim/assignment-loss-sim.ts",
     "sim:assignment-loss:mutants": "npx tsx scripts/sim/assignment-loss-mutants.ts",

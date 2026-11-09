@@ -24,6 +24,7 @@ export const SKIP_REASON_LABELS: Record<SkipReason, string> = {
   conflict_of_interest: "conflicts of interest",
   outside_availability: "outside listed availability",
   over_weekly_limit: "over weekly limit",
+  division_not_allowed: "not set to work this division",
 };
 
 /**

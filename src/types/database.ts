@@ -1335,6 +1335,20 @@ export type Database = {
           },
         ]
       }
+      official_divisions: {
+        // 0124 — written ONLY by set_official_divisions; members read.
+        Row: { umpire_id: string; division_id: string; created_at: string }
+        Insert: { umpire_id: string; division_id: string; created_at?: string }
+        Update: { umpire_id?: string; division_id?: string; created_at?: string }
+        Relationships: []
+      }
+      official_self_claims: {
+        // 0124 — written ONLY by official_claim; members read ("Signed up").
+        Row: { game_umpire_id: string; umpire_id: string; season_id: string; claimed_at: string; reported_at: string | null }
+        Insert: { game_umpire_id: string; umpire_id: string; season_id: string; claimed_at?: string; reported_at?: string | null }
+        Update: { game_umpire_id?: string; umpire_id?: string; season_id?: string; claimed_at?: string; reported_at?: string | null }
+        Relationships: []
+      }
       practice_plans: {
         Row: {
           created_at: string
