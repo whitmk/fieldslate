@@ -6191,6 +6191,12 @@ Still open:
 
 ## Open items
 
+- **Switch sim:daylight-leaks and sim:game-notes to `scripts/sim/sql-latest.ts`
+  (recorded 2026-11-09).** Both still parse migrations for "latest body" on
+  their own (daylight-leaks D1, game-notes O1-public-reader /
+  O1-bracket-reader). They read the latest definition today, but a second
+  parser can drift from the one resolver the leak fence and the mutant-target
+  check now share — move both onto `latestSqlBodies()` / `sqlFunctions()`.
 - **Volunteer spot SWITCHING — cut from v1 (decided 2026-11-08).** A
   volunteer cancels, then signs up again. A later version may add an atomic
   switch (the plan's `switch_from` on the claim function).
