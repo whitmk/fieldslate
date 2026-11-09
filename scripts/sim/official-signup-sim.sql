@@ -566,3 +566,9 @@ end $h$;
 --   Applied right after (verbatim, apply_migration): catalog 20261109225744;
 --     its verify block passed; md5s, EXECUTE per role, RLS, table grants and
 --     the trigger checked live.
+--   GAP FOUND LIVE (2026-11-09, after the apply): turning sign-up on from
+--     Settings always failed (CHECK official_signup_settings_contact_when_on).
+--     This proof's fixture wrote the settings row directly and never called
+--     set_official_signup_enabled, so the upsert's proposed row (no contact)
+--     was never exercised. Fixed by 0125; its proof
+--     (official-signup-enable-sim.sql) calls contact and enable separately.

@@ -414,6 +414,17 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   wipe trigger enabled; `game_umpires` byte-identical. **Deploy order (met):
   0124 was applied BEFORE the code reached `main`.** **The latest migration
   applied.** See "Officials self-sign-up".
+- **0125 (officials sign-up: turning it on) WRITTEN 2026-11-09, NOT APPLIED**
+  (branch `fix/official-signup-enable`; proof and apply on Whit's go). 0124's
+  `set_official_signup_enabled` upserted `(owner_id, enabled, updated_by)`;
+  Postgres checks CHECK constraints against the PROPOSED INSERT ROW before ON
+  CONFLICT resolves, so `contact_when_on` refused every turn-on even with a
+  contact saved. 0125 reads the contact FOR UPDATE and carries it into the
+  proposed row. Expected md5(prosrc) `3bd26f050165053abfcfa810be87298a`.
+  Proof: `scripts/sim/official-signup-enable-sim.sql` (+ build script; OE1 =
+  contact and enable in separate calls; 3 mutants). **RULE: an upsert into a
+  table with a cross-column CHECK must propose a row that passes the CHECK on
+  its own** — audit of 0120–0124 found only this one.
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
