@@ -7,7 +7,9 @@
 --   PART 2: the sign-up page read, claim, manage page, cancel (public, via
 --          service_role only). Switching is CUT from v1 (decided
 --          2026-11-08): a volunteer cancels, then signs up again.
---   PART 3: the games trigger and the regenerate reattach.
+--   PART 3: the games triggers (moved / rained out / makeup / back on, and
+--          the delete that detaches sign-ups), the regenerate reattach and
+--          "Keep it".
 --   PART 4: the auto-archive hold-back read.
 -- Nothing here writes a game, a division, a team or a season, and nothing is
 -- visible to a league whose org_features switch is off.
@@ -143,6 +145,9 @@ create table public.volunteer_claims (
   -- What the spot was when its target vanished (part 3): date, start, team,
   -- role. Never a name.
   detached_from        jsonb check (detached_from is null or jsonb_typeof(detached_from) = 'object'),
+  -- The FIRST time and field before the game moved (part 3), until the
+  -- volunteer taps "Keep it" or cancels. Never a name.
+  moved_from           jsonb check (moved_from is null or jsonb_typeof(moved_from) = 'object'),
   created_by           text not null check (created_by in ('volunteer', 'admin')),
   created_at           timestamptz not null default now(),
   canceled_at          timestamptz,
@@ -941,6 +946,7 @@ begin
                  'field', ve.name, 'park', loc.name,
                  'start', to_char(public.volunteer_spot_start((g.scheduled_at at time zone 'UTC')::timestamp, vr.lead_minutes), 'YYYY-MM-DD"T"HH24:MI'),
                  'state', public.volunteer_slot_state(g.status),
+                 'moved_from', c.moved_from,
                  'can_change', public.volunteer_change_allowed(
                                  public.volunteer_spot_start((g.scheduled_at at time zone 'UTC')::timestamp, vr.lead_minutes), v_now))
                order by g.scheduled_at, vr.name, c.id)
@@ -1066,7 +1072,209 @@ end;
 $$;
 
 -- ────────────────────────────────────────────────────────────────────────────
--- 8. Function privileges
+-- 8. PART 3 — when a game changes or goes away
+-- ────────────────────────────────────────────────────────────────────────────
+-- Nothing here writes games, divisions or teams: the 0082 lock and
+-- clear_division_posted ("Sent to parents") are untouched by construction.
+-- Both triggers are SECURITY DEFINER because games are written from the
+-- browser by members who hold no privilege on the volunteer tables.
+
+-- A game's change, as volunteer email. Moved (time or field) → game_moved,
+-- coalesced per claim and remembering the FIRST original time for "Keep it";
+-- → cancelled → rained_out; cancelled → back with a new time → makeup_set,
+-- with the same time → back_on (Remove Rainout). A change to a game whose old
+-- and new times are both past (record-where-played) emails nobody. A failure
+-- here is logged and swallowed: a volunteer email must never block a
+-- schedule edit.
+create or replace function public.volunteer_on_game_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_now  timestamp;
+  v_kind text;
+begin
+  if not exists (select 1 from public.volunteer_claims c where c.game_id = new.id and c.status = 'active') then
+    return null;
+  end if;
+  v_now := public.volunteer_org_now((select l.owner_id from public.leagues l where l.id = new.league_id));
+  if (new.scheduled_at at time zone 'UTC')::timestamp < v_now
+     and (old.scheduled_at at time zone 'UTC')::timestamp < v_now then
+    return null;
+  end if;
+
+  v_kind := case
+    when new.status = 'cancelled' and old.status <> 'cancelled' then 'rained_out'
+    when old.status = 'cancelled' and new.status <> 'cancelled'
+         and new.scheduled_at is distinct from old.scheduled_at then 'makeup_set'
+    when old.status = 'cancelled' and new.status <> 'cancelled' then 'back_on'
+    when new.status in ('scheduled', 'reschedule_pending')
+         and (new.scheduled_at is distinct from old.scheduled_at or new.venue_id is distinct from old.venue_id) then 'game_moved'
+    else null
+  end;
+  if v_kind is null then
+    return null;
+  end if;
+
+  if v_kind = 'game_moved' then
+    update public.volunteer_claims c
+       set moved_from = coalesce(c.moved_from, jsonb_build_object(
+             'start', to_char((old.scheduled_at at time zone 'UTC')::timestamp, 'YYYY-MM-DD"T"HH24:MI'),
+             'venue_id', old.venue_id))
+     where c.game_id = new.id and c.status = 'active';
+  end if;
+
+  insert into public.volunteer_outbox (owner_id, season_id, volunteer_id, kind, payload, coalesce_key)
+  select c.owner_id, c.season_id, c.volunteer_id, v_kind,
+         jsonb_build_object('claim_id', c.id, 'game_id', new.id),
+         case when v_kind = 'game_moved' then 'moved:' || c.id end
+    from public.volunteer_claims c
+   where c.game_id = new.id and c.status = 'active';
+  return null;
+exception when others then
+  raise warning 'volunteer_on_game_change: %', sqlerrm;
+  return null;
+end;
+$$;
+
+create trigger volunteer_on_game_change
+  after update of scheduled_at, venue_id, status on public.games
+  for each row
+  when (old.scheduled_at is distinct from new.scheduled_at
+        or old.venue_id is distinct from new.venue_id
+        or old.status is distinct from new.status)
+  execute function public.volunteer_on_game_change();
+
+-- A deleted game's sign-ups become `detached` BEFORE the foreign key nulls
+-- them (an active claim must keep its target), remember what they were, and
+-- queue a spot_lost email held for 10 minutes — long enough for a
+-- regenerate's reattach to take it back. Not swallowed: if this fails the
+-- delete fails, visibly.
+create or replace function public.volunteer_on_game_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  with d as (
+    update public.volunteer_claims c
+       set status = 'detached',
+           detached_from = jsonb_build_object(
+             'game_id', old.id,
+             'start', to_char((old.scheduled_at at time zone 'UTC')::timestamp, 'YYYY-MM-DD"T"HH24:MI'),
+             'home_team_id', old.home_team_id, 'away_team_id', old.away_team_id,
+             'for_team_id', c.for_team_id, 'role_id', c.role_id, 'position', c.position)
+     where c.game_id = old.id and c.status = 'active'
+    returning c.id, c.owner_id, c.season_id, c.volunteer_id
+  )
+  insert into public.volunteer_outbox (owner_id, season_id, volunteer_id, kind, payload, coalesce_key, next_attempt_at)
+  select d.owner_id, d.season_id, d.volunteer_id, 'spot_lost', jsonb_build_object('claim_id', d.id),
+         'lost:' || d.id, now() + interval '10 minutes'
+    from d;
+  return old;
+end;
+$$;
+
+create trigger volunteer_on_game_delete
+  before delete on public.games
+  for each row
+  execute function public.volunteer_on_game_delete();
+
+-- After a regenerate inserts its new games: every detached sign-up of the
+-- season whose game came back — same start, same home team, and for a
+-- per-team spot its team still in the game — is put back on the new game,
+-- and its held spot_lost email is withdrawn. The rest stay detached and their
+-- email goes out. authenticated; member of the season's org only (a league
+-- with the feature off simply has nothing detached).
+create or replace function public.reattach_volunteer_claims(p_season_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_owner uuid;
+  r       record;
+  v_game  uuid;
+  v_back  integer := 0;
+begin
+  select l.owner_id into v_owner from public.leagues l where l.id = p_season_id;
+  if v_owner is null or not public.is_org_member(v_owner) then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+
+  for r in
+    select c.* from public.volunteer_claims c
+     where c.season_id = p_season_id and c.status = 'detached' and c.detached_from ? 'start'
+       and c.role_id is not null
+     order by c.created_at, c.id
+     for update of c
+  loop
+    select g.id into v_game
+      from public.games g
+     where g.league_id = p_season_id
+       and to_char((g.scheduled_at at time zone 'UTC')::timestamp, 'YYYY-MM-DD"T"HH24:MI') = r.detached_from ->> 'start'
+       and g.home_team_id::text = r.detached_from ->> 'home_team_id'
+       and (r.for_team_id is null or r.for_team_id in (g.home_team_id, g.away_team_id))
+       and not exists (select 1 from public.volunteer_claims x
+                        where x.game_id = g.id and x.role_id = r.role_id and x.status = 'active'
+                          and x.for_team_id is not distinct from r.for_team_id and x.position = r.position)
+     order by g.id
+     limit 1;
+    if v_game is not null then
+      update public.volunteer_claims
+         set status = 'active', game_id = v_game, detached_from = null
+       where id = r.id;
+      update public.volunteer_outbox
+         set status = 'superseded', error = 'reattached after a regenerate'
+       where coalesce_key = 'lost:' || r.id and status = 'pending';
+      v_back := v_back + 1;
+    end if;
+  end loop;
+
+  return jsonb_build_object(
+    'reattached', v_back,
+    'still_lost', (select count(*) from public.volunteer_claims c
+                    where c.season_id = p_season_id and c.status = 'detached' and c.detached_from ? 'start'));
+end;
+$$;
+
+-- "Keep it" on a moved spot: the volunteer saw the new time and keeps the
+-- spot. Clears the stored original time. Statuses: unknown, not_found, kept.
+create or replace function public.volunteer_keep_spot(p_token text, p_claim_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_link  public.volunteer_manage_links%rowtype;
+  v_owner uuid;
+begin
+  if coalesce(p_token, '') !~ '^[0-9a-f]{64}$' then
+    return jsonb_build_object('status', 'unknown');
+  end if;
+  select k.* into v_link from public.volunteer_manage_links k
+   where k.token_hash = encode(extensions.digest(p_token, 'sha256'), 'hex') and k.revoked_at is null;
+  select l.owner_id into v_owner from public.leagues l where l.id = v_link.season_id and l.archived_at is null;
+  if v_owner is null or not public.org_feature_on(v_owner, 'volunteers') then
+    return jsonb_build_object('status', 'unknown');
+  end if;
+  update public.volunteer_claims c set moved_from = null
+   where c.id = p_claim_id and c.volunteer_id = v_link.volunteer_id and c.season_id = v_link.season_id
+     and c.status = 'active' and c.moved_from is not null;
+  if not found then
+    return jsonb_build_object('status', 'not_found');
+  end if;
+  return jsonb_build_object('status', 'kept');
+end;
+$$;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 9. Function privileges
 -- ────────────────────────────────────────────────────────────────────────────
 revoke execute on function public.volunteer_slot_state(text) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_slot_targets(text, text, boolean, boolean, uuid, uuid, uuid, uuid, uuid[], integer) from public, anon, authenticated, service_role, dashboard_readonly;
@@ -1087,6 +1295,10 @@ revoke execute on function public.volunteer_cancel_claims(uuid[], text) from pub
 revoke execute on function public.save_volunteer_role(uuid, uuid, text, text, integer, integer, boolean, boolean, uuid[], boolean) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.delete_volunteer_role(uuid, boolean) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.wipe_volunteer_data_on_archive() from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_on_game_change() from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_on_game_delete() from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.reattach_volunteer_claims(uuid) from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_keep_spot(text, uuid) from public, anon, authenticated, service_role, dashboard_readonly;
 
 grant execute on function public.save_volunteer_role(uuid, uuid, text, text, integer, integer, boolean, boolean, uuid[], boolean) to authenticated;
 grant execute on function public.delete_volunteer_role(uuid, boolean) to authenticated;
@@ -1095,6 +1307,8 @@ grant execute on function public.volunteer_claim(text, uuid, uuid, uuid, uuid, u
 grant execute on function public.volunteer_manage_page(text) to service_role;
 grant execute on function public.volunteer_cancel(text, uuid) to service_role;
 grant execute on function public.volunteer_outbox_finish(bigint, boolean, text, text, boolean) to service_role;
+grant execute on function public.reattach_volunteer_claims(uuid) to authenticated;
+grant execute on function public.volunteer_keep_spot(text, uuid) to service_role;
 
 -- Verify, or the whole migration rolls back.
 do $v$
@@ -1106,7 +1320,8 @@ declare
 begin
   foreach f in array array[
     'public.save_volunteer_role(uuid, uuid, text, text, integer, integer, boolean, boolean, uuid[], boolean)',
-    'public.delete_volunteer_role(uuid, boolean)'] loop
+    'public.delete_volunteer_role(uuid, boolean)',
+    'public.reattach_volunteer_claims(uuid)'] loop
     if not has_function_privilege('authenticated', f, 'EXECUTE') then
       raise exception '0121 verify: authenticated cannot execute %', f;
     end if;
@@ -1129,6 +1344,8 @@ begin
     'public.volunteer_season_spots(uuid)',
     'public.volunteer_admin_gate(uuid, boolean)',
     'public.volunteer_cancel_claims(uuid[], text)',
+    'public.volunteer_on_game_change()',
+    'public.volunteer_on_game_delete()',
     'public.wipe_volunteer_data_on_archive()'] loop
     foreach r in array array['anon', 'authenticated', 'service_role', 'dashboard_readonly'] loop
       if has_function_privilege(r, f, 'EXECUTE') then
@@ -1142,6 +1359,7 @@ begin
     'public.volunteer_claim(text, uuid, uuid, uuid, uuid, uuid, text, text, text, boolean, text, text, boolean)',
     'public.volunteer_manage_page(text)',
     'public.volunteer_cancel(text, uuid)',
+    'public.volunteer_keep_spot(text, uuid)',
     'public.volunteer_outbox_finish(bigint, boolean, text, text, boolean)'] loop
     if not has_function_privilege('service_role', f, 'EXECUTE') then
       raise exception '0121 verify: service_role cannot execute %', f;
@@ -1167,8 +1385,14 @@ begin
     end loop;
   end loop;
 
-  if not (select prosecdef from pg_proc where oid = 'public.wipe_volunteer_data_on_archive()'::regprocedure) then
-    raise exception '0121 verify: wipe_volunteer_data_on_archive is not SECURITY DEFINER';
+  if not (select prosecdef from pg_proc where oid = 'public.wipe_volunteer_data_on_archive()'::regprocedure)
+     or not (select prosecdef from pg_proc where oid = 'public.volunteer_on_game_change()'::regprocedure)
+     or not (select prosecdef from pg_proc where oid = 'public.volunteer_on_game_delete()'::regprocedure) then
+    raise exception '0121 verify: a volunteer trigger function is not SECURITY DEFINER';
+  end if;
+  if (select count(*) from pg_trigger where tgrelid = 'public.games'::regclass and tgenabled = 'O'
+        and tgname in ('volunteer_on_game_change', 'volunteer_on_game_delete')) <> 2 then
+    raise exception '0121 verify: a games trigger is missing or disabled';
   end if;
 end
 $v$;

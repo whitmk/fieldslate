@@ -5782,6 +5782,31 @@ Still open:
   `volunteer_outbox_finish` (re-created) drops it on sent/failed. Part 1 gained
   `volunteer_roles.lead_minutes` (0–120) and `volunteer_spot_start` (the
   shared table pins it). Proof: 31 mutants (15 new).
+- **0121 part 3 (commit 2c, NOT APPLIED, its proof NOT RUN).** Two `games`
+  triggers, both SECURITY DEFINER (members write games from the browser and
+  hold nothing on the volunteer tables), neither writing games, divisions or
+  teams — the lock and "Sent to parents" are untouched.
+  `volunteer_on_game_change` (AFTER UPDATE OF scheduled_at, venue_id, status):
+  moved → `game_moved` (coalesce key `moved:<claim>`; `moved_from` keeps the
+  FIRST original time + field until "Keep it" or cancel); → cancelled →
+  `rained_out`; cancelled → back with a new time → `makeup_set`, same time →
+  `back_on`; a game whose old AND new times are past (record-where-played)
+  emails nobody; a failure is logged and SWALLOWED so an email can never block
+  a schedule edit. **`volunteer_on_game_delete` (BEFORE DELETE) is
+  load-bearing:** an active claim must keep its target (CHECK), so without it
+  the claim's SET NULL would make every game delete with a sign-up FAIL —
+  regenerate, division delete and team delete included. It detaches the
+  claims (`detached_from`: start, home/away team, for-team, role, position)
+  and queues `spot_lost` held 10 minutes (`lost:<claim>`), not swallowed.
+  `reattach_volunteer_claims(season)` (authenticated, member) puts a detached
+  sign-up back on a game with the same start and home team (and its per-team
+  team still in it) and supersedes the held email. `volunteer_keep_spot`
+  (service_role) clears `moved_from`. Season delete sends nothing: it needs an
+  archived season, and archiving already wiped the sign-ups. **Still to wire:**
+  the regenerate calling `reattach_volunteer_claims` after its insert (its own
+  commit, re-proven with sim:generator-failclosed / regenerate-pending-guard).
+  Proof: 42 mutants (11 new). Applying takes SHARE ROW EXCLUSIVE on `games`
+  for the two CREATE TRIGGERs, plus the part-1 FKs.
 - **Mockup decisions (2026-11-08, boards in `docs/mockups/volunteer-signup/`).**
   Where the boards and the written decisions disagree, the decisions win.
   (1) The overlap warning is GENERIC and names no spot (the board names one).

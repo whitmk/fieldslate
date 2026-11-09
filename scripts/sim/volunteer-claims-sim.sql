@@ -6,7 +6,8 @@
 -- the "test" proof org (bbf9afe1…, Elite), with the volunteers switch turned
 -- on INSIDE the batch (rolled back with it) — never Santa Rosa American's data.
 --
--- Parts 1–2 run 2026-11-08 on Whit's go — green, 31/31 (see RUN LOG).
+-- Parts 1–2 run 2026-11-08 on Whit's go — green, 31/31 (see RUN LOG). PART 3
+-- NOT RUN YET.
 --
 -- LOCKS for the run (seconds; lock_timeout 3s): the migration's new FKs take
 -- SHARE ROW EXCLUSIVE on leagues, divisions, teams, games, playoff_games,
@@ -106,6 +107,25 @@
 --   MU29 cancel reaches another volunteer's spot              → X1
 --   MU30 a sent email keeps its manage token                  → F1
 --   MU31 the manage page callable by anon                     → G2
+--   MU32 a field change alone is not a move                   → T1b
+--   MU33 a second move overwrites the original time           → T2
+--   MU34 rainouts not detected                                → T3
+--   MU35 makeup and back-on swapped                           → T4
+--   MU36 past-game corrections email volunteers               → T6
+--   MU37 a deleted game's claims not detached (delete fails)  → D1
+--   MU38 spot_lost not held for the reattach                  → D1
+--   MU39 reattach ignores the start time                      → R2
+--   MU40 reattach leaves the spot_lost email pending          → R1
+--   MU41 Keep it reaches another volunteer's spot             → K1
+--   MU42 Keep it callable by anon                             → G3
+--   PART 3 (own fixture): T1 a move → one game_moved per claim, coalesced,
+--   original kept; T2 moved again keeps the FIRST original; T1b a field
+--   change is a move; T3 rainout; T4 makeup (new time); T5 back on (same
+--   time); T6 a past game's correction emails nobody; K1 "Keep it" own spot
+--   only, the manage page shows the original; D1 a deleted game's sign-up is
+--   detached (the delete succeeds) with spot_lost held 10 minutes; R1 the
+--   regenerate brings the game back → reattached, email withdrawn; R2 a game
+--   back at a different time is NOT reattached.
 -- (MU31 alters a grant, which only part 2's G2 checks; the verify block is
 -- left out of every mutant's text, as in 0120's proof.)
 select set_config('lock_timeout', '3s', true), set_config('statement_timeout', '120s', true);
@@ -130,6 +150,12 @@ $f$;
 -- apply, so it is left). Only ever called inside a rolled-back sub-run.
 create or replace function pg_temp.h121_drop() returns void language plpgsql as $f$
 begin
+  drop trigger if exists volunteer_on_game_change on public.games;
+  drop trigger if exists volunteer_on_game_delete on public.games;
+  drop function if exists public.volunteer_on_game_change();
+  drop function if exists public.volunteer_on_game_delete();
+  drop function if exists public.reattach_volunteer_claims(uuid);
+  drop function if exists public.volunteer_keep_spot(text, uuid);
   drop function if exists public.save_volunteer_role(uuid, uuid, text, text, integer, integer, boolean, boolean, uuid[], boolean);
   drop function if exists public.delete_volunteer_role(uuid, boolean);
   drop function if exists public.volunteer_cancel_claims(uuid[], text);
@@ -701,6 +727,151 @@ begin
     return 'G2 public-function or manage-link privileges';
   end if;
 
+  return pg_temp.h121_case3();
+end;
+$f$;
+
+-- PART 3 — game changes and deletes, the reattach and "Keep it". Own fixture,
+-- times relative to the league's clock N.
+create or replace function pg_temp.h121_case3() returns text language plpgsql as $f$
+declare
+  v_org uuid := 'bbf9afe1-9e62-41e0-becc-895085bfc9d6';
+  v_now timestamp;
+  v_s uuid := gen_random_uuid(); v_d uuid := gen_random_uuid();
+  v_t1 uuid := gen_random_uuid(); v_t2 uuid := gen_random_uuid();
+  g1 uuid := gen_random_uuid(); g2 uuid := gen_random_uuid(); g3 uuid := gen_random_uuid(); g4 uuid := gen_random_uuid();
+  gp uuid := gen_random_uuid(); g5 uuid := gen_random_uuid();
+  v_role uuid := gen_random_uuid(); v_vol uuid := gen_random_uuid(); v_vol2 uuid := gen_random_uuid();
+  c1 uuid; c2 uuid; c3 uuid; cp uuid; c5 uuid; c6 uuid;
+  v_tok text := encode(extensions.gen_random_bytes(32), 'hex');
+  v_n integer; v_r jsonb; v_start text;
+begin
+  insert into public.org_features (owner_id, feature, enabled) values (v_org, 'volunteers', true)
+    on conflict (owner_id, feature) do update set enabled = true;
+  v_now := public.volunteer_org_now(v_org);
+  insert into public.leagues (id, name, sport, season, owner_id, start_date, end_date)
+    values (v_s, 'ZZ121 P3', 'Baseball', 'Fall 2026', v_org, v_now::date - 30, v_now::date + 60);
+  insert into public.divisions (id, league_id, name, team_count, settings, status) values (v_d, v_s, 'ZZ Majors', 2, '{}'::jsonb, 'active');
+  insert into public.teams (id, league_id, name, division_id) values (v_t1, v_s, 'ZZ Expos', v_d), (v_t2, v_s, 'ZZ Mets', v_d);
+  insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status) values
+    (g1, v_s, v_t1, v_t2, (v_now + interval '3 days') at time zone 'UTC', 'scheduled'),
+    (g2, v_s, v_t1, v_t2, (v_now + interval '4 days') at time zone 'UTC', 'scheduled'),
+    (g3, v_s, v_t1, v_t2, (v_now + interval '5 days') at time zone 'UTC', 'scheduled'),
+    (g4, v_s, v_t1, v_t2, (v_now + interval '6 days') at time zone 'UTC', 'scheduled'),
+    (gp, v_s, v_t1, v_t2, (v_now - interval '3 days') at time zone 'UTC', 'scheduled'),
+    (g5, v_s, v_t1, v_t2, (v_now + interval '7 days') at time zone 'UTC', 'scheduled');
+  insert into public.volunteer_roles (id, owner_id, season_id, name, kind, spots) values (v_role, v_org, v_s, 'ZZ Field prep', 'per_game', 2);
+  insert into public.volunteers (id, owner_id, email_lc, first_initial, last_name, adult_confirmed_at) values
+    (v_vol, v_org, 'zz121-p3@example.org', 'P', 'Papa', now()), (v_vol2, v_org, 'zz121-p3b@example.org', 'Q', 'Quebec', now());
+  insert into public.volunteer_claims (id, owner_id, season_id, volunteer_id, game_id, role_id, position, created_by) values
+    (gen_random_uuid(), v_org, v_s, v_vol, g1, v_role, 1, 'volunteer') returning id into c1;
+  insert into public.volunteer_claims (id, owner_id, season_id, volunteer_id, game_id, role_id, position, created_by) values
+    (gen_random_uuid(), v_org, v_s, v_vol, g2, v_role, 1, 'volunteer') returning id into c2;
+  insert into public.volunteer_claims (id, owner_id, season_id, volunteer_id, game_id, role_id, position, created_by) values
+    (gen_random_uuid(), v_org, v_s, v_vol, g3, v_role, 1, 'volunteer') returning id into c3;
+  insert into public.volunteer_claims (id, owner_id, season_id, volunteer_id, game_id, role_id, position, created_by) values
+    (gen_random_uuid(), v_org, v_s, v_vol, gp, v_role, 1, 'volunteer') returning id into cp;
+  insert into public.volunteer_claims (id, owner_id, season_id, volunteer_id, game_id, role_id, position, created_by) values
+    (gen_random_uuid(), v_org, v_s, v_vol, g4, v_role, 1, 'volunteer') returning id into c5;
+  insert into public.volunteer_claims (id, owner_id, season_id, volunteer_id, game_id, role_id, position, created_by) values
+    (gen_random_uuid(), v_org, v_s, v_vol2, g5, v_role, 1, 'volunteer') returning id into c6;
+  insert into public.volunteer_manage_links (token_hash, volunteer_id, season_id)
+    values (encode(extensions.digest(v_tok, 'sha256'), 'hex'), v_vol, v_s);
+  v_start := to_char(v_now + interval '3 days', 'YYYY-MM-DD"T"HH24:MI');
+
+  -- T1 — moved an hour: one game_moved, coalesced by claim, original kept.
+  update public.games set scheduled_at = scheduled_at + interval '1 hour' where id = g1;
+  if (select count(*) from public.volunteer_outbox where kind = 'game_moved' and payload ->> 'claim_id' = c1::text and coalesce_key = 'moved:' || c1) <> 1
+     or (select moved_from ->> 'start' from public.volunteer_claims where id = c1) is distinct from v_start then
+    return 'T1 move: ' || coalesce((select moved_from::text from public.volunteer_claims where id = c1), 'null');
+  end if;
+  -- T2 — moved again: a second row, the FIRST original still stored.
+  update public.games set scheduled_at = scheduled_at + interval '1 hour' where id = g1;
+  if (select count(*) from public.volunteer_outbox where kind = 'game_moved' and payload ->> 'claim_id' = c1::text) <> 2
+     or (select moved_from ->> 'start' from public.volunteer_claims where id = c1) is distinct from v_start then
+    return 'T2 second move';
+  end if;
+  -- T1b — a field change alone is a move too.
+  update public.games set venue_id = (select v.id from public.venues v where v.owner_id = v_org order by v.id limit 1) where id = g2;
+  if (select venue_id from public.games where id = g2) is not null
+     and (select count(*) from public.volunteer_outbox where kind = 'game_moved' and payload ->> 'claim_id' = c2::text) <> 1 then
+    return 'T1b field change';
+  end if;
+  -- T3 — rained out: claim kept, rained_out queued.
+  update public.games set status = 'cancelled' where id = g3;
+  if (select count(*) from public.volunteer_outbox where kind = 'rained_out' and payload ->> 'claim_id' = c3::text) <> 1
+     or (select status from public.volunteer_claims where id = c3) <> 'active' then
+    return 'T3 rainout';
+  end if;
+  -- T4 — makeup: back with a new time.
+  update public.games set status = 'scheduled', scheduled_at = scheduled_at + interval '1 day' where id = g3;
+  if (select count(*) from public.volunteer_outbox where kind = 'makeup_set' and payload ->> 'claim_id' = c3::text) <> 1
+     or exists (select 1 from public.volunteer_outbox where kind = 'back_on' and payload ->> 'claim_id' = c3::text) then
+    return 'T4 makeup';
+  end if;
+  -- T5 — Remove Rainout: back at the same time.
+  update public.games set status = 'cancelled' where id = g4;
+  update public.games set status = 'scheduled' where id = g4;
+  if (select count(*) from public.volunteer_outbox where kind = 'back_on' and payload ->> 'claim_id' = c5::text) <> 1
+     or exists (select 1 from public.volunteer_outbox where kind = 'makeup_set' and payload ->> 'claim_id' = c5::text) then
+    return 'T5 back on';
+  end if;
+  -- T6 — a past game corrected (record-where-played): nobody emailed.
+  update public.games set scheduled_at = scheduled_at + interval '1 hour', status = 'scheduled' where id = gp;
+  if exists (select 1 from public.volunteer_outbox where payload ->> 'claim_id' = cp::text) then
+    return 'T6 past game emailed';
+  end if;
+
+  -- K1 — "Keep it": own moved spot only; the manage page shows the original.
+  if (public.volunteer_manage_page(v_tok) -> 'claims' -> 0 -> 'moved_from' ->> 'start') is distinct from v_start then
+    return 'K1 manage page shows no original time';
+  end if;
+  if (public.volunteer_keep_spot(v_tok, c6) ->> 'status') <> 'not_found' then return 'K1 kept another volunteer''s spot'; end if;
+  if (public.volunteer_keep_spot(v_tok, c1) ->> 'status') <> 'kept'
+     or (select moved_from from public.volunteer_claims where id = c1) is not null then
+    return 'K1 keep';
+  end if;
+
+  -- D1 — delete a game with a sign-up: the delete succeeds, the claim is
+  -- detached with what it was, spot_lost held 10 minutes.
+  delete from public.games where id = g5;
+  if (select status from public.volunteer_claims where id = c6) <> 'detached'
+     or (select detached_from ->> 'home_team_id' from public.volunteer_claims where id = c6) <> v_t1::text
+     or (select next_attempt_at from public.volunteer_outbox where coalesce_key = 'lost:' || c6) <= now() + interval '9 minutes' then
+    return 'D1 delete';
+  end if;
+  -- R1 — the regenerate brings the game back at the same start: reattached,
+  -- the held email withdrawn.
+  insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status)
+    values (gen_random_uuid(), v_s, v_t1, v_t2, (v_now + interval '7 days') at time zone 'UTC', 'scheduled');
+  -- R2 — another lost spot whose game does NOT come back at the same time.
+  delete from public.games where id = g2;
+  insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status)
+    values (gen_random_uuid(), v_s, v_t1, v_t2, (v_now + interval '4 days 2 hours') at time zone 'UTC', 'scheduled');
+  if pg_temp.h121_as(gen_random_uuid(), 'authenticated', format('select public.reattach_volunteer_claims(%L)::text', v_s)) not like '%not_authorized%' then
+    return 'R1 a non-member reattached';
+  end if;
+  v_r := pg_temp.h121_as(v_org, 'authenticated', format('select public.reattach_volunteer_claims(%L)::text', v_s))::jsonb;
+  if (select status from public.volunteer_claims where id = c6) <> 'active'
+     or (select status from public.volunteer_outbox where coalesce_key = 'lost:' || c6) <> 'superseded' then
+    return 'R1 reattach: ' || coalesce(v_r::text, 'null');
+  end if;
+  if (select status from public.volunteer_claims where id = c2) <> 'detached'
+     or (select status from public.volunteer_outbox where coalesce_key = 'lost:' || c2) <> 'pending' then
+    return 'R2 a lost spot was reattached to a different time';
+  end if;
+
+  -- G3 — privileges.
+  if not has_function_privilege('authenticated', 'public.reattach_volunteer_claims(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.reattach_volunteer_claims(uuid)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.volunteer_keep_spot(text, uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.volunteer_keep_spot(text, uuid)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.volunteer_keep_spot(text, uuid)', 'EXECUTE')
+     or exists (select 1 from unnest(array['anon', 'authenticated', 'service_role', 'dashboard_readonly']) ro,
+                              unnest(array['public.volunteer_on_game_change()', 'public.volunteer_on_game_delete()']) f
+                 where has_function_privilege(ro, f, 'EXECUTE')) then
+    return 'G3 part-3 privileges';
+  end if;
   return 'pass';
 end;
 $f$;
@@ -836,12 +1007,37 @@ begin
                    $r$  values (v_token, v_vol, v_season);$r$),
     ('MU28', 'X1', $r$  if not public.volunteer_change_allowed(v_start, public.volunteer_org_now(v_owner)) then$r$,
                    $r$  if false then$r$),
-    ('MU29', 'X1', $r$   where c.id = p_claim_id and c.volunteer_id = v_link.volunteer_id and c.season_id = v_link.season_id$r$,
-                   $r$   where c.id = p_claim_id and c.season_id = v_link.season_id$r$),
+    ('MU29', 'X1', $r$   where c.id = p_claim_id and c.volunteer_id = v_link.volunteer_id and c.season_id = v_link.season_id
+     and c.status = 'active'
+     for update;$r$,
+                   $r$   where c.id = p_claim_id and c.season_id = v_link.season_id
+     and c.status = 'active'
+     for update;$r$),
     ('MU30', 'F1', $r$           resend_id = left(p_resend_id, 100), error = null,
            payload = payload - 'manage_token'$r$, $r$           resend_id = left(p_resend_id, 100), error = null$r$),
     ('MU31', 'G2', $r$grant execute on function public.volunteer_manage_page(text) to service_role;$r$,
-                   $r$grant execute on function public.volunteer_manage_page(text) to service_role, anon;$r$)
+                   $r$grant execute on function public.volunteer_manage_page(text) to service_role, anon;$r$),
+    ('MU32', 'T1b', $r$         and (new.scheduled_at is distinct from old.scheduled_at or new.venue_id is distinct from old.venue_id) then 'game_moved'$r$,
+                    $r$         and new.scheduled_at is distinct from old.scheduled_at then 'game_moved'$r$),
+    ('MU33', 'T2', $r$       set moved_from = coalesce(c.moved_from, jsonb_build_object($r$, $r$       set moved_from = coalesce(null, jsonb_build_object($r$),
+    ('MU34', 'T3', $r$    when new.status = 'cancelled' and old.status <> 'cancelled' then 'rained_out'$r$,
+                   $r$    when false then 'rained_out'$r$),
+    ('MU35', 'T4', $r$         and new.scheduled_at is distinct from old.scheduled_at then 'makeup_set'$r$,
+                   $r$         and new.scheduled_at is not distinct from old.scheduled_at then 'makeup_set'$r$),
+    ('MU36', 'T6', $r$     and (old.scheduled_at at time zone 'UTC')::timestamp < v_now then
+    return null;$r$, $r$     and false then
+    return null;$r$),
+    ('MU37', 'D1', $r$       set status = 'detached',$r$, $r$       set status = 'active',$r$),
+    ('MU38', 'D1', $r$         'lost:' || d.id, now() + interval '10 minutes'$r$, $r$         'lost:' || d.id, now()$r$),
+    ('MU39', 'R2', $r$       and to_char((g.scheduled_at at time zone 'UTC')::timestamp, 'YYYY-MM-DD"T"HH24:MI') = r.detached_from ->> 'start'
+$r$, $r$$r$),
+    ('MU40', 'R1', $r$         set status = 'superseded', error = 'reattached after a regenerate'$r$,
+                   $r$         set error = 'reattached after a regenerate'$r$),
+    ('MU42', 'G3', $r$grant execute on function public.volunteer_keep_spot(text, uuid) to service_role;$r$,
+                   $r$grant execute on function public.volunteer_keep_spot(text, uuid) to service_role, anon;$r$),
+    ('MU41', 'K1', $r$   where c.id = p_claim_id and c.volunteer_id = v_link.volunteer_id and c.season_id = v_link.season_id
+     and c.status = 'active' and c.moved_from is not null;$r$, $r$   where c.id = p_claim_id and c.season_id = v_link.season_id
+     and c.status = 'active';$r$)
   ) as t(id, expect, find, repl)
   loop
     if (length(v_body) - length(replace(v_body, m.find, ''))) / greatest(length(m.find), 1) <> 1 then
@@ -863,7 +1059,7 @@ begin
     end;
   end loop;
 
-  raise exception E'ROLLED BACK — 0121 proof (parts 1–2)\n%', v_out;
+  raise exception E'ROLLED BACK — 0121 proof (parts 1–3)\n%', v_out;
 end $h$;
 
 -- Leak check (run separately afterwards; every value must be 0 until 0121 is
