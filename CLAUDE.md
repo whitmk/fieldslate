@@ -5713,10 +5713,13 @@ Still open:
   neither, the request is byte-identical ([Q3]). Harness: `npm run
   sim:volunteer-email` (101 checks) + `:mutants` (20, each killed at its own
   assertion — read the sim's MUTATION LOG).
-- **`vercel.json` runs the drain every 5 minutes. IT MUST NOT REACH `main`
-  BEFORE THE VERCEL PRO UPGRADE** — on Hobby a cron more frequent than daily
-  fails the deploy. `CRON_SECRET` must be set in the fieldslate PROJECT's env
-  vars (Vercel sends it as the bearer) before the route can do anything.
+- **`vercel.json` runs the drain every 5 minutes, which needs Vercel PRO** —
+  on Hobby a cron more frequent than daily fails EVERY deploy (Vercel status
+  "Deployment failed.", linking the cron pricing page). It did exactly that to
+  `65f7f3f` (2026-11-08) before Whit upgraded the account to Pro the same
+  evening. A downgrade means removing or slowing the cron first. `CRON_SECRET`
+  is set in the fieldslate PROJECT's Production env (Vercel sends it as the
+  bearer); without it the route answers 503.
 - **The Settings card** (`src/components/settings/volunteers-card.tsx`, rules
   in `src/lib/volunteers/settings-card.ts`, every sentence in `words.ts`)
   renders ONLY when `volunteer_admin_state` says the switch is on. A failed
