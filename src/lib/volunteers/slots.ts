@@ -26,8 +26,13 @@
 //   * A volunteer may change or cancel until 24 hours before the start,
 //     measured on the wall clock (the database does the same with timestamp
 //     arithmetic — a clock change inside the window is not adjusted for).
-//   * Overlap = same date, half-open spans (spansOverlap). A game's span is
-//     its start + its own division's game_duration (durationFromSettings).
+//   * A role may START up to 120 minutes before the game (lead minutes,
+//     default 0; decided 2026-11-08 — field prep at 8:15 for a 9:00 game).
+//     The spot ends at game end. Its start — game start minus the lead — is
+//     what the claim cutoff, the 24-hour window and the overlap check use.
+//   * Overlap = same date, half-open spans (spansOverlap). A game spot runs
+//     from its shifted start to game end (start + its own division's
+//     game_duration, durationFromSettings).
 import { durationFromSettings, spansOverlap } from "@/lib/schedule/reschedule-slots";
 
 export type RoleKind = "per_game" | "per_team";
@@ -39,6 +44,8 @@ export type VolunteerRole = {
   spots: number;
   signupsOpen: boolean;
   divisionIds: readonly string[];
+  /** Minutes the spot starts before the game, 0–120 (default 0). */
+  leadMinutes?: number;
 };
 
 export type SlotGame = {
@@ -73,6 +80,24 @@ export type ClaimRefusal =
 
 export const MAX_SPOTS = 10;
 export const CHANGE_WINDOW_MIN = 24 * 60;
+export const MAX_LEAD_MIN = 120;
+
+/** A role's lead, clamped to 0–120 whole minutes. */
+export function leadOf(role: Pick<VolunteerRole, "leadMinutes"> | null | undefined): number {
+  const n = Math.trunc(Number(role?.leadMinutes ?? 0));
+  return Number.isFinite(n) ? Math.min(Math.max(n, 0), MAX_LEAD_MIN) : 0;
+}
+
+/** The spot's start as a wall clock "YYYY-MM-DDTHH:MM": the game's start
+ *  minus the lead (wall-clock arithmetic, so it may fall on the day before).
+ *  Null when the game time is unreadable. */
+export function spotStartWall(scheduledAt: string, leadMinutes: number): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(scheduledAt);
+  if (!m) return null;
+  const t = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - Math.min(Math.max(Math.trunc(leadMinutes), 0), MAX_LEAD_MIN) * 60000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${t.getUTCFullYear()}-${p(t.getUTCMonth() + 1)}-${p(t.getUTCDate())}T${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
+}
 
 /** What a game's status means for its slots. */
 export function gameSlotState(status: string): GameSlotState {
@@ -165,7 +190,8 @@ export function claimRefusal(args: {
   if (state === "none") return "no_slot";
   if (state === "rained_out") return "rained_out";
   if (state === "closed") return "closed";
-  const untilStart = wallMinutesBetween(nowWall, game.scheduledAt);
+  const start = spotStartWall(game.scheduledAt, leadOf(role));
+  const untilStart = start === null ? null : wallMinutesBetween(nowWall, start);
   if (untilStart === null || untilStart <= 0) return "past";
   if (!lockedDivisionIds.has(target.divisionId)) return "unpublished";
   if (!role.signupsOpen) return "signups_closed";
@@ -179,14 +205,17 @@ export function canChangeSpot(startWall: string, nowWall: string): boolean {
   return m !== null && m > CHANGE_WINDOW_MIN;
 }
 
-/** A spot's span on its date. A game spot runs start + its division's
- *  game_duration; a snack shack shift runs start → end. */
+/** A spot's span on its date. A game spot runs from its shifted start
+ *  (game start − lead) to game end (start + its division's game_duration);
+ *  a snack shack shift runs start → end. */
 export type SpotSpan = { date: string; startMin: number; durationMin: number };
 
-export function gameSpan(scheduledAt: string, divisionSettings: unknown): SpotSpan | null {
-  const start = wallMinutes(scheduledAt);
-  if (start === null) return null;
-  return { date: scheduledAt.substring(0, 10), startMin: start, durationMin: durationFromSettings(divisionSettings) };
+export function gameSpan(scheduledAt: string, divisionSettings: unknown, leadMinutes = 0): SpotSpan | null {
+  const start = spotStartWall(scheduledAt, leadMinutes);
+  const game = wallMinutes(scheduledAt);
+  if (start === null || game === null) return null;
+  const lead = wallMinutesBetween(start, scheduledAt) ?? 0;
+  return { date: start.substring(0, 10), startMin: wallMinutes(start)!, durationMin: lead + durationFromSettings(divisionSettings) };
 }
 
 export function shiftSpan(date: string, start: string, end: string): SpotSpan | null {

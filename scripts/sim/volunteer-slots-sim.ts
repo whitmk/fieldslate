@@ -12,6 +12,7 @@
 //   O   overlap: same date, half-open, the game's own duration (90 when the
 //       division has none), shift spans, different dates never overlap
 //   W   wallClockNow in three zones, across the November clock change
+//   L   the role's lead: spot start = game start − lead, clamped 0–120
 //
 // Every FAIL line is collected; a section that throws is recorded as
 // [CRASH-…] and the run continues. Run under three host zones by the npm
@@ -25,9 +26,11 @@ import {
   claimRefusal,
   gameSlotState,
   gameSpan,
+  leadOf,
   overlapsHeld,
   shiftSpan,
   slotTargets,
+  spotStartWall,
   wallClockNow,
   type SlotGame,
   type VolunteerRole,
@@ -39,7 +42,7 @@ let checks = 0;
 const counters: Record<string, number> = {
   refusal_null: 0, refusal_no_slot: 0, refusal_rained_out: 0, refusal_closed: 0, refusal_past: 0,
   refusal_unpublished: 0, refusal_signups_closed: 0, targets0: 0, targets1: 0, targets2: 0,
-  change_allowed: 0, change_refused: 0,
+  change_allowed: 0, change_refused: 0, lead_rows: 0,
 };
 
 function ok(cond: boolean, tag: string, msg: string, detail?: string) {
@@ -99,10 +102,10 @@ let changeRows: Cell[][] = [];
 section("P", () => {
   slotRows = parseBlock(src, "VSLOT");
   changeRows = parseBlock(src, "VCHANGE");
-  ok(slotRows.length === 28, "P1", `VSLOT has 28 rows, read ${slotRows.length}`);
-  ok(changeRows.length === 8, "P1", `VCHANGE has 8 rows, read ${changeRows.length}`);
-  ok(slotRows.every((r) => r.length === 13), "P1", "every VSLOT row has 13 cells");
-  ok(changeRows.every((r) => r.length === 4), "P1", "every VCHANGE row has 4 cells");
+  ok(slotRows.length === 32, "P1", `VSLOT has 32 rows, read ${slotRows.length}`);
+  ok(changeRows.length === 12, "P1", `VCHANGE has 12 rows, read ${changeRows.length}`);
+  ok(slotRows.every((r) => r.length === 14), "P1", "every VSLOT row has 14 cells");
+  ok(changeRows.every((r) => r.length === 5), "P1", "every VCHANGE row has 5 cells");
   let threw = false;
   try {
     parseBlock(src + "\n-- VSLOT-TABLE-BEGIN\n", "VSLOT");
@@ -114,8 +117,8 @@ section("P", () => {
 
 section("VT", () => {
   for (const r of slotRows) {
-    const [id, status, il, isAway, hasAway, kind, hIn, aIn, locked, when, open, targets, refusal] = r as [
-      string, string, boolean, boolean, boolean, "per_game" | "per_team", boolean, boolean, string, string, boolean, number, string | null,
+    const [id, status, il, isAway, hasAway, kind, hIn, aIn, locked, when, open, targets, refusal, lead] = r as [
+      string, string, boolean, boolean, boolean, "per_game" | "per_team", boolean, boolean, string, string, boolean, number, string | null, number,
     ];
     const game: SlotGame = {
       id: `g-${id}`,
@@ -127,7 +130,7 @@ section("VT", () => {
       isAway,
     };
     const role: VolunteerRole = {
-      id: "role", kind, spots: 2, signupsOpen: open,
+      id: "role", kind, spots: 2, signupsOpen: open, leadMinutes: lead,
       divisionIds: [...(hIn ? ["H"] : []), ...(aIn ? ["A"] : [])],
     };
     const teamDivision = new Map([["tH", "H"], ["tA", "A"]]);
@@ -148,8 +151,10 @@ section("VT", () => {
 
 section("VC", () => {
   for (const r of changeRows) {
-    const [id, start, now, allowed] = r as [string, string, string, boolean];
-    ok(canChangeSpot(start, now) === allowed, "VC1", `${id}: change ${allowed ? "allowed" : "refused"}`);
+    const [id, gameStart, now, allowed, lead] = r as [string, string, string, boolean, number];
+    const start = spotStartWall(gameStart, lead);
+    ok(start !== null && canChangeSpot(start, now) === allowed, "VC1", `${id}: change ${allowed ? "allowed" : "refused"}`);
+    if (lead > 0) counters.lead_rows++;
     counters[allowed ? "change_allowed" : "change_refused"]++;
   }
   ok(!canChangeSpot("garbage", NOW), "VC2", "an unreadable start never allows a change");
@@ -193,6 +198,21 @@ section("O", () => {
   const otherDay = shiftSpan("2026-11-15", "10:00", "11:00");
   ok(g !== null && otherDay !== null && !overlapsHeld(otherDay, [g]), "O3", "a different date never overlaps");
   ok(!overlapsHeld(g!, []), "O3", "nothing held → no overlap");
+  const led = gameSpan("2026-11-14T10:00:00+00:00", { game_duration: 120 }, 45);
+  ok(led?.startMin === 555 && led.durationMin === 165, "O4", "a 45-minute lead starts the span at 9:15 and ends it at game end", JSON.stringify(led));
+  const early = shiftSpan("2026-11-14", "09:00", "09:30");
+  ok(led !== null && early !== null && overlapsHeld(early, [led]), "O4", "a 9:00–9:30 shift overlaps a spot that starts 9:15");
+  ok(g !== null && early !== null && !overlapsHeld(early, [g]), "O4", "…and not the same game's 10:00 spot with no lead");
+  ok(gameSpan("2026-11-14T00:30:00+00:00", {}, 60)?.date === "2026-11-13", "O4", "a lead past midnight lands on the day before");
+});
+
+section("L", () => {
+  ok(spotStartWall("2026-11-14T09:00:00+00:00", 45) === "2026-11-14T08:15", "L1", "9:00 game, 45-minute lead → 8:15");
+  ok(spotStartWall("2026-11-14T09:00:00+00:00", 0) === "2026-11-14T09:00", "L1", "no lead → the game's start");
+  ok(spotStartWall("2026-11-14T09:00:00+00:00", 500) === "2026-11-14T07:00", "L2", "a lead over 120 is capped at 120");
+  ok(spotStartWall("2026-11-14T09:00:00+00:00", -30) === "2026-11-14T09:00", "L2", "a negative lead is 0");
+  ok(leadOf({ leadMinutes: 999 }) === 120 && leadOf({}) === 0 && leadOf(null) === 0 && leadOf({ leadMinutes: 12.9 }) === 12, "L2", "leadOf clamps");
+  ok(spotStartWall("garbage", 10) === null, "L3", "an unreadable time has no spot start");
 });
 
 section("W", () => {

@@ -9,6 +9,9 @@
 // MUTATION LOG
 //   2026-11-08 run 1: 14/14 killed at their own assertion in all three zones
 //   (sim green on its first run, 132 checks × 3 zones).
+//   2026-11-08 run 2 (role lead offset added, 159 checks): VS7 and VS12 were STALE
+//   (their target lines changed with the lead) — re-aimed; run 3: 16/16 killed at
+//   their own assertion in all three zones.
 import { runMutants, type Mutant } from "./mutant-runner";
 
 const F = "src/lib/volunteers/slots.ts";
@@ -27,8 +30,8 @@ const MUTANTS: Mutant[] = [
   { id: "VS6", what: "a role with sign-ups off takes claims", file: F,
     find: "  if (!role.signupsOpen) return \"signups_closed\";\n", replace: "", expect: "VT1" },
   { id: "VS7", what: "the time check runs before the rained-out check", file: F,
-    find: "  if (state === \"rained_out\") return \"rained_out\";\n  if (state === \"closed\") return \"closed\";\n  const untilStart = wallMinutesBetween(nowWall, game.scheduledAt);\n  if (untilStart === null || untilStart <= 0) return \"past\";\n",
-    replace: "  const untilStart = wallMinutesBetween(nowWall, game.scheduledAt);\n  if (untilStart === null || untilStart <= 0) return \"past\";\n  if (state === \"rained_out\") return \"rained_out\";\n  if (state === \"closed\") return \"closed\";\n",
+    find: "  if (state === \"rained_out\") return \"rained_out\";\n  if (state === \"closed\") return \"closed\";\n  const start = spotStartWall(game.scheduledAt, leadOf(role));\n  const untilStart = start === null ? null : wallMinutesBetween(nowWall, start);\n  if (untilStart === null || untilStart <= 0) return \"past\";\n",
+    replace: "  const start = spotStartWall(game.scheduledAt, leadOf(role));\n  const untilStart = start === null ? null : wallMinutesBetween(nowWall, start);\n  if (untilStart === null || untilStart <= 0) return \"past\";\n  if (state === \"rained_out\") return \"rained_out\";\n  if (state === \"closed\") return \"closed\";\n",
     expect: "VT1" },
   { id: "VS8", what: "a per-team spot set takes the home team's division", file: F,
     find: "      const div = teamDivision.get(teamId);\n", replace: "      const div = teamDivision.get(game.homeTeamId);\n", expect: "VT1" },
@@ -40,11 +43,15 @@ const MUTANTS: Mutant[] = [
   { id: "VS11", what: "spot counts are not capped at 10", file: F,
     find: "    const spots = Math.min(Math.max(Math.trunc(role.spots), 0), MAX_SPOTS);\n", replace: "    const spots = Math.max(Math.trunc(role.spots), 0);\n", expect: "K1" },
   { id: "VS12", what: "a game's span ignores its division's duration", file: F,
-    find: "durationMin: durationFromSettings(divisionSettings) };", replace: "durationMin: 90 };", expect: "O1" },
+    find: "durationMin: lead + durationFromSettings(divisionSettings) };", replace: "durationMin: lead + 90 };", expect: "O1" },
   { id: "VS13", what: "overlap ignores the date", file: F,
     find: "  return held.some((h) => h.date === next.date && spansOverlap(h, next));\n", replace: "  return held.some((h) => spansOverlap(h, next));\n", expect: "O3" },
   { id: "VS14", what: "the wall clock is formatted without the 24-hour cycle", file: F,
     find: "hour: \"2-digit\", minute: \"2-digit\", hourCycle: \"h23\",", replace: "hour: \"2-digit\", minute: \"2-digit\",", expect: "W1" },
+  { id: "VS15", what: "the claim cutoff ignores the role's lead", file: F,
+    find: "  const start = spotStartWall(game.scheduledAt, leadOf(role));\n", replace: "  const start = spotStartWall(game.scheduledAt, 0);\n", expect: "VT1" },
+  { id: "VS16", what: "a lead is not capped at 120 minutes", file: F,
+    find: "Math.min(Math.max(Math.trunc(leadMinutes), 0), MAX_LEAD_MIN) * 60000", replace: "Math.max(Math.trunc(leadMinutes), 0) * 60000", expect: "L2" },
 ];
 
 runMutants({ sim: "scripts/sim/volunteer-slots-sim.ts", timezones: ["UTC", "America/Los_Angeles", "Pacific/Kiritimati"], mutants: MUTANTS });

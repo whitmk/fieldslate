@@ -5760,6 +5760,42 @@ Still open:
   `shift_canceled` email each; kind can't change under claims. The archive
   wipe now deletes claims and roles too. Proof: `volunteer-claims-sim.sql`
   (+ build script; 16 mutants).
+- **0121 part 2 (commit 2b, NOT APPLIED, its proof NOT RUN).** Public
+  functions, service_role ONLY (the routes add Turnstile and pass
+  sha256(salt + IP / email)); each answers `{status}` and never raises for a
+  refusal. `volunteer_signup_page(token, season)` — unknown (no link, off, or
+  the switch off: a link never reveals the feature) / plan / ok with the open
+  seasons (picker), LOCKED divisions and their teams, roles with sign-ups on,
+  and spots whose SHIFTED start is ahead, each with `spots` and a `taken`
+  COUNT — never a name or email. `volunteer_claim(…)` — input check → rate
+  limits (20/hour per IP, 10/23h per email; every attempt past input counts)
+  → the family team in that LOCKED division of the game's season → a per-spot-
+  set advisory lock → the shared refusal → already_signed_up → overlap (generic
+  `overlap_confirm_needed`, overridable) → lowest free position (the unique
+  index backstops a race → `just_taken`). The first sign-up names the
+  volunteer; a later one with the same email never renames them.
+  `volunteer_manage_page(token)` / `volunteer_cancel(token, claim)` — own spots
+  only; cancel refused 24 hours or less before (`change_closed` + the contact
+  email). Manage links: `volunteer_manage_links` holds only the sha256; the
+  plain token rides in the `signup_confirmed` payload until
+  `volunteer_outbox_finish` (re-created) drops it on sent/failed. Part 1 gained
+  `volunteer_roles.lead_minutes` (0–120) and `volunteer_spot_start` (the
+  shared table pins it). Proof: 31 mutants (15 new).
+- **Mockup decisions (2026-11-08, boards in `docs/mockups/volunteer-signup/`).**
+  Where the boards and the written decisions disagree, the decisions win.
+  (1) The overlap warning is GENERIC and names no spot (the board names one).
+  (2) Umpires are never claimable on the sign-up page (admin-assigned, as
+  today), but assigned umpire games DO count toward the family goal in v1
+  (regular season only); the roles and tracker screens show an Umpires row.
+  How an official links to a family and how a missed game is excluded is a
+  PROPOSAL owed to Whit before building (may land with the tracker, branch D);
+  the assignment flow does not change. (3) Switching is CUT from v1 — cancel,
+  then sign up again (later item). Added: a role's "starts N minutes before
+  the game" (0–120, default 0; the spot ends at game end; spot time, 24-hour
+  window, overlap and claim cutoff all use the shifted start); "Keep it" on a
+  moved spot (2c, stored moved-from); two active seasons → a picker like the
+  public schedule; public spot counts ("1 of 2 spots open") are fine. Not in
+  v1: the "possible same family" hint.
 - **LAUNCH BLOCKERS before any real league gets the switch:**
   1. Reply-to verification: the league contact email the volunteer emails
      reply to is unverified (fine behind the switch, not for real leagues).
@@ -5769,6 +5805,9 @@ Still open:
 
 ## Open items
 
+- **Volunteer spot SWITCHING — cut from v1 (decided 2026-11-08).** A
+  volunteer cancels, then signs up again. A later version may add an atomic
+  switch (the plan's `switch_from` on the claim function).
 - **Snack shack print — Safari clip risk (recorded 2026-11-07).** The snack
   print CSS in `globals.css` (`.fieldslate-snack-print-ready.print-active`)
   still uses `position: absolute` and `break-after: avoid`, the two causes of
