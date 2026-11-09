@@ -1311,9 +1311,22 @@ begin
                    $r$       where sp.signups_open and sp.spot_start > v_now), '[]')$r$),
     ('MU21', 'P1', $r$       where sp.division_locked and sp.signups_open and sp.spot_start > v_now), '[]')$r$,
                    $r$       where sp.division_locked and sp.signups_open and sp.game_start > v_now), '[]')$r$),
-    ('MU22', 'C2', $r$  select min(n) into v_pos$r$, $r$  select 1 into v_pos$r$),
+    ('MU22', 'C2', $r$  if v_pos is null then
+    return jsonb_build_object('status', 'just_taken');
+  end if;
+
+  if v_vol is null then
+    -- The first sign-up names the volunteer$r$, $r$  v_pos := 1;
+  if v_pos is null then
+    return jsonb_build_object('status', 'just_taken');
+  end if;
+
+  if v_vol is null then
+    -- The first sign-up names the volunteer$r$),
     ('MU23', 'C3', $r$                    and d.league_id = v_season and d.locked) then$r$, $r$                    and d.league_id = v_season) then$r$),
-    ('MU24', 'C6', $r$    if not coalesce(p_confirm_overlap, false) and exists ($r$, $r$    if false and exists ($r$),
+    ('MU24', 'C6', $r$    -- the new one's. Answered generically; the reply names nothing.
+    if not coalesce(p_confirm_overlap, false) and exists ($r$, $r$    -- the new one's. Answered generically; the reply names nothing.
+    if false and exists ($r$),
     ('MU25', 'C8', $r$       where e.kind = 'claim_ip' and e.key_hash = p_ip_hash and e.at > now() - interval '1 hour') >= 100$r$,
                    $r$       where e.kind = 'claim_ip' and e.key_hash = p_ip_hash and e.at > now() - interval '1 hour') >= 1000000$r$),
     ('MU26', 'P3', $r$               'spots', sp.spots, 'taken', least(sp.taken, sp.spots))$r$,
@@ -1514,3 +1527,27 @@ end $h$;
 --     enabled, the wipe and finish back to 0120's live bodies (888ac9aa…,
 --     8fe09939…), test org elite, the temporary CHECK gone, stage schema
 --     dropped.
+-- PARTS 1–6 — 2026-11-08 ~22:10–22:15 Pacific, against production on Whit's
+-- go, rolled back, "test" org. Staged as before (migration 4c7ff610… = "\n" +
+-- the repo file; harness pieces md5-checked; whole 7015d6a7… run 1, then
+-- 53ab698e… run 2). Comment lines are stripped from the harness's FUNCTIONS
+-- only — the mutant block is staged verbatim (its find texts may hold
+-- comment lines). Nothing else active before either run.
+--   L1 locks (both runs): ACCESS SHARE + SHARE ROW EXCLUSIVE on leagues,
+--     divisions, teams, games, playoff_games, snack_shack_blocks, profiles.
+--   Run 1 — BASELINE pass; 60/62 killed at their own tag. MU22 and MU24 came
+--     back STALE: part 5's admin assign copies the public claim's position
+--     pick and overlap block verbatim, so their find texts matched twice and
+--     the run skipped them (the STALE guard working). Re-anchored on text only
+--     the public claim has (its comment lines).
+--   Run 2 — BASELINE pass; 62/62 killed at their own assertion. md5s printed
+--     match the repo file. Leak check after: 0 ZZ121 rows, no 0121 object,
+--     volunteer_outbox_take back at 0120's body (53a42e70…), finish
+--     (8fe09939…) and wipe (888ac9aa…) back too, the temporary CHECK gone,
+--     the six games triggers enabled, no idle transaction.
+--   APPLIED right after, 2026-11-09 06:13 UTC, catalog 20261109061340, from
+--   the md5-checked stage in ONE transaction (md5 of the file text checked
+--   first, then executed, then the catalog row written with the same text —
+--   statements[1] md5 688ce929… = the repo file). All 33 function bodies'
+--   md5 match the repo file, one overload each; EXECUTE exactly as stated;
+--   RLS on all five tables; the three games triggers enabled. Stage dropped.

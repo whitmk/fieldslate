@@ -351,8 +351,22 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   dashboard_readonly false throughout). Table privileges: SELECT on
   `volunteer_settings` for authenticated, nothing else for any role on the
   five tables; RLS on all five; trigger enabled. Zero `org_features` and
-  `volunteer_settings` rows. The latest migration applied. See "Volunteer
+  `volunteer_settings` rows. See "Volunteer
   sign-ups".
+- **0121 (volunteer game roles, parts 1–6) APPLIED 2026-11-09 06:13 UTC
+  (2026-11-08 evening Pacific), catalog `20261109061340`**, on Whit's go,
+  after its rolled-back proof (run 2 green, 62/62 mutants at their own tag;
+  run 1 had MU22/MU24 STALE — read its RUN LOG). Applied from the
+  md5-checked proof stage in one transaction, the catalog row written with
+  the file's exact text (statements md5 `688ce929…` = the repo file) — the
+  file is ~99 KB, too large to paste safely in one `apply_migration` call.
+  All 33 function bodies' md5(prosrc) match the repo file, one overload
+  each, `search_path=public, pg_temp`; EXECUTE: the nine admin functions
+  authenticated only, the seven public/outbox functions service_role only,
+  the rest callable by no role (PUBLIC, anon, dashboard_readonly false
+  throughout); RLS on all five new tables, only SELECT on roles and role
+  divisions for authenticated; the three games triggers enabled. **The
+  latest migration applied.** See "Volunteer sign-ups".
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -3290,8 +3304,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   only on yes (one UPDATE per season, `.is("archived_at", null)`). It returns
   `{archived, heldForVolunteers}`; `seasonHeldForVolunteers(…, seasonId)`
   runs the SAME reads and decision for one season and writes nothing (the
-  season page's banner). Never put a second copy of the rule in a caller. **Deploy order:
-  0121 must be applied BEFORE this code reaches `main`** — without the
+  season page's banner). Never put a second copy of the rule in a caller. **Deploy order (met 2026-11-09):
+  0121 was applied BEFORE this code reached `main`** — without the
   function every holds call fails, so NO season would ever auto-archive (the
   safe direction, but a silent stop).
 - **The end date is editable on the season page** (header: "Ends Oct 25,
@@ -5769,7 +5783,7 @@ Still open:
   `scripts/sim/volunteer-claims-sim.sql` (the 0121 proof file; its body
   arrives with the migration). `npm run sim:volunteer-slots` (132 checks × 3
   zones, 12 counters) + `:mutants` (14, each killed at its own assertion).
-- **0121 part 1 (commit 2a, NOT APPLIED; proof run 2026-11-08, run 3 green, 16/16 — read its RUN LOG: run 1 caught a real SQL/TS drift on `pending_interleague`; re-proven with part 2).**
+- **0121 part 1 (commit 2a, APPLIED with 0121 on 2026-11-09; proof run 2026-11-08, run 3 green, 16/16 — read its RUN LOG: run 1 caught a real SQL/TS drift on `pending_interleague`; re-proven with part 2).**
   `supabase/migrations/0121_volunteer_game_roles.sql`: `volunteer_roles`
   (per season, `per_game`/`per_team`, 1–10 spots, name unique trimmed +
   case-insensitive), `volunteer_role_divisions`, `volunteer_claims` (one row
@@ -5785,7 +5799,7 @@ Still open:
   `shift_canceled` email each; kind can't change under claims. The archive
   wipe now deletes claims and roles too. Proof: `volunteer-claims-sim.sql`
   (+ build script; 16 mutants).
-- **0121 part 2 (commit 2b, NOT APPLIED; parts 1–2 proof run 2026-11-08, run 2 green 31/31 — read its RUN LOG).** Public
+- **0121 part 2 (commit 2b, APPLIED with 0121; parts 1–2 proof run 2026-11-08, run 2 green 31/31 — read its RUN LOG).** Public
   functions, service_role ONLY (the routes add Turnstile and pass
   sha256(salt + IP / email)); each answers `{status}` and never raises for a
   refusal. `volunteer_signup_page(token, season)` — unknown (no link, off, or
@@ -5807,7 +5821,7 @@ Still open:
   `volunteer_outbox_finish` (re-created) drops it on sent/failed. Part 1 gained
   `volunteer_roles.lead_minutes` (0–120) and `volunteer_spot_start` (the
   shared table pins it). Proof: 31 mutants (15 new).
-- **0121 part 3 (commit 2c, NOT APPLIED; parts 1–3 proof run 2026-11-08, run 4 green 44/44 — read its RUN LOG: three runs of harness faults, incl. a snapshot read inside one IF and a mutant hidden by the trigger's early exit).** Two `games`
+- **0121 part 3 (commit 2c, APPLIED with 0121; parts 1–3 proof run 2026-11-08, run 4 green 44/44 — read its RUN LOG: three runs of harness faults, incl. a snapshot read inside one IF and a mutant hidden by the trigger's early exit).** Two `games`
   triggers, both SECURITY DEFINER (members write games from the browser and
   hold nothing on the volunteer tables), neither writing games, divisions or
   teams — the lock and "Sent to parents" are untouched.
@@ -5837,14 +5851,14 @@ Still open:
   (service_role) clears `moved_from`. Season delete sends nothing: it needs an
   archived season, and archiving already wiped the sign-ups. Proof: 44 mutants (13 for part 3), all killed at their own tag. Applying takes SHARE ROW EXCLUSIVE on `games`
   for the three CREATE TRIGGERs, plus the part-1 FKs.
-- **0121 part 4 (commit 2d, NOT APPLIED, its proof cases NOT RUN):**
+- **0121 part 4 (commit 2d, APPLIED with 0121, proof green):**
   `volunteer_archive_holds(p_season_ids uuid[]) returns uuid[]` — SECURITY
   DEFINER, `search_path = public, pg_temp`, EXECUTE authenticated only; the
   seasons among those named that have ANY claim row (canceled and detached
   count — they are history). Every named season must exist and belong to an
   org the caller is a member of, else `not_authorized`. The switch is not
   consulted. Proof AH1–AH3 + MU45–MU47 in `volunteer-claims-sim.sql`.
-- **0121 part 5 (commit 2e, NOT APPLIED, its proof cases NOT RUN):** the
+- **0121 part 5 (commit 2e, APPLIED with 0121, proof green):** the
   admin's sign-up list and its actions, all authenticated, all through
   `volunteer_admin_gate` (member → switch → Elite → not archived), none
   writing the activity log. `volunteer_admin_signups(season)` — every claim,
@@ -5863,7 +5877,7 @@ Still open:
   NS1, AC1, G4 + MU48–MU58. **The email templates for these kinds (and
   `signup_confirmed`) are not written yet** — the drain refuses an unknown
   kind, so until they land these emails fail, never send blank.
-- **0121 part 6 + the emails (commit 2f, NOT APPLIED, proof case NOT RUN).**
+- **0121 part 6 + the emails (commit 2f, APPLIED with 0121, proof green).**
   The outbox payload holds ids only, so 0121 re-creates
   `volunteer_outbox_take` (0120's steps a–e verbatim) to attach, per row:
   `spots` (`volunteer_email_spots`, callable by no role — each claim's role,
@@ -5897,7 +5911,7 @@ Still open:
   link strip shows status, Copy, Open and a Settings link (on/off, contact,
   Reset stay in Settings). Harness `npm run sim:volunteer-roles` (53 checks
   × 3 zones) + `:mutants` (9). Checked on a deleted scratch route at 1280px
-  and 375px with the RPCs stubbed. **Needs 0121 applied before `main`.**
+  and 375px with the RPCs stubbed. **Deploy order (met 2026-11-09): 0121 was applied before `main`.**
 - **Screen 4 — Who signed up (`/dashboard/volunteers/signups`, 2026-11-08,
   approved plan).** Same gates as screen 1. Names and emails ONLY from
   `volunteer_admin_signups`; that read failing (or malformed) is one error
