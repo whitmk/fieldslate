@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   alternates: { canonical: `${SITE_URL}/privacy` },
 };
 
-const LAST_UPDATED = "November 8, 2026";
+const LAST_UPDATED = "November 9, 2026";
 
 // Anchor-link helper so every section heading also serves as a `#hash` target
 // for the table of contents.
@@ -695,13 +695,19 @@ export default function PrivacyPolicyPage() {
             spot. On the public sign-up page, a filled spot shows only as
             &ldquo;Taken&rdquo;. Your name is never shown there. We don&rsquo;t
             show your information to other leagues. It doesn&rsquo;t appear on
-            public schedules, printed schedules or calendar feeds.
+            public schedules, printed schedules or calendar feeds. Your league
+            can group sign-ups from the same family together and see how many
+            spots your family has worked. If you also officiate for the league,
+            an administrator can choose to count the games you&rsquo;re assigned
+            toward your family&rsquo;s total, and we may use your email address
+            to match you to your family&rsquo;s sign-ups.
           </p>
           <p>
             <strong>Emails.</strong> We email you a confirmation with a private
-            link to change or cancel your spots, plus reminders and updates
-            when your spot changes (for example, if a game moves or is rained
-            out). These emails come from FieldSlate&rsquo;s address with your
+            link to change or cancel your spots, plus reminders, a note from
+            your league asking your family to sign up for more spots, and
+            updates when your spot changes (for example, if a game moves or is
+            rained out). These emails come from FieldSlate&rsquo;s address with your
             league&rsquo;s name. Replies go to your league. We don&rsquo;t use
             your email for marketing, and we don&rsquo;t sell it.
           </p>
