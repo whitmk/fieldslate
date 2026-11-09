@@ -244,8 +244,8 @@ mutant restoring `getHours()` killed only outside UTC.
   stops working)"** mints a fresh link, revokes the old one, and copies the
   new one once — the only way to text a link to an official without email
   (decision 4; only the hash is stored, so no link can be shown twice).
-- **Settings card** (only when the switch is on): on/off, contact email,
-  drop cutoff.
+- **Settings card** (only when the switch is on): on/off and the officials
+  contact email, per league. The 48-hour drop rule is fixed, not a setting.
 - **Assignment chips:** a self-claimed assignment shows a small "Signed up"
   tag in the slot UI so the coordinator can tell it from an auto pick.
 - Auto-assign and the manual picker gain the division rule (auto: hard; manual:
