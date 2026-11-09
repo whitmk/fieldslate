@@ -78,6 +78,48 @@ const MUTANTS: Mutant[] = [
     replace: "    if (false && unadded) {",
     expect: "S2",
   },
+  {
+    id: "PW12", what: "a conflict with no team is sent anyway", file: WRITES,
+    find: '  if (draft.teamId.trim() === "") return { ok: false, message: TEAM_REQUIRED };',
+    replace: "",
+    expect: "C2",
+  },
+  {
+    id: "PW13", what: "an unknown relationship is sent anyway", file: WRITES,
+    find: "  if (!RELATIONSHIPS.has(draft.relationship)) return { ok: false, message: RELATIONSHIP_REQUIRED };",
+    replace: "",
+    expect: "C2",
+  },
+  {
+    id: "PW14", what: "a duplicate conflict shows the raw database error", file: WRITES,
+    find: "    (err) => (isDuplicate(err) ? duplicateLine() : err.message),",
+    replace: "    (err) => err.message,",
+    expect: "C3",
+  },
+  {
+    id: "PW15", what: "a conflict's note is saved untrimmed", file: WRITES,
+    find: "      note: draft.note.trim() || null,\n    }],",
+    replace: "      note: draft.note || null,\n    }],",
+    expect: "C1",
+  },
+  {
+    id: "PW16", what: "a certification's name is saved untrimmed", file: WRITES,
+    find: "      name,\n      issued_date",
+    replace: "      name: draft.name,\n      issued_date",
+    expect: "R1",
+  },
+  {
+    id: "PW17", what: "a half-typed certification date is sent anyway", file: WRITES,
+    find: '    if (d !== "" && !DATE.test(d)) return { ok: false, message: CERT_DATE_INVALID };',
+    replace: "    void d;",
+    expect: "R2",
+  },
+  {
+    id: "PW18", what: "the conflicts section inserts directly again", file: SECTIONS,
+    find: "    const outcome = await addConflict(",
+    replace: '    await createClient().from("official_conflicts").insert([] as never[]);\n    const outcome = await addConflict(',
+    expect: "S1",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/official-profile-writes-sim.ts", mutants: MUTANTS });

@@ -5099,20 +5099,24 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   standalone detail-page copy worked. Now each panel is `AddPanel` (a `div`;
   Enter in a field saves that panel and is stopped so it can't submit the
   host form) and Save is `type="button"`.
-  - **Every window/blackout write is `src/lib/umpires/profile-writes.ts`**
-    (`addAvailabilityWindows`, `addBlackouts`) — the sections AND the
-    add-official modal. The insert asks for its ids back: an error is shown,
+  - **Every officials profile write is `src/lib/umpires/profile-writes.ts`**
+    (`addAvailabilityWindows`, `addBlackouts`, `addConflict`,
+    `addCertification`) — the sections AND the add-official modal. An empty
+    team, an unknown relationship, an empty certification name or a
+    half-typed date is refused with a sentence and nothing sent (these used
+    to be silent `return`s). The insert asks for its ids back: an error is shown,
     and a reply without exactly the rows sent is "Nothing was saved. Try
     again." — never success.
   - **The add-official modal's window and date fields are a DRAFT until
     "Add" is clicked.** A touched window draft or a picked date that was
     never added used to be dropped without a word; now the save refuses
     BEFORE inserting the official (`unaddedDraftLine`).
-  - Harness: `npm run sim:official-profile-writes` (22 checks, 5 counters:
-    no `<form>` N1, Save is a button N2, the writes W1–W6/B1–B3, the draft
-    refusal D1, wiring S1–S2) + `:mutants` (11, PW1 = the nested `<form>`
-    put back; each killed at its own assertion). Conflicts and
-    certifications use the same panels; their writes were not moved.
+  - Harness: `npm run sim:official-profile-writes` (34 checks, 5 counters:
+    no `<form>` N1, Save is a button N2, windows W1–W6, blackouts B1–B3,
+    conflicts C1–C4, certifications R1–R4, the draft refusal D1, wiring
+    S1–S2) + `:mutants` (18, PW1 = the nested `<form>` put back; each killed
+    at its own assertion). Deletes in these sections still check only the
+    error, not the row count.
 - **EVERY OFFICIALS READ THAT DECIDES ELIGIBILITY FAILS CLOSED (2026-11-06,
   branch `fix/umpire-checks-fail-closed`).** Before, each discarded its error:
   the manual double-booking and blackout checks read a failed read as "no

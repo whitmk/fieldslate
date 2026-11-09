@@ -1,6 +1,7 @@
-// The officials' availability-window and blackout-date writes (tables from
-// migration 0062), shared by the add-official modal, the edit-official modal
-// and the official's detail page. Every write here FAILS LOUD (2026-11-09,
+// The officials' profile writes — availability windows and blackout dates
+// (0062), conflicts of interest (0073) and certifications (0062) — shared by
+// the add-official modal, the edit-official modal and the official's detail
+// page. Every write here FAILS LOUD (2026-11-09,
 // fix/official-availability-save):
 //
 //   - an insert error comes back as a sentence, never swallowed;
@@ -26,11 +27,17 @@ export type WriteOutcome = { ok: true } | { ok: false; message: string };
 
 export type WindowDraft = { day: string; start: string; end: string };
 export type BlackoutDraft = { date: string; note: string };
+export type ConflictDraft = { teamId: string; relationship: string; note: string };
+export type CertificationDraft = { name: string; issued: string; expiry: string };
 
 export const NOTHING_SAVED = "Nothing was saved. Try again.";
 export const TIMES_REQUIRED = "Pick a start and an end time.";
 export const END_AFTER_START = "End time must be after start time.";
 export const DATE_REQUIRED = "Pick a date.";
+export const TEAM_REQUIRED = "Pick a team.";
+export const RELATIONSHIP_REQUIRED = "Pick a relationship.";
+export const CERT_NAME_REQUIRED = "Enter the certification's name.";
+export const CERT_DATE_INVALID = "Enter a full date, or leave it blank.";
 export const UNADDED_WINDOW =
   "You filled in a weekly window but didn't click Add next to it. Click Add to include it, or clear it.";
 export const UNADDED_BLACKOUT =
@@ -39,6 +46,9 @@ export const UNADDED_BLACKOUT =
 const DAY_CODES = new Set(["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]);
 const TIME = /^\d{2}:\d{2}(:\d{2})?$/; // the house guard for native time values
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+// official_conflicts.relationship CHECK (0073) — the same four as
+// COI_RELATIONSHIP_OPTIONS in coi.ts.
+const RELATIONSHIPS = new Set(["parent", "sibling", "family", "other"]);
 
 function minutes(t: string): number {
   const [h, m] = t.split(":").map(Number);
@@ -67,7 +77,11 @@ type InsertError = { code?: string; message: string } | null;
 
 async function insertCounted(
   client: Client,
-  table: "official_availability" | "official_blackouts",
+  table:
+    | "official_availability"
+    | "official_blackouts"
+    | "official_conflicts"
+    | "official_certifications",
   rows: Record<string, unknown>[],
   word: (err: NonNullable<InsertError>) => string,
 ): Promise<WriteOutcome> {
@@ -125,5 +139,55 @@ export async function addBlackouts(
       err.code === "23505" || /duplicate key|unique/i.test(err.message)
         ? duplicateLine(drafts.length === 1 ? drafts[0].date : drafts.map((d) => d.date).join(", "))
         : err.message,
+  );
+}
+
+const isDuplicate = (err: NonNullable<InsertError>) =>
+  err.code === "23505" || /duplicate key|unique/i.test(err.message);
+
+/** List a conflict of interest. `duplicateLine` words the
+ *  UNIQUE(umpire_id, team_id) refusal. */
+export async function addConflict(
+  client: Client,
+  umpireId: string,
+  draft: ConflictDraft,
+  duplicateLine: () => string,
+): Promise<WriteOutcome> {
+  if (draft.teamId.trim() === "") return { ok: false, message: TEAM_REQUIRED };
+  if (!RELATIONSHIPS.has(draft.relationship)) return { ok: false, message: RELATIONSHIP_REQUIRED };
+  return insertCounted(
+    client,
+    "official_conflicts",
+    [{
+      umpire_id: umpireId,
+      team_id: draft.teamId,
+      relationship: draft.relationship,
+      note: draft.note.trim() || null,
+    }],
+    (err) => (isDuplicate(err) ? duplicateLine() : err.message),
+  );
+}
+
+/** Add a certification. Dates are optional; a half-typed date is refused. */
+export async function addCertification(
+  client: Client,
+  umpireId: string,
+  draft: CertificationDraft,
+): Promise<WriteOutcome> {
+  const name = draft.name.trim();
+  if (name === "") return { ok: false, message: CERT_NAME_REQUIRED };
+  for (const d of [draft.issued, draft.expiry]) {
+    if (d !== "" && !DATE.test(d)) return { ok: false, message: CERT_DATE_INVALID };
+  }
+  return insertCounted(
+    client,
+    "official_certifications",
+    [{
+      umpire_id: umpireId,
+      name,
+      issued_date: draft.issued || null,
+      expiry_date: draft.expiry || null,
+    }],
+    (err) => err.message,
   );
 }

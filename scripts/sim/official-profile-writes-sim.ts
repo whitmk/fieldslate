@@ -25,11 +25,20 @@
 //   B1  addBlackouts maps date and note (trimmed; blank → null), umpire id
 //   B2  a unique-violation reply is worded by the caller's duplicate line
 //   B3  a reply without rows is "Nothing was saved"
+//   C1  addConflict maps team, relationship and note (trimmed; blank → null)
+//   C2  an empty team or an unknown relationship is refused, NO insert sent
+//   C3  a unique-violation reply is worded by the caller's duplicate line; any
+//       other error is shown as is
+//   C4  a reply without the row is "Nothing was saved"
+//   R1  addCertification maps the trimmed name and dates (blank → null)
+//   R2  an empty name or a half-typed date is refused, NO insert sent
+//   R3  an insert error is shown
+//   R4  a reply without the row is "Nothing was saved"
 //   D1  unaddedDraftLine: a touched window or a picked date refuses; neither
 //       passes
 //   S1  SOURCE (weak by nature): the sections and the add modal save through
-//       profile-writes.ts; no umpires component inserts into either table
-//       directly
+//       profile-writes.ts; no umpires component inserts into any of the four
+//       tables directly
 //   S2  SOURCE (weak by nature): the add modal checks unaddedDraftLine BEFORE
 //       it inserts the official
 // ANTI-VACUITY: an insert sent, an error surfaced, a short reply refused, an
@@ -44,6 +53,12 @@ import { join } from "node:path";
 import {
   addAvailabilityWindows,
   addBlackouts,
+  addCertification,
+  addConflict,
+  CERT_DATE_INVALID,
+  CERT_NAME_REQUIRED,
+  RELATIONSHIP_REQUIRED,
+  TEAM_REQUIRED,
   END_AFTER_START,
   NOTHING_SAVED,
   TIMES_REQUIRED,
@@ -171,6 +186,63 @@ async function main() {
     ok(isFail(o, NOTHING_SAVED), "[B3]", JSON.stringify(o));
   }
 
+  // ── C: conflicts of interest ────────────────────────────────────────────
+  {
+    const { client, calls } = stub(echo);
+    const o = await addConflict(client, "ump-bob", { teamId: "team-1", relationship: "sibling", note: "  Brother  " }, () => "dup");
+    ok(o.ok && calls.length === 1 && calls[0].table === "official_conflicts" && calls[0].select === "id" &&
+       JSON.stringify(calls[0].rows) === JSON.stringify([{ umpire_id: "ump-bob", team_id: "team-1", relationship: "sibling", note: "Brother" }]),
+      "[C1]", JSON.stringify({ o, calls }));
+    const blank = await addConflict(stub(echo).client, "ump-bob", { teamId: "team-1", relationship: "other", note: "   " }, () => "dup");
+    ok(blank.ok, "[C1]", `blank note must save: ${JSON.stringify(blank)}`);
+  }
+  for (const [draft, msg] of [
+    [{ teamId: "", relationship: "parent", note: "" }, TEAM_REQUIRED],
+    [{ teamId: "team-1", relationship: "cousin", note: "" }, RELATIONSHIP_REQUIRED],
+  ] as const) {
+    const { client, calls } = stub(echo);
+    const o = await addConflict(client, "ump-bob", draft, () => "dup");
+    ok(isFail(o, msg) && calls.length === 0, "[C2]", `${JSON.stringify(draft)} → ${JSON.stringify(o)}, ${calls.length} insert(s)`);
+    if (calls.length === 0 && !o.ok) counters.invalidUnsent++;
+  }
+  {
+    const dup = await addConflict(stub({ data: null, error: { code: "23505", message: "duplicate key" } }).client,
+      "ump-bob", { teamId: "team-1", relationship: "parent", note: "" }, () => "already listed for Cubs");
+    const other = await addConflict(stub({ data: null, error: { code: "42501", message: "permission denied" } }).client,
+      "ump-bob", { teamId: "team-1", relationship: "parent", note: "" }, () => "already listed for Cubs");
+    ok(isFail(dup, "already listed for Cubs") && isFail(other, "permission denied"), "[C3]", JSON.stringify({ dup, other }));
+  }
+  {
+    const o = await addConflict(stub({ data: [], error: null }).client, "ump-bob", { teamId: "team-1", relationship: "parent", note: "" }, () => "dup");
+    ok(isFail(o, NOTHING_SAVED), "[C4]", JSON.stringify(o));
+  }
+
+  // ── R: certifications ────────────────────────────────────────────────────
+  {
+    const { client, calls } = stub(echo);
+    const o = await addCertification(client, "ump-bob", { name: "  LL Level 1  ", issued: "2026-03-01", expiry: "" });
+    ok(o.ok && calls.length === 1 && calls[0].table === "official_certifications" && calls[0].select === "id" &&
+       JSON.stringify(calls[0].rows) === JSON.stringify([{ umpire_id: "ump-bob", name: "LL Level 1", issued_date: "2026-03-01", expiry_date: null }]),
+      "[R1]", JSON.stringify({ o, calls }));
+  }
+  for (const [draft, msg] of [
+    [{ name: "   ", issued: "", expiry: "" }, CERT_NAME_REQUIRED],
+    [{ name: "Level 1", issued: "2026-3-1", expiry: "" }, CERT_DATE_INVALID],
+    [{ name: "Level 1", issued: "", expiry: "2027-02" }, CERT_DATE_INVALID],
+  ] as const) {
+    const { client, calls } = stub(echo);
+    const o = await addCertification(client, "ump-bob", draft);
+    ok(isFail(o, msg) && calls.length === 0, "[R2]", `${JSON.stringify(draft)} → ${JSON.stringify(o)}, ${calls.length} insert(s)`);
+  }
+  {
+    const o = await addCertification(stub({ data: null, error: { message: "permission denied" } }).client, "ump-bob", { name: "Level 1", issued: "", expiry: "" });
+    ok(isFail(o, "permission denied"), "[R3]", JSON.stringify(o));
+  }
+  {
+    const o = await addCertification(stub({ data: null, error: null }).client, "ump-bob", { name: "Level 1", issued: "", expiry: "" });
+    ok(isFail(o, NOTHING_SAVED), "[R4]", JSON.stringify(o));
+  }
+
   // ── D: the add modal's unadded draft ─────────────────────────────────────
   {
     const a = unaddedDraftLine({ windowDraftTouched: true, blackoutDraftDate: "" });
@@ -186,8 +258,9 @@ async function main() {
     const modal = strip(read("src/components/umpires/add-umpire-button.tsx"));
     const direct = readdirSync(join(ROOT, "src/components/umpires"))
       .filter((f) => /\.tsx?$/.test(f))
-      .filter((f) => /from\("official_(availability|blackouts)"\)\s*\.insert/.test(strip(read(`src/components/umpires/${f}`))));
+      .filter((f) => /from\("official_(availability|blackouts|conflicts|certifications)"\)\s*\.insert/.test(strip(read(`src/components/umpires/${f}`))));
     ok(sections.includes("addAvailabilityWindows(") && sections.includes("addBlackouts(") &&
+       sections.includes("addConflict(") && sections.includes("addCertification(") &&
        modal.includes("addAvailabilityWindows(") && modal.includes("addBlackouts(") && direct.length === 0,
       "[S1]", `direct inserts in: ${direct.join(", ")}`);
     const check = modal.indexOf("if (unadded)");

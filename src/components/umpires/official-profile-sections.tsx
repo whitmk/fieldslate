@@ -25,6 +25,8 @@ import {
 import {
   addAvailabilityWindows,
   addBlackouts,
+  addCertification,
+  addConflict,
   DATE_REQUIRED,
   windowDraftProblem,
 } from "@/lib/umpires/profile-writes";
@@ -594,29 +596,19 @@ export function ConflictsSection({
 
   async function handleAdd() {
     setError(null);
-    if (!teamId) return;
     setSaving(true);
-    const supabase = createClient();
-    const { error: insertErr } = await supabase
-      .from("official_conflicts")
-      .insert([
-        {
-          umpire_id: umpireId,
-          team_id: teamId,
-          relationship,
-          note: note.trim() || null,
-        },
-      ] as never[]);
+    const outcome = await addConflict(
+      createClient(),
+      umpireId,
+      { teamId, relationship, note },
+      () =>
+        `This official already has a conflict listed for ${
+          teamOptions?.find((t) => t.id === teamId)?.name ?? "this team"
+        }.`,
+    );
     setSaving(false);
-    if (insertErr) {
-      // UNIQUE(umpire_id, team_id)
-      const teamName =
-        teamOptions?.find((t) => t.id === teamId)?.name ?? "this team";
-      setError(
-        insertErr.code === "23505" || /duplicate key|unique/i.test(insertErr.message)
-          ? `This official already has a conflict listed for ${teamName}.`
-          : insertErr.message,
-      );
+    if (!outcome.ok) {
+      setError(outcome.message);
       return;
     }
     setAdding(false);
@@ -767,22 +759,15 @@ function CertificationsSection({
 
   async function handleAdd() {
     setError(null);
-    if (!name.trim()) return;
     setSaving(true);
-    const supabase = createClient();
-    const { error: insertErr } = await supabase
-      .from("official_certifications")
-      .insert([
-        {
-          umpire_id: umpireId,
-          name: name.trim(),
-          issued_date: issued || null,
-          expiry_date: expiry || null,
-        },
-      ] as never[]);
+    const outcome = await addCertification(createClient(), umpireId, {
+      name,
+      issued,
+      expiry,
+    });
     setSaving(false);
-    if (insertErr) {
-      setError(insertErr.message);
+    if (!outcome.ok) {
+      setError(outcome.message);
       return;
     }
     setAdding(false);
