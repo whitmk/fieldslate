@@ -179,6 +179,7 @@ as $$
 $$;
 
 create or replace function public.volunteer_slot_targets(
+  p_status      text,
   p_kind        text,
   p_interleague boolean,
   p_is_away     boolean,
@@ -195,7 +196,8 @@ immutable
 security invoker
 set search_path = public, pg_temp
 as $$
-  -- Twin of slotTargets (slots.ts) for ONE role. The home team's set comes
+  -- Twin of slotTargets (slots.ts) for ONE role: none on a game whose status
+  -- carries no spots (pending_interleague). The home team's set comes
   -- first (ord 1), then the away team's (ord 2). Spots are clamped to 0–10;
   -- a role with 0 spots carries none.
   select t.for_team_id, t.division_id, least(greatest(coalesce(p_spots, 0), 0), 10), t.ord
@@ -218,7 +220,8 @@ as $$
          and p_away_team is not null
          and p_away_div = any (p_role_divs)
     ) t
-   where least(greatest(coalesce(p_spots, 0), 0), 10) > 0;
+   where least(greatest(coalesce(p_spots, 0), 0), 10) > 0
+     and public.volunteer_slot_state(p_status) <> 'none';
 $$;
 
 create or replace function public.volunteer_claim_refusal(
@@ -496,7 +499,7 @@ $$;
 -- 7. Function privileges
 -- ────────────────────────────────────────────────────────────────────────────
 revoke execute on function public.volunteer_slot_state(text) from public, anon, authenticated, service_role, dashboard_readonly;
-revoke execute on function public.volunteer_slot_targets(text, boolean, boolean, uuid, uuid, uuid, uuid, uuid[], integer) from public, anon, authenticated, service_role, dashboard_readonly;
+revoke execute on function public.volunteer_slot_targets(text, text, boolean, boolean, uuid, uuid, uuid, uuid, uuid[], integer) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_claim_refusal(text, timestamp, timestamp, boolean, boolean, boolean) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_change_allowed(timestamp, timestamp) from public, anon, authenticated, service_role, dashboard_readonly;
 revoke execute on function public.volunteer_admin_gate(uuid, boolean) from public, anon, authenticated, service_role, dashboard_readonly;
@@ -531,7 +534,7 @@ begin
 
   foreach f in array array[
     'public.volunteer_slot_state(text)',
-    'public.volunteer_slot_targets(text, boolean, boolean, uuid, uuid, uuid, uuid, uuid[], integer)',
+    'public.volunteer_slot_targets(text, text, boolean, boolean, uuid, uuid, uuid, uuid, uuid[], integer)',
     'public.volunteer_claim_refusal(text, timestamp, timestamp, boolean, boolean, boolean)',
     'public.volunteer_change_allowed(timestamp, timestamp)',
     'public.volunteer_admin_gate(uuid, boolean)',

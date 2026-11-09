@@ -5744,7 +5744,7 @@ Still open:
   `scripts/sim/volunteer-claims-sim.sql` (the 0121 proof file; its body
   arrives with the migration). `npm run sim:volunteer-slots` (132 checks × 3
   zones, 12 counters) + `:mutants` (14, each killed at its own assertion).
-- **0121 part 1 (commit 2a, NOT APPLIED, proof NOT RUN).**
+- **0121 part 1 (commit 2a, NOT APPLIED; proof run 2026-11-08, run 3 green, 16/16 — read its RUN LOG: run 1 caught a real SQL/TS drift on `pending_interleague`).**
   `supabase/migrations/0121_volunteer_game_roles.sql`: `volunteer_roles`
   (per season, `per_game`/`per_team`, 1–10 spots, name unique trimmed +
   case-insensitive), `volunteer_role_divisions`, `volunteer_claims` (one row

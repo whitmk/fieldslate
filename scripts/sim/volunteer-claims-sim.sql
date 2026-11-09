@@ -6,7 +6,7 @@
 -- the "test" proof org (bbf9afe1…, Elite), with the volunteers switch turned
 -- on INSIDE the batch (rolled back with it) — never Santa Rosa American's data.
 --
--- NOT RUN YET. Running it against production needs Whit's go and timing.
+-- Part 1 run 2026-11-08 on Whit's go (see RUN LOG).
 --
 -- LOCKS for the run (seconds; lock_timeout 3s): the migration's new FKs take
 -- SHARE ROW EXCLUSIVE on leagues, divisions, teams, games, playoff_games,
@@ -93,7 +93,7 @@ begin
   drop function if exists public.volunteer_admin_gate(uuid, boolean);
   drop function if exists public.volunteer_change_allowed(timestamp, timestamp);
   drop function if exists public.volunteer_claim_refusal(text, timestamp, timestamp, boolean, boolean, boolean);
-  drop function if exists public.volunteer_slot_targets(text, boolean, boolean, uuid, uuid, uuid, uuid, uuid[], integer);
+  drop function if exists public.volunteer_slot_targets(text, text, boolean, boolean, uuid, uuid, uuid, uuid, uuid[], integer);
   drop function if exists public.volunteer_slot_state(text);
   drop table if exists public.volunteer_claims;
   drop table if exists public.volunteer_role_divisions;
@@ -159,11 +159,11 @@ begin
     v_lockset := case r.locked when 'both' then array[c_dh, c_da] when 'home' then array[c_dh]
                                when 'away' then array[c_da] else array[]::uuid[] end;
     select count(*) into v_n
-      from public.volunteer_slot_targets(r.kind, r.il, r.is_away, c_th, case when r.has_away then c_ta end,
+      from public.volunteer_slot_targets(r.status, r.kind, r.il, r.is_away, c_th, case when r.has_away then c_ta end,
              c_dh, c_da, (case when r.h_in then array[c_dh] else '{}'::uuid[] end) || (case when r.a_in then array[c_da] else '{}'::uuid[] end), 2);
     if v_n <> r.targets then return format('VT1 %s: %s spot sets, got %s', r.id, r.targets, v_n); end if;
     select * into v_first
-      from public.volunteer_slot_targets(r.kind, r.il, r.is_away, c_th, case when r.has_away then c_ta end,
+      from public.volunteer_slot_targets(r.status, r.kind, r.il, r.is_away, c_th, case when r.has_away then c_ta end,
              c_dh, c_da, (case when r.h_in then array[c_dh] else '{}'::uuid[] end) || (case when r.a_in then array[c_da] else '{}'::uuid[] end), 2) s
      order by s.ord limit 1;
     v_ref := public.volunteer_claim_refusal(r.status, v_when, v_now, v_first.division_id is not null,
@@ -205,17 +205,13 @@ begin
     (v_g1, v_s,  v_t1, v_t2, '2026-11-20 10:00+00', 'scheduled'),
     (v_g2, v_s,  v_t3, v_t1, '2026-11-21 10:00+00', 'scheduled'),
     (v_gx, v_s2, v_tx, v_ty, '2026-11-21 10:00+00', 'scheduled');
-  insert into public.volunteers (id, owner_id, email_lc, first_initial, last_name, adult_confirmed_at) values
-    (v_va, v_org, 'zz121-a@example.org', 'A', 'Alpha', now()),
-    (v_vb, v_org, 'zz121-b@example.org', 'B', 'Bravo', now()),
-    (v_vc, v_org, 'zz121-c@example.org', 'C', 'Charlie', now());
   update public.profiles set plan = 'elite' where id = v_org;
 
   -- G1 — privileges and RLS.
   if exists (
     select 1 from unnest(array['anon', 'authenticated', 'service_role', 'dashboard_readonly']) ro,
                   unnest(array['public.volunteer_slot_state(text)',
-                               'public.volunteer_slot_targets(text, boolean, boolean, uuid, uuid, uuid, uuid, uuid[], integer)',
+                               'public.volunteer_slot_targets(text, text, boolean, boolean, uuid, uuid, uuid, uuid, uuid[], integer)',
                                'public.volunteer_claim_refusal(text, timestamp, timestamp, boolean, boolean, boolean)',
                                'public.volunteer_change_allowed(timestamp, timestamp)',
                                'public.volunteer_admin_gate(uuid, boolean)', 'public.volunteer_cancel_claims(uuid[], text)']) f
@@ -262,6 +258,12 @@ begin
     'select public.save_volunteer_role(null, %L, %L, %L, 2, true, true, array[%L]::uuid[], true)::text', v_s2, 'GameChanger', 'per_game', v_dx));
   if v_r not like '%season_archived%' then return 'A1 archived: ' || v_r; end if;
   update public.leagues set archived_at = null where id = v_s2;
+  -- The volunteers are made only now: archiving S2 just above runs the wipe,
+  -- which (correctly) deletes every volunteer nothing references yet.
+  insert into public.volunteers (id, owner_id, email_lc, first_initial, last_name, adult_confirmed_at) values
+    (v_va, v_org, 'zz121-a@example.org', 'A', 'Alpha', now()),
+    (v_vb, v_org, 'zz121-b@example.org', 'B', 'Bravo', now()),
+    (v_vc, v_org, 'zz121-c@example.org', 'C', 'Charlie', now());
 
   -- RS1 — create, preview then commit.
   v_r := pg_temp.h121_as(v_org, 'authenticated', format(
@@ -295,7 +297,7 @@ begin
   -- RS2 — a division of another season.
   v_r := pg_temp.h121_as(v_org, 'authenticated', format(
     'select public.save_volunteer_role(%L, %L, %L, %L, 3, true, true, array[%L, %L]::uuid[], true)::text', v_role, v_s, 'GameChanger', 'per_game', v_d1, v_dx));
-  if v_r not like '%division_not_in_season%' then return 'RS2: ' || v_r; end if;
+  if v_r not like '%division_not_in_season%' then return 'RS2 other season: ' || v_r; end if;
 
   -- U1 — one person per spot.
   insert into public.volunteer_claims (id, owner_id, season_id, volunteer_id, game_id, role_id, position, created_by)
@@ -360,7 +362,7 @@ begin
   -- RS5 — kind can't change under claims.
   v_r := pg_temp.h121_as(v_org, 'authenticated', format(
     'select public.save_volunteer_role(%L, %L, %L, %L, 2, true, true, array[%L]::uuid[], true)::text', v_role, v_s, 'GameChanger', 'per_team', v_d1));
-  if v_r not like '%kind_locked%' then return 'RS5: ' || v_r; end if;
+  if v_r not like '%kind_locked%' then return 'RS5 kind change: ' || v_r; end if;
 
   v_r := pg_temp.h121_as(v_org, 'authenticated', format(
     'select public.save_volunteer_role(%L, %L, %L, %L, 1, true, true, array[]::uuid[], true)::text', v_role2, v_s, 'ZZ Scorebook', 'per_team'));
@@ -524,4 +526,23 @@ end $h$;
 --        (select md5(prosrc) from pg_proc where proname = 'wipe_volunteer_data_on_archive');  -- 888ac9aa… (0120's)
 
 -- ── RUN LOG ──────────────────────────────────────────────────────────────────
--- (not run yet — needs Whit's go and timing)
+-- PART 1 — 2026-11-08 ~18:05–18:20 Pacific, against production on Whit's go,
+-- rolled back, "test" org with the switch on inside the batch only.
+--   L1 locks (all three runs): ACCESS SHARE + SHARE ROW EXCLUSIVE on leagues,
+--     divisions, teams, games, playoff_games, snack_shack_blocks, profiles.
+--   Run 1 — a REAL drift, caught by the shared table: VT1 V09 — a
+--     pending_interleague game had 1 spot set in SQL and 0 in TypeScript
+--     (volunteer_slot_targets never looked at the status). Fixed: the SQL
+--     twin takes p_status and returns nothing when the state is 'none'. Every
+--     mutant died at that baseline line, so none counted. (Run 1 also sent a
+--     comment-trimmed copy of the migration; runs 2–3 sent the full file.)
+--   Run 2 — HARNESS fault: baseline stopped at the first claim insert (FK on
+--     volunteer_id). A1 archives S2, the wipe correctly deleted every
+--     unreferenced volunteer — the three fixture volunteers. Moved their
+--     insert after A1. MU1–MU9 already killed at their own tag.
+--   Run 3 — BASELINE pass; 16/16 killed at their own assertion (MU13 printed
+--     "wrong tag" only because its message began 'RS5:' — the colon broke the
+--     tag parse; it died at RS5. RS5/RS2 messages relabelled). md5s printed
+--     match the repo file. Leak check after: 0 ZZ121 seasons, 0 new tables /
+--     functions, 0 feature rows / volunteers / outbox rows, wipe md5 back to
+--     0120's 888ac9aa…, test org elite, no disabled trigger, no idle tx.
