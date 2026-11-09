@@ -5798,15 +5798,20 @@ Still open:
   regenerate, division delete and team delete included. It detaches the
   claims (`detached_from`: start, home/away team, for-team, role, position)
   and queues `spot_lost` held 10 minutes (`lost:<claim>`), not swallowed.
-  `reattach_volunteer_claims(season)` (authenticated, member) puts a detached
-  sign-up back on a game with the same start and home team (and its per-team
-  team still in it) and supersedes the held email. `volunteer_keep_spot`
+  **The reattach is a trigger too (decided 2026-11-08):**
+  `volunteer_on_game_insert` (AFTER INSERT) puts back sign-ups detached under
+  10 minutes ago (`detached_at`) on a new game with the same start and home
+  team (a per-team spot's team still in it, its position free) and withdraws
+  the held email — so a tab closed between a regenerate's delete and insert
+  can't strand sign-ups or send a false "spot lost". No browser call; the
+  regenerate code is unchanged. **Trigger failures fail LOUD:** the change and
+  insert triggers never block the edit, but record a row in
+  `volunteer_trigger_failures` (game, trigger, SQLSTATE — no personal data);
+  `volunteer_failure_count(season)` (member only) feeds the sign-up list and
+  the daily check. `volunteer_keep_spot`
   (service_role) clears `moved_from`. Season delete sends nothing: it needs an
-  archived season, and archiving already wiped the sign-ups. **Still to wire:**
-  the regenerate calling `reattach_volunteer_claims` after its insert (its own
-  commit, re-proven with sim:generator-failclosed / regenerate-pending-guard).
-  Proof: 42 mutants (11 new). Applying takes SHARE ROW EXCLUSIVE on `games`
-  for the two CREATE TRIGGERs, plus the part-1 FKs.
+  archived season, and archiving already wiped the sign-ups. Proof: 44 mutants (13 for part 3). Applying takes SHARE ROW EXCLUSIVE on `games`
+  for the three CREATE TRIGGERs, plus the part-1 FKs.
 - **Mockup decisions (2026-11-08, boards in `docs/mockups/volunteer-signup/`).**
   Where the boards and the written decisions disagree, the decisions win.
   (1) The overlap warning is GENERIC and names no spot (the board names one).

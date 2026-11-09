@@ -7,7 +7,7 @@
 -- on INSIDE the batch (rolled back with it) — never Santa Rosa American's data.
 --
 -- Parts 1–2 run 2026-11-08 on Whit's go — green, 31/31 (see RUN LOG). PART 3
--- NOT RUN YET.
+-- (with the insert-trigger reattach and recorded failures): see RUN LOG.
 --
 -- LOCKS for the run (seconds; lock_timeout 3s): the migration's new FKs take
 -- SHARE ROW EXCLUSIVE on leagues, divisions, teams, games, playoff_games,
@@ -114,8 +114,10 @@
 --   MU36 past-game corrections email volunteers               → T6
 --   MU37 a deleted game's claims not detached (delete fails)  → D1
 --   MU38 spot_lost not held for the reattach                  → D1
---   MU39 reattach ignores the start time                      → R2
---   MU40 reattach leaves the spot_lost email pending          → R1
+--   MU39 the insert reattach ignores the start time           → R2
+--   MU40 the insert reattach leaves spot_lost pending         → R1
+--   MU43 the 10-minute window removed                         → R3
+--   MU44 a trigger failure not recorded                       → L1
 --   MU41 Keep it reaches another volunteer's spot             → K1
 --   MU42 Keep it callable by anon                             → G3
 --   PART 3 (own fixture): T1 a move → one game_moved per claim, coalesced,
@@ -124,8 +126,11 @@
 --   time); T6 a past game's correction emails nobody; K1 "Keep it" own spot
 --   only, the manage page shows the original; D1 a deleted game's sign-up is
 --   detached (the delete succeeds) with spot_lost held 10 minutes; R1 the
---   regenerate brings the game back → reattached, email withdrawn; R2 a game
---   back at a different time is NOT reattached.
+--   regenerate's INSERT brings the game back → the insert trigger reattaches
+--   it, email withdrawn (no browser call); R2 a game back at a different time
+--   is NOT reattached; R3 a spot lost over 10 minutes ago is left alone; L1 a
+--   failing change trigger lets the edit through and RECORDS the failure (no
+--   personal data), counted for members only; G3 privileges.
 -- (MU31 alters a grant, which only part 2's G2 checks; the verify block is
 -- left out of every mutant's text, as in 0120's proof.)
 select set_config('lock_timeout', '3s', true), set_config('statement_timeout', '120s', true);
@@ -154,7 +159,11 @@ begin
   drop trigger if exists volunteer_on_game_delete on public.games;
   drop function if exists public.volunteer_on_game_change();
   drop function if exists public.volunteer_on_game_delete();
-  drop function if exists public.reattach_volunteer_claims(uuid);
+  drop trigger if exists volunteer_on_game_insert on public.games;
+  drop function if exists public.volunteer_on_game_insert();
+  drop function if exists public.volunteer_failure_count(uuid);
+  drop function if exists public.volunteer_record_failure(uuid, uuid, text, text);
+  drop table if exists public.volunteer_trigger_failures;
   drop function if exists public.volunteer_keep_spot(text, uuid);
   drop function if exists public.save_volunteer_role(uuid, uuid, text, text, integer, integer, boolean, boolean, uuid[], boolean);
   drop function if exists public.delete_volunteer_role(uuid, boolean);
@@ -823,7 +832,8 @@ begin
   end if;
 
   -- K1 — "Keep it": own moved spot only; the manage page shows the original.
-  if (public.volunteer_manage_page(v_tok) -> 'claims' -> 0 -> 'moved_from' ->> 'start') is distinct from v_start then
+  if (select x -> 'moved_from' ->> 'start' from jsonb_array_elements(public.volunteer_manage_page(v_tok) -> 'claims') x
+       where (x ->> 'claim_id')::uuid = c1) is distinct from v_start then
     return 'K1 manage page shows no original time';
   end if;
   if (public.volunteer_keep_spot(v_tok, c6) ->> 'status') <> 'not_found' then return 'K1 kept another volunteer''s spot'; end if;
@@ -840,36 +850,63 @@ begin
      or (select next_attempt_at from public.volunteer_outbox where coalesce_key = 'lost:' || c6) <= now() + interval '9 minutes' then
     return 'D1 delete';
   end if;
-  -- R1 — the regenerate brings the game back at the same start: reattached,
-  -- the held email withdrawn.
+  -- R1 — the regenerate's INSERT brings the game back at the same start: the
+  -- insert trigger reattaches it (no browser call) and withdraws the email.
   insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status)
     values (gen_random_uuid(), v_s, v_t1, v_t2, (v_now + interval '7 days') at time zone 'UTC', 'scheduled');
-  -- R2 — another lost spot whose game does NOT come back at the same time.
+  if (select status from public.volunteer_claims where id = c6) <> 'active'
+     or (select status from public.volunteer_outbox where coalesce_key = 'lost:' || c6) <> 'superseded'
+     or (select detached_at from public.volunteer_claims where id = c6) is not null then
+    return 'R1 the insert did not reattach';
+  end if;
+  -- R2 — a game back at a DIFFERENT time is not a match.
   delete from public.games where id = g2;
   insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status)
     values (gen_random_uuid(), v_s, v_t1, v_t2, (v_now + interval '4 days 2 hours') at time zone 'UTC', 'scheduled');
-  if pg_temp.h121_as(gen_random_uuid(), 'authenticated', format('select public.reattach_volunteer_claims(%L)::text', v_s)) not like '%not_authorized%' then
-    return 'R1 a non-member reattached';
-  end if;
-  v_r := pg_temp.h121_as(v_org, 'authenticated', format('select public.reattach_volunteer_claims(%L)::text', v_s))::jsonb;
-  if (select status from public.volunteer_claims where id = c6) <> 'active'
-     or (select status from public.volunteer_outbox where coalesce_key = 'lost:' || c6) <> 'superseded' then
-    return 'R1 reattach: ' || coalesce(v_r::text, 'null');
-  end if;
   if (select status from public.volunteer_claims where id = c2) <> 'detached'
      or (select status from public.volunteer_outbox where coalesce_key = 'lost:' || c2) <> 'pending' then
     return 'R2 a lost spot was reattached to a different time';
   end if;
+  -- R3 — detached more than 10 minutes ago: its email has gone; a matching
+  -- game later doesn't take it back.
+  update public.volunteer_claims set detached_at = now() - interval '11 minutes' where id = c2;
+  insert into public.games (id, league_id, home_team_id, away_team_id, scheduled_at, status)
+    values (gen_random_uuid(), v_s, v_t1, v_t2, (v_now + interval '4 days') at time zone 'UTC', 'scheduled');
+  if (select status from public.volunteer_claims where id = c2) <> 'detached' then
+    return 'R3 a spot lost over 10 minutes ago was reattached';
+  end if;
+
+  -- L1 — a failing trigger never blocks the edit and is RECORDED (no
+  -- personal data), and the count is there for the sign-up list.
+  alter table public.volunteer_outbox add constraint zz121_refuse_moves check (kind <> 'game_moved');
+  update public.games set scheduled_at = scheduled_at + interval '1 hour' where id = g4;
+  if (select scheduled_at from public.games where id = g4) <> (v_now + interval '6 days 1 hour') at time zone 'UTC' then
+    return 'L1 the schedule edit was blocked';
+  end if;
+  if (select count(*) from public.volunteer_trigger_failures
+       where season_id = v_s and game_id = g4 and trigger_name = 'game_change' and error_code = '23514') <> 1 then
+    return 'L1 the failure was not recorded';
+  end if;
+  alter table public.volunteer_outbox drop constraint zz121_refuse_moves;
+  if pg_temp.h121_as(v_org, 'authenticated', format('select public.volunteer_failure_count(%L)::text', v_s)) is distinct from '1'
+     or pg_temp.h121_as(gen_random_uuid(), 'authenticated', format('select public.volunteer_failure_count(%L)::text', v_s)) not like '%not_authorized%' then
+    return 'L1 failure count';
+  end if;
 
   -- G3 — privileges.
-  if not has_function_privilege('authenticated', 'public.reattach_volunteer_claims(uuid)', 'EXECUTE')
-     or has_function_privilege('anon', 'public.reattach_volunteer_claims(uuid)', 'EXECUTE')
+  if not has_function_privilege('authenticated', 'public.volunteer_failure_count(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.volunteer_failure_count(uuid)', 'EXECUTE')
      or not has_function_privilege('service_role', 'public.volunteer_keep_spot(text, uuid)', 'EXECUTE')
      or has_function_privilege('anon', 'public.volunteer_keep_spot(text, uuid)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.volunteer_keep_spot(text, uuid)', 'EXECUTE')
      or exists (select 1 from unnest(array['anon', 'authenticated', 'service_role', 'dashboard_readonly']) ro,
-                              unnest(array['public.volunteer_on_game_change()', 'public.volunteer_on_game_delete()']) f
-                 where has_function_privilege(ro, f, 'EXECUTE')) then
+                              unnest(array['public.volunteer_on_game_change()', 'public.volunteer_on_game_delete()',
+                                           'public.volunteer_on_game_insert()',
+                                           'public.volunteer_record_failure(uuid, uuid, text, text)']) f
+                 where has_function_privilege(ro, f, 'EXECUTE'))
+     or exists (select 1 from unnest(array['anon', 'authenticated', 'service_role', 'dashboard_readonly']) ro,
+                              unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) pr
+                 where has_table_privilege(ro, 'public.volunteer_trigger_failures', pr)) then
     return 'G3 part-3 privileges';
   end if;
   return 'pass';
@@ -1029,7 +1066,11 @@ begin
     return null;$r$),
     ('MU37', 'D1', $r$       set status = 'detached',$r$, $r$       set status = 'active',$r$),
     ('MU38', 'D1', $r$         'lost:' || d.id, now() + interval '10 minutes'$r$, $r$         'lost:' || d.id, now()$r$),
-    ('MU39', 'R2', $r$       and to_char((g.scheduled_at at time zone 'UTC')::timestamp, 'YYYY-MM-DD"T"HH24:MI') = r.detached_from ->> 'start'
+    ('MU39', 'R2', $r$       and c.detached_from ->> 'start' = v_wall
+$r$, $r$$r$),
+    ('MU43', 'R3', $r$       and c.detached_at > now() - interval '10 minutes'
+       and c.role_id is not null$r$, $r$       and c.role_id is not null$r$),
+    ('MU44', 'L1', $r$  perform public.volunteer_record_failure(new.league_id, new.id, 'game_change', sqlstate);
 $r$, $r$$r$),
     ('MU40', 'R1', $r$         set status = 'superseded', error = 'reattached after a regenerate'$r$,
                    $r$         set error = 'reattached after a regenerate'$r$),
