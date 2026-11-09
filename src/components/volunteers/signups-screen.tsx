@@ -225,10 +225,10 @@ function StartedChip({ row, nowWall }: { row: SpotRow; nowWall: string }) {
   return tag ? <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{tag}</span> : null;
 }
 
-async function sendReminder(seasonId: string, claimIds: string[]): Promise<{ ok: boolean; line: string }> {
+async function sendReminder(seasonId: string, claimIds: string[], scope: "one" | "all"): Promise<{ ok: boolean; line: string }> {
   // @ts-expect-error — RPCs aren't in the hand-maintained Functions map.
   const r = await createClient().rpc("volunteer_admin_remind", { p_season_id: seasonId, p_claim_ids: claimIds });
-  return r.error ? remindOutcome(null) : remindOutcome(r.data);
+  return r.error ? remindOutcome(null, scope) : remindOutcome(r.data, scope);
 }
 
 function RemindButton({ seasonId, claimIds }: { seasonId: string; claimIds: string[] }) {
@@ -242,7 +242,7 @@ function RemindButton({ seasonId, claimIds }: { seasonId: string; claimIds: stri
         disabled={busy}
         onClick={async () => {
           setBusy(true);
-          const out = await sendReminder(seasonId, claimIds);
+          const out = await sendReminder(seasonId, claimIds, "one");
           setBusy(false);
           setNote(out);
           if (out.ok) router.refresh();
@@ -275,7 +275,7 @@ function NextUpBanner({ seasonId, rows, nowWall }: { seasonId: string; rows: Spo
         disabled={busy}
         onClick={async () => {
           setBusy(true);
-          const out = await sendReminder(seasonId, next.claimIds);
+          const out = await sendReminder(seasonId, next.claimIds, "all");
           setBusy(false);
           setNote(out);
           if (out.ok) router.refresh();

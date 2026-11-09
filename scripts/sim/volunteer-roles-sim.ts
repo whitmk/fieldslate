@@ -21,6 +21,9 @@
 //   W1  wiring: the page 404s without the feature and gates Elite; the
 //       sidebar item appears only with the feature; the editor previews
 //       (p_commit false) before it commits
+//   W2  the editor's "How spots are made" section: the approved words
+//       (2026-11-09) verbatim, rendered from words.ts; and no volunteer
+//       string says "slot" — people see "spots" (decided 2026-11-09)
 // ANTI-VACUITY: R3's fixture must produce slots for both kinds and skip at
 // least one game for each reason.
 import { readFileSync } from "node:fs";
@@ -37,6 +40,7 @@ import {
   type RoleDraft,
 } from "@/lib/volunteers/roles-screen";
 import type { SlotGame } from "@/lib/volunteers/slots";
+import * as W from "@/lib/volunteers/words";
 import { roleErrorLine } from "@/lib/volunteers/words";
 
 const ROOT = join(__dirname, "..", "..");
@@ -83,8 +87,8 @@ const perTeam = slotCount({ kind: "per_team", spots: 1, divisionIds: ["dM", "dT"
 // g1: Expos + Mets = 2; g2: Expos = 1; g3: Mets (ours, partner hosts) = 1; g4: Bees = 1
 ok(perTeam.spots === 5 && perTeam.games === 4, "R3", "per_team Majors + Tee Ball", JSON.stringify(perTeam));
 if (perTeam.spots > 0) counters.perTeamSlots++;
-ok(createsLine({ spots: 96, games: 48 }) === "This creates 96 slots across 48 games.", "R3", "plural line");
-ok(createsLine({ spots: 1, games: 1 }) === "This creates 1 slot across 1 game.", "R3", "singular line", createsLine({ spots: 1, games: 1 }));
+ok(createsLine({ spots: 96, games: 48 }) === "This creates 96 spots across 48 games.", "R3", "plural line");
+ok(createsLine({ spots: 1, games: 1 }) === "This creates 1 spot across 1 game.", "R3", "singular line", createsLine({ spots: 1, games: 1 }));
 
 // R4
 const act = activeByRole([
@@ -141,6 +145,28 @@ ok(layout.includes("volunteers={volunteerFeature !== null}"), "W1", "layout pass
 const comp = read("src/components/volunteers/roles-screen.tsx");
 ok(/const r = await call\(fn, false\);[\s\S]*previewOutcome\(r\.data\)/.test(comp) && /const r = await call\(fn, true\);[\s\S]*commitOk\(r\.data\)/.test(comp),
   "W1", "the editor previews before it commits, and checks the commit");
+
+// W2
+ok(W.FIELD_KIND === "How spots are made", "W2", "heading", W.FIELD_KIND);
+ok(W.KIND_PER_GAME === "One per game." &&
+  W.KIND_PER_GAME_DETAIL === "Only one needed per game, like field prep, scoreboard or announcer.", "W2", "one per game", W.KIND_PER_GAME_DETAIL);
+ok(W.KIND_PER_TEAM === "One per team." &&
+  W.KIND_PER_TEAM_DETAIL === "Each team needs its own, like GameChanger. Two of our league's teams playing each other get two. Against another league's team, just one.",
+  "W2", "one per team", W.KIND_PER_TEAM_DETAIL);
+ok(roleErrorLine("P0001: invalid_kind") === "Choose how spots are made.", "W2", "kind refusal");
+ok(W.COL_SLOTS === "Spots", "W2", "roles list column", W.COL_SLOTS);
+// Every string literal in the volunteer word and rule files (comments
+// stripped): none may say "slot". Code identifiers are not strings.
+for (const f of ["src/lib/volunteers/words.ts", "src/lib/volunteers/roles-screen.ts", "src/lib/volunteers/signups-screen.ts",
+  "src/lib/volunteers/signup-page.ts", "src/lib/volunteers/manage-page.ts", "src/lib/volunteers/email-templates.ts", "src/lib/volunteers/help-faq.ts", "src/components/volunteers/roles-screen.tsx",
+  "src/components/volunteers/signups-screen.tsx", "src/components/volunteers/signup-page-client.tsx", "src/components/volunteers/manage-page-client.tsx"]) {
+  const src = read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const lits = src.match(/"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g) ?? [];
+  const bad = lits.filter((s) => /\bslots?\b/i.test(s) && !/no_slot/.test(s) && !/^["`](\.\.?\/|@\/)/.test(s)); // module paths aren't words
+  ok(bad.length === 0, "W2", `no "slot" in ${f}`, bad.join(" | "));
+}
+ok(comp.includes("{W.FIELD_KIND}") && comp.includes("W.KIND_PER_GAME_DETAIL") && comp.includes("W.KIND_PER_TEAM_DETAIL") && !/Slots are created/.test(comp),
+  "W2", "the editor renders the section from words.ts");
 
 for (const [k, v] of Object.entries(counters)) ok(v > 0, "VAC", `anti-vacuity counter ${k} is zero`);
 if (failures.length) {

@@ -185,12 +185,19 @@ ok(assignStatusLine("weird")?.startsWith("Couldn't save") === true, "S7", "unkno
   const filledAhead = rows.find((r) => r.claim && r.start >= now)!;
   ok(remindable(filledAhead, now) && !remindable(filledAhead, "2027-03-06T09:30") && !remindable(rows.find((r) => !r.claim)!, now), "R3",
     "filled and not started only");
-  ok(remindOutcome({ queued: 2, reminded: 3, skipped: 0 }).ok && remindOutcome({ queued: 2, reminded: 3, skipped: 0 }).line === "Reminder on its way to 2 volunteers.", "R4", "sent");
-  ok(remindOutcome({ queued: 1, reminded: 1, skipped: 1 }).line.includes("1 spot was left out"), "R4", "skipped named");
-  ok(!remindOutcome({ queued: 0, reminded: 0, skipped: 2 }).ok, "R4", "none queued → failure");
-  ok(!remindOutcome(null).ok && !remindOutcome({ queued: "2" }).ok, "R4", "unreadable → failure");
+  const all2 = remindOutcome({ queued: 2, reminded: 3, skipped: 0 }, "all");
+  ok(all2.ok && all2.line === "Reminders sent to 2 volunteers.", "R4", "remind all → names the count", all2.line);
+  ok(remindOutcome({ queued: 1, reminded: 1, skipped: 0 }, "all").line === "Reminder sent to 1 volunteer.", "R4", "remind all, one volunteer → singular");
+  const one = remindOutcome({ queued: 1, reminded: 1, skipped: 0 }, "one");
+  ok(one.ok && one.line === "Reminder sent.", "R4", "single remind → Reminder sent.", one.line);
+  ok(remindOutcome({ queued: 1, reminded: 1, skipped: 1 }, "all").line.includes("1 spot was left out"), "R4", "skipped named");
+  ok(!remindOutcome({ queued: 0, reminded: 0, skipped: 2 }, "all").ok, "R4", "none queued → failure");
+  ok(remindOutcome({ queued: 0, reminded: 0, skipped: 0 }, "one").line === "Couldn't send the reminder. Nothing was sent — try again.", "R4", "failure wording unchanged");
+  ok(!remindOutcome(null, "one").ok && !remindOutcome({ queued: "2" }, "all").ok, "R4", "unreadable → failure");
   ok(remindedLine({ last_reminded_on: "2027-03-04" }) === "Reminded Mar 4" && remindedLine({ last_reminded_on: null }) === null, "R5", "league date");
   const comp = read("src/components/volunteers/signups-screen.tsx");
+  ok(comp.includes('sendReminder(seasonId, claimIds, "one")') && comp.includes('sendReminder(seasonId, next.claimIds, "all")'),
+    "R5", "the row's Remind says one, the banner's Remind all says all");
   ok(comp.includes('rpc("volunteer_admin_remind", { p_season_id: seasonId, p_claim_ids: claimIds })') && comp.includes("if (out.ok) router.refresh();"),
     "R5", "the screen sends through volunteer_admin_remind and trusts only a readable count");
 }

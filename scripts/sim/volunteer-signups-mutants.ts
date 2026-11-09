@@ -65,6 +65,12 @@ const MUTANTS: Mutant[] = [
     expect: "R4",
   },
   {
+    id: "VS16", what: "remind ignores which button sent it", file: SS,
+    find: '  const sent = scope === "one" ? W.REMIND_SENT_ONE : W.REMIND_SENT_ALL(q);',
+    replace: "  const sent = W.REMIND_SENT_ALL(q);",
+    expect: "R4",
+  },
+  {
     id: "VS15", what: "reminded date from the raw UTC timestamp", file: SS,
     find: "  return c.last_reminded_on ? W.REMINDED_ON(shortDate(c.last_reminded_on)) : null;",
     replace: "  return c.last_reminded_on ? W.REMINDED_ON(shortDate((c as { last_reminded_at?: string }).last_reminded_at ?? \"\")) : null;",
