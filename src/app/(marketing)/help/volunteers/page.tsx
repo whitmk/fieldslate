@@ -17,7 +17,7 @@ import { VOLUNTEER_HELP_FAQ, volunteerHelpFaqJsonLd } from "@/lib/volunteers/hel
 export const metadata: Metadata = {
   title: "Sign up to volunteer for your league · FieldSlate",
   description:
-    "How FieldSlate volunteer sign-ups work: picking a spot, your private link, changing or canceling, and what happens when a game moves.",
+    "How FieldSlate volunteer sign-ups work: picking a spot, your private link, canceling a spot, and what happens when a game moves.",
   alternates: { canonical: `${SITE_URL}/help/volunteers` },
 };
 
@@ -52,8 +52,8 @@ export default function VolunteerHelpPage() {
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-gray-600">
             Your league shared a sign-up link. Pick a spot, enter your name and email, and
-            you&apos;re done. We&apos;ll email you a confirmation with a private link for
-            changing your plans.
+            you&apos;re done. We&apos;ll email you a confirmation with a private link to your
+            spots.
           </p>
           <p className="mt-3 text-xs text-gray-500">
             Don&apos;t have a link? Ask your league. It isn&apos;t on this page.
@@ -64,7 +64,7 @@ export default function VolunteerHelpPage() {
           {[
             ["signing-up", "Signing up"],
             ["private-link", "Your private link"],
-            ["changing", "Changing or canceling"],
+            ["changing", "Canceling a spot"],
             ["game-moves", "If a game moves"],
             ["faq", "Questions"],
           ].map(([id, label]) => (
@@ -97,16 +97,17 @@ export default function VolunteerHelpPage() {
           <Section id="private-link" title="Your private link">
             <Para>
               Your confirmation email has a private link to your spots. Anyone with the link can
-              change or cancel them, so don&apos;t forward it. If you lose it, ask your league to
+              cancel them, so don&apos;t forward it. If you lose it, ask your league to
               send a new one. The old link stops working when a new one is sent.
             </Para>
           </Section>
 
-          <Section id="changing" title="Changing or canceling">
+          <Section id="changing" title="Canceling a spot">
             <Para>
-              Use your private link to switch to another spot or cancel, up to 24 hours before
-              your spot. Closer than that, the page shows your league&apos;s email. Contact the
-              league directly so they can find a replacement.
+              Use your private link to cancel a spot, up to 24 hours before it starts. To take a
+              different spot instead, cancel, then sign up again through your league&apos;s
+              sign-up link. Closer than 24 hours, the page shows your league&apos;s email.
+              Contact the league directly so they can find a replacement.
             </Para>
           </Section>
 
