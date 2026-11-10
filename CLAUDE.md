@@ -5916,8 +5916,8 @@ Still open:
   renders ONLY when `volunteer_admin_state` says the switch is on. A failed
   read — including the missing function before 0120 is applied — means NO
   card (logged), so the code is safe on `main` before the apply, and a real
-  league never sees the feature. Its link line says the sign-up page isn't
-  built yet (`LINK_NOT_BUILT_YET`) — remove it with 0121.
+  league never sees the feature. (Its old "the sign-up page isn't built yet"
+  line was removed 2026-11-10 — the page is live.)
 - **Branch B (`feat/volunteer-game-roles`, 0121) — slot rules (commit 1,
   2026-11-08).** `src/lib/volunteers/slots.ts` (pure): a slot is role × game ×
   (team) × position, never stored. `per_game` = one set per game, HOME games

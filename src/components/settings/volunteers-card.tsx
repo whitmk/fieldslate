@@ -151,7 +151,6 @@ function EliteBody({ orgId, data }: { orgId: string; data: VolunteerCardData }) 
           <p className="text-sm font-semibold text-gray-900">{W.LINK_BLOCK_TITLE}</p>
           <p className="mt-0.5 text-xs text-gray-500">{W.LINK_BLOCK_DETAIL}</p>
           <CopyField value={volunteerSignupUrl(token)} />
-          <p className="mt-2 text-xs text-amber-700">{W.LINK_NOT_BUILT_YET}</p>
         </div>
       ) : (
         <p className="py-3 text-sm text-gray-500">{W.LINK_FIRST}</p>
