@@ -17,8 +17,8 @@ const auto = (id: string, check: string, expect: string, what: string): Mutant =
 const MUTANTS: Mutant[] = [
   {
     id: "MR1", what: "manual conflict read error discarded", file: CONFLICTS,
-    find: "  if (error) return { ok: false };\n\n  const rows =",
-    replace: "  if (false && error) return { ok: false };\n\n  const rows =",
+    find: "  if (!read.ok) return { ok: false };\n  return { ok: true, conflict:",
+    replace: "  if (!read.ok) return { ok: true, conflict: null };\n  return { ok: true, conflict:",
     expect: "M1",
   },
   {
@@ -43,7 +43,12 @@ const MUTANTS: Mutant[] = [
   auto("MA2", "seasonRolesErr", "A2", "official roles read error discarded"),
   auto("MA3", "teamsErr", "A3", "teams read error discarded"),
   auto("MA4", "gamesErr", "A4", "games read error discarded"),
-  auto("MA5", "existingErr", "A5", "bookings read error discarded"),
+  {
+    id: "MA5", what: "bookings read error discarded (0129: official_bookings)", file: ENGINE,
+    find: "  if (!busyRead.ok) return unreadable(\"the officials' other games\");\n",
+    replace: "",
+    expect: "A5",
+  },
   auto("MA6", "availabilityErr", "A6", "availability read error discarded"),
   auto("MA7", "blackoutsErr", "A7", "blackouts read error discarded"),
   auto("MA8", "divAssignsErr", "A8", "division assignments read error discarded"),

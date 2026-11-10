@@ -21,6 +21,7 @@ import {
 } from "@/lib/schedule/conflict-overrides";
 import { hasNote, noteAttribution, type GameNoteFields } from "@/lib/schedule/game-notes";
 import { officialDivisionLists, selfClaimedIds } from "@/lib/officials-signup/slot-extras";
+import { fetchOfficialBookings } from "@/lib/umpires/conflicts";
 
 export type GameDetailGame = {
   id: string;
@@ -216,10 +217,7 @@ export function GameDetailModal({ game, onClose }: Props) {
             `id, name, team_id, team:teams(name, division:divisions(name)),
              conflicts:official_conflicts(team_id, relationship),
              availability:official_availability(day_of_week, start_time, end_time),
-             blackouts:official_blackouts(date),
-             booking_rows:game_umpires(game:games(id, scheduled_at,
-               home_team:teams!home_team_id(name, division:divisions(settings)),
-               away_team:teams!away_team_id(name)))`,
+             blackouts:official_blackouts(date)`,
           )
           .eq("season_id", game.league_id)
           .order("name"),
@@ -256,7 +254,21 @@ export function GameDetailModal({ game, onClose }: Props) {
       // Each official's division list (0124) — the picker's warning only, fail-soft.
       const roster = (umpiresRaw ?? []) as UmpireOption[];
       const lists = await officialDivisionLists(supabase, roster.map((u) => u.id));
-      const umpires = roster.map((u) => ({ ...u, divisions: lists.get(u.id) ?? null }));
+      // Each official's BUSY games (0129) — the one rule, from the database.
+      // An unread list fails closed: the read error in place of the slots.
+      const bookings = await fetchOfficialBookings(game.league_id, roster.map((u) => u.id));
+      if (!bookings.ok) {
+        if (!cancelled) {
+          setError(OFFICIALS_READ_FAILED);
+          setLoading(false);
+        }
+        return;
+      }
+      const umpires = roster.map((u) => ({
+        ...u,
+        divisions: lists.get(u.id) ?? null,
+        bookings: bookings.byUmpire.get(u.id) ?? [],
+      }));
       const sport = (leagueRaw as { sport: string | null } | null)?.sport ?? null;
 
       // Slot labels: first umpires_per_game season roles by sort_order,
