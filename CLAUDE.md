@@ -436,8 +436,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   LOG). md5(prosrc) of all eight = `contact-verify-build.ts --md5`; EXECUTE:
   begin/state/remove authenticated only, take/peek/confirm service_role only,
   gate/current no role (anon and dashboard_readonly false throughout); no
-  role holds a privilege on `contact_email_verifications`, RLS on. **The
-  latest migration applied.** Proof:
+  role holds a privilege on `contact_email_verifications`, RLS on. Proof:
   `scripts/sim/contact-verify-sim.sql` (+ `contact-verify-build.ts`; 10
   mutants). It DROPS `set_volunteer_contact_email` and
   `set_official_signup_contact`, and moves every existing contact address to
@@ -446,8 +445,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   the code reached `main`** (the cards call
   the new functions; between the two, the old cards' Save is refused). See
   "League contact email verification (0126)".
-- **0127 (volunteer sign-ups + officials sign-up on by default) — WRITTEN,
-  NOT APPLIED, proof NOT RUN (both wait for Whit's go).** Re-creates
+- **0127 (volunteer sign-ups + officials sign-up on by default) APPLIED
+  2026-11-10 02:34 UTC (2026-11-09 evening Pacific), catalog
+  `20261110023443`**, verbatim from the repo file on Whit's go, after its
+  first-run-green rolled-back proof (6/6 mutants at their own tag, leak check
+  clean); md5(prosrc) verified, one overload, INVOKER, STABLE, EXECUTE for no
+  role (PUBLIC, anon, authenticated, service_role, dashboard_readonly false).
+  **The latest migration applied.** Re-creates
   `org_feature_on` only: NO org_features row = ON for 'volunteers' and
   'official_signup' BY NAME (decided 2026-11-09), OFF for any other feature
   name or a null name; a row still decides (`enabled = false` turns a league
@@ -455,7 +459,7 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   (approved by Whit 2026-11-09). **Applying it IS the launch inside the app:**
   the code already shows every entry point when the function says on. Nothing
   goes public — both sign-up links start off and need a confirmed contact
-  email. Expected md5(prosrc) `org_feature_on`
+  email (Santa Rosa American: both off, no settings rows, at apply). Expected md5(prosrc) `org_feature_on`
   `f7cf60e01dc1d10a156964b0032d28ef` (`feature-default-on-build.ts --md5`).
   Proof: `scripts/sim/feature-default-on-sim.sql` (+ build script; rolled back
   in "test"; RL1 no row written, FD1–FD5, FA1–FA3, FR1 read-only on Santa

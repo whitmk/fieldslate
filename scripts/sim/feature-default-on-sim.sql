@@ -256,4 +256,19 @@ end $h$;
 --   (select count(*) from pg_stat_activity where state = 'idle in transaction') as idle_tx_must_be_0;
 --
 -- ── RUN LOG ───────────────────────────────────────────────────────────────
--- (not run yet — waits for Whit's go)
+-- 2026-11-10 (2026-11-09 evening Pacific), against production, rolled back,
+-- on Whit's go (sent as one batch, the migration byte-exact).
+--   Run 1 — GREEN: RL1 pass (no row written); baseline pass; md5(prosrc)
+--     f7cf60e0… = `--md5`; MF1–MF6 KILLED at their own tag (MF3, default-on for
+--     any name, died at FD4 on 'zz_unknown_feature').
+--   Leak check: identical to the pre-run snapshot (0120 md5 517cc1d6… live,
+--     the four test-org rows unchanged, "test" still Elite, table comment
+--     unchanged, no h127 functions, no idle transaction).
+--   Applied right after (apply_migration, verbatim): catalog 20261110023443;
+--     verify block passed; md5 f7cf60e0…, one overload, INVOKER, STABLE,
+--     search_path=public, pg_temp; EXECUTE false for PUBLIC, anon,
+--     authenticated, service_role, dashboard_readonly. Santa Rosa American
+--     (8fde72f9…) reads on for both, has no volunteer_settings or
+--     official_signup_settings row (both links off). Read as the Pro account
+--     (5ea39d6b…) and a Free one (66ecbcb5…), rolled back: both admin states
+--     feature true, elite false.
