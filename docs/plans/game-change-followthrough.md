@@ -233,6 +233,91 @@ self-sign-up already behave the new way.
    rained-out game. The manual picker has no weekly-limit check, so nothing
    changes there.
 
+**Investigation, 2026-11-10 (before building) — every place that decides
+"busy" today:**
+
+| # | Where | Used by | Status rule today | Under the new rule |
+|---|---|---|---|---|
+| 1 | SQL `official_slot_problem` (0124), bookings gathered inline (`g2.status <> 'cancelled'`) → `official_block_reason` (overlap AND weekly cap) | the sign-up page's open spots (`official_open_spots`), `official_claim`, `insert_official_assignments` (auto-assign's write re-check) | cancelled not busy; **postponed busy** | gathers from the one rule; postponed not busy |
+| 2 | TS `auto-assign.ts` ~358, `existing` filtered `status !== "cancelled"` → bookings + weekly load | auto-assign (division and season) | cancelled not busy; **postponed busy** | reads bookings from the one rule; postponed not busy |
+| 3 | TS `findUmpireConflict` (conflicts.ts): its own `game_umpires → games` read, **no status** | the manual save check in `UmpireSlots` (`assignmentPrecheckMessage`: "Sam is already assigned to …") | **everything busy**, cancelled included | the one rule |
+| 4 | TS picker flags in `UmpireSlots` via `bookingsFromRows` over the roster's `booking_rows:game_umpires(game:games(…))` embed, **no status**. Two roster readers: `division-schedule-panel.tsx` ~418, `game-detail-modal.tsx` ~220 | the assign dropdown ("— already assigned Expos vs Mets, 9:00 AM", greyed) | **everything busy** | the one rule |
+| 5 | TS `record-played-modal.tsx` ~170: the same embed, **no status** → `findConflictInBookings` | the "already officiating … that day" notice | **everything busy** | the one rule |
+
+**Not "busy" decisions, left alone:**
+- **The sign-up page's "my games" list** (`official_signup_page`, `g.status <> 'cancelled'`). It's a display of upcoming games, so a postponed game still shows there. The decision is whether to align it.
+- **Volunteer-tracker official counts** (0123): worked games, not busy.
+- **Print-all, the pay report and the Schedule page's assigned names**: display only.
+- **Auto-assign's "which games to staff" filter** (~246): a different question.
+
+**Game length: the two languages agree.** SQL `official_game_minutes` and TS
+(`bookingsFromRows`, auto-assign) both use a numeric `game_duration`, else
+90. SQL rounds a fractional value; live data has 34 divisions, all numeric,
+none fractional, none out of range.
+
+**Exact visible changes.** Live data, read-only: 7 assignments sit on
+cancelled games, all in the SRALL test org's ARCHIVED season, none upcoming,
+none overlapping another assignment; 0 on postponed games. So **nothing
+changes on any live screen today.** What changes from now on:
+1. **Assign picker** (division schedule panel row → Officials; Officials page
+   → a game's detail): an official whose overlapping game is rained out or
+   postponed was greyed out with " — already assigned Expos vs Mets, 9:00 AM";
+   now selectable, no suffix.
+2. **Saving that assignment** (the race path): was refused with "Sam is already
+   assigned to Expos vs Mets at 9:00 AM."; now saves.
+3. **Record where it was played:** "an assigned official is already officiating
+   … that day" no longer names a rained-out or postponed game.
+4. **Auto-assign, the sign-up page's open spots, claims, auto-assign's
+   database re-check:** a POSTPONED game stops blocking (cancelled already
+   didn't), for overlap AND the weekly limit. No postponed games exist live.
+5. **Unchanged everywhere:** scheduled, reschedule_pending,
+   pending_interleague, in_progress and completed games stay busy, and so does
+   any status added later.
+
+**Design for the build (supersedes the bullets below where they differ):**
+- `official_game_busy(p_status text)` — the ONE rule, SQL, immutable, callable
+  by no role: `p_status is null or p_status not in ('cancelled', 'postponed')`
+  (a null status is busy — the safe direction).
+- `official_slot_problem` re-created verbatim from 0124 with
+  `g2.status <> 'cancelled'` → `public.official_game_busy(g2.status)`. Its
+  0124 mutants are re-aimed (the sql-latest rule) and the 0124 proof is re-run
+  as `regress0124`.
+- `official_bookings(p_season_id uuid, p_umpire_ids uuid[])` — SECURITY
+  DEFINER, authenticated, **member only, NOT Elite**: in-schedule assignment
+  is open to every plan, and an Elite gate would break the Free/Pro picker.
+  Returns `{game_umpire_id, umpire_id, game_id, scheduled_at (as stored),
+  minutes, home, away}` for BUSY games only, umpires limited to the season.
+- **The TS callers all read it; none keeps a status test or a booking embed:**
+  `findUmpireConflict`, both roster readers (the embed is dropped; one RPC
+  for the roster's ids after the roster read; an unreadable bookings read
+  is the existing "couldn't read officials" error, never an empty list),
+  record-played (its officials read becomes names + the RPC), and
+  auto-assign's `existing`. `bookingsFromRows` becomes `bookingsFromRpc`.
+- **Mutants, one per caller (all killed at their own tag):**
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| SQL MB1 | the rule counts cancelled | OB1 |
+| SQL MB2 | the rule becomes an allowlist that forgets `reschedule_pending` | OB2, a new status stays busy |
+| SQL MB3 | `official_slot_problem` keeps its own `<> 'cancelled'` (postponed busy) | OB3, the slot problem agrees with the rule for a postponed game |
+| SQL MB4 | `official_bookings` returns cancelled rows | OB1b |
+| SQL MB5 | `official_bookings` drops the member gate | OB4 |
+| SQL MB6 | `official_bookings` granted to anon | P1 |
+| TS CB1 | `findUmpireConflict` reads `game_umpires` itself | the manual-save check (fake client: the table holds a cancelled overlap, the RPC doesn't) |
+| TS CB2 | the panel roster re-adds the embed | source scan |
+| TS CB3 | the game-detail roster re-adds the embed | source scan |
+| TS CB4 | record-played reads its own bookings | source scan + the notice |
+| TS CB5 | auto-assign filters its own status | the auto-assign check on a postponed game (behaviour, through `officials-fake`) |
+
+  CB2–CB4 are source scans — weak by nature, stated — because the readers
+  live in components.
+- Sims to re-run: `sim:officials` (three zones), `sim:umpire-reads`,
+  `sim:officials-wall-clock`, `sim:record-played`, `sim:official-claim-rules`,
+  `sim:official-signup-page`, `sim:mutant-targets`; plus the 0124 proof as
+  `regress0124`.
+- **Deploy order:** apply before the code reaches `main` (the callers call
+  `official_bookings`).
+
 **One rule, the database's:**
 - New SQL `official_bookings_core(p_umpire_ids uuid[])` (INVOKER, callable by
   no role): each official's games that count as busy — the ONE place the
