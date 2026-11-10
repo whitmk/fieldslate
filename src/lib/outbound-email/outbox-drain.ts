@@ -115,9 +115,16 @@ export function sendOutcome(r: { status: number; name?: string | null; providerS
   return "fail";
 }
 
-/** When a held row is due again: a daily quota resets at the next 00:00 UTC
- *  (Resend's day); a monthly quota is re-tried in 6 hours (we don't know the
- *  billing date); a rate limit at the next run. */
+/** When a held row is due again (sources read 2026-11-10):
+ *   - daily quota → the next 00:00 UTC. Resend: "a UTC calendar day
+ *     (00:00–24:00 UTC) and resets at midnight UTC", "not a rolling 24-hour
+ *     window" (docs/knowledge-base/account-quotas-and-limits and
+ *     docs/api-reference/rate-limit). Free plan only — paid plans have no
+ *     daily quota.
+ *   - monthly quota → re-tried in 6 hours. Resend pauses sending "until the
+ *     next billing cycle" and doesn't state the date, so the banner says when
+ *     FieldSlate will TRY AGAIN, never when the limit resets.
+ *   - rate limit (10 requests a second per team) → the next run. */
 export function holdUntil(reason: HoldReason, now: Date): string {
   if (reason === "quota_daily") {
     const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));

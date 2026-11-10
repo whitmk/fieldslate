@@ -5947,7 +5947,10 @@ Still open:
     their own HTTP status) and ADDS Resend's `name` and `providerStatus`
     (`resendFailure`, `src/lib/email.ts`).
   - **ONE decision, `sendOutcome`** (`src/lib/outbound-email/outbox-drain.ts`):
-    `daily_quota_exceeded` → hold until the next 00:00 UTC;
+    `daily_quota_exceeded` → hold until the next 00:00 UTC (Resend: the
+    daily quota is "a UTC calendar day … resets at midnight UTC", "not a
+    rolling 24-hour window"; Free plan only — account-quotas-and-limits and
+    rate-limit docs, read 2026-11-10);
     `monthly_quota_exceeded` → hold 6 hours; `rate_limit_exceeded` or a 429
     → hold until the next run; 5xx / no provider status / a thrown send →
     retry with backoff; any other 4xx → final, never retried. A hold puts
