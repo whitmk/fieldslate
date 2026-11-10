@@ -22,6 +22,10 @@
 // MUTATION LOG (2026-11-08): MP5 first SURVIVED — W1 compared indexOf
 // positions, and a removed check (-1) still sorted "before" the database.
 // Each check must now be present (> 0) as well as first.
+// 2026-11-09: MP10 (the old "Online changes are closed" line) first SURVIVED
+// — C1 called each words.ts function with a value only, and MY_CLOSED's
+// no-contact sentence is its null branch. C1 now calls every function both
+// ways.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { cancelOutcome, claimView, claimWhere, keepOutcome, readManageReply, type MyClaim } from "@/lib/volunteers/manage-page";
@@ -102,6 +106,34 @@ const page = read("src/app/v/m/[token]/page.tsx");
 ok(page.includes("robots: { index: false, follow: false }") && page.includes('referrer: "no-referrer"'), "W1", "noindex, no referrer");
 ok(read("src/app/api/volunteers/manage/[token]/cancel/route.ts").includes('manageAction("volunteer_cancel"') &&
    read("src/app/api/volunteers/manage/[token]/keep/route.ts").includes('manageAction("volunteer_keep_spot"'), "W1", "each route calls its own function");
+
+// C1 — cancel-only wording (2026-11-09): v1 has no switching, so nothing a
+// volunteer reads may offer to "change" a spot. Every volunteer string in
+// words.ts (functions called with placeholder arguments), privacy section 8
+// and /help/volunteers. Admin buttons ("Change") don't match the pattern.
+const CHANGE_WORDING = /chang(e|ing) (or|and) cancel|change (these|a|your) (sign-ups?|spots?)|changes close|online changes|switch (to|spots?)/i;
+const volunteerStrings: string[] = [];
+for (const [name, v] of Object.entries(W)) {
+  if (typeof v === "string") volunteerStrings.push(`${name}: ${v}`);
+  else if (typeof v === "function") {
+    // Both ways: a value and null — MY_CLOSED's no-contact sentence is the null branch.
+    for (const arg of ["x", null]) {
+      try { const out = (v as (...a: unknown[]) => unknown)(arg, arg, arg); if (typeof out === "string") volunteerStrings.push(`${name}(): ${out}`); } catch { /* not a sentence */ }
+    }
+  }
+}
+const privacy = read("src/app/(marketing)/privacy/page.tsx");
+const section8 = privacy.slice(privacy.indexOf("8. VOLUNTEER"), privacy.indexOf("9. OFFICIALS SIGN-UP"));
+ok(section8.length > 500, "C1", "privacy section 8 found", String(section8.length));
+const help = read("src/app/(marketing)/help/volunteers/page.tsx");
+for (const [where, text] of [...volunteerStrings.map((t) => [t.split(":")[0], t] as const), ["privacy section 8", section8.replace(/\s+/g, " ")] as const, ["/help/volunteers", help.replace(/\s+/g, " ")] as const]) {
+  const m = text.match(CHANGE_WORDING);
+  ok(!m, "C1", `${where} offers to change a spot: "${m?.[0]}"`);
+}
+ok(volunteerStrings.length > 100, "C1", "words.ts strings scanned", String(volunteerStrings.length));
+ok(W.EMAIL_MANAGE === "View or cancel your sign-up", "C1", "the email's manage link", W.EMAIL_MANAGE);
+// C2 — a moved spot still offers Keep it / Cancel.
+ok(W.MY_KEEP === "Keep it", "C2", "Keep it on a moved spot", W.MY_KEEP);
 
 for (const [k, v] of Object.entries(counters)) ok(v > 0, "VAC", `anti-vacuity counter ${k} is zero`);
 if (failures.length) {

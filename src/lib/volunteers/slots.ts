@@ -1,5 +1,5 @@
 // Volunteer game-role slots: which games have them, how many, and whether a
-// volunteer may take, change or cancel one (0121). PURE — no clock, no React,
+// volunteer may take or cancel one (0121). PURE — no clock, no React,
 // no database. The database decides every claim; this file is its TypeScript
 // twin for the screens, pinned to it by ONE case table (the
 // VSLOT-TABLE-BEGIN / -END block in scripts/sim/volunteer-claims-sim.sql —
@@ -23,7 +23,7 @@
 //   * A new claim closes at the game's start (wall clock, league's zone).
 //   * The sign-up page lists LOCKED divisions only (decided 2026-11-08), and
 //     a role with sign-ups off takes no new claims.
-//   * A volunteer may change or cancel until 24 hours before the start,
+//   * A volunteer may cancel (or keep a moved spot) until 24 hours before the start,
 //     measured on the wall clock (the database does the same with timestamp
 //     arithmetic — a clock change inside the window is not adjusted for).
 //   * A role may START up to 120 minutes before the game (lead minutes,
@@ -198,7 +198,7 @@ export function claimRefusal(args: {
   return null;
 }
 
-/** Whether a volunteer may still change or cancel a spot starting at
+/** Whether a volunteer may still cancel a spot (or keep one whose game moved) starting at
  *  `startWall`: strictly more than 24 hours away. */
 export function canChangeSpot(startWall: string, nowWall: string): boolean {
   const m = wallMinutesBetween(nowWall, startWall);

@@ -11,7 +11,7 @@ export const UPGRADE_BUTTON = "Upgrade to turn it on";
 
 export const CONTACT_TITLE = "League contact email";
 export const CONTACT_DETAIL =
-  "Every volunteer email replies to this address, and volunteers who need to change a spot within 24 hours are told to write here. Use an address your board checks.";
+  "Every volunteer email replies to this address, and volunteers who need to cancel a spot within 24 hours are told to write here. Use an address your board checks.";
 
 export const LINK_TITLE_ON = "Sign-up link is on";
 export const LINK_TITLE_OFF = "Sign-up link is off";
@@ -159,7 +159,7 @@ export const ASSIGN_FIRST_INITIAL = "First initial";
 export const ASSIGN_LAST_NAME = "Last name";
 export const ASSIGN_EMAIL = "Email";
 export const ASSIGN_ADULT = "This volunteer is 18 or older";
-export const ASSIGN_EMAIL_NOTE = "We'll email them a confirmation with a link to change or cancel.";
+export const ASSIGN_EMAIL_NOTE = "We'll email them a confirmation with a link to view or cancel.";
 export const ASSIGN_ANYWAY = "Assign anyway";
 export const CHANGE_TITLE = "Change this sign-up";
 export const CHANGE_NOTIFY = "Email the volunteer that their spot was canceled";
@@ -170,8 +170,8 @@ export const CHANGE_FAILED = "Couldn't cancel this sign-up. Nothing changed — 
 // ── Volunteer emails (rendered by email-templates.ts) ────────────────────────
 export const EMAIL_FOOTER_REPLY = (league: string) => `Questions? Reply to this email to reach ${league}.`;
 export const EMAIL_FOOTER_BRAND = "Sent by FieldSlate for your league.";
-export const EMAIL_MANAGE = "Change or cancel your sign-up";
-export const EMAIL_MANAGE_NOTE = "Changes close 24 hours before the spot. After that, reply to this email.";
+export const EMAIL_MANAGE = "View or cancel your sign-up";
+export const EMAIL_MANAGE_NOTE = "You can cancel online until 24 hours before the spot. After that, reply to this email.";
 export const EMAIL_PICK_NEW = "Pick a new spot";
 export const EMAIL_SPOTS_HEADING = (n: number) => (n === 1 ? "Your spot" : "Your spots");
 
@@ -236,7 +236,7 @@ export const PUB_CHOOSE_TEAM = "Choose your child's team";
 export const PUB_FIRST_INITIAL = "First initial";
 export const PUB_LAST_NAME = "Last name";
 export const PUB_EMAIL = "Email";
-export const PUB_EMAIL_NOTE = "We'll send a confirmation with a link to change or cancel.";
+export const PUB_EMAIL_NOTE = "We'll send a confirmation with a link to view or cancel.";
 export const PUB_ADULT = "I'm 18 or older";
 export const PUB_CONFIRM = "Confirm sign-up";
 export const PUB_PRIVACY = "Only league admins see your name, team and email. Everyone else sees this spot as \"Taken.\"";
@@ -245,7 +245,7 @@ export const PUB_OVERLAP_DETAIL = "Signing someone else up? That's fine, just co
 export const PUB_OVERLAP_YES = "Yes, take both spots";
 export const PUB_DONE_TITLE = "You're signed up";
 export const PUB_DONE_EMAILED = (email: string) =>
-  `We emailed ${email} a confirmation. Use the link in it to change or cancel. If this game moves or rains out, we'll email you.`;
+  `We emailed ${email} a confirmation. Use the link in it to view or cancel. If this game moves or rains out, we'll email you.`;
 export const PUB_ANOTHER = "Sign up for another spot";
 export const PUB_SEASON = "Season";
 export const PUB_NEED_DIVISION = "Choose a division.";
@@ -270,11 +270,11 @@ export const PUB_UNAVAILABLE = "Sign-ups are temporarily unavailable. Please try
 // ── The volunteer's own page (/v/m/<token>) ──────────────────────────────────
 export const MY_TITLE = "My sign-ups";
 export const MY_PRIVATE =
-  "This page is private to you. Anyone with this link can change these sign-ups, so don't share it. Changes close 24 hours before each spot.";
+  "This page is private to you. Anyone with this link can cancel these sign-ups, so don't share it. You can cancel online until 24 hours before each spot.";
 export const MY_CLOSED = (contact: string | null) =>
   contact
-    ? `Less than 24 hours away. Online changes are closed. To cancel, contact the league: ${contact}`
-    : "Less than 24 hours away. Online changes are closed. To cancel, reply to any sign-up email.";
+    ? `Less than 24 hours away, so it can't be canceled online. To cancel, contact the league: ${contact}`
+    : "Less than 24 hours away, so it can't be canceled online. To cancel, reply to any sign-up email.";
 export const MY_MOVED_TAG = "Game moved";
 export const MY_NOW = "Now";
 export const MY_WAS = "Was";
@@ -302,8 +302,8 @@ export const MY_LOAD_FAILED = "We couldn't load your sign-ups right now. Please 
 export const REMIND = "Remind";
 export const REMINDED_ON = (date: string) => `Reminded ${date}`;
 export const NEXT_UP = (when: string, n: number) => `Next up: ${when} · ${n} volunteer${n === 1 ? "" : "s"} signed up`;
-export const NEXT_UP_NOT_SENT = "Reminder not sent yet. Each reminder includes the volunteer's link to change or cancel.";
-export const NEXT_UP_SENT = (date: string) => `Reminder sent ${date}. Each reminder includes the volunteer's link to change or cancel.`;
+export const NEXT_UP_NOT_SENT = "Reminder not sent yet. Each reminder includes the volunteer's link to view or cancel.";
+export const NEXT_UP_SENT = (date: string) => `Reminder sent ${date}. Each reminder includes the volunteer's link to view or cancel.`;
 export const REMIND_ALL = (n: number, when: string) => `Remind ${n === 1 ? "1 volunteer" : `all ${n}`} for ${when}`;
 export const REMIND_SENT_ONE = "Reminder sent.";
 export const REMIND_SENT_ALL = (n: number) => (n === 1 ? "Reminder sent to 1 volunteer." : `Reminders sent to ${n} volunteers.`);
