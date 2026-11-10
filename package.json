@@ -21,6 +21,8 @@
     "sim:official-claim-rules:mutants": "npx tsx scripts/sim/official-claim-rules-mutants.ts",
     "sim:official-signup-page": "TZ=UTC npx tsx scripts/sim/official-signup-page-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/official-signup-page-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/official-signup-page-sim.ts",
     "sim:official-signup-page:mutants": "npx tsx scripts/sim/official-signup-page-mutants.ts",
+    "sim:contact-verify-app": "TZ=UTC npx tsx scripts/sim/contact-verify-app-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/contact-verify-app-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/contact-verify-app-sim.ts",
+    "sim:contact-verify-app:mutants": "npx tsx scripts/sim/contact-verify-app-mutants.ts",
     "sim:umpire-reads:mutants": "npx tsx scripts/sim/umpire-reads-failclosed-mutants.ts",
     "sim:assignment-loss": "TZ=UTC npx tsx scripts/sim/assignment-loss-sim.ts",
     "sim:assignment-loss:mutants": "npx tsx scripts/sim/assignment-loss-mutants.ts",

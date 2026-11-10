@@ -12,15 +12,12 @@ export const UPGRADE_BUTTON = "Upgrade to turn it on";
 export const CONTACT_TITLE = "League contact email";
 export const CONTACT_DETAIL =
   "Every volunteer email replies to this address, and volunteers who need to change a spot within 24 hours are told to write here. Use an address your board checks.";
-export const CONTACT_SAVE = "Save";
-export const CONTACT_SAVED = "Saved.";
-export const CONTACT_CLEARED = "Contact email removed.";
 
 export const LINK_TITLE_ON = "Sign-up link is on";
 export const LINK_TITLE_OFF = "Sign-up link is off";
 export const LINK_DETAIL =
   "Turning it off stops new sign-ups. Turning it back on brings back the same link.";
-export const LINK_NEEDS_CONTACT = "Add a league contact email to turn the link on.";
+export const LINK_NEEDS_CONTACT = "Confirm a league contact email to turn the link on.";
 export const LINK_ON_NOTICE = "The sign-up link is on.";
 export const LINK_OFF_NOTICE = "The sign-up link is off. New sign-ups are stopped.";
 

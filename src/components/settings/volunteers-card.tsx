@@ -4,10 +4,10 @@
 // switch is on (see src/lib/volunteers/settings-card.ts).
 //
 // Writes, all as the signed-in admin, through 0120's functions:
-//   * contact email → set_volunteer_contact_email (blank clears it; refused
-//                     while the link is on). Never defaults to anyone's
-//                     account email.
-//   * on/off        → set_volunteer_link (on needs Elite and a contact email;
+//   * contact email → ContactEmailField (0126): a new address is used only
+//                     once the link emailed to it is confirmed. Never
+//                     defaults to anyone's account email.
+//   * on/off        → set_volunteer_link (on needs Elite and a CONFIRMED contact;
 //                     off keeps the token)
 //   * reset         → reset_volunteer_link, behind a confirm
 // Every sentence comes from src/lib/volunteers/words.ts.
@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SeasonUpgradeModal } from "@/components/plan/UpgradeModal";
 import { createClient } from "@/lib/supabase/client";
+import { ContactEmailField } from "@/components/settings/contact-email-field";
 import { linkSwitchBlocked, volunteerSignupUrl, type VolunteerCardData } from "@/lib/volunteers/settings-card";
 import * as W from "@/lib/volunteers/words";
 
@@ -57,36 +58,13 @@ function EliteBody({ orgId, data }: { orgId: string; data: VolunteerCardData }) 
   const [token, setToken] = useState(data.settings?.linkToken ?? null);
   const [enabled, setEnabled] = useState(data.settings?.linkEnabled ?? false);
   const [savedContact, setSavedContact] = useState(data.settings?.contactEmail ?? null);
-  const [contactDraft, setContactDraft] = useState(data.settings?.contactEmail ?? "");
-  const [busy, setBusy] = useState<null | "contact" | "toggle" | "reset">(null);
+  const [busy, setBusy] = useState<null | "toggle" | "reset">(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
 
   const blocked = linkSwitchBlocked({ linkEnabled: enabled, savedContact });
-  const contactChanged = contactDraft.trim() !== (savedContact ?? "");
-
-  async function saveContact() {
-    setBusy("contact");
-    setError(null);
-    setNotice(null);
-    const supabase = createClient();
-    const { data: res, error: err } = await supabase.rpc(
-      // @ts-expect-error — RPC isn't in the hand-maintained types (0120)
-      "set_volunteer_contact_email",
-      { p_org_id: orgId, p_email: contactDraft },
-    );
-    setBusy(null);
-    const r = res as { contact_email: string | null } | null;
-    if (err || !r) {
-      setError(W.settingsErrorLine(err?.message));
-      return;
-    }
-    setSavedContact(r.contact_email);
-    setContactDraft(r.contact_email ?? "");
-    setNotice(r.contact_email ? W.CONTACT_SAVED : W.CONTACT_CLEARED);
-  }
 
   async function toggle() {
     setBusy("toggle");
@@ -132,30 +110,17 @@ function EliteBody({ orgId, data }: { orgId: string; data: VolunteerCardData }) 
 
   return (
     <div className="mt-2 max-w-3xl divide-y divide-gray-100">
-      <div className="py-4">
-        <label htmlFor="volunteer-contact" className="text-sm font-semibold text-gray-900">{W.CONTACT_TITLE}</label>
-        <p className="mt-0.5 text-xs text-gray-500">{W.CONTACT_DETAIL}</p>
-        <div className="mt-2 flex max-w-md flex-col gap-2 sm:flex-row">
-          <input
-            id="volunteer-contact"
-            type="email"
-            autoComplete="email"
-            maxLength={254}
-            value={contactDraft}
-            onChange={(e) => setContactDraft(e.target.value)}
-            placeholder="board@yourleague.org"
-            className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-          <button
-            type="button"
-            disabled={busy !== null || !contactChanged}
-            onClick={saveContact}
-            className="rounded-lg bg-[#0C1F3F] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-          >
-            {W.CONTACT_SAVE}
-          </button>
-        </div>
-      </div>
+      <ContactEmailField
+        orgId={orgId}
+        kind="volunteers"
+        initialContact={data.settings?.contactEmail ?? null}
+        switchOn={enabled}
+        inputId="volunteer-contact"
+        title={W.CONTACT_TITLE}
+        detail={W.CONTACT_DETAIL}
+        placeholder="board@yourleague.org"
+        onConfirmedChange={setSavedContact}
+      />
 
       <div className="flex items-center justify-between gap-4 py-4">
         <div>

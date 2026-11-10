@@ -100,6 +100,8 @@ const OUTBOUND_DIRS = [
   "src/lib/interleague",
   "src/lib/orgs",
   "src/components/export",
+  "src/app/confirm-email", // a league contact address's confirmation page (0126)
+  "src/lib/contact-verify", // its rules and the confirmation email
 ];
 const OUTBOUND_FILES = [
   "src/components/playoffs/bracket-pieces.tsx",
@@ -212,6 +214,10 @@ let officialFiles = 0;
     ...walk("src/lib/umpires"), ...walk("src/components/umpires"), ...walk("src/app/(dashboard)/dashboard/umpires"),
     ...walk("src/lib/officials-signup"), ...walk("src/components/officials-signup"), ...walk("src/app/o"),
     ...walk("src/app/api/officials"), ...walk("src/lib/outbound-email"),
+    // The shared contact-email confirmation (0126): both cards use it, so it
+    // must reach neither feature's code.
+    ...walk("src/lib/contact-verify"), ...walk("src/app/api/contact-verify"), ...walk("src/app/confirm-email"),
+    "src/components/settings/contact-email-field.tsx",
   ];
   const bad: string[] = [];
   for (const f of files) {
