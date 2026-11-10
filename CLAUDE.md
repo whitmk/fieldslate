@@ -464,6 +464,17 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Proof: `scripts/sim/feature-default-on-sim.sql` (+ build script; rolled back
   in "test"; RL1 no row written, FD1–FD5, FA1–FA3, FR1 read-only on Santa
   Rosa, FP1; 6 mutants MF1–MF6, MF3 = default-on for any feature name).
+- **0128 (outbox quota hold + email problems) — WRITTEN, NOT APPLIED
+  (2026-11-10, branch `fix/outbox-quota`).** Proof
+  `scripts/sim/outbox-quota-sim.sql` (+ `outbox-quota-build.ts`, `--md5`;
+  rolled back in "test", 6 mutants MQ1–MQ6) has NOT been run — it takes
+  ACCESS EXCLUSIVE on both outboxes and `volunteer_trigger_failures` for the
+  run, so it waits for Whit's go. **Deploy order: apply 0128 BEFORE the code
+  reaches `main`** — both drains call the hold functions (a missing function
+  turns every quota stop into a failed hold, logged, the row retaken after 10
+  minutes with its attempt used) and the banners call the problems functions
+  (missing → "Couldn't check for email problems."). See "Outbox quota and
+  email problems (0128)".
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -5926,6 +5937,54 @@ Still open:
   neither, the request is byte-identical ([Q3]). Harness: `npm run
   sim:volunteer-email` (101 checks) + `:mutants` (20, each killed at its own
   assertion — read the sim's MUTATION LOG).
+- **Outbox quota and email problems (0128, branch `fix/outbox-quota`,
+  2026-11-10).** THE BUG: `sendEmail` reported every Resend error as status
+  500, so the drains retried everything — a quota stop (Free plan: 100 a
+  day) burned all 5 attempts in ~30 minutes and the rest of the day's emails
+  in BOTH outboxes failed for good, a permanent 4xx was retried 5 times, and
+  no admin screen showed an outbox failure.
+  - `sendEmail` keeps `status` (500 — two interleague routes return it as
+    their own HTTP status) and ADDS Resend's `name` and `providerStatus`
+    (`resendFailure`, `src/lib/email.ts`).
+  - **ONE decision, `sendOutcome`** (`src/lib/outbound-email/outbox-drain.ts`):
+    `daily_quota_exceeded` → hold until the next 00:00 UTC;
+    `monthly_quota_exceeded` → hold 6 hours; `rate_limit_exceeded` or a 429
+    → hold until the next run; 5xx / no provider status / a thrown send →
+    retry with backoff; any other 4xx → final, never retried. A hold puts
+    this row AND every row still waiting in the run back WITHOUT using an
+    attempt (`volunteer_outbox_hold` / `official_outbox_hold` give the take's
+    attempt back) and stops the run. `shouldRetry` is gone.
+  - **The volunteer drain drops started-game notices first**
+    (`volunteer_outbox_drop_started`, its `beforeTake`): a pending
+    game_moved / rained_out / makeup_set / back_on / shift_changed /
+    spot_lost whose spot has started (league time) is superseded
+    `game_started`. Confirmations, reminders and cancels are never dropped.
+    A failed drop is logged and the drain still runs.
+  - **The admin banner** (`EmailProblemsBanner`,
+    `src/components/email-problems/`; words and rules
+    `src/lib/outbound-email/problems.ts`, rendered verbatim): top of Who
+    signed up and on the Officials page above "All officials"; a one-line
+    pointer on the Volunteers roles page under the link strip. It lists
+    unacknowledged failed emails (who, what, why — a provider message is
+    never shown), how many wait for a quota reset (time in the league's
+    timezone) and, for volunteers, unacknowledged trigger failures; "Mark as
+    seen" sets `acknowledged_at`. An unreadable read says "Couldn't check for
+    email problems." (`feature_off` → no banner). "Sent" means it left
+    FieldSlate — no Resend webhook, bounces are invisible, and the banner
+    says so. Each feature names its OWN functions and describes its own rows
+    (`src/lib/volunteers/email-problems.ts`,
+    `src/lib/officials-signup/email-problems.ts`) — the shared module names
+    neither, which keeps sim:volunteer-leaks U1 green.
+  - **Admin-only:** the problems functions are authenticated only (feature
+    admin gate: member → switch → Elite → not archived). `sim:outbox-quota`
+    F1 walks every public page and public API route's import chain and fails
+    on any path to the banner, its words, the loader or a name containing
+    `email_problems`.
+  - Harness: `npm run sim:outbox-quota` (69 checks × 3 zones, 5 counters) +
+    `:mutants` (12, each killed at its own assertion; QM1/QM5 a quota stop
+    using attempts, QM4 a 4xx retried, QM8/QM9 the banner data reaching a
+    public route). sim:volunteer-email D2 now tests 5xx only (429 is a hold);
+    VE8/VE9/VE12 re-targeted at `sendOutcome` and the new loop.
 - **`vercel.json` runs the drain every 5 minutes, which needs Vercel PRO** —
   on Hobby a cron more frequent than daily fails EVERY deploy (Vercel status
   "Deployment failed.", linking the cron pricing page). It did exactly that to
@@ -6019,8 +6078,12 @@ Still open:
   regenerate code is unchanged. **Trigger failures fail LOUD:** the change and
   insert triggers never block the edit, but record a row in
   `volunteer_trigger_failures` (game, trigger, SQLSTATE — no personal data);
-  `volunteer_failure_count(season)` (member only) feeds the sign-up list and
-  the daily check. `volunteer_keep_spot`
+  `volunteer_failure_count(season)` (member only) exists, but **CORRECTION
+  2026-11-10: nothing in `src` ever called it — the sign-up list did NOT show
+  the count, despite what this bullet said.** 0128 shows unacknowledged
+  trigger failures on the Who signed up banner (its own count, in
+  `volunteer_email_problems`; `volunteer_failure_count` is unchanged and still
+  uncalled). `volunteer_keep_spot`
   (service_role) clears `moved_from`. Season delete sends nothing: it needs an
   archived season, and archiving already wiped the sign-ups. Proof: 44 mutants (13 for part 3), all killed at their own tag. Applying takes SHARE ROW EXCLUSIVE on `games`
   for the three CREATE TRIGGERs, plus the part-1 FKs.

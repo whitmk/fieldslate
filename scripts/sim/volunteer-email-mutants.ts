@@ -53,14 +53,14 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "VE8", what: "a 4xx refusal is retried", file: DRAIN,
-    find: "  return status === 429 || status >= 500;\n",
-    replace: "  return status >= 400;\n",
+    find: "  return \"fail\";\n}\n",
+    replace: "  return \"retry\";\n}\n",
     expect: "D3",
   },
   {
     id: "VE9", what: "a 5xx is final, not retried", file: DRAIN,
-    find: "  return status === 429 || status >= 500;\n",
-    replace: "  return status === 429;\n",
+    find: "  if (status >= 500 || !Number.isFinite(status)) return \"retry\";\n",
+    replace: "  if (!Number.isFinite(status)) return \"retry\";\n",
     expect: "D2",
   },
   {
@@ -77,8 +77,8 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "VE12", what: "the drain stops at the first failed finish", file: DRAIN,
-    find: "  for (const row of rows) {\n",
-    replace: "  for (const row of rows) {\n    if (summary.finishErrors) break;\n",
+    find: "    const row = rows[i];\n",
+    replace: "    const row = rows[i];\n    if (summary.finishErrors) break;\n",
     expect: "D6",
   },
   {

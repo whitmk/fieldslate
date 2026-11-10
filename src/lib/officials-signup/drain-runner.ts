@@ -85,6 +85,13 @@ export async function runOfficialsDrain(opts: { limit?: number } = {}): Promise<
         );
         return rpcErr ? { ok: false, error: rpcErr.message } : { ok: true };
       },
+      hold: async ({ id, until, reason }) => {
+        const { error: rpcErr } = await admin.rpc(
+          "official_outbox_hold" as never,
+          { p_id: id, p_until: until, p_reason: reason } as never,
+        );
+        return rpcErr ? { ok: false, error: rpcErr.message } : { ok: true };
+      },
       send: ({ to, subject, html, text, from, replyTo, idempotencyKey }) =>
         sendEmail(to, subject, html, text, { from, replyTo, idempotencyKey }),
       render: renderOfficialEmail,

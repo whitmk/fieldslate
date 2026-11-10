@@ -10,14 +10,14 @@ import {
   baseOutboxRow,
   drainOutbox as drainShared,
   outboxRowId,
-  shouldRetry,
   type BaseOutboxRow,
   type DrainSummary,
+  type HoldReason,
   type RenderedEmail,
   type SendResult,
 } from "@/lib/outbound-email/outbox-drain";
 
-export { DRAIN_GAP_MS, DRAIN_LIMIT, shouldRetry };
+export { DRAIN_GAP_MS, DRAIN_LIMIT };
 export type { DrainSummary, RenderedEmail, SendResult };
 
 export const VOLUNTEER_OUTBOX_LABEL = "volunteer-outbox";
@@ -47,6 +47,11 @@ export type DrainDeps = {
     replyTo: string;
     idempotencyKey: string;
   }): Promise<SendResult>;
+  /** 0128: put a taken row back without using an attempt. */
+  hold(args: { id: number; until: string; reason: HoldReason }): Promise<{ ok: true } | { ok: false; error: string }>;
+  /** 0128: drop pending notices whose game or shift has started. */
+  beforeTake?(): Promise<{ ok: true; dropped: number } | { ok: false; error: string }>;
+  now?(): Date;
   render(kind: string, payload: Record<string, unknown>, ctx: RenderCtx): RenderedEmail | null;
   sleep(ms: number): Promise<void>;
   log(message: string): void;
