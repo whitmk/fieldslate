@@ -269,4 +269,7 @@ end $h$;
 --   Leak check after each: no 0129 functions, official_slot_problem still
 --     0124's e1e756e3…, no ZZ12x seasons or officials, the test org still
 --     Elite, officials queue empty, no idle transaction.
--- NOT APPLIED — waiting for Whit's timing.
+-- APPLIED 2026-11-10 22:44 UTC on Whit's go, catalog 20261110224402
+--   (catalog row's text = the file, md5 2379c0bd…). Live md5(prosrc) =
+--   `--md5` for all three, one overload each; EXECUTE official_bookings
+--   authenticated only, the other two no role; leak check clean.

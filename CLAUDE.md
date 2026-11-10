@@ -482,14 +482,20 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `volunteer_trigger_failures`. **The latest migration applied.** **Deploy
   order (met): 0128 was applied BEFORE the code reached `main`.** See
   "Outbox quota and email problems (0128)".
-- **0129 (one busy rule for officials) — WRITTEN, NOT APPLIED (2026-11-10,
-  branch `fix/official-busy-rule`).** Rolled-back proof run 1 green (6/6 at
-  their own tag) and the 0124 proof against it green (MO5 at OC1) — read the
-  RUN LOG in `scripts/sim/official-busy-sim.sql`. Expected md5(prosrc) after
-  apply: `official_game_busy` `2d31e2e3079eb55e34a5e4decadb82ed`,
-  `official_slot_problem` `9d93f78e8c58a856f93b343e748f6c90`,
-  `official_bookings` `1d253cb415570d62d7dec9f3547e201e`. Takes no table
-  lock. **Apply BEFORE the code reaches `main`.** See "ONE BUSY RULE (0129)".
+- **0129 (one busy rule for officials) APPLIED 2026-11-10 22:44 UTC,
+  catalog `20261110224402`**, verbatim from the repo file on Whit's go (the
+  catalog row's text = the file, md5 `2379c0bd…`), after its first-run-green
+  rolled-back proof (6/6 at their own tag) and the 0124 proof against it
+  (MO5 at OC1) — read the RUN LOG in `scripts/sim/official-busy-sim.sql`.
+  md5(prosrc) verified, one overload each, `search_path=public, pg_temp`:
+  `official_game_busy` `2d31e2e3079eb55e34a5e4decadb82ed` (INVOKER),
+  `official_slot_problem` `9d93f78e8c58a856f93b343e748f6c90` (INVOKER),
+  `official_bookings` `1d253cb415570d62d7dec9f3547e201e` (DEFINER). EXECUTE:
+  `official_bookings` authenticated only, the other two no role (PUBLIC,
+  anon, service_role, dashboard_readonly false). Leak check clean, no
+  trigger disabled. **The latest migration applied.** **Deploy order (met):
+  0129 was applied BEFORE the code reached `main`.** See "ONE BUSY RULE
+  (0129)".
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -5318,8 +5324,8 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   `fetchOfficialBookings` + the pure `findConflictInBookings`, and the
   picker's pre-click option states (`umpire-slots.tsx`) use the same
   functions. Never write a parallel implementation — extend the shared ones.
-- **ONE BUSY RULE (0129 — WRITTEN, NOT APPLIED; branch
-  `fix/official-busy-rule`, 2026-11-10).** An official is busy for a game
+- **ONE BUSY RULE (0129, APPLIED 2026-11-10; branch
+  `fix/official-busy-rule`).** An official is busy for a game
   unless it is `cancelled` (rained out) or `postponed` — a BLOCKLIST, so a new
   status, or null, is busy. The rule lives ONCE, in the database:
   `official_game_busy(status)`. `official_slot_problem` (claims, open spots,
@@ -5337,8 +5343,8 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   place of the slots, record-played says "couldn't check". The sign-up
   page's "my games" list keeps its own `<> 'cancelled'` (a display list, by
   decision). The officials fake answers `official_bookings` with its own
-  copy of the blocklist, pinned to 0129 by sim [FK1]. **Deploy order: apply
-  0129 BEFORE the code reaches `main`.** Proof:
+  copy of the blocklist, pinned to 0129 by sim [FK1]. **Deploy order (met):
+  0129 was applied BEFORE the code reached `main`.** Proof:
   `scripts/sim/official-busy-sim.sql` (+ `official-busy-build.ts`, `--md5`,
   `regress0124`; 6 mutants). Harness: `npm run sim:official-busy` (32 checks
   × 3 zones) + `:mutants` (12: CB1–CB5 one per caller, FC1–FC7 fail-closed).
