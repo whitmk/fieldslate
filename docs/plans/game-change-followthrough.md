@@ -29,7 +29,137 @@ Migration number is a placeholder: check `list_migrations` before numbering
    rebuild-one-day preview must NAME the volunteers who will lose their spot.
    No admin email in v1 (B5 dropped).
 
-## Step 1 — the cancelled-game busy rule (before anything else)
+## Decisions, second review (Whit, 2026-11-10)
+
+- **Blog:** use today's snack shack behaviour, in Whit's words: "Snack shack
+  shifts are built from the game times. When games change, the coordinator
+  rebuilds the affected shifts with a preview, and volunteers whose shifts
+  change are emailed." The line 68 change is approved. The commit is amended
+  and held (`cb35917` on `blog/rainout-faq-accuracy`).
+- **New step 0.5, before the cancelled-game rule: the Resend quota fix is a
+  live bug, so it ships on its own branch.** It gives quota refusals their
+  own path in both queues (wait for the reset, no attempts used), adds the
+  "game already started" drop to the volunteer queue, and shows admins a
+  count of failed or undelivered emails on the Volunteers and Officials
+  pages. Mutants for the quota path. **UI placement is to be reported before
+  anything is built** — see Step 0.5.
+- **Cancelled-game rule approved.** The busy statuses are named exactly, and
+  the visible changes are listed for the acceptance test (Step 1).
+- **0106 switch approved.** Confirmed transaction-local, with no browser path
+  able to set it, plus a required mutant (Part A, "record_game_played").
+- **Approved:** the names-only function and its fence, youth routing, and the
+  settled defaults.
+- **Order:** blog → quota fix → cancelled rule → A → B.
+
+## Step 0.5 — Resend quota fix (live bug, own branch) — PLACEMENT AWAITING WHIT
+
+**What's broken today (read 2026-11-10):**
+
+1. `sendEmail` (`src/lib/email.ts`) turns EVERY Resend error into
+   `{ ok: false, status: 500 }`, whatever Resend said. So the drains'
+   `shouldRetry` (429 or 5xx) retries everything, including errors that will
+   never succeed (a validation error on a bad address), and can't tell a
+   quota stop from a blip.
+2. A quota stop burns all 5 attempts in about 30 minutes, then every row is
+   `failed` for good: the rest of that day's emails in BOTH queues.
+3. Nothing in the app shows an outbox failure, in either queue.
+   **Separately: CLAUDE.md says "the sign-up list shows the count" of
+   volunteer trigger failures, but no file in `src` calls
+   `volunteer_failure_count`.** That documented surface was never built. This
+   step builds it.
+4. The volunteer queue has no "game already started" drop. A notice that
+   waited (retry or quota) can arrive after the game.
+
+**The fix — no change to callers outside the two drains:**
+
+- **`sendEmail` keeps `status` exactly as it is.** Two interleague routes
+  pass `result.status` straight back as their HTTP status, so changing it
+  would change those routes. It ADDS `name` (Resend's error name) and
+  `providerStatus` (Resend's `statusCode`). The SDK 6.12.3 types carry
+  `daily_quota_exceeded`, `monthly_quota_exceeded`, `rate_limit_exceeded` and
+  `statusCode: number | null`.
+- **One pure decision in `outbox-drain.ts`, `sendOutcome(result)`:**
+  - `quota_daily` → put the row back to `pending` with `next_attempt_at` =
+    the next 00:00 UTC, attempts NOT counted, and stop the run. Further sends
+    would only fail the same way.
+  - `quota_monthly` → the same, but held 6 hours and re-tried (we don't know
+    the billing-cycle date), and the banner says the monthly limit was
+    reached.
+  - `rate` → back to pending at the next run, attempts not counted.
+  - `retry` (5xx / network) → today's backoff.
+  - `fail` (other 4xx) → failed at once, no retries.
+- **Both `_finish` functions** gain a "put back without counting" form: a new
+  argument `p_hold_until timestamptz` that sets `pending` and
+  `next_attempt_at`, and refunds the attempt the take just counted. Re-created
+  verbatim plus that branch. Volunteer: 0121's live body. Officials: 0124's.
+  Mutants re-targeted (the sql-latest rule).
+- **The volunteer take drops game notices for games that have started** —
+  `game_moved`, `rained_out`, `makeup_set`, `back_on`, `shift_changed` and
+  `spot_lost` — when the spot's start is at or before `volunteer_org_now`.
+  They are superseded with error `game_started`, which is not a failure and
+  is not counted. Re-created from 0122's live body (its mutants re-targeted).
+  Confirmations, reminders and cancels are not dropped: they aren't about a
+  game time.
+
+**UI placement — proposed, for Whit to approve before building:**
+
+- **Volunteers.** A banner at the top of **Who signed up**
+  (`/dashboard/volunteers/signups`), above the existing "Next up" and
+  "N sign-ups lost" banners: that's the page where the admin acts on people.
+  A one-line pointer on the Volunteers roles page
+  (`/dashboard/volunteers`), under the link strip, whenever the count is
+  above zero: "3 volunteer emails didn't go out — see Who signed up." The
+  tracker gets nothing.
+- **Officials.** A banner on `/dashboard/umpires`, between the header buttons
+  and the "All officials" card. The same banner later carries Part A's
+  "couldn't be notified" lines, so there is one place, not two.
+- **What the banner shows.** A summary line, then an expandable list, newest
+  first, from a new member + Elite function per queue
+  (`volunteer_email_problems(season)`, `official_email_problems(season)`,
+  names for admins only):
+  - "3 emails didn't go out. 12 are waiting for the daily email limit to
+    reset (midnight UTC, 5:00 PM Pacific)." The time is shown in the league's
+    timezone.
+  - Each row: who, what the email was (in words: "Rained out — Majors, Expos
+    vs Mets, Sat Oct 17"), and why ("Couldn't be sent", "No email address on
+    file", "Waiting for the daily limit").
+  - The volunteer banner also says "N schedule changes couldn't be checked
+    for volunteer emails" — that's `volunteer_failure_count`, finally shown.
+- **"Mark as seen".** Without it the banner stays until the season is
+  archived. It sets a new `acknowledged_at` on those outbox rows and hides
+  them. Its own function per queue, member + Elite.
+- **Honest limit, in the banner's help text:** "Emails that left FieldSlate
+  are counted as sent. We can't see whether they reached the inbox." There
+  is no Resend webhook, so bounces are invisible. Adding one is out of scope.
+- **Dropped "game already started" notices are not shown.** Nothing went
+  wrong.
+
+**Proof and sims (once placement is approved):**
+
+- SQL proof, rolled back in "test". QF1: `finish` with a hold puts the row
+  back with attempts unchanged and the given time. QF2: the take drops a
+  started-game notice as superseded and not counted. QF3: the problems
+  functions return names to a member only. QF4: acknowledge hides rows. P1:
+  EXECUTE per role. Plus regressions for the 0121/0122/0124 take/finish
+  mutants.
+- `sim:volunteer-email` and its officials twin, the new `sendOutcome`
+  section: each Resend error name maps to the right outcome; a daily quota
+  stops the run with no further sends; attempts are not counted.
+- Mutants:
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| QM1 | quota treated as `retry` | the "attempts unchanged" check |
+| QM2 | run continues after a daily quota stop | the "no further sends" check |
+| QM3 | hold time = now instead of next midnight UTC | the reset-time check |
+| QM4 | 4xx validation retried | the `fail` check |
+| QM5 | `finish` counts the attempt on a hold | QF1 |
+| QM6 | started-game drop removed | QF2 |
+| QM7 | drop applied to a confirmation | QF2b |
+| QM8 | problems function readable by a non-member | QF3 |
+| QM9 | `sendEmail` changes `status` for a quota error (the interleague routes' HTTP status) | a golden of the existing return shape |
+
+## Step 1 — the cancelled-game busy rule (after the quota fix, before Part A)
 
 **What the code does today (read 2026-11-10) — the app disagrees with itself:**
 
@@ -41,22 +171,60 @@ Migration number is a placeholder: check `list_migrations` before numbering
 | Manual picker pre-click flags (`umpire-slots.tsx` via `bookingsFromRows`, rosters from the division panel and game detail modal) | **Yes** — the `booking_rows` embed selects no status |
 | Record-where-played's officials notice (`record-played-modal.tsx`) | **Yes** (CLAUDE.md says so deliberately) |
 
-**Does anything depend on "cancelled = busy"?** No sim pins it: no officials
+**Exactly which statuses count as busy (decided):** an official is busy for a
+game whose status is `scheduled`, `reschedule_pending`,
+`pending_interleague`, `in_progress` or `completed`. A game is NOT busy when
+it is `cancelled` or `postponed`.
+
+- **Rained out IS `cancelled`.** Every rainout path writes `cancelled`; there
+  is no separate status.
+- **`postponed`** is allowed by the CHECK, but nothing writes it and there
+  are 0 rows. A postponed game isn't happening at its stored time, so it is
+  not busy.
+- **`completed`** stays busy. It is a real game: it still occupies its time
+  and still counts toward the weekly limit.
+- **`not_needed`** exists only on `playoff_games`. Officials can't be
+  assigned to playoff games (`game_umpires` references `games` only), so it
+  never reaches this rule. If officials are ever put on playoff games, a
+  not-needed game is NOT busy, and that is added then.
+- **The rule is written as a BLOCKLIST** — busy unless `cancelled` or
+  `postponed` — so a status added to `games` later counts as busy by default.
+  A wrongly busy official is a warning; a wrongly free one is double-booked.
+
+Live data, read-only, 2026-11-10: games statuses in use are scheduled 725,
+cancelled 32, pending_interleague 24, reschedule_pending 1, and 7
+assignments sit on cancelled games.
+
+**Does anything depend on "cancelled = busy"?** No sim pins it. No officials
 fixture puts an official on a cancelled game and expects a conflict
-(`sim:officials`, `sim:umpire-reads`, `sim:record-played`,
-`sim:officials-wall-clock` checked). `coach-conflict-sim` pins "cancelled
-excluded", but that is the coach-conflict feature, not officials. The change
-alters three things people see: a rained-out game stops blocking the manual
-save and the picker flag, and record-played's notice stops naming a
-rained-out game. **That last one is a judgement call:** record-played is
-usually used ON a rained-out game's own officials. Their OTHER rained-out
-game that day no longer counts, which is the intent.
+(checked: `sim:officials`, `sim:umpire-reads`, `sim:record-played`,
+`sim:officials-wall-clock`). `coach-conflict-sim` pins "cancelled excluded",
+but that is the coach-conflict feature, not officials. Auto-assign and
+self-sign-up already behave the new way.
+
+**Visible changes, for the acceptance test.** Set up official Sam on Game A
+(Sat 9:00 AM, Andrews), mark Game A rained out, then look at Game B (Sat
+9:30 AM, a different field):
+
+1. **Assign picker** (division schedule panel, and the game detail modal on
+   the Officials page): Sam is now SELECTABLE for Game B. Before, the option
+   was greyed with " — already assigned Expos vs Mets, 9:00 AM".
+2. **Saving that assignment:** it saves. Before, it was refused with "Sam is
+   already assigned to Expos vs Mets at 9:00 AM."
+3. **Record where it was played** on Game B, choosing a time that overlaps
+   Game A: the "already officiating" notice no longer names Game A.
+4. **Unchanged, check it still works:** put Game A back (Remove Rainout) and
+   steps 1–3 show the conflict again. A `completed` game still blocks.
+   Auto-assign and Sam's self-sign-up page behave as before (they already
+   skipped rained-out games).
+5. **Weekly limit:** auto-assign and self-sign-up already ignored the
+   rained-out game. The manual picker has no weekly-limit check, so nothing
+   changes there.
 
 **One rule, the database's:**
 - New SQL `official_bookings_core(p_umpire_ids uuid[])` (INVOKER, callable by
   no role): each official's games that count as busy — the ONE place the
-  status rule lives (not `cancelled`; whether `pending_interleague` counts is
-  stated in the function, today it does). `official_slot_problem` re-created
+  status rule lives: busy unless `cancelled` or `postponed`. `official_slot_problem` re-created
   to gather from it (body otherwise verbatim from 0124).
 - New `official_bookings(p_season_id)` (DEFINER, authenticated, member):
   returns `{umpire_id, game_id, start (wall clock), minutes, home, away}` from
@@ -136,17 +304,67 @@ nothing is left (`all_past`). So a notice held up by the 10-minute hold, a
 retry or a quota stop never tells an official about a game that has already
 started. The trigger's check is only an early exit; the take's is the rule.
 
-**`record_game_played` never queues an official email (decided).** A time
+**`record_game_played` never queues an official email (approved).** A time
 check can't guarantee it: the played date may be today with a start later
 than now, and the original game may also be later today. So 0106's function
-is re-created verbatim plus one line before its UPDATE —
-`perform set_config('fieldslate.official_notice_skip', 'on', true);` — and
-the trigger exits when that transaction-local setting is on. PostgREST runs no
-raw SQL, so a browser can't set it; even if something did, it only suppresses
-an email. Re-creating 0106 means re-verifying its md5 and re-targeting its
-mutants (`record-game-played-sim.sql`, the sql-latest rule). Proof GC12: a
-recorded correction later today queues nothing; mutant MG14 (the skip check
-removed) dies at GC12.
+is re-created verbatim plus two lines around its one games UPDATE:
+
+    perform set_config('fieldslate.official_notice_skip', 'on', true);   -- before
+    update public.games …;                                                -- unchanged
+    perform set_config('fieldslate.official_notice_skip', '', true);     -- after
+
+The trigger exits when the setting reads `on`
+(`current_setting('fieldslate.official_notice_skip', true) = 'on'`).
+
+**Transaction-local, confirmed.** The third argument `true` is `is_local`:
+Postgres reverts the value when the transaction ends, commit or rollback, so
+it can't leak to the next request on a pooled connection. The same form as
+the two `fieldslate.lock_bypass` uses in 0081/0082. The second line narrows it
+further, to the one UPDATE: anything later in the same transaction is
+notified normally.
+
+**No browser path can set it — checked 2026-11-10, read-only:**
+
+1. **PostgREST can't call `set_config`.** `pg_catalog` isn't an exposed
+   schema. With the anon key, `POST /rest/v1/rpc/set_config` → `PGRST202`
+   (not found in the exposed schema), `rpc/pg_catalog.set_config` →
+   `PGRST202`, and `Content-Profile: pg_catalog` → HTTP 406 (schema not
+   exposed). The `authenticator` role's settings carry no `pgrst.*`
+   override.
+2. **PostgREST sets only `request.*` settings from a request** (headers, JWT
+   claims, method, path, cookies). The JWT is signed, and a `fieldslate.*`
+   name can't be injected.
+3. **No callable function can set it.** Every function in a non-system
+   schema that calls `set_config` passes a LITERAL name: our two
+   `fieldslate.lock_bypass` functions, Supabase's
+   `storage.delete_lifecycle_objects` (`storage.allow_delete_query`), and
+   `realtime.apply_rls` / `realtime.authorize` (`role`, `request.jwt.*`,
+   `request.headers`, `realtime.topic`, `synchronous_commit`). None takes the
+   name as an argument, and none uses ours.
+4. **What setting it would do anyway:** it only suppresses an officials
+   email for a game write in the same transaction. Nothing else reads it.
+
+**Proof:**
+
+- **GC12:** a recorded correction for a game later today, with an assigned
+  official, queues nothing.
+- **GC12b:** in the SAME transaction, right after the record, an ordinary
+  move of another game with an official DOES queue.
+- **SK1:** the static fence. No function except `record_game_played` names
+  `official_notice_skip`, and no function callable by anon, authenticated or
+  service_role calls `set_config` with a non-literal first argument. It reads
+  `pg_proc`, so a future function that broke the rule fails the next run.
+
+**Mutants (required):**
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| MG14 | the trigger ignores the setting | GC12 |
+| MG17 | the reset line removed — the skip leaks to the rest of the transaction | GC12b |
+| MG18 | a new authenticated function `set_notice_skip(text)` that calls `set_config` with its argument | SK1 |
+
+Re-creating 0106 means re-verifying its md5 and re-targeting its mutants
+(`record-game-played-sim.sql`; the sql-latest rule).
 
 **One email per official, not one per game. This differs from volunteers on
 purpose.** The division panel's bulk rainout changes 3–6 games in one
@@ -453,7 +671,7 @@ spots each:
   outboxes, are lost.** They're failed visibly in each outbox, but no admin
   screen shows outbox failures today.
 
-**Fix in this build (proposed):**
+**Fix — moved to Step 0.5 (ships first, on its own branch); kept here for the record:**
 
 1. Tell a quota 429 apart from a rate-limit 429 by Resend's error name
    (`daily_quota_exceeded` / `monthly_quota_exceeded` vs
@@ -781,16 +999,21 @@ if that isn't what you meant.
 **Still open, needs you:** which Resend plan FieldSlate is on (dashboard
 check). If it's Free, upgrade before Part A ships.
 
-## Build order (each step held for your go)
+## Build order (each step held for your go) — blog → quota fix → cancelled rule → A → B
 
-0. The rainout blog FAQ fix — its own commit, its own branch.
-1. Step 1: the cancelled-game busy rule (migration + proof + app readers),
-   its own commit.
-2. Privacy section 9.
-3. Migration (A triggers, outbox, 0106 skip line, B1 marks, the volunteer
-   preview-names function) and its rolled-back proofs: the new proof plus
-   `regress0124`, `regress0106` and the volunteer take re-target.
-4. Officials templates, the quota-aware drain, the Officials page banner.
-5. B2–B4 screens and the named-volunteers preview.
-6. Apply (your time), then ship.
-7. Homepage cards.
+0. **Blog:** `cb35917` on `blog/rainout-faq-accuracy`, amended to Whit's
+   wording, held.
+0.5. **Resend quota fix** on its own branch (`fix/outbox-quota`): placement
+   approval first, then `sendEmail` names, the drain outcome, both `finish`
+   holds, the volunteer started-game drop, both banners and acknowledge, the
+   proof and mutants. Its migration is separate from Part A's.
+1. **Cancelled-game busy rule** — migration + proof + app readers, its own
+   commit.
+2. **Part A** — privacy section 9; migration (change and delete triggers,
+   outbox columns and kinds, the 0106 skip lines); proofs (new, `regress0124`,
+   `regress0106`); templates; the officials banner gains the
+   "couldn't notify" lines.
+3. **Part B** — the stale-days mark (B1), the banner (B2), the one-day
+   preview with the names-only function (B3), team keeping (B4).
+4. Apply each migration at your time, then ship.
+5. Homepage cards.
