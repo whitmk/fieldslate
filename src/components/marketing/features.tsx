@@ -15,7 +15,8 @@ type Feature = {
   area: string;
   title: string;
   description: string;
-  /** The whole card is Elite: an "Elite" tag beside the area label. */
+  /** The whole card is Elite (Snack shack, Volunteers): an "Elite" tag
+   *  beside the area label. */
   elite?: boolean;
   /** An "Elite" tag right after the description (officials self-pick).
    *  Auto-assign is Elite too, so the tag closes the whole sentence. */
@@ -51,6 +52,7 @@ const features: Feature[] = [
     title: "Shifts from the schedule",
     description:
       "Shifts are built from game times, assigned to teams, and families sign up for spots.",
+    elite: true,
   },
   {
     icon: ClipboardList,
