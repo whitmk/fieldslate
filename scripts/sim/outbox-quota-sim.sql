@@ -319,4 +319,14 @@ end $h$;
 --   (select count(*) from pg_stat_activity where state = 'idle in transaction') as idle_tx_must_be_0;
 --
 -- ── RUN LOG ───────────────────────────────────────────────────────────────
--- (not run yet — waiting for Whit's go; it takes the locks above)
+-- 2026-11-10 ~18:28 UTC, against production, rolled back, on Whit's go (sent
+-- as one batch, the migration byte-exact; pre-check: no transaction open > 5 s,
+-- both outboxes empty).
+--   Run 1 — GREEN: baseline pass; the seven md5(prosrc) = `--md5`; MQ1–MQ6
+--     KILLED at their own tag (MQ1 QF1, MQ2 QF2b, MQ3 QF2, MQ4 QF3, MQ5 P1,
+--     MQ6 QF4).
+--   Leak check: no 0128 functions or columns, no fixture volunteer or
+--     umpire, the test org's two feature rows unchanged, no idle transaction.
+-- Applied right after: catalog 20261110182927, the row's text = the file
+--   (md5 3ff334cb…); every md5(prosrc) matched; one overload each, DEFINER,
+--   search_path=public, pg_temp; EXECUTE exactly as stated per role.

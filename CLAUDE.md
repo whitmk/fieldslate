@@ -464,17 +464,24 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Proof: `scripts/sim/feature-default-on-sim.sql` (+ build script; rolled back
   in "test"; RL1 no row written, FD1–FD5, FA1–FA3, FR1 read-only on Santa
   Rosa, FP1; 6 mutants MF1–MF6, MF3 = default-on for any feature name).
-- **0128 (outbox quota hold + email problems) — WRITTEN, NOT APPLIED
-  (2026-11-10, branch `fix/outbox-quota`).** Proof
-  `scripts/sim/outbox-quota-sim.sql` (+ `outbox-quota-build.ts`, `--md5`;
-  rolled back in "test", 6 mutants MQ1–MQ6) has NOT been run — it takes
-  ACCESS EXCLUSIVE on both outboxes and `volunteer_trigger_failures` for the
-  run, so it waits for Whit's go. **Deploy order: apply 0128 BEFORE the code
-  reaches `main`** — both drains call the hold functions (a missing function
-  turns every quota stop into a failed hold, logged, the row retaken after 10
-  minutes with its attempt used) and the banners call the problems functions
-  (missing → "Couldn't check for email problems."). See "Outbox quota and
-  email problems (0128)".
+- **0128 (outbox quota hold + email problems) APPLIED 2026-11-10 18:29 UTC,
+  catalog `20261110182927`**, verbatim from the repo file on Whit's go (the
+  catalog row's text = the file, md5 `3ff334cb…`), after its first-run-green
+  rolled-back proof (`scripts/sim/outbox-quota-sim.sql`, 6/6 mutants at their
+  own tag — read its RUN LOG). md5(prosrc) verified, one overload each,
+  SECURITY DEFINER, `search_path=public, pg_temp`: `volunteer_outbox_hold`
+  `6fef56caeda9bcfb8904a6d4fa1c2baa`, `official_outbox_hold`
+  `38a5f9832691049150407d884c519214`, `volunteer_outbox_drop_started`
+  `7915f237b5950c49089a7ffd6d82e60c`, `volunteer_email_problems`
+  `72b17367789e05da495413d4979c3a57`, `official_email_problems`
+  `991d9002d89ea4e7a6eee3235fd5da6f`, `volunteer_email_problems_ack`
+  `107ba39162a476a4f97de5acfaa840b1`, `official_email_problems_ack`
+  `45fd6ba4dcd8cfe32115ba7fcdfe5620`. EXECUTE: hold/drop service_role only,
+  problems/ack authenticated only (PUBLIC, anon, dashboard_readonly false).
+  `acknowledged_at` (nullable) on both outboxes and
+  `volunteer_trigger_failures`. **The latest migration applied.** **Deploy
+  order (met): 0128 was applied BEFORE the code reached `main`.** See
+  "Outbox quota and email problems (0128)".
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
