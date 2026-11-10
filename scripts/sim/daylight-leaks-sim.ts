@@ -92,6 +92,8 @@ const OUTBOUND_DIRS = [
   "src/lib/officials-signup", // its rules and the officials emails
   "src/components/officials-signup",
   "src/lib/outbound-email", // the shared league-email headers and drain
+  "src/app/confirm-email", // a league contact address's confirmation page (0126)
+  "src/lib/contact-verify", // its rules and the confirmation email
 ];
 const OUTBOUND_FILES = [
   // The bracket's presentation pieces — rendered by the public bracket page.

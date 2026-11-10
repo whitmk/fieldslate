@@ -91,7 +91,7 @@ export const CARD_CONTACT_LABEL = "Officials contact email";
 export const CARD_CONTACT_HINT =
   "Officials' replies go here, and so do the emails telling you an official dropped a game and the daily list of games officials took.";
 export const CARD_ON = "Officials can sign up";
-export const CARD_NEEDS_CONTACT = "Add an officials contact email first.";
+export const CARD_NEEDS_CONTACT = "Confirm an officials contact email first.";
 export const CARD_NEEDS_ELITE = "Officials sign-up is part of the Elite plan.";
 export const CARD_SAVED = "Saved.";
 

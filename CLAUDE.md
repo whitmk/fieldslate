@@ -429,6 +429,15 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   contact and enable in separate calls; 3 mutants). **RULE: an upsert into a
   table with a cross-column CHECK must propose a row that passes the CHECK on
   its own** — audit of 0120–0124 found only this one.
+- **0126 (contact email verification) WRITTEN 2026-11-09, NOT APPLIED**
+  (branch `feat/contact-email-verify`; proof and apply on Whit's go). Proof:
+  `scripts/sim/contact-verify-sim.sql` (+ `contact-verify-build.ts`; 10
+  mutants). It DROPS `set_volunteer_contact_email` and
+  `set_official_signup_contact`, and moves every existing contact address to
+  "waiting" with its switch OFF — on 2026-11-09 that is SRALL's two rows, both
+  the founder's own address. **Deploy order: apply 0126, THEN push** (the cards call
+  the new functions; between the two, the old cards' Save is refused). See
+  "League contact email verification (0126)".
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -6271,11 +6280,51 @@ Still open:
   public schedule; public spot counts ("1 of 2 spots open") are fine. Not in
   v1: the "possible same family" hint.
 - **LAUNCH BLOCKERS before any real league gets the switch:**
-  1. Reply-to verification: the league contact email the volunteer emails
-     reply to is unverified (fine behind the switch, not for real leagues).
+  1. Reply-to verification: BUILT on `feat/contact-email-verify` (0126,
+     written 2026-11-09, NOT applied) — see "League contact email
+     verification (0126)". Closed once 0126 is applied and the code ships.
   2. Legal review of the privacy policy's league-on-behalf framing (section 1,
      "Information leagues provide about other people") and section 7 (minors,
      youth umpires).
+
+## League contact email verification (0126, written 2026-11-09, not applied)
+
+- **The rule:** `contact_email` on `volunteer_settings` and
+  `official_signup_settings` only ever holds a CONFIRMED address. A new one
+  waits in `contact_email_verifications` (one row per org and kind; kind = the
+  `org_features` name) until the link emailed to it is clicked. So every
+  reader of `contact_email` — both outbox takes' reply-to, the officials
+  notices, the contact on the public pages, the switch-on checks — is
+  UNCHANGED and only sees a confirmed address. Changing the address keeps the
+  old one in use until the new one is confirmed; a sign-up switch can't be
+  turned on without a confirmed address (the existing `contact_required`).
+- **Who mints the link:** `contact_verify_begin` (authenticated: member,
+  feature, Elite, address shape, one send a minute, 5 a day UTC) records the
+  request but returns NO token — an admin's browser may call it directly, and
+  a token there would let an admin confirm an address they can't read.
+  `contact_verify_take` (service_role only) mints the token (32 random bytes,
+  only its sha256 stored, 7 days, single use) for a request under 5 minutes
+  old that hasn't been sent; the send route (`/api/contact-verify/send`) calls
+  begin as the user, then take with the admin client, then emails the address
+  TAKE returned, from FieldSlate's own address with NO reply-to. All of it is
+  `runSend` (`src/lib/contact-verify/rules.ts`).
+- **The confirm page** (`/confirm-email/<token>`, noindex, no referrer) reads
+  the link with `contact_verify_peek` on open and confirms only on the button
+  (`contact_verify_confirm`, POST) — a mail scanner that opens links can't
+  confirm. A used, replaced, cancelled or feature-off link is "unknown".
+- **ONE field, both cards:** `src/components/settings/contact-email-field.tsx`
+  (Save and send link / Resend / Cancel / "I've confirmed it — check again" /
+  Remove, refused while the switch is on). Every sentence in `rules.ts`. The
+  shared code imports neither feature (sim:volunteer-leaks U1 walks it); both
+  leak fences list the page and the lib as outbound.
+- **Harnesses:** the SQL proof (CM1, CV1–CV11 for each kind, CP1; 10 mutants;
+  every setting change through the app's functions — the seed uses the OLD
+  functions before the migration) and `npm run sim:contact-verify-app` (13
+  checks × 3 zones) + `:mutants` (10, each killed at its own assertion).
+  Checked on a deleted scratch route at 1280px and 375px with the replies
+  stubbed (both cards, the send, the confirm page).
+- **Not built:** the email isn't a league email (no outbox row, no retry) — a
+  failed send says so and Resend is the retry.
 
 ## Officials self-sign-up (0124 applied 2026-11-09)
 
@@ -6358,7 +6407,8 @@ Still open:
   checked on a deleted scratch route at 1280px and 375px with the network
   stubbed.
 - **Launch blockers:** legal review of privacy sections 7 and 9; the officials
-  contact email is unverified (the volunteer blocker, again).
+  contact email is unverified until 0126 is applied (built on
+  `feat/contact-email-verify`).
 
 ## Open items
 
