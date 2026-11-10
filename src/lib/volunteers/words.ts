@@ -23,10 +23,7 @@ export const LINK_OFF_NOTICE = "The sign-up link is off. New sign-ups are stoppe
 
 export const LINK_BLOCK_TITLE = "Link";
 export const LINK_BLOCK_DETAIL = "Share it with families or put it on your league's website.";
-/** Until the sign-up page ships (0121), the link opens nothing. Remove with it. */
-export const LINK_NOT_BUILT_YET =
-  "The sign-up page isn't built yet. This link won't open anything until it is.";
-export const LINK_FIRST = "Save a contact email and turn the link on to get your link.";
+export const LINK_FIRST = "Confirm a contact email and turn the link on to get your link.";
 
 export const RESET_TITLE = "Reset link";
 export const RESET_DETAIL = "Makes a new link. The old one stops working right away.";
