@@ -12,6 +12,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/terms-of-service` },
     { url: `${SITE_URL}/blog` },
     { url: `${SITE_URL}/help/calendar` },
+    { url: `${SITE_URL}/help/volunteers` },
+    { url: `${SITE_URL}/help/officials-signup` },
     { url: `${SITE_URL}/tools/practice-field-calculator` },
   ];
   const postRoutes: MetadataRoute.Sitemap = getAllPosts().map((post) => ({

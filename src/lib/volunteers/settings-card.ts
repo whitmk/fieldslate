@@ -1,10 +1,10 @@
 // Settings → Volunteer sign-ups: what the card shows, decided here (pure) so
 // sim:volunteer-email drives the same rules the card renders.
 //
-// The card exists ONLY for an org whose feature switch is on. Its read is
-// `volunteer_admin_state` (0120); a failed read, a missing function (before
-// 0120 is applied) or the switch off all mean NO CARD — real leagues never
-// see the feature, and a transient error can't reveal it. The failure is
+// The card exists for an org whose feature switch is on — every league unless
+// switched off (0127: no org_features row = on). Its read is
+// `volunteer_admin_state` (0120); a failed read or the switch off mean NO
+// CARD, so a transient error can't show a half-read card. The failure is
 // logged on the server.
 import { SITE_URL } from "@/lib/site";
 import { LINK_NEEDS_CONTACT } from "./words";

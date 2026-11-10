@@ -65,8 +65,9 @@ const navItems: NavItem[] = [
   { href: "/dashboard/export", label: "Export", icon: FileDown, tier: "pro" },
 ];
 
-// Volunteers (0120+) appears only for an org whose feature switch is on — the
-// layout reads it through loadVolunteerFeature. Placed after Snack Shack.
+// Volunteers (0120+) appears for an org whose feature switch is on — every
+// league unless switched off (0127); the layout reads it through
+// loadVolunteerFeature. Locked (Elite badge) below Elite. After Snack Shack.
 const VOLUNTEERS_ITEM: NavItem = { href: "/dashboard/volunteers", label: "Volunteers", icon: HandHeart, tier: "elite" };
 
 function itemsFor(volunteers: boolean): NavItem[] {

@@ -33,7 +33,7 @@ export const HOME_FAQ: readonly HomeFaqEntry[] = [
   {
     question: "What personal information does FieldSlate collect?",
     answer:
-      "No player information, ever: no names, birthdates or contact details. FieldSlate doesn't need coach or parent details to build a schedule, and doesn't ask for them. The personal details it keeps are entered by your league's admins: their own sign-in name and email and, if you use these features, officials' names (with an optional email or phone for sending schedules), snack shack cash handlers' names, and a contact for each partner league.",
+      "No player information, ever: no names, birthdates or contact details. FieldSlate doesn't need coach or parent details to build a schedule, and doesn't ask for them. The personal details it keeps are entered by your league's admins: their own sign-in name and email and, if you use these features, officials' names (with an optional email or phone for sending schedules), snack shack cash handlers' names, and a contact for each partner league. If your league uses volunteer sign-ups, the families who sign up enter a first initial, last name and email.",
   },
   {
     question: "Does FieldSlate use AI to build schedules?",

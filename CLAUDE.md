@@ -446,6 +446,20 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   the code reached `main`** (the cards call
   the new functions; between the two, the old cards' Save is refused). See
   "League contact email verification (0126)".
+- **0127 (volunteer sign-ups + officials sign-up on by default) — WRITTEN,
+  NOT APPLIED, proof NOT RUN (both wait for Whit's go).** Re-creates
+  `org_feature_on` only: NO org_features row = ON for 'volunteers' and
+  'official_signup' BY NAME (decided 2026-11-09), OFF for any other feature
+  name or a null name; a row still decides (`enabled = false` turns a league
+  off). Writes no row; Santa Rosa American turns on because it has none
+  (approved by Whit 2026-11-09). **Applying it IS the launch inside the app:**
+  the code already shows every entry point when the function says on. Nothing
+  goes public — both sign-up links start off and need a confirmed contact
+  email. Expected md5(prosrc) `org_feature_on`
+  `f7cf60e01dc1d10a156964b0032d28ef` (`feature-default-on-build.ts --md5`).
+  Proof: `scripts/sim/feature-default-on-sim.sql` (+ build script; rolled back
+  in "test"; RL1 no row written, FD1–FD5, FA1–FA3, FR1 read-only on Santa
+  Rosa, FP1; 6 mutants MF1–MF6, MF3 = default-on for any feature name).
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -5834,8 +5848,11 @@ Still open:
   `main`. Branch A (`feat/volunteers-foundation`, 0120) is on `main`; 0120
   APPLIED 2026-11-09 01:26 UTC (see the Database section).** The build is four migrations on four branches (0120
   foundation, 0121 game roles + claims, 0122 snack shack sign-ups, 0123
-  tracker), behind a per-org switch that is ON only for the two test orgs —
-  "SRALL" (owner `aa21d01c…`) and "test" — and NEVER the real league.
+  tracker), behind a per-org switch. **Since 0127 the switch is ON for every
+  league with no `org_features` row** (Elite gets the feature, Pro and Free
+  see the entry points with an Elite upgrade prompt); a row with
+  `enabled = false` turns one league off. Before 0127 it was on only for the
+  two test orgs.
 - **The privacy policy now describes the feature** (`/privacy`, section 8
   "Volunteer sign-ups", added 2026-11-08; sections after it renumbered 9–14).
   It states: first initial, last name, email, division/team, spots, 18+
@@ -5849,9 +5866,10 @@ Still open:
   for under 18, REQUIRED with permission under 13) and section 1 says leagues
   enter information about other people and FieldSlate processes it on the
   league's behalf.
-- **`/help/volunteers` is `noindex` and NOT in the sitemap until launch.** At
-  launch: drop `robots` from its metadata and add it to `src/app/sitemap.ts`.
-  Its FAQ renders from `src/lib/volunteers/help-faq.ts` (visible list + JSON-LD
+- **`/help/volunteers` is indexed and in the sitemap (launch, 2026-11-09)**,
+  as is `/help/officials-signup` (FAQ from `src/lib/officials-signup/help-faq.ts`).
+  Every help page ends with `MoreHelp` (`src/components/marketing/more-help.tsx`
+  — a new help page goes in its `HELP_PAGES` and in the sitemap). Its FAQ renders from `src/lib/volunteers/help-faq.ts` (visible list + JSON-LD
   from one array, the calendar help page's rule).
 - **0120 foundation (`supabase/migrations/0120_volunteers_foundation.sql`,
   APPLIED 2026-11-09).** `org_features` (the switch; NO role holds any privilege;
@@ -5913,10 +5931,9 @@ Still open:
   bearer); without it the route answers 503.
 - **The Settings card** (`src/components/settings/volunteers-card.tsx`, rules
   in `src/lib/volunteers/settings-card.ts`, every sentence in `words.ts`)
-  renders ONLY when `volunteer_admin_state` says the switch is on. A failed
-  read — including the missing function before 0120 is applied — means NO
-  card (logged), so the code is safe on `main` before the apply, and a real
-  league never sees the feature. (Its old "the sign-up page isn't built yet"
+  renders when `volunteer_admin_state` says the switch is on (every league
+  unless switched off, 0127); below Elite it shows the Elite line and an
+  Upgrade button. A failed read means NO card (logged). (Its old "the sign-up page isn't built yet"
   line was removed 2026-11-10 — the page is live.)
 - **Branch B (`feat/volunteer-game-roles`, 0121) — slot rules (commit 1,
   2026-11-08).** `src/lib/volunteers/slots.ts` (pure): a slot is role × game ×
@@ -6287,7 +6304,7 @@ Still open:
   moved spot (2c, stored moved-from); two active seasons → a picker like the
   public schedule; public spot counts ("1 of 2 spots open") are fine. Not in
   v1: the "possible same family" hint.
-- **LAUNCH BLOCKERS before any real league gets the switch:**
+- **LAUNCH BLOCKERS (Whit chose to launch with 0127, 2026-11-09; item 2 still open):**
   1. Reply-to verification: CLOSED by 0126 (applied 2026-11-10) — see
      "League contact email verification (0126)".
   2. Legal review of the privacy policy's league-on-behalf framing (section 1,
@@ -6339,7 +6356,8 @@ Still open:
   `docs/officials-signup-privacy`, with the privacy wording — section 9
   "Officials sign-up", plus lines in 5 and 7). Built on
   `feat/officials-signup`, behind `org_features` 'official_signup' (0124 adds
-  the value; no rows), Elite. Test orgs only, never the real league.
+  the value; no rows), Elite. On for every league with no row since 0127
+  (Pro/Free: the Settings card shows the Elite line and an Upgrade button).
 - **What it is:** a rostered official claims open umpire spots through a
   PRIVATE link (`/o/<token>`; only its sha256 stored, one current link per
   official). A claim writes an ORDINARY `game_umpires` row plus an

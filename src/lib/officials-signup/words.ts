@@ -93,6 +93,7 @@ export const CARD_CONTACT_HINT =
 export const CARD_ON = "Officials can sign up";
 export const CARD_NEEDS_CONTACT = "Confirm an officials contact email first.";
 export const CARD_NEEDS_ELITE = "Officials sign-up is part of the Elite plan.";
+export const UPGRADE_BUTTON = "Upgrade to turn it on";
 export const CARD_SAVED = "Saved.";
 
 const SETTINGS_ERRORS: Record<string, string> = {

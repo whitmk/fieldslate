@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
+import { MoreHelp } from "@/components/marketing/more-help";
 import { VOLUNTEER_HELP_FAQ, volunteerHelpFaqJsonLd } from "@/lib/volunteers/help-faq";
 
 // Public, static help page for families: how volunteer sign-ups work. Carries
 // NO token and NO league, team or volunteer data.
 //
-// NOINDEX AND NOT IN THE SITEMAP UNTIL VOLUNTEER SIGN-UPS LAUNCH TO REAL
-// LEAGUES (decided 2026-11-08): the feature is behind a per-org switch, so
-// search must not send people to something their league can't use. At
-// launch: drop `robots` below and add the URL to src/app/sitemap.ts.
+// Indexed and in the sitemap since the launch to every league (2026-11-09;
+// it was noindex while the feature was behind a per-org switch).
 //
 // The "Questions" section and its FAQPage JSON-LD both render from
 // VOLUNTEER_HELP_FAQ (src/lib/volunteers/help-faq.ts) — never write a
@@ -20,7 +19,6 @@ export const metadata: Metadata = {
   description:
     "How FieldSlate volunteer sign-ups work: picking a spot, your private link, changing or canceling, and what happens when a game moves.",
   alternates: { canonical: `${SITE_URL}/help/volunteers` },
-  robots: { index: false, follow: false },
 };
 
 function Step({ children }: { children: React.ReactNode }) {
@@ -141,7 +139,9 @@ export default function VolunteerHelpPage() {
           </Section>
         </div>
 
-        <div className="mt-12 border-t border-gray-100 pt-6 text-center">
+        <MoreHelp current="/help/volunteers" />
+
+        <div className="mt-6 border-t border-gray-100 pt-6 text-center">
           <Link href="/" className="text-sm text-gray-500 transition-colors hover:text-[#0C1F3F]">
             &larr; FieldSlate home
           </Link>

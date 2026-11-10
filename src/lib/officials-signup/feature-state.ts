@@ -1,8 +1,8 @@
 // The one server read that says whether an org has officials sign-up (0124):
-// official_signup_admin_state. A failed read, a missing function (before
-// 0124 is applied) or the switch off all mean NULL — no Settings card, no
-// "Ask for help", no link button, no divisions control. A real league never
-// sees the feature, and an error can't reveal it.
+// official_signup_admin_state. The switch is on for every league unless
+// switched off (0127: no org_features row = on). A failed read or the switch
+// off mean NULL — no Settings card, no "Ask for help", no link button, no
+// divisions control — so an error can't show a half-read screen.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 
