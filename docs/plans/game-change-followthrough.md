@@ -485,6 +485,25 @@ people.
    re-checks each entry and drops the ones that are no longer a problem.
    This covers the paths with no admin present, such as a partner league
    accepting a makeup through its token (`accept_reschedule_request_by_token`).
+   **"Rainout removed" and "makeup set" run the re-check too (decided
+   2026-11-10).** Under the Step 1 rule a rained-out game is not busy. While
+   Game A is rained out, its official can be given an overlapping Game B.
+   When A comes back (Remove Rainout: cancelled → scheduled at the SAME
+   time, or a makeup on any date), A's officials are re-checked like a move.
+   The check runs on every status change from not-busy to busy, not only
+   when the time or field changed. The overlap with B is reported to the
+   coordinator (`assignment_conflicts`), and the official's email for A
+   carries the "overlaps another game you're assigned to" line. Nothing is
+   unassigned.
+   - Proof **GC15**: assign Sam to A, rain A out, assign Sam to an
+     overlapping B, remove A's rainout → one `assignment_conflicts` entry
+     naming Sam and A; Sam's `game_changes` row says "Back on" with the
+     overlap line; `game_umpires` unchanged.
+   - Mutant **MG19**: the re-check gated on a time or field change only (the
+     natural shortcut, since Back on keeps the time) → dies at GC15.
+   - **GC15b**: a game going `scheduled → cancelled` runs no re-check (a
+     not-busy game can't conflict). Mutant **MG20**: the re-check also runs
+     on a rainout → GC15b, a conflict entry for a rained-out game.
 2. **Live banner.** /dashboard/umpires lists every upcoming assignment that
    now has a problem. It is worked out with the shared TypeScript rule
    (`blockReason`), so it is always current, wherever the move came from.
