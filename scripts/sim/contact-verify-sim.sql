@@ -94,6 +94,25 @@ create or replace function pg_temp.h126_svc(p_sql text) returns text language sq
 $f$;
 
 -- Seed, BEFORE the migration, through the old app functions.
+-- A reply's status, or the reply itself when it isn't JSON (an "ERR …" line):
+-- a refusal must fail its own assertion, never crash the case.
+create or replace function pg_temp.h126_st(p text) returns text language plpgsql as $f$
+begin
+  return p::jsonb->>'status';
+exception when others then
+  return p;
+end;
+$f$;
+
+-- Any reply as jsonb; a non-JSON reply ("ERR …") becomes {"status": <it>}.
+create or replace function pg_temp.h126_j(p text) returns jsonb language plpgsql as $f$
+begin
+  return p::jsonb;
+exception when others then
+  return jsonb_build_object('status', p);
+end;
+$f$;
+
 create or replace function pg_temp.h126_seed() returns text language plpgsql as $f$
 declare
   v_org uuid := 'bbf9afe1-9e62-41e0-becc-895085bfc9d6';
@@ -118,8 +137,8 @@ $f$;
 
 create or replace function pg_temp.h126_switch(p_kind text, p_on boolean) returns text language sql as $f$
   select pg_temp.h126_admin(case when p_kind = 'volunteers'
-    then format('select public.set_volunteer_link(%L, %s)::text', 'bbf9afe1-9e62-41e0-becc-895085bfc9d6', p_on)
-    else format('select public.set_official_signup_enabled(%L, %s)::text', 'bbf9afe1-9e62-41e0-becc-895085bfc9d6', p_on) end)
+    then format('select public.set_volunteer_link(%L, %L::boolean)::text', 'bbf9afe1-9e62-41e0-becc-895085bfc9d6', p_on::text)
+    else format('select public.set_official_signup_enabled(%L, %L::boolean)::text', 'bbf9afe1-9e62-41e0-becc-895085bfc9d6', p_on::text) end)
 $f$;
 
 create or replace function pg_temp.h126_contact(p_kind text) returns text language sql as $f$
@@ -152,10 +171,10 @@ begin
 
   -- CV1
   v_r := pg_temp.h126_admin(format(begin_sql, v_org, k, e1));
-  if v_r::jsonb->>'status' is distinct from 'requested' or pg_temp.h126_contact(k) is not null then
+  if pg_temp.h126_st(v_r) is distinct from 'requested' or pg_temp.h126_contact(k) is not null then
     return format('CV1 %s save: %s (contact now %s)', k, v_r, pg_temp.h126_contact(k));
   end if;
-  v_t := pg_temp.h126_admin(format('select public.contact_verify_state(%L, %L)::text', v_org, k))::jsonb;
+  v_t := pg_temp.h126_j(pg_temp.h126_admin(format('select public.contact_verify_state(%L, %L)::text', v_org, k)));
   if v_t->'pending'->>'email' is distinct from e1 or v_t->>'contact_email' is not null then return format('CV1 %s state: %s', k, v_t); end if;
   v_r := pg_temp.h126_switch(k, true);
   if v_r not like '%contact_required%' then return format('CV1 %s switch on before confirming: %s', k, v_r); end if;
@@ -170,7 +189,7 @@ begin
   if v_r not like 'ERR 42501%' then return format('CV2 %s take as authenticated: %s', k, left(v_r, 120)); end if;
   v_r := pg_temp.h126_admin('select count(*)::text from public.contact_email_verifications');
   if v_r not like 'ERR 42501%' then return format('CV2 %s table readable by authenticated: %s', k, v_r); end if;
-  v_t := pg_temp.h126_svc(format(take_sql, v_org, k))::jsonb;
+  v_t := pg_temp.h126_j(pg_temp.h126_svc(format(take_sql, v_org, k)));
   v_tok := v_t->>'token';
   if v_t->>'status' is distinct from 'ok' or v_tok !~ '^[0-9a-f]{64}$' or v_t->>'email' is distinct from e1
      or not exists (select 1 from public.contact_email_verifications
@@ -182,17 +201,17 @@ begin
   -- CV3
   for i in 1..2 loop
     v_r := pg_temp.h126_svc(format('select public.contact_verify_peek(%L)::text', v_tok));
-    if v_r::jsonb->>'status' is distinct from 'ok' or v_r::jsonb->>'email' is distinct from e1 then
+    if pg_temp.h126_st(v_r) is distinct from 'ok' or pg_temp.h126_j(v_r)->>'email' is distinct from e1 then
       return format('CV3 %s peek %s: %s', k, i, v_r);
     end if;
   end loop;
   v_r := pg_temp.h126_svc(format('select public.contact_verify_confirm(%L)::text', v_tok));
-  if v_r::jsonb->>'status' is distinct from 'confirmed' or pg_temp.h126_contact(k) is distinct from e1
+  if pg_temp.h126_st(v_r) is distinct from 'confirmed' or pg_temp.h126_contact(k) is distinct from e1
      or exists (select 1 from public.contact_email_verifications where owner_id = v_org and kind = k) then
     return format('CV3 %s confirm: %s (contact %s)', k, v_r, pg_temp.h126_contact(k));
   end if;
   v_r := pg_temp.h126_svc(format('select public.contact_verify_confirm(%L)::text', v_tok));
-  if v_r::jsonb->>'status' is distinct from 'unknown' then return format('CV3 %s link used twice: %s', k, v_r); end if;
+  if pg_temp.h126_st(v_r) is distinct from 'unknown' then return format('CV3 %s link used twice: %s', k, v_r); end if;
   v_r := pg_temp.h126_switch(k, true);
   if v_r like 'ERR%' or not pg_temp.h126_on(k) then return format('CV3 %s switch on after confirming: %s', k, v_r); end if;
 
@@ -201,35 +220,35 @@ begin
   if pg_temp.h126_contact(k) is distinct from e1 or not pg_temp.h126_on(k) then
     return format('CV4 %s new address used before confirming (contact %s)', k, pg_temp.h126_contact(k));
   end if;
-  v_tok := pg_temp.h126_svc(format(take_sql, v_org, k))::jsonb->>'token';
+  v_tok := pg_temp.h126_j(pg_temp.h126_svc(format(take_sql, v_org, k)))->>'token';
   v_r := pg_temp.h126_svc(format('select public.contact_verify_confirm(%L)::text', v_tok));
-  if v_r::jsonb->>'status' is distinct from 'confirmed' or pg_temp.h126_contact(k) is distinct from e2 then
+  if pg_temp.h126_st(v_r) is distinct from 'confirmed' or pg_temp.h126_contact(k) is distinct from e2 then
     return format('CV4 %s confirm the change: %s', k, v_r);
   end if;
 
   -- CV5 — expiry (clock).
   perform pg_temp.h126_admin(format(begin_sql, v_org, k, e1));
-  v_tok := pg_temp.h126_svc(format(take_sql, v_org, k))::jsonb->>'token';
+  v_tok := pg_temp.h126_j(pg_temp.h126_svc(format(take_sql, v_org, k)))->>'token';
   update public.contact_email_verifications set expires_at = now() - interval '1 second', sent_at = now() - interval '7 days 1 second'
    where owner_id = v_org and kind = k;                                                     -- clock
-  if pg_temp.h126_svc(format('select public.contact_verify_peek(%L)::text', v_tok))::jsonb->>'status' is distinct from 'expired'
-     or pg_temp.h126_svc(format('select public.contact_verify_confirm(%L)::text', v_tok))::jsonb->>'status' is distinct from 'expired'
+  if pg_temp.h126_j(pg_temp.h126_svc(format('select public.contact_verify_peek(%L)::text', v_tok)))->>'status' is distinct from 'expired'
+     or pg_temp.h126_j(pg_temp.h126_svc(format('select public.contact_verify_confirm(%L)::text', v_tok)))->>'status' is distinct from 'expired'
      or pg_temp.h126_contact(k) is distinct from e2 then
     return format('CV5 %s an expired link (contact %s)', k, pg_temp.h126_contact(k));
   end if;
 
   -- CV6 — resend.
   v_r := pg_temp.h126_admin(format(begin_sql, v_org, k, null));
-  if v_r::jsonb->>'status' is distinct from 'requested' then return format('CV6 %s resend of an expired link: %s', k, v_r); end if;
-  v_tok := pg_temp.h126_svc(format(take_sql, v_org, k))::jsonb->>'token';
+  if pg_temp.h126_st(v_r) is distinct from 'requested' then return format('CV6 %s resend of an expired link: %s', k, v_r); end if;
+  v_tok := pg_temp.h126_j(pg_temp.h126_svc(format(take_sql, v_org, k)))->>'token';
   v_r := pg_temp.h126_admin(format(begin_sql, v_org, k, null));
   if v_r not like '%too_soon%' then return format('CV6 %s resend within a minute: %s', k, v_r); end if;
   update public.contact_email_verifications set sent_at = now() - interval '61 seconds' where owner_id = v_org and kind = k;  -- clock
   perform pg_temp.h126_admin(format(begin_sql, v_org, k, null));
-  v_tok2 := pg_temp.h126_svc(format(take_sql, v_org, k))::jsonb->>'token';
+  v_tok2 := pg_temp.h126_j(pg_temp.h126_svc(format(take_sql, v_org, k)))->>'token';
   if v_tok2 is null or v_tok2 = v_tok
-     or pg_temp.h126_svc(format('select public.contact_verify_peek(%L)::text', v_tok))::jsonb->>'status' is distinct from 'unknown'
-     or pg_temp.h126_svc(format('select public.contact_verify_peek(%L)::text', v_tok2))::jsonb->>'status' is distinct from 'ok' then
+     or pg_temp.h126_j(pg_temp.h126_svc(format('select public.contact_verify_peek(%L)::text', v_tok)))->>'status' is distinct from 'unknown'
+     or pg_temp.h126_j(pg_temp.h126_svc(format('select public.contact_verify_peek(%L)::text', v_tok2)))->>'status' is distinct from 'ok' then
     return format('CV6 %s the old link after a resend', k);
   end if;
 
@@ -245,28 +264,28 @@ begin
   if v_r not like '%too_many%' then return format('CV7 %s the sixth send: %s', k, v_r); end if;
 
   -- CV8 — take only a fresh, unsent request.
-  if pg_temp.h126_svc(format(take_sql, v_org, k))::jsonb->>'status' is distinct from 'nothing' then
+  if pg_temp.h126_j(pg_temp.h126_svc(format(take_sql, v_org, k)))->>'status' is distinct from 'nothing' then
     return format('CV8 %s take of an already-sent request', k);
   end if;
   perform pg_temp.h126_admin(format('select public.contact_email_remove(%L, %L, %L)::text', v_org, k, 'pending'));
   perform pg_temp.h126_admin(format(begin_sql, v_org, k, e1));
   update public.contact_email_verifications set requested_at = now() - interval '6 minutes' where owner_id = v_org and kind = k;  -- clock
-  if pg_temp.h126_svc(format(take_sql, v_org, k))::jsonb->>'status' is distinct from 'nothing' then
+  if pg_temp.h126_j(pg_temp.h126_svc(format(take_sql, v_org, k)))->>'status' is distinct from 'nothing' then
     return format('CV8 %s take of a request 6 minutes old', k);
   end if;
 
   -- CV9 — the address already in use.
   v_r := pg_temp.h126_admin(format(begin_sql, v_org, k, upper(e2)));
-  if v_r::jsonb->>'status' is distinct from 'already_confirmed'
+  if pg_temp.h126_st(v_r) is distinct from 'already_confirmed'
      or exists (select 1 from public.contact_email_verifications where owner_id = v_org and kind = k) then
     return format('CV9 %s the address in use: %s', k, v_r);
   end if;
 
   -- CV10 — cancel; remove.
   perform pg_temp.h126_admin(format(begin_sql, v_org, k, e1));
-  v_tok := pg_temp.h126_svc(format(take_sql, v_org, k))::jsonb->>'token';
+  v_tok := pg_temp.h126_j(pg_temp.h126_svc(format(take_sql, v_org, k)))->>'token';
   perform pg_temp.h126_admin(format('select public.contact_email_remove(%L, %L, %L)::text', v_org, k, 'pending'));
-  if pg_temp.h126_svc(format('select public.contact_verify_peek(%L)::text', v_tok))::jsonb->>'status' is distinct from 'unknown' then
+  if pg_temp.h126_j(pg_temp.h126_svc(format('select public.contact_verify_peek(%L)::text', v_tok)))->>'status' is distinct from 'unknown' then
     return format('CV10 %s a cancelled link still works', k);
   end if;
   v_r := pg_temp.h126_admin(format('select public.contact_email_remove(%L, %L, %L)::text', v_org, k, 'contact'));
@@ -285,11 +304,11 @@ begin
   v_r := pg_temp.h126_admin(format(begin_sql, v_org, 'payroll', e1));
   if v_r not like '%invalid_kind%' then return format('CV11 %s unknown kind: %s', k, v_r); end if;
   perform pg_temp.h126_admin(format(begin_sql, v_org, k, e1));
-  v_tok := pg_temp.h126_svc(format(take_sql, v_org, k))::jsonb->>'token';
+  v_tok := pg_temp.h126_j(pg_temp.h126_svc(format(take_sql, v_org, k)))->>'token';
   update public.org_features set enabled = false where owner_id = v_org and feature = k;
   v_r := pg_temp.h126_svc(format('select public.contact_verify_confirm(%L)::text', v_tok));
   update public.org_features set enabled = true where owner_id = v_org and feature = k;
-  if v_r::jsonb->>'status' is distinct from 'unknown' or pg_temp.h126_contact(k) is not null then
+  if pg_temp.h126_st(v_r) is distinct from 'unknown' or pg_temp.h126_contact(k) is not null then
     return format('CV11 %s confirm with the feature off: %s', k, v_r);
   end if;
 
@@ -316,8 +335,8 @@ begin
       return format('CM1 %s after the migration: contact %s, on %s', k, pg_temp.h126_contact(k), pg_temp.h126_on(k));
     end if;
     v_r := pg_temp.h126_admin(format('select public.contact_verify_begin(%L, %L, null)::text', v_org, k));
-    v_tok := pg_temp.h126_svc(format('select public.contact_verify_take(%L, %L)::text', v_org, k))::jsonb->>'token';
-    if v_r::jsonb->>'status' is distinct from 'requested' or v_tok is null then
+    v_tok := pg_temp.h126_j(pg_temp.h126_svc(format('select public.contact_verify_take(%L, %L)::text', v_org, k)))->>'token';
+    if pg_temp.h126_st(v_r) is distinct from 'requested' or v_tok is null then
       return format('CM1 %s first Resend: %s', k, v_r);
     end if;
   end loop;
@@ -455,4 +474,22 @@ end $h$;
 --   (select count(*) from pg_stat_activity where state = 'idle in transaction') as idle_tx_must_be_0;
 --
 -- ── RUN LOG ───────────────────────────────────────────────────────────────
--- Not run yet (written 2026-11-09; runs only on Whit's go).
+-- 2026-11-10 (UTC), against production, rolled back, on Whit's go (sent as one
+-- batch, comment-stripped harness, the migration byte-exact).
+--   Run 1 — HARNESS FAULT: h126_switch wrote the boolean into the SQL with %s,
+--     so set_volunteer_link(…, t) read `t` as a column (42703). MC1 and MC10
+--     were killed at their own tag; the other eight died at that line. md5s
+--     already matched. Fixed: %L::boolean.
+--   Run 2 — baseline GREEN, md5s matched, 9/10 at their own tag; MC5 CRASHED
+--     the case (CV6 cast an "ERR …" reply to jsonb) instead of failing CV6 —
+--     a harness fault. Fixed: every reply read goes through h126_st / h126_j,
+--     which never raise.
+--   Run 3 — GREEN: baseline pass; 10/10 KILLED at their own tag; md5(prosrc)
+--     of all eight = `contact-verify-build.ts --md5`.
+--   Leak check: identical to the pre-run snapshot (no 0126 objects, both old
+--     writers present, SRALL's rows unchanged, the test org's features
+--     unchanged, no h126 functions, no idle transaction).
+--   Applied right after (apply_migration, verbatim): catalog 20261110004535;
+--     verify block passed; md5s, DEFINER/INVOKER, search_path, EXECUTE per
+--     role, table privileges and RLS checked live; SRALL's two addresses
+--     waiting (no link sent), both switches off.
