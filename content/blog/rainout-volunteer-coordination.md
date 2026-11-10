@@ -21,8 +21,6 @@ It's 6:40 on a Saturday morning, it rained all night, and the field at the 9:00 
 
 If you've been the person holding the phone, you know the feeling: the game is canceled, but the work has just started. Every person tied to that one game needs to hear about it, and if one of them doesn't, the cost lands on a parent, a kid or a volunteer who showed up for nothing.
 
-This post is about that cascade: who actually has to be told when one game changes, what happens when one message gets missed, and why the usual tools make it worse.
-
 ## Who has to hear about one game
 
 Take that one rained-out Majors game, home team against visitors. Here's who a typical volunteer-run league has to reach, and it adds up to thirteen messages:
