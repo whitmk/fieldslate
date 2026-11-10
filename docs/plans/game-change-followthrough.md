@@ -159,6 +159,18 @@ Migration number is a placeholder: check `list_migrations` before numbering
 | QM8 | problems function readable by a non-member | QF3 |
 | QM9 | `sendEmail` changes `status` for a quota error (the interleague routes' HTTP status) | a golden of the existing return shape |
 
+**As built (2026-11-10, `ad8acd7` on `fix/outbox-quota`, held) — two
+departures from the design above, both to avoid re-creating live functions
+and re-aiming their mutants:**
+- the hold is its own function per queue (`volunteer_outbox_hold`,
+  `official_outbox_hold`), not a new argument on the `finish` functions;
+- the started-game drop is its own function (`volunteer_outbox_drop_started`),
+  which the volunteer drain calls before every take, not a change to
+  `volunteer_outbox_take`.
+
+The takes and finishes are untouched. Migration 0128 is written but not
+applied, and its proof has not been run: it waits for your go.
+
 ## Step 1 — the cancelled-game busy rule (after the quota fix, before Part A)
 
 **What the code does today (read 2026-11-10) — the app disagrees with itself:**
