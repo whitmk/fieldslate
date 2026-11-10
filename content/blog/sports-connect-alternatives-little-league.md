@@ -3,7 +3,7 @@ title: "Sports Connect Alternatives in 2026: What Little League Admins Actually 
 description: "Sports Connect sunsets in 2027 and Little League registration moves to PlayMetrics. What's decided for you, what isn't, and your league's real options."
 slug: "sports-connect-alternatives-little-league"
 datePublished: "2026-07-09"
-dateModified: "2026-11-06"
+dateModified: "2026-11-10"
 faq:
   - question: "Is Sports Connect going away?"
     answer: "Yes. Little League registration moves to PlayMetrics beginning with the 2027 season, and the parent company plans to sunset Sports Connect in 2027. No switch dates for individual leagues have been published, and Little League still requires Sports Connect today, so keep using it until Little League or your District Administrator says otherwise. Export your data now."
@@ -113,6 +113,8 @@ It has scheduling tools, including field plans and a shared calendar of games, p
 
 **What should we do first?**
 Export your data from Sports Connect, ask your District Administrator when your league moves to PlayMetrics, and put "scheduling plan for 2027" on your next board agenda as its own line item, separate from the registration migration.
+
+Rainouts are where scheduling and volunteer coordination collide. See [One Rainout, Thirteen Messages](https://www.thefieldslate.com/blog/rainout-volunteer-coordination) for who has to hear about one moved game, and how to keep the volunteer sign-ups in step with the schedule.
 
 For the story behind FieldSlate, see [Why I Built FieldSlate](https://www.thefieldslate.com/blog/why-i-built-fieldslate).
 

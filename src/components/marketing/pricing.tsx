@@ -14,12 +14,18 @@ type Feature = { text: string; included: boolean };
 // email verification /api/auth/callback opens that checkout
 // (startPurchaseCheckout, kind "signup"); the payment becomes a season credit
 // that the league's first season uses up.
+// Volunteer and officials sign-ups are Elite only — every mention near
+// pricing says so (positioning doc 2026-11-10, "Claims to keep honest").
+const ELITE_SIGNUPS_NOTE = "Volunteer and officials sign-ups are included in Elite.";
+
 const plans: {
   name: string;
   price: string;
   period: string | null;
   description: string;
   features: Feature[];
+  /** One line under the feature list (Free and Pro: where sign-ups live). */
+  note?: string;
   cta: string;
   href: string;
   highlighted: boolean;
@@ -37,6 +43,7 @@ const plans: {
       { text: "PDF export", included: true },
       { text: "1 admin seat", included: true },
     ],
+    note: ELITE_SIGNUPS_NOTE,
     cta: "Get started free",
     href: "/signup",
     highlighted: false,
@@ -57,6 +64,7 @@ const plans: {
       { text: "Structured CSV export for league data migration", included: true },
       { text: "Per-division export", included: true },
     ],
+    note: ELITE_SIGNUPS_NOTE,
     cta: "Choose Pro",
     href: "/signup?plan=pro",
     highlighted: true,
@@ -65,16 +73,18 @@ const plans: {
     name: "Elite",
     price: priceLabel("elite"),
     period: "/season",
-    description: "Everything in Pro, plus brackets, officials assignments and sign-up, volunteer sign-ups, snack shack scheduling, and advanced reporting.",
+    description: "Your whole league in one system.",
     features: [
+      { text: "Volunteer sign-ups for game-day roles and snack shack, from one link", included: true },
+      { text: "Reminders, no-show tracking and family volunteer goals", included: true },
+      { text: "Officials pick open games from their own private link", included: true },
+      { text: "Officials' games count toward their family's goal", included: true },
       { text: "Everything in Pro", included: true },
       { text: `${priceLabel("elite")} per season — run as many at once as you buy`, included: true },
       { text: "Up to 5 admin seats", included: true },
       { text: "Unlimited interleague partner leagues", included: true },
       { text: "Playoff and tournament brackets", included: true },
       { text: "Officials / umpire assignments", included: true },
-      { text: "Officials sign up for open games with a private link", included: true },
-      { text: "Volunteer sign-ups with a family tracker", included: true },
       { text: "Snack shack scheduling", included: true },
       { text: "Reports dashboard", included: true },
       { text: "Archived season browse and restore", included: true },
@@ -157,6 +167,14 @@ export function Pricing() {
                   </li>
                 ))}
               </ul>
+
+              {plan.note && (
+                <p className={`-mt-4 mb-8 text-xs leading-relaxed ${
+                  plan.highlighted ? "text-white/60" : "text-gray-500"
+                }`}>
+                  {plan.note}
+                </p>
+              )}
 
               <div className="mt-auto">
                 <Link href={plan.href}>

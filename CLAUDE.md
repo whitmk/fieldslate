@@ -6448,6 +6448,22 @@ Still open:
 
 ## Open items
 
+- **NEXT BUILD CANDIDATE — email assigned officials when their game moves or
+  is rained out (recorded 2026-11-09).** Today an assignment rides the game
+  (`game_umpires` keys on the game id), so it follows a move, but nothing
+  tells the official: the officials outbox (0124) sends only claim / drop /
+  digest emails, and no officials check (double-booking, availability,
+  blackout) re-runs on a move — the reschedule picker and the manual move
+  check fields and teams only. The homepage's "One change" Officials card was
+  worded to match ("stay on the game, so their assignments move with it");
+  update it when this ships.
+- **NEXT BUILD CANDIDATE — snack shack shifts flagged/updated automatically
+  when games change (recorded 2026-11-09).** Shifts are derived from the
+  games, but a game change reaches the shifts only when an admin regenerates
+  (preview → confirm); until then the page's staleness notice lists the days
+  that no longer match. The homepage's "One change" Snack shack card says
+  exactly that ("shows you which days to rebuild"); update it when this
+  ships.
 - **Switch sim:daylight-leaks and sim:game-notes to `scripts/sim/sql-latest.ts`
   (recorded 2026-11-09).** Both still parse migrations for "latest body" on
   their own (daylight-leaks D1, game-notes O1-public-reader /
