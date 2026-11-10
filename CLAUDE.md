@@ -6144,8 +6144,16 @@ Still open:
   closed even when its game moved (the database refuses), with the league's
   contact; a moved game shows Now / Was with Keep it and Cancel; a rained-out
   one is held. No Switch (cut). Harness `npm run sim:volunteer-manage-page`
-  (35 checks × 3 zones; M5 shifts, 0122) + `:mutants` (7; MP5 first survived — read the sim's
-  MUTATION LOG). Checked on a deleted scratch route at 375px.
+  (465 checks × 3 zones; M5 shifts, 0122; C1/C2 cancel-only wording) +
+  `:mutants` (11; MP5 and MP10 first survived — read the sim's MUTATION LOG).
+  Checked on a deleted scratch route at 375px.
+  **CANCEL-ONLY WORDING (2026-11-09):** v1 has no switching, so nothing a
+  volunteer reads may offer to "change" a spot — words.ts, privacy section 8
+  and /help/volunteers say "view or cancel" / "cancel"; a moved spot keeps
+  "Keep it" / "Cancel". C1 scans every words.ts sentence (functions called
+  with a value AND null), privacy section 8 and the help page for change
+  wording; C2 pins "Keep it". Admin buttons ("Change", "Change this sign-up")
+  are admin-only and allowed.
 - **Reminders (who signed up, 2026-11-08, built last in branch B).** The
   "Next up" banner (`nextUp`: the earliest day with filled spots still
   ahead; "Reminder sent <date>" only when EVERY sign-up that day was

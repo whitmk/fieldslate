@@ -719,7 +719,7 @@ export default function PrivacyPolicyPage() {
           </p>
           <p>
             <strong>Emails.</strong> We email you a confirmation with a private
-            link to change or cancel your spots, plus reminders, a note from
+            link to cancel your spots, plus reminders, a note from
             your league asking your family to sign up for more spots, and
             updates when your spot changes (for example, if a game moves or is
             rained out). These emails come from FieldSlate&rsquo;s address with your
@@ -740,8 +740,8 @@ export default function PrivacyPolicyPage() {
             backups for up to 30 days before they are overwritten.
           </p>
           <p>
-            <strong>Changing or deleting it.</strong> You can change or cancel
-            your spots with the private link in your confirmation email, up to
+            <strong>Canceling or deleting it.</strong> You can cancel your
+            spots with the private link in your confirmation email, up to
             24 hours before a spot. After that, contact your league. To have
             your volunteer information deleted sooner, contact your league or
             email{" "}

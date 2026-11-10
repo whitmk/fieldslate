@@ -46,6 +46,30 @@ const MUTANTS: Mutant[] = [
     replace: "  if (false) {",
     expect: "M5",
   },
+  {
+    id: "MP8", what: "the email's manage link offers to change again", file: "src/lib/volunteers/words.ts",
+    find: "export const EMAIL_MANAGE = \"View or cancel your sign-up\";",
+    replace: "export const EMAIL_MANAGE = \"Change or cancel your sign-up\";",
+    expect: "C1",
+  },
+  {
+    id: "MP9", what: "privacy section 8 offers to change spots again", file: "src/app/(marketing)/privacy/page.tsx",
+    find: "            link to cancel your spots, plus reminders",
+    replace: "            link to change or cancel your spots, plus reminders",
+    expect: "C1",
+  },
+  {
+    id: "MP10", what: "the closed-spot line says online changes", file: "src/lib/volunteers/words.ts",
+    find: "\"Less than 24 hours away, so it can't be canceled online. To cancel, reply to any sign-up email.\"",
+    replace: "\"Less than 24 hours away. Online changes are closed. To cancel, reply to any sign-up email.\"",
+    expect: "C1",
+  },
+  {
+    id: "MP11", what: "Keep it dropped from a moved spot", file: "src/lib/volunteers/words.ts",
+    find: "export const MY_KEEP = \"Keep it\";",
+    replace: "export const MY_KEEP = \"Okay\";",
+    expect: "C2",
+  },
 ];
 
 runMutants({

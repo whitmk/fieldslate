@@ -1,7 +1,7 @@
 // Every volunteer email the outbox sends (0121): kind → words. The drain
 // hands each template the row's payload plus what the take attached (0121
 // part 6): the spots as they are NOW, a manage link token where the email
-// offers "change or cancel", and the league's sign-up link token when the
+// offers "view or cancel", and the league's sign-up link token when the
 // link is on. Sentences live in words.ts. A template that can't describe its
 // spot returns null — the drain fails the row ('unknown_kind') rather than
 // send an email that says nothing. Never another volunteer's name.
