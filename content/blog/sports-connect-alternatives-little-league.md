@@ -114,7 +114,7 @@ It has scheduling tools, including field plans and a shared calendar of games, p
 **What should we do first?**
 Export your data from Sports Connect, ask your District Administrator when your league moves to PlayMetrics, and put "scheduling plan for 2027" on your next board agenda as its own line item, separate from the registration migration.
 
-Rainouts are where scheduling and volunteer coordination collide. See [One Rainout, Fourteen Messages](https://www.thefieldslate.com/blog/rainout-volunteer-coordination) for who has to hear about one moved game, and how to keep the volunteer sign-ups in step with the schedule.
+Rainouts are where scheduling and volunteer coordination collide. See [One Rainout, Thirteen Messages](https://www.thefieldslate.com/blog/rainout-volunteer-coordination) for who has to hear about one moved game, and how to keep the volunteer sign-ups in step with the schedule.
 
 For the story behind FieldSlate, see [Why I Built FieldSlate](https://www.thefieldslate.com/blog/why-i-built-fieldslate).
 

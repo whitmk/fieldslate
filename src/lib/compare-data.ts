@@ -79,7 +79,9 @@ export const COMPETITORS: readonly CompareColumn[] = [
   {
     name: "TeamSnap",
     values: [
-      "no", "partial", "no", "partial", "no",
+      // Umpire assignments: partial — documented for TeamSnap Tournaments,
+      // a separate product (checked 2026-11-09, docs/compare-new-rows-2026-11-09.md).
+      "no", "partial", "no", "partial", "partial",
       "no", "partial", "no", "yes", "no",
       "yes", "partial", "no",
     ],
@@ -111,7 +113,9 @@ export const COMPETITORS: readonly CompareColumn[] = [
   {
     name: "TeamSideline",
     values: [
-      "no", "no", "partial", "yes", "no",
+      // Umpire assignments: partial — a paid Officials add-on (checked
+      // 2026-11-09, docs/compare-new-rows-2026-11-09.md).
+      "no", "no", "partial", "yes", "partial",
       "no", "no", "no", "partial", "no",
       "yes", "yes", "yes",
     ],

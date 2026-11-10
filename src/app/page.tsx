@@ -22,13 +22,12 @@ import {
 // signup, the dashboard), so a search-facing title there would rename them
 // all. The layout's title is a plain string, not a template, so this one
 // renders as written. Google cuts a description at roughly 155–160
-// characters; the approved one (2026-11-10 positioning) is longer, so its
-// last sentence may be clipped in results.
+// characters; keep the description inside that.
 // The canonical is absolute and on www: without one, Google Search Console
 // reported the homepage as "Duplicate without user-selected canonical" and
 // left it out of the index.
 const HOME_DESCRIPTION =
-  "Schedule games and practices, staff officials and snack shack, and run volunteer sign-ups in one connected system. When a game moves, everyone who needs to know does.";
+  "Schedule games, staff officials and run volunteer sign-ups in one connected system. When a game moves, everyone who needs to know does.";
 
 // openGraph replaces the layout's (it has none). The og:image still comes from
 // the app/opengraph-image file convention.

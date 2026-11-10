@@ -10,7 +10,19 @@
 
 import { CalendarRange, ClipboardList, ShieldCheck, Store, Trees } from "lucide-react";
 
-const features = [
+type Feature = {
+  icon: typeof Store;
+  area: string;
+  title: string;
+  description: string;
+  /** The whole card is Elite: an "Elite" tag beside the area label. */
+  elite?: boolean;
+  /** An "Elite" tag right after the description (officials self-pick).
+   *  Auto-assign is Elite too, so the tag closes the whole sentence. */
+  eliteInline?: boolean;
+};
+
+const features: Feature[] = [
   {
     icon: CalendarRange,
     area: "Games",
@@ -31,6 +43,7 @@ const features = [
     title: "Umpires on every game",
     description:
       "Auto-assign by availability and the divisions each official works, or let officials pick open games from a private link when you're short.",
+    eliteInline: true,
   },
   {
     icon: Store,
@@ -45,8 +58,17 @@ const features = [
     title: "Sign-ups without the spreadsheet",
     description:
       "One link for GameChanger, field prep and every other role. Reminders, no-show tracking and family goals included.",
+    elite: true,
   },
 ];
+
+function EliteTag() {
+  return (
+    <span className="inline-flex flex-shrink-0 items-center rounded-full align-middle bg-[#0C1F3F] px-2 py-0.5 text-[11px] font-semibold text-white">
+      Elite
+    </span>
+  );
+}
 
 export function Features() {
   return (
@@ -63,7 +85,7 @@ export function Features() {
         </div>
 
         <div className="mx-auto mt-16 grid max-w-5xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {features.map(({ icon: Icon, area, title, description }) => (
+          {features.map(({ icon: Icon, area, title, description, elite, eliteInline }) => (
             <div
               key={area}
               className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-7"
@@ -75,10 +97,19 @@ export function Features() {
                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   {area}
                 </span>
+                {elite && <EliteTag />}
               </div>
               <div>
                 <h3 className="font-semibold text-[#0C1F3F]">{title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-gray-500">{description}</p>
+                <p className="mt-2 text-sm leading-relaxed text-gray-500">
+                  {description}
+                  {eliteInline && (
+                    <>
+                      {" "}
+                      <EliteTag />
+                    </>
+                  )}
+                </p>
               </div>
             </div>
           ))}

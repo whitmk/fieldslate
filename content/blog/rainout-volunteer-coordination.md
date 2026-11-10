@@ -1,6 +1,6 @@
 ---
-title: "One Rainout, Fourteen Messages: Why Volunteer Coordination Breaks When the Schedule Changes"
-description: "One rainout means fourteen messages to coaches, umpires and volunteers. Here's why one missed message costs so much, and how to stop it."
+title: "One Rainout, Thirteen Messages: Why Volunteer Coordination Breaks When the Schedule Changes"
+description: "One rainout means thirteen messages to coaches, umpires and volunteers. Here's why one missed message costs so much, and how to stop it."
 slug: "rainout-volunteer-coordination"
 datePublished: "2026-11-10"
 dateModified: "2026-11-10"
@@ -15,7 +15,7 @@ faq:
     answer: "No. Registration and payments stay with PlayMetrics, Sports Connect or whatever your league uses."
 ---
 
-# One Rainout, Fourteen Messages: Why Volunteer Coordination Breaks When the Schedule Changes
+# One Rainout, Thirteen Messages: Why Volunteer Coordination Breaks When the Schedule Changes
 
 It's 6:40 on a Saturday morning, it rained all night, and the field at the 9:00 Majors game is a lake. Calling the game takes ten seconds. Telling everyone takes the rest of the morning.
 
@@ -25,7 +25,7 @@ This post is about that cascade: who actually has to be told when one game chang
 
 ## Who has to hear about one game
 
-Take that one rained-out Majors game, home team against visitors. Here's who a typical volunteer-run league has to reach, and it adds up to fourteen messages:
+Take that one rained-out Majors game, home team against visitors. Here's who a typical volunteer-run league has to reach, and it adds up to thirteen messages:
 
 - **Head coaches (2):** They tell their players and parents.
 - **Team parents (2):** They run the team group chats and the snack lists.
@@ -36,11 +36,11 @@ Take that one rained-out Majors game, home team against visitors. Here's who a t
 - **Snack shack volunteers (2):** The shift was built around this game.
 - **Field or city contact (1):** The permit, the lights, the gate code.
 
-That's just the cancellation. When the makeup date is set, every one of those fourteen people needs a second message with the new time, and each one has to check whether they can still make it.
+That's just the cancellation. When the makeup date is set, every one of those thirteen people needs a second message with the new time, and each one has to check whether they can still make it.
 
 ## What one missed message costs
 
-Fourteen messages, sent by a tired volunteer on a Saturday morning, is fourteen chances for one to slip. And each slip looks small until you see where it lands:
+Thirteen messages, sent by a tired volunteer on a Saturday morning, is thirteen chances for one to slip. And each slip looks small until you see where it lands:
 
 - **The scorekeeper who didn't hear about the makeup** isn't there, so nobody tracks pitch counts, and a coach has to guess whether a pitcher is eligible next game.
 - **The field-prep volunteer who did hear about the cancellation, but not the move** shows up at 8:00 the next Saturday to an empty field, and probably doesn't volunteer again.

@@ -102,7 +102,7 @@ Little League's Central Registration is moving to PlayMetrics for the 2027 seaso
 **How much should scheduling software cost for a Little League?**
 Models vary widely: per-player fees (add up fast for big leagues), annual subscriptions, and flat per-season pricing. For comparison's sake, convert every quote to a per-season total for your actual numbers before comparing.
 
-When the schedule changes mid-season, the volunteers tied to each game have to hear about it too. See [One Rainout, Fourteen Messages](https://www.thefieldslate.com/blog/rainout-volunteer-coordination) for what one rained-out game means for a league's volunteers.
+When the schedule changes mid-season, the volunteers tied to each game have to hear about it too. See [One Rainout, Thirteen Messages](https://www.thefieldslate.com/blog/rainout-volunteer-coordination) for what one rained-out game means for a league's volunteers.
 
 For the story behind FieldSlate, see [Why I Built FieldSlate](https://www.thefieldslate.com/blog/why-i-built-fieldslate).
 

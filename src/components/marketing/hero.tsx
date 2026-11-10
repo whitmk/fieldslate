@@ -51,7 +51,8 @@ export function Hero() {
 
           {/* Line under the buttons */}
           <p className="mt-8 text-sm text-white/60">
-            Built by a Little League board member. Free for a single division.
+            Built by a Little League board member. Free for a single division. No credit
+            card required.
           </p>
         </div>
 

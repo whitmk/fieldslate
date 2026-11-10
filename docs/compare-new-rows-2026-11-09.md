@@ -49,9 +49,27 @@ automated fetches; opening their pages in a browser could firm up those cells.
 - LeagueLobster 1–3, 5: scheduler.leaguelobster.com and /pricing/ (no volunteer module)
 - Assignr 1–3, 5: assignr.com feature pages (officials only); 4: support.assignr.com/en/articles/8526494-using-self-assign
 
-## Noticed in passing (existing rows, not changed)
+## Existing row fixed — "Umpire assignments" (re-checked 2026-11-09)
 
-The live table says TeamSnap "Umpire assignments: no" and TeamSideline
-"Umpire assignments: no"; TeamSideline's officials-management page and
-TeamSnap Tournaments' officiating pages describe officials features. Worth a
-re-check of those existing cells.
+Both cells read "no"; both are now **partial** in `src/lib/compare-data.ts`
+(the table's legend: "available in a limited form, such as team-level only or
+via a separate integration").
+
+- **TeamSnap → partial.** Officials assignment (admin assigning and officials
+  self-assigning) is documented only for TeamSnap Tournaments, a separate
+  product; no current page shows it in TeamSnap for Clubs & Leagues.
+  - helpme.teamsnap.com/article/423-manage-officiating-opportunities — "set up
+    by sports organization assigners in TeamSnap Tournaments"
+  - helpme.teamsnap.com/article/1345-managing-tournament-officials — "TeamSnap
+    Tournaments administrators with the Assigners role"
+  - teamsnap.com/for-business/features/tournaments — "Assign officials to
+    games and manage coach requests"
+  - teamsnap.com/blog/general-sports/introducing-teamsnap-officials (2018) —
+    names Clubs & Leagues customers, "reach out to your sales rep"
+- **TeamSideline → partial.** A real league officials feature (assign by
+  league, division, location, age group; officials self-assign), sold as a
+  paid add-on, not in the Core / Enhanced / Elite feature lists.
+  - go.teamsideline.com/officials-management — "Assign officials by league,
+    division, location, and age group"
+  - go.teamsideline.com/pricing — Officials listed under add-ons; "Some
+    Add-Ons Require Enhanced or Above+"
