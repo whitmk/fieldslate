@@ -65,7 +65,7 @@ const plans: {
     name: "Elite",
     price: priceLabel("elite"),
     period: "/season",
-    description: "Everything in Pro, plus brackets, officials assignments, snack shack scheduling, and advanced reporting.",
+    description: "Everything in Pro, plus brackets, officials assignments and sign-up, volunteer sign-ups, snack shack scheduling, and advanced reporting.",
     features: [
       { text: "Everything in Pro", included: true },
       { text: `${priceLabel("elite")} per season — run as many at once as you buy`, included: true },
@@ -73,6 +73,8 @@ const plans: {
       { text: "Unlimited interleague partner leagues", included: true },
       { text: "Playoff and tournament brackets", included: true },
       { text: "Officials / umpire assignments", included: true },
+      { text: "Officials sign up for open games with a private link", included: true },
+      { text: "Volunteer sign-ups with a family tracker", included: true },
       { text: "Snack shack scheduling", included: true },
       { text: "Reports dashboard", included: true },
       { text: "Archived season browse and restore", included: true },

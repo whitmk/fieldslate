@@ -204,7 +204,7 @@ section("LG", () => {
 
 section("L", () => {
   const want =
-    "Choosing Pro moves your whole league to Pro. You’ll lose playoff brackets, officials, snack shack, reports, team scheduling constraints and browsing and restoring archived seasons. Partner leagues are limited to 5 per season and admin seats to 2.";
+    "Choosing Pro moves your whole league to Pro. You’ll lose playoff brackets, officials, snack shack, volunteer sign-ups, reports, team scheduling constraints and browsing and restoring archived seasons. Partner leagues are limited to 5 per season and admin seats to 2.";
   check("L1", loseLine("elite", "pro") === want, `elite→pro: ${loseLine("elite", "pro")}`);
   check("L2", loseLine("elite", "elite") === null, "elite→elite should lose nothing");
   check("L2", loseLine("pro", "elite") === null, "pro→elite should lose nothing");

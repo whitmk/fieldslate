@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
+import { MoreHelp } from "@/components/marketing/more-help";
 import { CALENDAR_HELP_FAQ, calendarHelpFaqJsonLd } from "@/lib/calendar/help-faq";
 
 // Public, static help page for parents and coaches: how to add a team's
@@ -159,7 +160,9 @@ export default function CalendarHelpPage() {
           </Section>
         </div>
 
-        <div className="mt-12 border-t border-gray-100 pt-6 text-center">
+        <MoreHelp current="/help/calendar" />
+
+        <div className="mt-6 border-t border-gray-100 pt-6 text-center">
           <Link href="/" className="text-sm text-gray-500 transition-colors hover:text-[#0C1F3F]">
             &larr; FieldSlate home
           </Link>

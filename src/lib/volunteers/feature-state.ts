@@ -1,7 +1,8 @@
 // The one server read that says whether an org has the volunteer feature:
-// `volunteer_admin_state` (0120). A failed read, a missing function or the
-// switch off all mean NULL — no Settings card, no sidebar item, the page 404s.
-// A real league never sees the feature, and an error can't reveal it.
+// `volunteer_admin_state` (0120). The switch is on for every league unless
+// switched off (0127: no org_features row = on). A failed read or the switch
+// off mean NULL — no Settings card, no sidebar item, the page 404s — so an
+// error can't show a half-read screen.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { cardDataFromAdminState, type VolunteerCardData } from "./settings-card";

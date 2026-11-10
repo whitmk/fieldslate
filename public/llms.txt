@@ -1,10 +1,12 @@
 # FieldSlate
 
 FieldSlate is season-scheduling software for youth sports leagues: field-conflict
-detection, interleague coordination, umpire assignments, and playoff brackets.
-It is built for the volunteer admins who run Little League and other rec leagues,
-and it stores no player personal data — ever, and never asks for coach or parent
-details. Season scheduling only; it is not a registration platform.
+detection, interleague coordination, umpire assignments and officials sign-up,
+volunteer sign-ups, and playoff brackets. It is built for the volunteer admins who
+run Little League and other rec leagues. It stores no player personal data, ever.
+When a league turns on volunteer sign-ups, families enter a first initial, last
+name and email to take a spot; nothing else. Season scheduling only; it is not a
+registration platform.
 
 FieldSlate builds schedules with rule-based logic from each league's own
 settings; it does not use AI.
@@ -14,6 +16,10 @@ settings; it does not use AI.
 - Homepage: https://www.thefieldslate.com/
 - Pricing: https://www.thefieldslate.com/#pricing
 - Blog: https://www.thefieldslate.com/blog
+- Volunteer sign-ups help (for families signing up through their league's link):
+  https://www.thefieldslate.com/help/volunteers
+- Officials sign-up help (for officials taking open games through their league's
+  private link): https://www.thefieldslate.com/help/officials-signup
 - Practice field calculator (free, no sign-in) — how many practice fields a
   league should request from its city, night by night, by field type
   (baseball and softball diamonds, soccer fields), with a sunset check. Runs

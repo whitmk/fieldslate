@@ -49,8 +49,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }
   }
 
-  // The Volunteers nav item: only when the org's switch is on (null otherwise,
-  // including any read failure — the item never appears by accident).
+  // The Volunteers nav item: when the org's switch is on — every league unless
+  // switched off (0127); locked with an Elite badge below Elite. Null on a read
+  // failure, so the item never appears by accident.
   const volunteerFeature = await loadVolunteerFeature(supabase, currentOrgId, "layout");
 
   return (

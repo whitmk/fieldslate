@@ -1,5 +1,6 @@
-// Admin: volunteer roles (0121). Exists only for an org whose volunteer switch
-// is on (404 otherwise — a real league never finds it), Elite only, server-side.
+// Admin: volunteer roles (0121). Exists for an org whose volunteer switch is
+// on — every league unless switched off (0127); 404 otherwise. Below Elite it
+// shows the Elite upgrade card, server-side.
 // Every read is complete-or-throw; any failure shows one error card, never a
 // partial list. The Filled counts come from volunteer_admin_signups — if that
 // read fails, the roles still show and Filled says "Couldn't count".

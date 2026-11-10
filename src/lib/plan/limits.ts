@@ -68,6 +68,7 @@ export const ELITE_FEATURES: ReadonlyArray<{ gates: readonly string[]; lose: str
   { gates: ["Playoff brackets"], lose: "playoff brackets" },
   { gates: ["Officials"], lose: "officials" },
   { gates: ["Snack Shack"], lose: "snack shack" },
+  { gates: ["Volunteer sign-ups"], lose: "volunteer sign-ups" },
   { gates: ["Reports"], lose: "reports" },
   { gates: ["Team scheduling constraints"], lose: "team scheduling constraints" },
   {

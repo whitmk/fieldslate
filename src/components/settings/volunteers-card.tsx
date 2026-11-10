@@ -1,7 +1,8 @@
 "use client";
 
-// Settings → Volunteer sign-ups (0120). Rendered ONLY for an org whose feature
-// switch is on (see src/lib/volunteers/settings-card.ts).
+// Settings → Volunteer sign-ups (0120). Rendered for an org whose feature
+// switch is on — every league unless switched off (0127); below Elite it shows
+// the Elite line and an Upgrade button (see src/lib/volunteers/settings-card.ts).
 //
 // Writes, all as the signed-in admin, through 0120's functions:
 //   * contact email → ContactEmailField (0126): a new address is used only

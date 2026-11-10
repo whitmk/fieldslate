@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
+import { MoreHelp } from "@/components/marketing/more-help";
 import { VOLUNTEER_HELP_FAQ, volunteerHelpFaqJsonLd } from "@/lib/volunteers/help-faq";
 
 // Public, static help page for families: how volunteer sign-ups work. Carries
 // NO token and NO league, team or volunteer data.
 //
-// NOINDEX AND NOT IN THE SITEMAP UNTIL VOLUNTEER SIGN-UPS LAUNCH TO REAL
-// LEAGUES (decided 2026-11-08): the feature is behind a per-org switch, so
-// search must not send people to something their league can't use. At
-// launch: drop `robots` below and add the URL to src/app/sitemap.ts.
+// Indexed and in the sitemap since the launch to every league (2026-11-09;
+// it was noindex while the feature was behind a per-org switch).
 //
 // The "Questions" section and its FAQPage JSON-LD both render from
 // VOLUNTEER_HELP_FAQ (src/lib/volunteers/help-faq.ts) — never write a
@@ -18,9 +17,8 @@ import { VOLUNTEER_HELP_FAQ, volunteerHelpFaqJsonLd } from "@/lib/volunteers/hel
 export const metadata: Metadata = {
   title: "Sign up to volunteer for your league · FieldSlate",
   description:
-    "How FieldSlate volunteer sign-ups work: picking a spot, your private link, changing or canceling, and what happens when a game moves.",
+    "How FieldSlate volunteer sign-ups work: picking a spot, your private link, canceling a spot, and what happens when a game moves.",
   alternates: { canonical: `${SITE_URL}/help/volunteers` },
-  robots: { index: false, follow: false },
 };
 
 function Step({ children }: { children: React.ReactNode }) {
@@ -54,8 +52,8 @@ export default function VolunteerHelpPage() {
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-gray-600">
             Your league shared a sign-up link. Pick a spot, enter your name and email, and
-            you&apos;re done. We&apos;ll email you a confirmation with a private link for
-            changing your plans.
+            you&apos;re done. We&apos;ll email you a confirmation with a private link to your
+            spots.
           </p>
           <p className="mt-3 text-xs text-gray-500">
             Don&apos;t have a link? Ask your league. It isn&apos;t on this page.
@@ -66,7 +64,7 @@ export default function VolunteerHelpPage() {
           {[
             ["signing-up", "Signing up"],
             ["private-link", "Your private link"],
-            ["changing", "Changing or canceling"],
+            ["changing", "Canceling a spot"],
             ["game-moves", "If a game moves"],
             ["faq", "Questions"],
           ].map(([id, label]) => (
@@ -99,16 +97,17 @@ export default function VolunteerHelpPage() {
           <Section id="private-link" title="Your private link">
             <Para>
               Your confirmation email has a private link to your spots. Anyone with the link can
-              change or cancel them, so don&apos;t forward it. If you lose it, ask your league to
+              cancel them, so don&apos;t forward it. If you lose it, ask your league to
               send a new one. The old link stops working when a new one is sent.
             </Para>
           </Section>
 
-          <Section id="changing" title="Changing or canceling">
+          <Section id="changing" title="Canceling a spot">
             <Para>
-              Use your private link to switch to another spot or cancel, up to 24 hours before
-              your spot. Closer than that, the page shows your league&apos;s email. Contact the
-              league directly so they can find a replacement.
+              Use your private link to cancel a spot, up to 24 hours before it starts. To take a
+              different spot instead, cancel, then sign up again through your league&apos;s
+              sign-up link. Closer than 24 hours, the page shows your league&apos;s email.
+              Contact the league directly so they can find a replacement.
             </Para>
           </Section>
 
@@ -141,7 +140,9 @@ export default function VolunteerHelpPage() {
           </Section>
         </div>
 
-        <div className="mt-12 border-t border-gray-100 pt-6 text-center">
+        <MoreHelp current="/help/volunteers" />
+
+        <div className="mt-6 border-t border-gray-100 pt-6 text-center">
           <Link href="/" className="text-sm text-gray-500 transition-colors hover:text-[#0C1F3F]">
             &larr; FieldSlate home
           </Link>
