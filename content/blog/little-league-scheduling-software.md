@@ -3,7 +3,7 @@ title: "Little League Scheduling Software: An Honest Guide for Volunteer Boards 
 description: "What makes Little League scheduling genuinely hard, your real options — spreadsheets, schedule generators, all-in-ones, dedicated tools — and how to choose."
 slug: "little-league-scheduling-software"
 datePublished: "2026-07-09"
-dateModified: "2026-11-06"
+dateModified: "2026-11-10"
 faq:
   - question: "What's the best scheduling software for Little League?"
     answer: "The one that survives your real season in a demo: your shared fields, your interleague partners, your rainout scenario. Categories to compare: free spreadsheets, schedule generators, all-in-one platforms (TeamSideline, TeamLinkt, TeamSnap, SportsEngine — now part of PlayMetrics), and dedicated scheduling tools (FieldSlate). There is no universal best — there's a best fit for your league's size and field situation."
@@ -101,6 +101,8 @@ Little League's Central Registration is moving to PlayMetrics for the 2027 seaso
 
 **How much should scheduling software cost for a Little League?**
 Models vary widely: per-player fees (add up fast for big leagues), annual subscriptions, and flat per-season pricing. For comparison's sake, convert every quote to a per-season total for your actual numbers before comparing.
+
+When the schedule changes mid-season, the volunteers tied to each game have to hear about it too. See [One Rainout, Fourteen Messages](https://www.thefieldslate.com/blog/rainout-volunteer-coordination) for what one rained-out game means for a league's volunteers.
 
 For the story behind FieldSlate, see [Why I Built FieldSlate](https://www.thefieldslate.com/blog/why-i-built-fieldslate).
 

@@ -1,5 +1,7 @@
 import { Hero } from "@/components/marketing/hero";
 import { Testimonial } from "@/components/marketing/testimonial";
+import { OneChange } from "@/components/marketing/one-change";
+import { ReplaceTools } from "@/components/marketing/replace-tools";
 import { Features } from "@/components/marketing/features";
 import { HowItWorks } from "@/components/marketing/how-it-works";
 import { Compare } from "@/components/marketing/compare";
@@ -19,15 +21,28 @@ import {
 // layout: the layout's are inherited by every page that sets none (login,
 // signup, the dashboard), so a search-facing title there would rename them
 // all. The layout's title is a plain string, not a template, so this one
-// renders as written. Keep the description to 160 characters or less.
+// renders as written. Google cuts a description at roughly 155–160
+// characters; the approved one (2026-11-10 positioning) is longer, so its
+// last sentence may be clipped in results.
 // The canonical is absolute and on www: without one, Google Search Console
 // reported the homepage as "Duplicate without user-selected canonical" and
 // left it out of the index.
+const HOME_DESCRIPTION =
+  "Schedule games and practices, staff officials and snack shack, and run volunteer sign-ups in one connected system. When a game moves, everyone who needs to know does.";
+
+// openGraph replaces the layout's (it has none). The og:image still comes from
+// the app/opengraph-image file convention.
 export const metadata: Metadata = {
-  title: "FieldSlate | Little League & Youth Sports Scheduling Software",
-  description:
-    "FieldSlate is game and field scheduling software for Little League and youth sports leagues: conflict checks, rainout makeups and playoffs. Start free.",
+  title: "FieldSlate | Youth Sports League Scheduling and Operations Software",
+  description: HOME_DESCRIPTION,
   alternates: { canonical: `${SITE_URL}/` },
+  openGraph: {
+    title: "Run your whole league from one place",
+    description: HOME_DESCRIPTION,
+    url: `${SITE_URL}/`,
+    siteName: "FieldSlate",
+    type: "website",
+  },
 };
 
 // Matches the hero's click-to-play YouTube embed (video ID yKggoZaAHYo).
@@ -69,9 +84,11 @@ export default function HomePage() {
       <main className="flex-1">
         <Hero />
         <Testimonial />
+        <OneChange />
         <Features />
         <HowItWorks />
         <Compare />
+        <ReplaceTools />
         <Pricing />
         <Faq />
       </main>

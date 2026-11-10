@@ -18,12 +18,12 @@ export const HOME_FAQ: readonly HomeFaqEntry[] = [
   {
     question: "What is FieldSlate?",
     answer:
-      "Season-scheduling software for volunteer-run youth leagues like Little League. It builds your game and practice schedule around your fields, checks every game for conflicts, and handles rainouts and interleague games. It also assigns umpires, rotates snack shack duty across teams and runs playoff brackets.",
+      "League operations software for volunteer-run youth leagues like Little League. It builds your game and practice schedule around your fields, checks every game for conflicts, and handles rainouts and interleague games. It also assigns umpires, builds snack shack shifts from the game schedule, runs volunteer sign-ups and runs playoff brackets, all in one connected system.",
   },
   {
     question: "Does FieldSlate replace our registration platform?",
     answer:
-      "No. FieldSlate does scheduling only. Keep your registration platform, payments and league website. FieldSlate handles the part they don't do well: building and managing the season schedule.",
+      "No. Keep PlayMetrics, Sports Connect or whatever your league uses for registration and payments. FieldSlate runs everything after registration: the schedule, officials, snack shack and volunteers.",
   },
   {
     question: "Does it work alongside PlayMetrics or Sports Connect?",
@@ -52,5 +52,20 @@ export const HOME_FAQ: readonly HomeFaqEntry[] = [
     question: "What happens when a game gets rained out?",
     answer:
       "Pro and Elite include a rainout rescheduler. It helps you find a makeup slot that doesn't conflict with other games or field times, so rainouts don't get forgotten.",
+  },
+  {
+    question: "What happens to volunteers when a game is rained out?",
+    answer:
+      "Their spots are held. When you set the makeup date, each volunteer gets an email with the new time and a link to keep the spot or cancel. Volunteer sign-ups are part of Elite.",
+  },
+  {
+    question: "Do we still need SignUpGenius?",
+    answer:
+      "Not for game-day volunteers or snack shack. Families sign up from one FieldSlate link, every spot is tied to a real game or shift, and when a game moves the spot moves with it and the volunteer is emailed. Volunteer sign-ups are part of Elite.",
+  },
+  {
+    question: "Can umpires sign themselves up?",
+    answer:
+      "Yes. Auto-assign fills games by availability. When there are gaps, send a help email and officials pick open games from their own private link. The same conflict and availability checks apply either way. Officials sign-up is part of Elite.",
   },
 ];

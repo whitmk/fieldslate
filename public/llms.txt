@@ -1,12 +1,17 @@
 # FieldSlate
 
-FieldSlate is season-scheduling software for youth sports leagues: field-conflict
-detection, interleague coordination, umpire assignments and officials sign-up,
-volunteer sign-ups, and playoff brackets. It is built for the volunteer admins who
-run Little League and other rec leagues. It stores no player personal data, ever.
-When a league turns on volunteer sign-ups, families enter a first initial, last
-name and email to take a spot; nothing else. Season scheduling only; it is not a
-registration platform.
+FieldSlate is league operations software for volunteer-run youth sports leagues.
+It schedules games and practices with field-conflict detection, assigns officials
+(automatically or by officials' own sign-up), builds snack shack shifts from the
+game schedule, and runs volunteer sign-ups with family goal tracking, all in one
+connected system. When a game moves, officials' assignments and volunteers'
+spots move with it, volunteers are emailed, and families' team calendar feeds
+update on their own. FieldSlate pairs with registration platforms such as
+PlayMetrics rather than replacing them; it does not take registrations or
+payments. It is built for the volunteer admins who run Little League and other
+rec leagues. It stores no player personal data, ever. When a league turns on
+volunteer sign-ups, families enter a first initial, last name and email to take
+a spot; nothing else.
 
 FieldSlate builds schedules with rule-based logic from each league's own
 settings; it does not use AI.

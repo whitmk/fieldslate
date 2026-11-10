@@ -1,62 +1,80 @@
-import { SlidersHorizontal, ShieldCheck, Users, ArrowLeftRight } from "lucide-react";
+// Homepage Features: the five areas of league operations (positioning doc
+// 2026-11-10), so a visitor sees the whole system before the details.
+// gray-50: it sits between "One change. Everyone knows." (white) and
+// How it works (navy).
+//
+// Officials: auto-assign checks availability, blackouts, weekly caps,
+// conflicts and the divisions each official works — NOT certifications or
+// "qualifications" (eligibility.ts / claim-rules.ts). Keep the card to what
+// it checks.
+
+import { CalendarRange, ClipboardList, ShieldCheck, Store, Trees } from "lucide-react";
 
 const features = [
   {
-    icon: SlidersHorizontal,
-    title: "Per-division parameters",
+    icon: CalendarRange,
+    area: "Games",
+    title: "Schedules without field conflicts",
     description:
-      "Set game lengths, rest days, max games per week, and field requirements independently for each division. U10 and varsity can coexist without conflict.",
-    tag: null,
+      "Build every division's season with automatic field-conflict checks, interleague games, rainout rescheduling and playoff brackets.",
+  },
+  {
+    icon: Trees,
+    area: "Practices",
+    title: "Practice fields, planned",
+    description:
+      "Plan how many fields to request and which nights, then schedule practices around games.",
   },
   {
     icon: ShieldCheck,
-    title: "Field conflict prevention",
+    area: "Officials",
+    title: "Umpires on every game",
     description:
-      "FieldSlate checks every game against your venue availability calendar before it's placed. No more discovering double-bookings the night before.",
-    tag: null,
+      "Auto-assign by availability and the divisions each official works, or let officials pick open games from a private link when you're short.",
   },
   {
-    icon: Users,
-    title: "Double-coach detection",
+    icon: Store,
+    area: "Snack shack",
+    title: "Shifts from the schedule",
     description:
-      "Automatically flags when a coach is assigned to overlapping games across divisions. Catch scheduling conflicts before they become phone calls.",
-    tag: "Only on FieldSlate",
+      "Shifts are built from game times, assigned to teams, and families sign up for spots.",
   },
   {
-    icon: ArrowLeftRight,
-    title: "Cross-season scheduling",
+    icon: ClipboardList,
+    area: "Volunteers",
+    title: "Sign-ups without the spreadsheet",
     description:
-      "Run shared schedules across multiple seasons or organizations. Perfect for travel teams, all-star events, and cross-division playoffs.",
-    tag: null,
+      "One link for GameChanger, field prep and every other role. Reminders, no-show tracking and family goals included.",
   },
 ];
 
 export function Features() {
   return (
-    <section id="features" className="bg-white py-20 sm:py-28">
+    <section id="features" className="bg-gray-50 py-20 sm:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-3xl font-bold tracking-tight text-[#0C1F3F] sm:text-4xl">
-            Built for how seasons actually work
+            Everything your league runs on, in one place
           </h2>
           <p className="mt-4 text-lg text-gray-500">
-            Every feature was designed around the real problems season admins face.
+            The schedule is the backbone. Officials, snack shack and volunteers hang off it, so
+            they move when it moves.
           </p>
         </div>
 
-        <div className="mx-auto mt-16 grid max-w-5xl grid-cols-1 gap-6 sm:grid-cols-2">
-          {features.map(({ icon: Icon, title, description, tag }) => (
+        <div className="mx-auto mt-16 grid max-w-5xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map(({ icon: Icon, area, title, description }) => (
             <div
-              key={title}
-              className="relative flex flex-col gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-7"
+              key={area}
+              className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-7"
             >
-              {tag && (
-                <span className="absolute right-5 top-5 rounded-full bg-[#22C55E]/10 px-2.5 py-0.5 text-xs font-semibold text-[#22C55E]">
-                  {tag}
+              <div className="flex items-center gap-3">
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#0C1F3F]">
+                  <Icon className="h-5 w-5 text-[#22C55E]" />
+                </div>
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  {area}
                 </span>
-              )}
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#0C1F3F]">
-                <Icon className="h-5 w-5 text-[#22C55E]" />
               </div>
               <div>
                 <h3 className="font-semibold text-[#0C1F3F]">{title}</h3>

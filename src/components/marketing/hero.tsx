@@ -1,13 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CheckCircle } from "lucide-react";
 import { HeroVideo } from "@/components/marketing/hero-video";
-
-const proofPoints = [
-  "No credit card required",
-  "Any sport",
-  "Structured CSV export for league data migration",
-];
 
 export function Hero() {
   return (
@@ -24,14 +17,15 @@ export function Hero() {
 
           {/* Headline */}
           <h1 className="text-balance text-4xl font-bold leading-tight tracking-tight text-white sm:text-6xl">
-            Schedule your youth sports season in{" "}
-            <span className="text-[#22C55E]">minutes.</span>
+            Schedule the season. Staff every game.{" "}
+            <span className="text-[#22C55E]">Fill every volunteer spot.</span>
           </h1>
 
           {/* Subheadline */}
           <p className="mt-6 text-balance text-lg leading-8 text-white/60">
-            Built by your rules, not AI. Game and field scheduling with automatic conflict checks,
-            rainout makeups and playoffs. No spreadsheets, no phone calls.
+            Games, practices, officials, snack shack and volunteers, scheduled, staffed and
+            tracked in one system that talks to itself. When a game moves, everyone who needs to
+            know does.
           </p>
 
           {/* CTAs */}
@@ -41,7 +35,7 @@ export function Hero() {
                 size="lg"
                 className="bg-[#22C55E] px-8 font-semibold text-white hover:bg-[#16a34a]"
               >
-                Start free →
+                Start free
               </Button>
             </Link>
             <Link href="/demo">
@@ -53,30 +47,16 @@ export function Hero() {
                 Request a demo
               </Button>
             </Link>
-            <Link href="#how-it-works">
-              <Button
-                size="lg"
-                variant="ghost"
-                className="border border-white/20 px-8 text-white hover:bg-white/10 hover:text-white"
-              >
-                See how it works
-              </Button>
-            </Link>
           </div>
 
-          {/* Proof points */}
-          <ul className="mt-8 flex flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-6">
-            {proofPoints.map((point) => (
-              <li key={point} className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 flex-shrink-0 text-[#22C55E]" />
-                <span className="text-sm text-white/50">{point}</span>
-              </li>
-            ))}
-          </ul>
+          {/* Line under the buttons */}
+          <p className="mt-8 text-sm text-white/60">
+            Built by a Little League board member. Free for a single division.
+          </p>
         </div>
 
         {/* Promo video — wider than the text column, below the fold-critical
-            CTAs/proof points so nothing above it moves on mobile. */}
+            CTAs and the line under them so nothing above it moves on mobile. */}
         <HeroVideo />
       </div>
     </section>
