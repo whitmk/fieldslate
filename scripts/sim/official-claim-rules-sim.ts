@@ -35,6 +35,9 @@ import { blockReason, type BlockReason } from "@/lib/umpires/claim-rules";
 import { autoAssignUmpires } from "@/lib/umpires/auto-assign";
 import { FakeClient, type Db } from "./officials-fake";
 
+/** auto-assign's writes (0129: it also calls official_bookings to read). */
+const inserts = (f: FakeClient) => f.rpcCalls.filter((c) => c.name === "insert_official_assignments");
+
 const ROOT = join(__dirname, "../..");
 let checks = 0;
 let fails = 0;
@@ -170,7 +173,7 @@ async function main() {
     const fake = new FakeClient(db());
     fake.failRead = (table) => table === "official_divisions";
     const res = await autoAssignUmpires("div-maj", SEASON, fake.asClient(), NOW);
-    ok(!res.success && (res.error ?? "").includes("divisions") && fake.db.game_umpires.length === 0 && fake.rpcCalls.length === 0,
+    ok(!res.success && (res.error ?? "").includes("divisions") && fake.db.game_umpires.length === 0 && inserts(fake).length === 0,
       "[E2]", JSON.stringify(res));
   }
 
@@ -192,9 +195,9 @@ async function main() {
       return q;
     }) as typeof fake.from;
     await autoAssignUmpires("div-maj", SEASON, fake.asClient(), NOW);
-    const call = fake.rpcCalls[0];
+    const call = inserts(fake)[0];
     const sent = (call?.args.p_rows ?? []) as Record<string, unknown>[];
-    ok(fake.rpcCalls.length === 1 && call.name === "insert_official_assignments" && call.args.p_season_id === SEASON &&
+    ok(inserts(fake).length === 1 && call.name === "insert_official_assignments" && call.args.p_season_id === SEASON &&
        JSON.stringify(sent) === JSON.stringify([{ game_id: "g-maj", umpire_id: "u-zoe", role: "Plate", role_id: "role-plate" }]) &&
        directInserts === 0 && fake.db.game_umpires.length === before + 1,
       "[W1]", JSON.stringify({ calls: fake.rpcCalls, directInserts }));

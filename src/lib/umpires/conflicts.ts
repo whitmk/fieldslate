@@ -25,48 +25,85 @@ export function gamesOverlap(
   return aStart < gameEndMs(b) && bStart < gameEndMs(a);
 }
 
-/**
- * Raw game_umpires row with the game embed the conflict check needs — the
- * same shape whether fetched per-umpire (findUmpireConflict) or embedded on
- * a roster feed (`booking_rows:game_umpires(game:games(...))`).
- */
-export type UmpireBookingRow = {
-  game:
-    | {
-        id: string;
-        scheduled_at: string;
-        home_team:
-          | { name: string; division: { settings: unknown } | null }
-          | null;
-        away_team: { name: string } | null;
-      }
-    | null;
+/** One busy game of an official, as `official_bookings` (0129) returns it. */
+export type OfficialBookingRow = {
+  game_umpire_id: string;
+  umpire_id: string;
+  game_id: string;
+  scheduled_at: string;
+  minutes: number;
+  home: string | null;
+  away: string | null;
 };
 
-/** Map raw booking rows to GameTimeInfo, resolving each game's duration from
- *  its division settings. Single mapping shared by the save-time check and
- *  the pre-click picker state so the two can't drift. */
-export function bookingsFromRows(rows: UmpireBookingRow[]): GameTimeInfo[] {
-  const out: GameTimeInfo[] = [];
-  for (const r of rows) {
-    const g = r.game;
-    if (!g) continue;
-    const settings = (g.home_team?.division?.settings ?? {}) as {
-      game_duration?: number;
-    };
-    const duration =
-      typeof settings.game_duration === "number"
-        ? settings.game_duration
-        : DEFAULT_GAME_DURATION_MINS;
+/** The ONE read of officials' busy games (0129). THE RULE — busy unless the
+ *  game is cancelled or postponed — lives in the database
+ *  (`official_game_busy`); this code never tests a game's status, and no
+ *  officials code reads `game_umpires → games` for bookings any more (the
+ *  manual save, both picker rosters, record-where-played and auto-assign all
+ *  call this). FAILS CLOSED: an error, or a reply that isn't the expected
+ *  list, is `{ ok: false }` — never an empty list, which would read as
+ *  "free everywhere".
+ *
+ *  `client` is for the simulation harnesses ONLY; production callers omit it. */
+export async function fetchOfficialBookings(
+  seasonId: string,
+  umpireIds: string[],
+  client?: ReturnType<typeof createClient>,
+): Promise<{ ok: true; byUmpire: Map<string, GameTimeInfo[]>; rows: OfficialBookingRow[] } | { ok: false }> {
+  const byUmpire = new Map<string, GameTimeInfo[]>();
+  for (const id of umpireIds) byUmpire.set(id, []);
+  if (umpireIds.length === 0) return { ok: true, byUmpire, rows: [] };
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase.rpc(
+    "official_bookings" as never,
+    { p_season_id: seasonId, p_umpire_ids: umpireIds } as never,
+  );
+  if (error) return { ok: false };
+  const rows = parseOfficialBookings(data);
+  if (!rows) return { ok: false };
+  for (const r of rows) byUmpire.get(r.umpire_id)?.push(bookingInfo(r));
+  return { ok: true, byUmpire, rows };
+}
+
+/** The reply, or null when it isn't a list of well-formed rows. */
+export function parseOfficialBookings(raw: unknown): OfficialBookingRow[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: OfficialBookingRow[] = [];
+  for (const r of raw) {
+    const o = (r && typeof r === "object" ? r : null) as Record<string, unknown> | null;
+    if (
+      !o ||
+      typeof o.game_umpire_id !== "string" ||
+      typeof o.umpire_id !== "string" ||
+      typeof o.game_id !== "string" ||
+      typeof o.scheduled_at !== "string" ||
+      typeof o.minutes !== "number"
+    ) {
+      return null;
+    }
     out.push({
-      id: g.id,
-      scheduled_at: g.scheduled_at,
-      duration_minutes: duration,
-      home_team_name: g.home_team?.name ?? "TBD",
-      away_team_name: g.away_team?.name ?? "TBD",
+      game_umpire_id: o.game_umpire_id,
+      umpire_id: o.umpire_id,
+      game_id: o.game_id,
+      scheduled_at: o.scheduled_at,
+      minutes: o.minutes,
+      home: typeof o.home === "string" ? o.home : null,
+      away: typeof o.away === "string" ? o.away : null,
     });
   }
   return out;
+}
+
+/** A booking as the overlap check and the sentences read it. */
+export function bookingInfo(r: OfficialBookingRow): GameTimeInfo {
+  return {
+    id: r.game_id,
+    scheduled_at: r.scheduled_at,
+    duration_minutes: r.minutes,
+    home_team_name: r.home ?? "TBD",
+    away_team_name: r.away ?? "TBD",
+  };
 }
 
 /** First booking overlapping the candidate slot, or null. Skips the candidate
@@ -90,38 +127,24 @@ export type ConflictCheck =
   | { ok: false };
 
 /**
- * The first existing game that conflicts with the candidate slot for this
- * umpire (`conflict: null` when there is none), or `{ ok: false }` when the
- * bookings could not be read.
- *
- * Excludes the candidate game itself so re-assigning an umpire from one role
- * to another on the same game doesn't trigger a false positive.
+ * The first busy game that conflicts with the candidate slot for this umpire
+ * (`conflict: null` when there is none), or `{ ok: false }` when the
+ * bookings could not be read — the save then refuses. Busy games come from
+ * `official_bookings` (0129), so a rained-out or postponed game never blocks.
+ * The candidate game itself is skipped, so re-assigning an umpire from one
+ * role to another on the same game doesn't conflict.
  *
  * `client` is for the simulation harnesses ONLY; production callers omit it.
  */
 export async function findUmpireConflict(
   umpireId: string,
+  seasonId: string,
   candidate: GameTimeInfo,
   client?: ReturnType<typeof createClient>,
 ): Promise<ConflictCheck> {
-  const supabase = client ?? createClient();
-
-  const { data, error } = await supabase
-    .from("game_umpires")
-    .select(
-      `game:games(
-        id,
-        scheduled_at,
-        home_team:teams!home_team_id(name, division:divisions(settings)),
-        away_team:teams!away_team_id(name)
-      )`,
-    )
-    .eq("umpire_id", umpireId)
-    .neq("game_id", candidate.id);
-  if (error) return { ok: false };
-
-  const rows = (data as unknown as UmpireBookingRow[] | null) ?? [];
-  return { ok: true, conflict: findConflictInBookings(candidate, bookingsFromRows(rows)) };
+  const read = await fetchOfficialBookings(seasonId, [umpireId], client);
+  if (!read.ok) return { ok: false };
+  return { ok: true, conflict: findConflictInBookings(candidate, read.byUmpire.get(umpireId) ?? []) };
 }
 
 export type BlackoutInfo = { date: string; note: string | null };

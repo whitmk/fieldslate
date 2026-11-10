@@ -143,6 +143,8 @@
     "sim:volunteer-email:mutants": "npx tsx scripts/sim/volunteer-email-mutants.ts",
     "sim:outbox-quota": "TZ=UTC npx tsx scripts/sim/outbox-quota-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/outbox-quota-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/outbox-quota-sim.ts",
     "sim:outbox-quota:mutants": "npx tsx scripts/sim/outbox-quota-mutants.ts",
+    "sim:official-busy": "TZ=UTC npx tsx scripts/sim/official-busy-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/official-busy-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/official-busy-sim.ts",
+    "sim:official-busy:mutants": "npx tsx scripts/sim/official-busy-mutants.ts",
     "sim:volunteer-tracker": "TZ=UTC npx tsx scripts/sim/volunteer-tracker-sim.ts && TZ=America/Los_Angeles npx tsx scripts/sim/volunteer-tracker-sim.ts && TZ=Pacific/Kiritimati npx tsx scripts/sim/volunteer-tracker-sim.ts",
     "sim:volunteer-tracker:mutants": "npx tsx scripts/sim/volunteer-tracker-mutants.ts",
     "sim:sql-latest": "npx tsx scripts/sim/sql-latest-sim.ts",

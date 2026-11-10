@@ -482,6 +482,14 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `volunteer_trigger_failures`. **The latest migration applied.** **Deploy
   order (met): 0128 was applied BEFORE the code reached `main`.** See
   "Outbox quota and email problems (0128)".
+- **0129 (one busy rule for officials) — WRITTEN, NOT APPLIED (2026-11-10,
+  branch `fix/official-busy-rule`).** Rolled-back proof run 1 green (6/6 at
+  their own tag) and the 0124 proof against it green (MO5 at OC1) — read the
+  RUN LOG in `scripts/sim/official-busy-sim.sql`. Expected md5(prosrc) after
+  apply: `official_game_busy` `2d31e2e3079eb55e34a5e4decadb82ed`,
+  `official_slot_problem` `9d93f78e8c58a856f93b343e748f6c90`,
+  `official_bookings` `1d253cb415570d62d7dec9f3547e201e`. Takes no table
+  lock. **Apply BEFORE the code reaches `main`.** See "ONE BUSY RULE (0129)".
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -3575,8 +3583,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `src/components/divisions/use-day-occupancy.ts` (lifted verbatim out of
   `manual-move-form.tsx`).
 - **Officials:** assignments ride the game id, so they follow the new date;
-  the pay report never reads dates. Officials' rained-out games still count as
-  busy in the new notice (the long-standing open question, left as is).
+  the pay report never reads dates. Since 0129 the notice uses the ONE busy
+  rule: an official's rained-out or postponed game is not busy (see "ONE
+  BUSY RULE (0129)" under Officials).
   Auto-assign now skips past games (see "Officials / umpires") — without that,
   un-cancelling a past rainout would have made it fair game.
 - **Harnesses.** `scripts/sim/record-game-played-sim.sql` (+ build script;
@@ -5305,16 +5314,38 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   (`fake-supabase.ts`) gained head/exact counts, `range` and `or` with `in.(…)`.
   Not checked in the browser (behind sign-in).
 - **Conflict overlap/blackout logic is shared.** `findUmpireConflict`
-  (`src/lib/umpires/conflicts.ts`) is a thin fetch over the exported pure
-  functions `bookingsFromRows` / `findConflictInBookings`, and the picker's
-  pre-click option states (`umpire-slots.tsx`) use the same functions. Never
-  write a parallel implementation — extend the shared ones.
-- **Open question, deliberately consistent in both places:** bookings on
-  cancelled games still count as time conflicts (save-time and pre-click
-  agree). Revisit alongside rainout workflows.
+  (`src/lib/umpires/conflicts.ts`) is a thin wrapper over
+  `fetchOfficialBookings` + the pure `findConflictInBookings`, and the
+  picker's pre-click option states (`umpire-slots.tsx`) use the same
+  functions. Never write a parallel implementation — extend the shared ones.
+- **ONE BUSY RULE (0129 — WRITTEN, NOT APPLIED; branch
+  `fix/official-busy-rule`, 2026-11-10).** An official is busy for a game
+  unless it is `cancelled` (rained out) or `postponed` — a BLOCKLIST, so a new
+  status, or null, is busy. The rule lives ONCE, in the database:
+  `official_game_busy(status)`. `official_slot_problem` (claims, open spots,
+  auto-assign's write re-check) uses it, and the app's ONE read,
+  `official_bookings(season, umpire ids)` (owner/admin by ROLE, not
+  plan-gated — in-schedule assignment is open to every plan), returns only
+  busy games. Its five callers — the manual save (`findUmpireConflict`), the
+  picker rosters in the division panel and the game detail modal,
+  record-where-played and auto-assign — call `fetchOfficialBookings`; none
+  tests a status or reads `game_umpires → games` for bookings (sim
+  [S1]–[S5]). **FAILS CLOSED:** an rpc error or malformed reply is "couldn't
+  read" — the manual save refuses ("Couldn't check Sam's other games…"),
+  the picker refuses an official whose bookings weren't read
+  (`BOOKINGS_UNREAD_SUFFIX`), both roster readers show the read error in
+  place of the slots, record-played says "couldn't check". The sign-up
+  page's "my games" list keeps its own `<> 'cancelled'` (a display list, by
+  decision). The officials fake answers `official_bookings` with its own
+  copy of the blocklist, pinned to 0129 by sim [FK1]. **Deploy order: apply
+  0129 BEFORE the code reaches `main`.** Proof:
+  `scripts/sim/official-busy-sim.sql` (+ `official-busy-build.ts`, `--md5`,
+  `regress0124`; 6 mutants). Harness: `npm run sim:official-busy` (32 checks
+  × 3 zones) + `:mutants` (12: CB1–CB5 one per caller, FC1–FC7 fail-closed).
 - **Scale note:** the picker roster feeds (game-detail-modal,
-  division-schedule-panel) embed each official's FULL booking rows per
-  fetch. First suspect if picker-open slows at large-league scale.
+  division-schedule-panel) read every roster official's busy games per open
+  through `official_bookings`. First suspect if picker-open slows at
+  large-league scale.
 - **Season-wide auto-assign is orchestration only.** `autoAssignSeason`
   (`src/lib/umpires/auto-assign-season.ts`) runs the unchanged per-division
   engine in ascending `divisions.priority` order (name tiebreak, matching
