@@ -10,7 +10,7 @@
 //      same characters (read out of the migration file)
 //   E  error text for the log carries no address
 //   Q  the Resend request: From, Reply-To and the Idempotency-Key reach it
-//   D  the drain: one send per row with its key, retry vs final, failures
+//   D  the drain: one send per row with its key, retry (5xx) vs final, failures
 //      written and logged, a failed finish doesn't stop the run, the gap
 //      between sends, nothing taken without a From address, rows without a
 //      recipient/reply-to/template never sent
@@ -30,6 +30,9 @@
 //     R2's two-address case also has two @ signs; R2 gained "x,y@…".
 //   run 2 — 16/16 killed at their own tag; source restored green.
 //   run 3 (Settings card: C, S6, VE17–VE20) — 20/20 killed at their own tag.
+//   2026-11-10 (0128): D2 is 5xx only (a 429 is now a hold — sim:outbox-quota);
+//     VE8/VE9 re-targeted at sendOutcome, VE12 at the new loop — 28/28 killed
+//     at their own tag.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -161,6 +164,7 @@ async function main() {
   } = {}) {
     const sends: Parameters<DrainDeps["send"]>[0][] = [];
     const finishes: Parameters<DrainDeps["finish"]>[0][] = [];
+    const holds: Parameters<DrainDeps["hold"]>[0][] = [];
     const logs: string[] = [];
     const sleeps: number[] = [];
     let takes = 0;
@@ -175,6 +179,8 @@ async function main() {
         out.forEach((r) => pending.delete(r.id));
         return { ok: true, rows: out };
       },
+      hold: async (a) => { holds.push(a); return { ok: true }; },
+      now: () => new Date("2026-11-10T18:00:00Z"),
       finish: async (a) => {
         finishes.push(a);
         return opts.finishFailsFor?.includes(a.id) ? { ok: false, error: "db down for x@y.org" } : { ok: true };
@@ -189,7 +195,7 @@ async function main() {
       sleep: async (ms) => { sleeps.push(ms); },
       log: (m) => { logs.push(m); },
     };
-    return { deps, sends, finishes, logs, sleeps, takes: () => takes };
+    return { deps, sends, finishes, holds, logs, sleeps, takes: () => takes };
   }
   const row = (id: number, extra: Partial<Row> = {}): Row => ({
     id, kind: "reminder", payload: {}, attempts: 1, to: `v${id}@example.org`,
@@ -222,15 +228,17 @@ async function main() {
       eq(f.sleeps, [600, 600], "D7", "one 600ms gap between each pair of sends");
       counters.gaps += f.sleeps.length;
     }
-    // D2 — a 5xx / 429 is retried; the failure is written AND logged, scrubbed.
+    // D2 — a 5xx is retried; the failure is written AND logged, scrubbed.
+    // (0128: a 429 is no longer a retry — it is held without using an
+    // attempt; sim:outbox-quota pins that.)
     {
       const f = fakeDeps([row(1), row(2)], {
         1: { ok: false, status: 500, error: "Resend outage for v1@example.org" },
-        2: { ok: false, status: 429, error: "rate limited" },
+        2: { ok: false, status: 503, error: "unavailable" },
       });
       const s = await drainOutbox(f.deps);
       eq(f.finishes.map((x) => [x.id, x.ok, x.retry]), [[1, false, true], [2, false, true]], "D2",
-        "a 500 and a 429 are retried");
+        "a 500 and a 503 are retried");
       eq(f.finishes[0]?.error, "Resend outage for [address]", "D2", "the written error has no address");
       ok(f.logs.some((l) => l.includes("row 1") && l.includes("will retry")), "D2", "the failure is logged", f.logs.join(" | "));
       ok(!f.logs.some((l) => l.includes("v1@example.org")), "D2", "the log has no address", f.logs.join(" | "));

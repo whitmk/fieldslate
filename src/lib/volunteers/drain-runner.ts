@@ -23,6 +23,20 @@ export async function runVolunteerDrain(opts: { limit?: number } = {}): Promise<
         );
         return rpcErr ? { ok: false, error: rpcErr.message } : { ok: true };
       },
+      hold: async ({ id, until, reason }) => {
+        const { error: rpcErr } = await admin.rpc(
+          "volunteer_outbox_hold" as never,
+          { p_id: id, p_until: until, p_reason: reason } as never,
+        );
+        return rpcErr ? { ok: false, error: rpcErr.message } : { ok: true };
+      },
+      // 0128: a notice about a game or shift that has started never goes.
+      beforeTake: async () => {
+        const { data, error: rpcErr } = await admin.rpc("volunteer_outbox_drop_started" as never);
+        if (rpcErr) return { ok: false, error: rpcErr.message };
+        const n = (data as { dropped?: unknown } | null)?.dropped;
+        return { ok: true, dropped: typeof n === "number" ? n : 0 };
+      },
       send: ({ to, subject, html, text, from, replyTo, idempotencyKey }) =>
         sendEmail(to, subject, html, text, { from, replyTo, idempotencyKey }),
       render: renderVolunteerEmail,

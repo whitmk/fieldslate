@@ -17,6 +17,9 @@ import { loadSeasonShifts } from "@/lib/volunteers/shifts-read";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import * as W from "@/lib/volunteers/words";
 import { RolesScreen, type RolesScreenData } from "@/components/volunteers/roles-screen";
+import { loadEmailProblems } from "@/lib/outbound-email/problems-read";
+import { volunteerPointerLine } from "@/lib/outbound-email/problems";
+import { VOLUNTEER_PROBLEMS } from "@/lib/volunteers/email-problems";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +68,12 @@ export default async function VolunteersPage() {
     return <p className="rounded-xl border border-red-100 bg-red-50 p-6 text-sm text-red-700">{W.ROLES_READ_FAILED}</p>;
   }
   data.link = feature.settings?.linkEnabled ? volunteerSignupUrl(feature.settings.linkToken) : null;
-  return <RolesScreen data={data} />;
+  // 0128: a pointer to Who signed up when volunteer emails didn't go out.
+  // The detail page says "couldn't check" when the read fails; this line is
+  // only a pointer, so a failed read shows nothing here (logged).
+  const problems = await loadEmailProblems(supabase, VOLUNTEER_PROBLEMS, seasonId);
+  const emailPointer = problems.state === "ok" ? volunteerPointerLine(problems.problems) : null;
+  return <RolesScreen data={data} emailPointer={emailPointer} />;
 }
 
 async function loadRolesScreen(
