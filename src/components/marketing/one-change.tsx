@@ -15,8 +15,13 @@
 //     like the Volunteers card, the card states the Elite behaviour.
 //   - Volunteers: 0121's game_moved email (keep the spot or cancel).
 //   - Snack shack: shifts are derived from the games, but a change reaches
-//     the shifts only when the admin regenerates them; the page flags the
-//     days that no longer match.
+//     the shifts only when the admin rebuilds them (never automatic). Since
+//     0131 the Overview banner and the snack shack page flag the days whose
+//     shifts no longer match, "Review" opens a one-day preview of the day as
+//     it will be (teams, named volunteers who lose their spot), and Confirm
+//     writes it. A volunteer whose spot is removed gets the spot_lost email
+//     (held 10 minutes) — only when the league has a confirmed volunteer
+//     contact email, and never for a spot that has already started (0128).
 //
 // Server component. Colors are the homepage's hex literals, not fs-* tokens.
 
@@ -41,7 +46,7 @@ const CARDS = [
   {
     icon: Store,
     title: "Snack shack",
-    text: "Shifts are built from the game schedule, and FieldSlate shows you which days to rebuild when the games change.",
+    text: "Shifts don't change on their own. FieldSlate flags the days that need rebuilding, shows you exactly what will change, and emails volunteers who lose their spot.",
   },
 ];
 
