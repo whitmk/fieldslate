@@ -50,7 +50,7 @@ ul.lines{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:co
 </style>
 </head>
 <body>
-<div class="mock"><b>Mockup</b> · Part B snack shack (B2 banner, B3 one-day preview, B4 team kept) · for Whit's review · 2026-11-11</div>
+<div class="mock"><b>Mockup</b> · Part B snack shack (B2 banner, B3 one-day preview, B4 team kept) · revised after Whit's review · 2026-11-11</div>
 <div class="wrap">
 <h1>Snack shack: games changed, shifts didn't</h1>
 <p class="lede">Scenario: on SRALL-test, the 9:00 game on Sat, Oct 17 moved to 10:30, and on Sun, Oct 18 the last game moved 45 minutes later. No shift has been rebuilt yet. Nothing on this page writes anything until Confirm in the preview.</p>
@@ -66,8 +66,8 @@ ul.lines{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:co
         <div class="top"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
           <span><b>Snack shack:</b> games changed on 2 days, and those days' shifts no longer match.</span></div>
         <ul>
-          <li><span>Sat, Oct 17 — 3 shifts change</span><span class="btn amberbtn">Review Sat, Oct 17</span></li>
-          <li><span>Sun, Oct 18 — 1 shift changes</span><span class="btn amberbtn">Review Sun, Oct 18</span></li>
+          <li><span>Sat, Oct 17 — shifts need rebuilding</span><span class="btn amberbtn">Review Sat, Oct 17</span></li>
+          <li><span>Sun, Oct 18 — shifts need rebuilding</span><span class="btn amberbtn">Review Sun, Oct 18</span></li>
         </ul>
       </div>
       <p class="label" style="margin-top:16px">When the check itself fails</p>
@@ -79,8 +79,8 @@ ul.lines{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:co
         <div class="top"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
           <span><b>Snack shack:</b> games changed on 2 days, and those days' shifts no longer match.</span></div>
         <ul>
-          <li><span>Sat, Oct 17 — 3 shifts change</span><span class="btn amberbtn">Review</span></li>
-          <li><span>Sun, Oct 18 — 1 shift changes</span><span class="btn amberbtn">Review</span></li>
+          <li><span>Sat, Oct 17 — shifts need rebuilding</span><span class="btn amberbtn">Review</span></li>
+          <li><span>Sun, Oct 18 — shifts need rebuilding</span><span class="btn amberbtn">Review</span></li>
         </ul>
       </div>
     </div>
@@ -91,18 +91,18 @@ ul.lines{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:co
 <!-- 2. Snack shack page -->
 <section class="screen">
   <h2>2 · Snack shack page notice (replaces "The schedule changed since shifts were made — N days differ.")</h2>
-  <p class="why">Same per-day list, plus the red count when a moved game now overlaps a team's own stored shift (the existing red row flag, counted up here so it isn't missed further down the list). "Regenerate all" keeps today's full-season preview.</p>
+  <p class="why">Same per-day list, plus a red line naming each upcoming shift whose team now plays during it (the existing red row flag, named up here so it isn't missed further down the list). "Regenerate all" keeps today's full-season preview.</p>
   <div class="row">
     <div class="desk"><div class="page">
       <div class="amber">
         <div class="top"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
           <span>The game schedule changed on 2 days since shifts were made.</span></div>
         <ul>
-          <li><span>Sat, Oct 17 — 3 shifts change</span><span class="btn amberbtn">Review this day</span></li>
-          <li><span>Sun, Oct 18 — 1 shift changes</span><span class="btn amberbtn">Review this day</span></li>
+          <li><span>Sat, Oct 17 — shifts need rebuilding</span><span class="btn amberbtn">Review this day</span></li>
+          <li><span>Sun, Oct 18 — shifts need rebuilding</span><span class="btn amberbtn">Review this day</span></li>
           <li style="justify-content:flex-end"><span class="btn ghost">Regenerate all</span></li>
         </ul>
-        <p class="red" style="margin:8px 0 0;font-weight:600">1 upcoming shift is assigned to a team that now plays during it.</p>
+        <p class="red" style="margin:8px 0 0;font-weight:600">Sat, Oct 17 12:30pm — Cubs now plays during their shift</p>
       </div>
     </div></div>
   </div>
@@ -117,24 +117,15 @@ ul.lines{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:co
       <div class="modal">
         <div class="mhead"><b>Rebuild Sat, Oct 17 from the game schedule</b><small>Only this day changes. Every other day stays as it is. Nothing is written until you confirm.</small></div>
         <div class="mbody">
-          <div class="chips"><span class="chip c-add">2 added</span><span class="chip c-chg">0 changed</span><span class="chip c-rm">3 removed</span></div>
-          <div><b>Sat, Oct 17</b>
+          <div class="chips"><span class="chip c-add">2 added</span><span class="chip c-chg">0 changed</span><span class="chip c-rm">3 removed</span><span class="chip c-n">3 shifts on other days left as they are</span></div>
+          <div><b>Sat, Oct 17 — after the rebuild</b>
             <ul class="lines">
-              <li style="color:#166534">Added: 10:00am–12:00pm</li>
-              <li style="color:#166534">Added: 12:00–2:30pm</li>
-              <li style="color:#991b1b">Removed: 8:30–10:30am</li>
-              <li style="color:#991b1b">Removed: 10:30am–12:30pm</li>
-              <li style="color:#991b1b">Removed: 12:30–2:30pm</li>
+              <li>10:00am–12:00pm: Cubs (was 12:30–2:00pm)</li>
+              <li>12:00–2:00pm: Giants (new this day)</li>
+              <li style="color:#92400e">Braves no longer has a shift this day.</li>
+              <li style="color:#92400e">Mets no longer has a shift this day.</li>
             </ul></div>
           <div class="box-red"><b>J. Smith</b> (8:30–10:30am) and <b>K. Lee</b> (10:30am–12:30pm) lose their spot when you confirm. Each is emailed.</div>
-          <div><b>Assignments that would change</b>
-            <ul class="lines">
-              <li>Sat, Oct 17 8:30–10:30am: Braves → removed</li>
-              <li>Sat, Oct 17 10:30am–12:30pm: Mets → removed</li>
-              <li>Sat, Oct 17 12:30–2:30pm: Cubs → removed</li>
-              <li>Sat, Oct 17 10:00am–12:00pm: new → Braves</li>
-              <li>Sat, Oct 17 12:00–2:30pm: new → Mets</li>
-            </ul></div>
         </div>
         <div class="mfoot"><span class="btn cancel">Cancel</span><span class="btn green">Confirm and rebuild this day</span></div>
       </div>
@@ -151,7 +142,7 @@ ul.lines{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:co
       </div>
     </div>
   </div>
-  <div class="decide"><b>Decision for you:</b> 2 removed shifts here get a new team picked by the usual fairness rule (Braves and Mets above happen to come back). B4 only keeps a team when a shift keeps its START. Moving the first game moves every start, so a team can still change. Say if you want "same team gets the shift nearest its old one" — that's a bigger rule change and not in the approved plan.</div>
+  <p class="note">Teams on new shifts are picked by the usual fairness rule (Cubs and Giants held the fewest shifts). "Nearest shift" for a team whose start moved is a follow-up, not v1.</p>
 </section>
 
 <!-- 4. One-day preview, end moved -->
@@ -163,13 +154,25 @@ ul.lines{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:co
         <div class="mhead"><b>Rebuild Sun, Oct 18 from the game schedule</b><small>Only this day changes. Every other day stays as it is. Nothing is written until you confirm.</small></div>
         <div class="mbody">
           <div class="chips"><span class="chip c-add">0 added</span><span class="chip c-chg">1 changed</span><span class="chip c-rm">0 removed</span><span class="chip c-n">2 unchanged</span></div>
-          <div><b>Sun, Oct 18</b><ul class="lines"><li style="color:#92400e">Changed: 12:30–2:30pm → 12:30–3:15pm</li></ul></div>
-          <div class="box-amb">1 volunteer sign-up moves with its changed shift: <b>P. Garcia</b>. They're emailed the new hours.</div>
-          <div><b>Assignments that would change</b><ul class="lines"><li>Sun, Oct 18 12:30pm: ends 2:30pm → 3:15pm, Cubs (kept — still free)</li></ul></div>
+          <div><b>Sun, Oct 18 — after the rebuild</b><ul class="lines"><li>9:30–11:30am: Braves</li><li>11:30am–12:30pm: Mets</li><li>12:30–3:15pm: Cubs (was 12:30–2:30pm)</li></ul></div>
+          <div class="box-amb"><b>P. Garcia</b> moves with their changed shift and is emailed the new hours.</div>
         </div>
         <div class="mfoot"><span class="btn cancel">Cancel</span><span class="btn green">Confirm and rebuild this day</span></div>
       </div>
-      <p class="note">If Cubs now played during 12:30–3:15, the line would read "Cubs → Giants" and the usual picker chooses.</p>
+      <p class="note">If Cubs now played during 12:30–3:15, the usual picker chooses: "12:30–3:15pm: Giants (new this day)" and "Cubs no longer has a shift this day."</p>
+    </div>
+  </div>
+</section>
+
+<!-- 6. Email prompt -->
+<section class="screen">
+  <h2>6 · After a rebuild that changes team assignments</h2>
+  <p class="why">Shown after Confirm only when a team gained, lost or swapped a shift (a changed shift that kept its team doesn't count). "Send updated schedule" opens the existing "Email full schedule" form: it sends the whole season's shifts to ONE address the admin types. It does not email each team.</p>
+  <div class="desk" style="max-width:420px">
+    <div class="modal" style="padding:14px 16px">
+      <b style="font-size:14px">Team assignments changed. Send updated snack shack emails?</b>
+      <p class="note" style="margin:4px 0 10px">This sends the full season's snack shack schedule to one email address you choose.</p>
+      <div style="display:flex;justify-content:flex-end;gap:8px"><span class="btn cancel" style="height:36px;font-size:12.5px">Not now</span><span class="btn green" style="height:36px;font-size:12.5px">Send updated schedule</span></div>
     </div>
   </div>
 </section>

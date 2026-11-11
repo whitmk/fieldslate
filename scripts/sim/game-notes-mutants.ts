@@ -108,6 +108,18 @@ const MUTANTS: Mutant[] = [
     replace: '    .from("snack_shack_blocks")\n    .select(\n      "date, start_time, end_time, volunteer_claims(id), snack_shack_settings(leagues(name, season))",',
     expect: "O1-snack-volunteer-team",
   },
+  {
+    id: "GM23", what: "(0131) the full print calls the names-only read", file: REGION,
+    find: "                  <td>{cashPrintLine(b)}</td>",
+    replace: "                  <td>{cashPrintLine(b)}{\"volunteer_shift_claims_for_blocks\" && null}</td>",
+    expect: "O1-snack-names-only",
+  },
+  {
+    id: "GM24", what: "(0131) the dashboard banner reads volunteer names", file: "src/components/dashboard/snack-shack-stale-banner.tsx",
+    find: "import { clearStaleMarks, readStaleState } from \"@/lib/snack-shack/stale-marks\";",
+    replace: "import { clearStaleMarks, readStaleState } from \"@/lib/snack-shack/stale-marks\";\nimport { volunteerLabel as _n } from \"@/lib/snack-shack/preview-names\"; void _n;",
+    expect: "O1-snack-banner",
+  },
 ];
 
 runMutants({ sim: "scripts/sim/game-notes-sim.ts", timezones: ["UTC"], mutants: MUTANTS });

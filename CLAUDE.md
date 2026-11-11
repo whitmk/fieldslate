@@ -5937,6 +5937,57 @@ Still open:
   their own tag; it holds ACCESS EXCLUSIVE on both tables and RowShare on
   profiles for the run. `sim:snack-print` (24 checks) +
   `:mutants` (11).
+- **Days that need rebuilding (0131, branch `feat/snack-shack-stale-days`,
+  2026-11-11; proven 13/13 rolled back, NOT APPLIED — Whit sets the time).**
+  Plan: `docs/plans/game-change-followthrough.md` Part B; mockup
+  `docs/mockups/snack-shack-stale-days.html` (revised after review).
+  - **The marks:** a statement-level trigger on `games` records each date a
+    game changed on at a shack home field (old AND new row; insert, delete,
+    and an update of scheduled_at / venue_id / status / home_team_id; only
+    today-or-later in league time) in `snack_shack_stale_days`. A mark says
+    "a game changed here", NOT "the shifts are wrong". It never blocks a game
+    write: a failure is recorded in `snack_shack_stale_failures` (time +
+    SQLSTATE), and the app then checks the whole season. DEFINER; skipped
+    under `fieldslate.lock_bypass`. Both tables: RLS on, no role privilege.
+  - **What shows is the REAL calculation** (`loadShiftInputs` +
+    `upcomingStaleness`). Dashboard banner (`SnackShackStaleBanner`, Elite,
+    topbar season): reads `snack_shack_stale_state`, runs the calculation only
+    with a mark or a failed mark, shows marked ∩ flagged days (every flagged
+    day after a failure; `bannerDays`), and clears marks the calculation
+    doesn't flag (`marksToClear`). Snack shack page: per-day "shifts need
+    rebuilding" + Review this day + Regenerate all, and a red line naming each
+    upcoming shift whose team now plays during it (`playsDuringLines`).
+    Clearing is TIMED (`clear_snack_shack_stale_days(shack, dates, before)`,
+    `before` = `ShiftInputs.readAt`), so a change made while a preview was
+    open stays marked. All words: `src/lib/snack-shack/stale-days.ts`.
+  - **Rebuild one day (B3):** `buildRegeneratePlan({ onlyDates })` — every
+    other upcoming stored row rides the payload as stored (`untouched`) and
+    seeds equity. The preview shows each changed day AS IT WILL BE
+    (`dayResults`: "10:00am–12:00pm: Cubs (was 12:30–2:00pm)", "(new this
+    day)", "Needs a team", "Cubs no longer has a shift this day." — a team
+    with a manual shift that day isn't listed).
+  - **Keep the team (B4):** a changed shift (same date + start) keeps its old
+    team when that team is free of it by the hard overlap rule; else the
+    picker. "Nearest shift" when every start moves is a FOLLOW-UP, paired
+    with sign-ups carrying by overlap (plan doc).
+  - **Names (B3):** the preview names volunteers who lose their spot or move
+    with a changed shift via `volunteer_shift_claims_for_blocks(season, block
+    ids)` (volunteer_admin_gate; first initial + last name, never an email).
+    **ONLY `regenerate-preview-modal.tsx` may name it** —
+    `sim:game-notes` [O1-snack-names-only] walks all of src (GM23); the
+    banner, `stale-days.ts` and `stale-marks.ts` reference no sign-up data
+    ([O1-snack-banner], GM24). Wording/parsing: `preview-names.ts`. A failed
+    read keeps the count line + "Couldn't read who signed up."; Confirm
+    stays allowed.
+  - **After a rebuild that changed a team assignment** (`teamAssignmentsChanged`
+    — a kept team isn't a change) the page offers "Team assignments changed.
+    Send updated snack shack emails?", which opens the EXISTING "Email full
+    schedule" form: the whole season's shifts (past included) to ONE address
+    the admin types. Nothing emails each team.
+  - No admin email in v1. Proof: `scripts/sim/snack-stale-days-sim.sql`
+    (+ build script; 13 mutants). App: `sim:snack-shifts` section R (+ RM1–RM12).
+  - **Deploy order: apply 0131 BEFORE the code reaches `main`** — the
+    dashboard and the snack shack page call its functions.
 - **Harness: `npm run sim:snack-shifts`** (108 checks × 3 zones, 16
   anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (27 mutants,
   each killed FIRST at its own assertion). Read the MUTATION LOG in the sim

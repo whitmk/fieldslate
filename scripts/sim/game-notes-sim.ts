@@ -32,6 +32,9 @@
 //   GM10 (0104) the print-all template renders the cash person   → [O1-snack-print-all]
 //   GM11 (0104) the Snack Shack page select drops the fields     → [O3-snack]
 //   GM8–GM11 run through scripts/sim/game-notes-mutants.ts (mutant-runner).
+//   GM23 (0131) the full print names the names-only read          → [O1-snack-names-only]
+//   GM24 (0131) the dashboard banner imports volunteer wording      → [O1-snack-banner]
+//   (2026-11-11: 17/17 killed at their own tag, first run.)
 // RESULT (2026-10-05, GM8–GM11): 4/4 killed, each FIRST at its own assertion
 // — on the SECOND run. The first run was a harness fault twice over: this
 // file printed "FAIL [tag]" without the colon the shared runner parses, so
@@ -268,6 +271,35 @@ function partO() {
     ok(!mentionsNotes(src), `[O1-snack] ${name} never references notes`);
     ok(!mentionsCash(src) && !src.includes("cashPrintLine"), `[O1-snack-cash-${key}] ${name} never references a cash person`);
     ok(!VOLUNTEER_NAMES.test(src), `[O1-snack-volunteer-${key}] ${name} never references volunteer sign-ups (0122)`);
+  }
+  // 0131 (Part B / B3): the rebuild preview NAMES volunteers who lose their
+  // spot, through volunteer_shift_claims_for_blocks (first initial + last
+  // name). ONLY the preview modal may call it — the fence is narrowed by that
+  // one file, by name. Every other file in src naming it fails here, BEFORE
+  // the print checks below, so a print that calls it dies at this line.
+  {
+    const NAMES_FN = "volunteer_shift_claims_for_blocks";
+    const allowed = join("components", "snack-shack", "regenerate-preview-modal.tsx");
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(join(SRC, dir), { withFileTypes: true })) {
+        const rel = join(dir, e.name);
+        if (e.isDirectory()) walk(rel);
+        else if (/\.(ts|tsx)$/.test(e.name) && readFileSync(join(SRC, rel), "utf8").includes(NAMES_FN)) hits.push(rel);
+      }
+    };
+    walk("");
+    ok(hits.length === 1 && hits[0] === allowed, `[O1-snack-names-only] only ${allowed} names ${NAMES_FN}`, hits.join(", "));
+    // The dashboard banner and the stale-day rules it imports read no sign-up
+    // data at all.
+    for (const [name, p2] of [
+      ["dashboard snack shack banner", ["components", "dashboard", "snack-shack-stale-banner.tsx"]],
+      ["stale-day rules", ["lib", "snack-shack", "stale-days.ts"]],
+      ["stale-day marks I/O", ["lib", "snack-shack", "stale-marks.ts"]],
+    ] as [string, string[]][]) {
+      counters.omissionFilesChecked++;
+      ok(!VOLUNTEER_NAMES.test(read(...p2)), `[O1-snack-banner] the ${name} never references volunteer sign-ups`);
+    }
   }
   // The two page prints were lifted out of the page client (2026-11-07):
   // the full-schedule region is its own component file, the print-all

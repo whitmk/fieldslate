@@ -15,6 +15,7 @@ import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { isProPlus, isElite } from "@/lib/plan/limits";
 import { planLabel } from "@/lib/plan/labels";
 import { WelcomeBanner } from "@/components/dashboard/welcome-banner";
+import { SnackShackStaleBanner } from "@/components/dashboard/snack-shack-stale-banner";
 import { CompleteSetupCta } from "@/components/dashboard/complete-setup-cta";
 import { isSetupIncomplete } from "@/lib/setup/derive-step";
 import { FinishSetupLink } from "@/components/setup/finish-setup-link";
@@ -263,6 +264,11 @@ export default async function DashboardPage({
           showArchived={showArchived}
           canShowArchived={isElite(plan)}
         />
+      )}
+
+      {/* 0131: snack shack days whose games changed (Elite; checks the topbar season) */}
+      {isElite(plan) && globalSeasonId && (
+        <SnackShackStaleBanner seasonId={globalSeasonId} orgId={currentOrgId} />
       )}
 
       {/* Stat cards */}

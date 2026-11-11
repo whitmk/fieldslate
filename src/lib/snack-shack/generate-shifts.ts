@@ -76,6 +76,9 @@ export type ShiftInputs = {
   /** 0122: active volunteer sign-ups per shift id (counts only); null when
    *  they couldn't be read — the preview says so. */
   signupCounts: Record<string, number> | null;
+  /** 0131: when the games were read (ISO). Clearing stale-day marks passes
+   *  it as `before`, so a game changed after this read stays marked. */
+  readAt: string;
 };
 
 type GameRow = {
@@ -115,6 +118,7 @@ const PLAYOFF_COLS =
 export async function loadShiftInputs(settings: SnackShackSettingsInput, orgId: string): Promise<ShiftInputs> {
   const supabase = createClient();
   const rule = ruleFromSettings(settings);
+  const readAt = new Date().toISOString();
 
   const [teamsRes, choicesRes, tzRes, countsRes] = await Promise.all([
     supabase.from("teams").select("id, name").eq("league_id", settings.season_id).order("name"),
@@ -228,10 +232,11 @@ export async function loadShiftInputs(settings: SnackShackSettingsInput, orgId: 
     timezone,
     today,
     signupCounts,
+    readAt,
   };
 }
 
-export function planFromInputs(inputs: ShiftInputs): RegeneratePlan {
+export function planFromInputs(inputs: ShiftInputs, onlyDates: readonly string[] | null = null): RegeneratePlan {
   return buildRegeneratePlan({
     derivation: inputs.derivation,
     stored: inputs.stored,
@@ -240,6 +245,7 @@ export function planFromInputs(inputs: ShiftInputs): RegeneratePlan {
     index: inputs.index,
     today: inputs.today,
     signupCounts: inputs.signupCounts,
+    onlyDates,
   });
 }
 

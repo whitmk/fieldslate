@@ -1,14 +1,30 @@
 "use client";
 
-// The regenerate PREVIEW. Nothing is written until Confirm; Cancel writes
-// nothing. Shows every shift added, removed or changed by date, every
-// assignment that would change, and how many past shifts are left as they
-// are. The counts and lines come from the plan — the modal invents nothing.
+// The regenerate PREVIEW — the whole season, or one day (0131, Part B).
+// Nothing is written until Confirm; Cancel writes nothing. For every day the
+// plan changes it shows the day AS IT WILL BE (each shift with its team, and
+// what that team's shift was), the teams left with no shift that day, and the
+// volunteers who lose their spot or move with a changed shift, BY NAME. Every
+// line comes from the plan and stale-days.ts — the modal invents nothing.
+//
+// THIS IS THE ONE FILE that may call volunteer_shift_claims_for_blocks (first
+// initial + last name, never an email). sim:game-notes fails if any other
+// file in src names it. If the names can't be read, the count line still
+// shows with "Couldn't read who signed up." — Confirm stays allowed.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, RefreshCw, X } from "lucide-react";
-import { assignmentChangeLines, signupsLine, type RegeneratePlan } from "@/lib/snack-shack/regenerate-plan";
+import { createClient } from "@/lib/supabase/client";
+import { signupsLine, type RegeneratePlan } from "@/lib/snack-shack/regenerate-plan";
 import type { SchedulingPreference, StoredShiftRow } from "@/lib/snack-shack/derive-shifts";
+import { dayResults, fmtDay, previewTitle } from "@/lib/snack-shack/stale-days";
+import {
+  COULDNT_READ_NAMES,
+  parseShiftClaimNames,
+  previewBlockIds,
+  signupNameLines,
+  type ShiftClaimName,
+} from "@/lib/snack-shack/preview-names";
 import { NEEDS_TEAM, fmtShiftRange, previewFlagLine } from "@/lib/snack-shack/shift-flags";
 import { headcountCarryText } from "@/lib/snack-shack/headcount";
 
@@ -25,6 +41,10 @@ const span = (s: string, e: string) => fmtShiftRange(s, e);
 
 interface Props {
   plan: RegeneratePlan;
+  /** The season — the names read is gated by it. */
+  seasonId: string;
+  /** The stored shifts the plan was built from (the "was" side of each day). */
+  stored: StoredShiftRow[];
   /** Words the off-preference lines ("not at the park" vs "plays that day"). */
   preference: SchedulingPreference;
   teamName: (id: string | null) => string;
@@ -38,8 +58,29 @@ interface Props {
   onCancel: () => void;
 }
 
-export function RegeneratePreviewModal({ plan, preference, teamName, cashName = () => null, legacyNotice, busy, error, onConfirm, onCancel }: Props) {
+export function RegeneratePreviewModal({ plan, seasonId, stored, preference, teamName, cashName = () => null, legacyNotice, busy, error, onConfirm, onCancel }: Props) {
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // Names of the volunteers on removed and changed shifts. Read only when the
+  // counts say someone signed up; "error" keeps the count line and says so.
+  const [names, setNames] = useState<ShiftClaimName[] | "loading" | "error" | null>(null);
+  const ids = previewBlockIds(plan);
+  const idsKey = [...ids.lost, ...ids.carried].sort().join(",");
+  const anySignups = plan.signups !== null && plan.signups.carried + plan.signups.lost > 0;
+  useEffect(() => {
+    if (!anySignups || idsKey === "") { setNames(null); return; }
+    let cancelled = false;
+    setNames("loading");
+    createClient()
+      // @ts-expect-error — RPCs aren't in the hand-maintained Functions map.
+      .rpc("volunteer_shift_claims_for_blocks", { p_season_id: seasonId, p_block_ids: idsKey.split(",") })
+      .then(({ data, error: e }: { data: unknown; error: { message: string } | null }) => {
+        if (cancelled) return;
+        const parsed = e ? null : parseShiftClaimNames(data);
+        if (e) console.error("[snack shack] volunteer names:", e.message);
+        setNames(parsed ?? "error");
+      });
+    return () => { cancelled = true; };
+  }, [anySignups, idsKey, seasonId]);
   useEffect(() => {
     cancelRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
@@ -52,8 +93,11 @@ export function RegeneratePreviewModal({ plan, preference, teamName, cashName = 
   const added = plan.dayChanges.reduce((n, d) => n + d.added.length, 0);
   const removed = plan.dayChanges.reduce((n, d) => n + d.removed.length, 0);
   const changed = plan.dayChanges.reduce((n, d) => n + d.changed.length, 0);
-  const lines = assignmentChangeLines(plan.assignmentChanges, teamName);
-  const rowSpan = (r: StoredShiftRow) => span(r.start_time, r.end_time);
+  const days = dayResults(plan, stored, (id) => teamName(id));
+  const head = previewTitle(plan.onlyDates);
+  const withDate = !(plan.onlyDates && plan.onlyDates.length === 1);
+  const named = Array.isArray(names) ? signupNameLines(plan, names, withDate) : null;
+  const countLine = signupsLine(plan.signups);
   const needsTeam = plan.flagged.filter((f) => f.flag === "unfilled").length;
   // What a carried or lost row holds: "“note” · cash: Pat · needs 3 people".
   const internalText = (notes: string | null, cashPersonId: string | null, peopleNeeded: number | null) =>
@@ -76,8 +120,8 @@ export function RegeneratePreviewModal({ plan, preference, teamName, cashName = 
       >
         <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-100 px-6 py-4">
           <div>
-            <h2 id="regen-title" className="font-semibold text-[#0C1F3F]">Regenerate shifts from the game schedule</h2>
-            <p className="text-xs text-gray-400">Nothing is written until you confirm.</p>
+            <h2 id="regen-title" className="font-semibold text-[#0C1F3F]">{head.title}</h2>
+            <p className="text-xs text-gray-400">{head.subtitle}</p>
           </div>
           <button type="button" onClick={onCancel} disabled={busy} aria-label="Close"
             className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50">
@@ -95,6 +139,11 @@ export function RegeneratePreviewModal({ plan, preference, teamName, cashName = 
             <span className="rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-700">{changed} changed</span>
             <span className="rounded-full bg-red-50 px-2.5 py-1 font-semibold text-red-700">{removed} removed</span>
             <span className="rounded-full bg-gray-100 px-2.5 py-1 font-semibold text-gray-600">{plan.kept} unchanged</span>
+            {plan.untouched > 0 && (
+              <span className="rounded-full bg-gray-100 px-2.5 py-1 font-semibold text-gray-600">
+                {plan.untouched === 1 ? "1 shift on other days left as it is" : `${plan.untouched} shifts on other days left as they are`}
+              </span>
+            )}
             {plan.frozenPast > 0 && (
               <span className="rounded-full bg-gray-100 px-2.5 py-1 font-semibold text-gray-600">
                 {plan.frozenPast === 1 ? "1 past shift left as it is" : `${plan.frozenPast} past shifts left as they are`}
@@ -113,20 +162,16 @@ export function RegeneratePreviewModal({ plan, preference, teamName, cashName = 
             </p>
           ) : (
             <div className="flex flex-col gap-4">
-              {plan.dayChanges.map((d) => (
+              {days.map((d) => (
                 <div key={d.date}>
-                  <p className="text-sm font-semibold text-[#0C1F3F]">{fmtDate(d.date)}</p>
-                  <ul className="mt-1 flex flex-col gap-0.5 text-sm">
-                    {d.changed.map((c) => (
-                      <li key={`c-${c.from.id}`} className="text-amber-800">
-                        Changed: {rowSpan(c.from)} → {span(c.to.start, c.to.end)}
-                      </li>
+                  <p className="text-sm font-semibold text-[#0C1F3F]">{fmtDay(d.date)} — after the rebuild</p>
+                  <ul className="mt-1 flex flex-col gap-0.5 text-sm tabular-nums">
+                    {d.shifts.map((sh) => (
+                      <li key={`s-${sh.start}-${sh.end}`} className={sh.needsTeam ? "font-medium text-red-700" : "text-gray-800"}>{sh.text}</li>
                     ))}
-                    {d.added.map((a) => (
-                      <li key={`a-${a.start}-${a.end}`} className="text-green-800">Added: {span(a.start, a.end)}</li>
-                    ))}
-                    {d.removed.map((r) => (
-                      <li key={`r-${r.id}`} className="text-red-800">Removed: {rowSpan(r)}</li>
+                    {d.shifts.length === 0 && <li className="text-gray-500">No shifts this day.</li>}
+                    {d.noLonger.map((l) => (
+                      <li key={l} className="text-amber-800">{l}</li>
                     ))}
                   </ul>
                 </div>
@@ -145,8 +190,23 @@ export function RegeneratePreviewModal({ plan, preference, teamName, cashName = 
                 </div>
               )}
 
-              {signupsLine(plan.signups) && (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{signupsLine(plan.signups)}</p>
+              {names === "loading" && countLine && (
+                <p className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-600">{countLine} Reading who signed up…</p>
+              )}
+              {names === "error" && countLine && (
+                <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">{countLine} {COULDNT_READ_NAMES}</p>
+              )}
+              {names === null && countLine && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{countLine}</p>
+              )}
+              {named?.lost && (
+                <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">{named.lost}</p>
+              )}
+              {named?.carried && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{named.carried}</p>
+              )}
+              {named && !named.lost && !named.carried && countLine && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{countLine}</p>
               )}
 
               {plan.lost.length > 0 && (
@@ -182,16 +242,6 @@ export function RegeneratePreviewModal({ plan, preference, teamName, cashName = 
                 </div>
               )}
 
-              {lines.length > 0 && (
-                <div>
-                  <p className="text-sm font-semibold text-[#0C1F3F]">Assignments that would change</p>
-                  <ul className="mt-1 flex flex-col gap-0.5 text-sm text-gray-700">
-                    {lines.map((l, i) => (
-                      <li key={i} className="tabular-nums">{l}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
           )}
 
@@ -208,7 +258,7 @@ export function RegeneratePreviewModal({ plan, preference, teamName, cashName = 
           <button type="button" onClick={onConfirm} disabled={busy}
             className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#22C55E] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {busy ? "Writing…" : "Confirm and regenerate"}
+            {busy ? "Writing…" : head.confirm}
           </button>
         </div>
       </div>
