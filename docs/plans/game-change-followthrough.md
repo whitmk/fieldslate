@@ -1034,6 +1034,22 @@ is "Games changed on Sat, Oct 17 at your snack shack fields — open the Snack
 shack page to see whether its shifts need rebuilding." **Recommend shipping
 B1–B4 and deciding B5 after a week of the banner.**
 
+**Decisions, third review (Whit, 2026-11-11):** the four 0131 departures are
+approved — marks only for games on a shack home field (a game leaving one
+marks the date it left), the failure table (time + SQLSTATE; the app then
+checks the whole season), the season id on `volunteer_shift_claims_for_blocks`,
+and the timed clear (`clear_snack_shack_stale_days(shack, dates, before)`).
+
+**FOLLOW-UP, not v1 (decided 2026-11-11): "nearest shift" for teams, paired
+with volunteer claims carrying over by overlap.** When the first game of a day
+moves, every shift's start moves, so B4 (keep the team on a same-start shift)
+does nothing and the fair pick re-assigns the day. The follow-up: a team that
+held a shift keeps the new shift nearest its old one (when still free), and a
+volunteer's sign-up carries to the new shift that overlaps its old one most,
+instead of only to a same-start shift. Both change the same-start carry rule
+(0104/0119/0122 in `regenerate_snack_shack_shifts` and the TS plan), so they
+ship together as one migration + plan change, with their own proof.
+
 **Volunteer emails under (2):** none until the admin confirms a regenerate.
 Then exactly today's rules apply: carried sign-ups get `shift_changed`, lost
 ones get `spot_lost` (held 10 minutes, withdrawn on reattach). B4 changes

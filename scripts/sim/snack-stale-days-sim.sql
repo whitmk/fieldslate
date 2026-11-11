@@ -101,9 +101,12 @@ create or replace function pg_temp.h131_at(n integer, hhmm text default '10:00')
   select ((current_date + n)::text || ' ' || hhmm || ':00+00')::timestamptz;
 $f$;
 
-create or replace function pg_temp.h131_marks(p_shack uuid) returns text language sql as $f$
-  select coalesce(string_agg(to_char(d.date, 'YYYY-MM-DD'), ',' order by d.date), '')
-    from public.snack_shack_stale_days d where d.snack_shack_id = p_shack;
+-- plpgsql, not sql: a sql body is checked when created, before 0131 exists.
+create or replace function pg_temp.h131_marks(p_shack uuid) returns text language plpgsql as $f$
+begin
+  return (select coalesce(string_agg(to_char(d.date, 'YYYY-MM-DD'), ',' order by d.date), '')
+            from public.snack_shack_stale_days d where d.snack_shack_id = p_shack);
+end;
 $f$;
 
 create or replace function pg_temp.h131_case() returns text language plpgsql as $f$
@@ -454,4 +457,19 @@ end $h$;
 --   (select count(*) from pg_stat_activity where state = 'idle in transaction') as idle_tx_must_be_0;
 --
 -- ── RUN LOG ───────────────────────────────────────────────────────────────
--- (not run yet — held for Whit's go)
+-- 2026-11-11, against production, rolled back, on Whit's go (sent as one
+-- batch, the migration byte-exact).
+--   Run 1 — HARNESS FAULT, nothing ran: pg_temp.h131_marks was LANGUAGE sql,
+--     whose body is checked when created — before 0131's table exists
+--     (42P01). Made plpgsql (checked at call). The batch errored at that
+--     statement and rolled back whole.
+--   Run 2 — GREEN: RL1 pass (no snack shack row changed); baseline pass;
+--     md5(prosrc) all four = `--md5` (clear 9d86e291…, mark d82f9176…,
+--     state eca5451f…, names 28351a32…); MS1–MS8, MN1–MN3, MC1, MP1 — 13/13
+--     KILLED at their own tag (MS5 died at SM6 with the h131_fail 23514
+--     reaching the game insert; MN1 at SN1 with the email key present).
+--   Leak check: identical to the pre-run snapshot — no 0131 table, function
+--     or trigger; no snack shack on QA Fall 2026; 30 games; Rookies
+--     false/false and no calendar links; no h131 volunteers, roles or temp
+--     functions; no games trigger disabled; no idle transaction.
+--   NOT applied — held for Whit's go and apply time.
