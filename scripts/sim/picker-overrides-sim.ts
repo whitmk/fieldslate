@@ -18,6 +18,16 @@
 // builder was touched. If the differential fails, the change leaked into the
 // default path — fix the leak, do NOT re-record.
 //
+// RE-RECORDED ONCE, BY DECISION (2026-11-11, branch
+// fix/latest-start-means-start): the division window's end became the LATEST
+// START (it meant "must end by"), which deliberately changes the default path.
+// Before re-recording, a scratch differential dumped both surfaces' full
+// output for all 2,000 fixtures from main and from the branch: no old slot was
+// lost; every added slot (21,338 rainout, 9,459 interleague) was on a playing
+// day with a start in (window end − game length, window end]; diagnostics
+// changed only on days that gained slots, or (d)/occupied days whose
+// rejection counts grew. 0 other differences.
+//
 // Each fixture hashes BOTH surfaces' full observable output: the rainout
 // surface (slots + diagnostics + the weekday roll-up it renders) and the
 // interleague surface (buildResolvePicker's slots, diagnostics, lines,
@@ -322,7 +332,9 @@ const fixtures = Array.from({ length: FIXTURE_COUNT }, (_, i) => makeFixture(i +
             "full output over seeded fixtures with no overrides. A failing " +
             "differential means the override path leaked into the default path. " +
             "Re-record ONLY when the default path is deliberately changed for a " +
-            "reason unrelated to the overrides, and say so in the commit.",
+            "reason unrelated to the overrides, and say so in the commit. " +
+            "Re-recorded 2026-11-11: the window's end became the latest START " +
+            "(see the sim header).",
           fixtureCount: FIXTURE_COUNT,
           rainout: rain,
           interleague: inter,

@@ -56,10 +56,18 @@ const MUTANTS: Mutant[] = [
     expect: "C1",
   },
   {
-    id: "PM7", what: "window checks the START only (the regular generator's rule)", file: PLAN,
-    find: "for (let t = winStart; t + input.durationMin <= winEnd; t += step) {",
-    replace: "for (let t = winStart; t <= winEnd; t += step) {",
+    // Re-targeted 2026-11-11: the window's end is now the LATEST START; this
+    // mutant puts the old "game must END by the window's end" rule back.
+    id: "PM7", what: "window end read as 'must end by' again (the pre-2026-11-11 rule)", file: PLAN,
+    find: "for (let t = winStart; t <= winEnd; t += step) {",
+    replace: "for (let t = winStart; t + input.durationMin <= winEnd; t += step) {",
     expect: "C2",
+  },
+  {
+    id: "PM7b", what: "a same-time window (start = end) falls back to 9–5 again", file: PLAN,
+    find: "      start && end && timeToMinutes(start) <= timeToMinutes(end)",
+    replace: "      start && end && timeToMinutes(start) < timeToMinutes(end)",
+    expect: "G4",
   },
   {
     id: "PM8", what: "round-order rule removed — a later round may start before the earlier one ends", file: PLAN,

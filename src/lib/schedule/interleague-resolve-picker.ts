@@ -426,16 +426,19 @@ export function emptyDayLines(
           : `${ctx.fieldName}'s hours that day aren't long enough for this game${n}.`,
       });
     } else if (d.kind === "day_window_too_short") {
+      // The division window's end is the LATEST START (2026-11-11), so a
+      // window can't be "too short" — only backwards (latest before earliest),
+      // or placed where no start in it leaves the game inside the field's hours.
       const { window: w, durationMin } = d;
-      const windowTooShort = toMins(w.end) - toMins(w.start) < durationMin;
+      const windowBackwards = toMins(w.end) < toMins(w.start);
       lines.push({
         ...base, kind: "day_window_too_short", tone: "config", venuesLink: false,
         text:
           d.governedBy !== "division"
             ? `no start time fits a ${durationMin}-minute game in ${ctx.fieldName}'s hours${n}.`
-            : windowTooShort
-              ? `${ctx.divisionName}'s game window that day is ${fmt12(w.start)}–${fmt12(w.end)}, which isn't long enough for a ${durationMin}-minute game${n}.`
-              : `${ctx.divisionName}'s game window that day (${fmt12(w.start)}–${fmt12(w.end)}) doesn't overlap ${ctx.fieldName}'s hours enough for a ${durationMin}-minute game${n}.`,
+            : windowBackwards
+              ? `${ctx.divisionName}'s latest game start that day (${fmt12(w.end)}) is before its earliest (${fmt12(w.start)})${n}.`
+              : `no start between ${fmt12(w.start)} and ${fmt12(w.end)} (${ctx.divisionName}'s game start times that day) fits a ${durationMin}-minute game in ${ctx.fieldName}'s hours${n}.`,
       });
     } else if (d.kind === "occupied") {
       const team = occupiedBlame(d) === "teams";

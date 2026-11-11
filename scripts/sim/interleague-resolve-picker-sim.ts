@@ -218,22 +218,22 @@ async function main() {
     const b = build();
     const sat = timesOn(b.slots, "2026-09-19");
     assert(sat[0] === "09:00", `[CLEAR] Saturday opens at the division window, 09:00 (got ${sat[0]})`);
-    assert(sat[sat.length - 1] === "15:30", `[CLEAR] last Saturday start ends by 17:00 → 15:30 (got ${sat[sat.length - 1]})`);
-    assert(sat.length === 27, `[CLEAR] full Saturday grid is 27 starts (got ${sat.length})`);
+    // 2026-11-11: the window's end (17:00) is the LATEST START. jennings is
+    // open until 19:00 on Saturdays, so 17:00 + 90 = 18:30 fits: 9:00 through
+    // 17:00 every 15 minutes = 33 starts.
+    assert(sat[sat.length - 1] === "17:00", `[CLEAR] last Saturday start is the window's end, 17:00 (got ${sat[sat.length - 1]})`);
+    assert(sat.length === 33, `[CLEAR] full Saturday grid is 33 starts (got ${sat.length})`);
     assert(!b.slots.some((s) => s.date < "2026-09-14"), "[CLEAR] nothing before today");
     assert(b.slots.every((s) => s.venueId === VENUE_ID), "[CLEAR] only the game's own field is offered");
-    assert(!b.slots.some((s) => s.date === "2026-09-16"), "[CLEAR] Wednesday (zero-length window) offers nothing");
 
-    // THE LIVE BUG, now honest: the 17:00–17:00 Wednesday is a window problem,
-    // not "already booked".
-    const wed = lineOf(b.lines, "day_window_too_short");
-    assert(
-      wed?.dayLabel === "Wednesdays" &&
-        wed.text === "AA's game window that day is 5pm–5pm, which isn't long enough for a 90-minute game.",
-      `[EMPTY] AA Wednesday line names the 5pm–5pm window (got ${JSON.stringify(wed)})`,
-    );
+    // The live AA Wednesday (17:00–17:00, "Same time") used to offer nothing and
+    // read as a too-short window. As a latest START it offers exactly 5:00 PM,
+    // which ends 6:30, inside jennings's 17:00–21:00.
+    const wedTimes = timesOn(b.slots, "2026-09-16");
+    assert(JSON.stringify(wedTimes) === JSON.stringify(["17:00"]), `[CLEAR] Wednesday 17:00–17:00 offers exactly 5:00 PM (got ${wedTimes.join(",")})`);
+    assert(!lineOf(b.lines, "day_window_too_short"), "[EMPTY] no window line for a same-time window that fits the field");
     assert(!b.lines.some((l) => l.kind === "occupied_booked"), "[EMPTY] nothing is called 'already booked' when nothing is booked");
-    if (wed) counters.zeroLengthWindowLive++;
+    if (JSON.stringify(wedTimes) === JSON.stringify(["17:00"])) counters.zeroLengthWindowLive++;
 
     const np = lineOf(b.lines, "not_playing_day");
     assert(
@@ -249,9 +249,13 @@ async function main() {
     const b = build({ venueGames: occ });
     const sat = timesOn(b.slots, "2026-09-19");
     // Placing 90 + buffer 60 against [12:00, 14:00): blocked when
-    // t − 60 < 14:00 and 12:00 < t + 150  →  9:45 … 14:45.
+    // t − 60 < 14:00 and 12:00 < t + 150  →  9:45 … 14:45. The window runs to
+    // a 17:00 latest start (field open until 19:00), so 15:00 … 17:00 remain.
     assert(
-      JSON.stringify(sat) === JSON.stringify(["09:00", "09:15", "09:30", "15:00", "15:15", "15:30"]),
+      JSON.stringify(sat) === JSON.stringify([
+        "09:00", "09:15", "09:30",
+        "15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30", "16:45", "17:00",
+      ]),
       `[CONFLICT] exact offer set around the booking (got ${sat.join(",")})`,
     );
     assert(!sat.includes("12:00"), "[CONFLICT] the booked start itself is refused");
@@ -264,7 +268,7 @@ async function main() {
     const noBuf = timesOn(build({ venueGames: occ, settings: { ...AA_SETTINGS, buffer_minutes: 0 } }).slots, "2026-09-19");
     counters.bufferOnlyBlockedTimes += noBuf.filter((t) => !sat.includes(t)).length;
     // Other Saturdays are untouched by a 9/19 booking.
-    assert(timesOn(b.slots, "2026-09-26").length === 27, "[CONFLICT] a booking on 9/19 does not touch 9/26");
+    assert(timesOn(b.slots, "2026-09-26").length === 33, "[CONFLICT] a booking on 9/19 does not touch 9/26");
 
     // ── Picker ⊆ gate, and the gate refuses what the picker hid ──
     for (const t of sat) {
@@ -289,7 +293,7 @@ async function main() {
     const sat = timesOn(build({ venueGames: occ }).slots, "2026-09-19");
     let mismatches = 0;
     for (const t of ALL_GRID) {
-      if (t < "09:00" || t > "15:30") continue;
+      if (t < "09:00" || t > "17:00") continue; // the window: starts 9:00 to 17:00
       if ((await gateAccepts(`2026-09-19T${t}:00`, occ, AA_SETTINGS)) !== sat.includes(t)) mismatches++;
     }
     assert(mismatches === 0, `[AGREE] set buffer: picker offers exactly the in-window times the gate accepts (${mismatches} mismatches)`);
@@ -311,7 +315,7 @@ async function main() {
 
     // game_duration non-numeric → durationFromSettings' 90, never NaN-empty.
     const bj = build({ settings: { ...AA_SETTINGS, game_duration: "ninety" } });
-    assert(timesOn(bj.slots, "2026-09-19").length === 27, "[AGREE] non-numeric duration falls back to 90 — slots still offered, never NaN-empty");
+    assert(timesOn(bj.slots, "2026-09-19").length === 33, "[AGREE] non-numeric duration falls back to 90 — slots still offered, never NaN-empty");
   }
 
   // ══ EMPTY-DAY REASONS — each fired on its own fixture ════════════════════════
@@ -333,12 +337,25 @@ async function main() {
 
     const mismatch = build({
       ...one,
-      settings: { ...AA_SETTINGS, playing_days: ["Sa"], day_windows: { Sa: { start: "06:00", end: "08:00" } } },
+      // Starts 5:00–7:30am; jennings opens 8am Saturdays, so no start is inside
+      // its hours. (A 6–8am window would now offer 8:00, its latest start.)
+      settings: { ...AA_SETTINGS, playing_days: ["Sa"], day_windows: { Sa: { start: "05:00", end: "07:30" } } },
     });
     const lm = lineOf(mismatch.lines, "day_window_too_short");
     assert(
-      lm?.text === "AA's game window that day (6am–8am) doesn't overlap jennings's hours enough for a 90-minute game." && !lm.venuesLink,
+      lm?.text === "no start between 5am and 7:30am (AA's game start times that day) fits a 90-minute game in jennings's hours." && !lm.venuesLink,
       `[EMPTY] a window that misses the field's hours says so (got ${JSON.stringify(lm)})`,
+    );
+
+    // A backwards window (latest start before earliest) says so.
+    const backwards = build({
+      ...one,
+      settings: { ...AA_SETTINGS, playing_days: ["Sa"], day_windows: { Sa: { start: "15:00", end: "14:00" } } },
+    });
+    const lbk = lineOf(backwards.lines, "day_window_too_short");
+    assert(
+      lbk?.text === "AA's latest game start that day (2pm) is before its earliest (3pm).",
+      `[EMPTY] a backwards window names both times (got ${JSON.stringify(lbk)})`,
     );
 
     const booked = build({ ...one, venueGames: [game("2026-09-19 08:00:00+00", 660)] });
@@ -505,18 +522,33 @@ async function main() {
       "2026-10-28 17:00:00+00",
     ].map((at) => game(at));
     const settings = { ...AA_SETTINGS, max_games_per_team_per_day: 1 };
+    const blackouts = ["2026-09-07", "2026-09-12", "2026-10-31"];
+
+    // With AA's real playing days (Sa + We): since 2026-11-11 the 17:00–17:00
+    // Wednesday window is a latest START, so the two Wednesdays the Mets don't
+    // play (10/7, 10/21) offer 5:00 PM and Wednesday gets no empty line.
+    const live = buildResolvePicker(reads({ settings, teamGames: mets, blackouts }), { ...CTX, homeTeamName: "Mets" });
+    if (!live.ok) throw new Error("fixture refused");
+    const wedOffered = [...new Set(live.slots.filter((s) => s.isoString.substring(11, 16) === "17:00" && new Date(`${s.date}T00:00:00`).getDay() === 3).map((s) => s.date))];
+    assert(
+      JSON.stringify(wedOffered) === JSON.stringify(["2026-10-07", "2026-10-21"]),
+      `[MR0] the Mets' free Wednesdays offer 5:00 PM (got ${wedOffered.join(",")})`,
+    );
+    assert(!live.lines.some((l) => l.dayLabel === "Wednesdays"), "[MR0] Wednesday has times, so no empty line");
+
+    // Saturdays only: the same live rows, so the picker has no times at all.
+    // Saturday's 7 evaluated dates (9/19 … 10/31) split into 6 team-cap dates
+    // and 1 blackout (10/31) — two reasons on one weekday.
     const b = buildResolvePicker(
-      reads({ settings, teamGames: mets, blackouts: ["2026-09-07", "2026-09-12", "2026-10-31"] }),
+      reads({ settings: { ...settings, playing_days: ["Sa"] }, teamGames: mets, blackouts }),
       { ...CTX, homeTeamName: "Mets" },
     );
     if (!b.ok) throw new Error("fixture refused");
     const texts = b.lines.map((l) => `${l.dayLabel ?? "-"} — ${l.text}`);
     const expected = [
-      "Wednesdays — Mets already has a game that day (5 dates).",
-      "Wednesdays — AA's game window that day is 5pm–5pm, which isn't long enough for a 90-minute game (2 dates).",
       "Saturdays — Mets already has a game that day (6 dates).",
       "Saturdays — blacked out (1 date).",
-      "- — AA doesn't play on Mondays, Tuesdays, Thursdays, Fridays or Sundays.",
+      "- — AA doesn't play on Mondays, Tuesdays, Wednesdays, Thursdays, Fridays or Sundays.",
     ];
     assert(
       JSON.stringify(texts) === JSON.stringify(expected),
@@ -526,13 +558,13 @@ async function main() {
       !texts.some((t) => t.includes("(7 dates)")),
       "[MR2] no reason is credited with the whole weekday's 7 dates",
     );
-    const wedCounts = summarizeByWeekday(b.diagnostics, b.slots).filter((x) => x.day === "We");
+    const satCounts = summarizeByWeekday(b.diagnostics, b.slots).filter((x) => x.day === "Sa");
     assert(
-      wedCounts.length === 2 && wedCounts.every((x) => x.reasonsOnDay === 2) &&
-        wedCounts.reduce((a, x) => a + x.dateCount, 0) === 7,
-      "[MR3] Wednesday's reasons add up to its 7 evaluated dates, and each knows it shares the day",
+      satCounts.length === 2 && satCounts.every((x) => x.reasonsOnDay === 2) &&
+        satCounts.reduce((a, x) => a + x.dateCount, 0) === 7,
+      "[MR3] Saturday's reasons add up to its 7 evaluated dates, and each knows it shares the day",
     );
-    if (wedCounts.length > 1) counters.multiReasonWeekday++;
+    if (satCounts.length > 1) counters.multiReasonWeekday++;
     assert(b.slots.length === 0 && b.emptyHeadline === "No open times this season.", `[H1] team-side + division/season-side → neutral header (got ${b.emptyHeadline})`);
     if (headlineBlame(b.lines) === "neutral") counters.headlineNeutralMixed++;
     assert(!b.emptyHeadline.includes("jennings"), "[H1b] the field is NOT blamed when team-side reasons are present");
@@ -633,7 +665,8 @@ void main();
 //      playing-day reason)
 //      → KILLED at [EMPTY] "field closed", "field too short names its real
 //        hours", "a window that misses the field's hours says so", "occupied by
-//        bookings", "AA Wednesday line names the 5pm–5pm window", and [EMPTY]
+//        bookings", "AA Wednesday line names the 5pm–5pm window" (that
+//        assertion is gone since 2026-11-11 — see the addendum), and [EMPTY]
 //        "closed / too short / window / booked are four DISTINCT sentences",
 //        with three reason counters at zero.
 //
@@ -651,9 +684,11 @@ void main();
 //        [MODE] "keyed on venue_id, like the gate"; noVenueBranch = 0.
 //
 //  M7  Builder: case (d) collapsed back into (c) (`if (anyFits)` occupied)
-//      → KILLED at [EMPTY] "AA Wednesday line names the 5pm–5pm window" +
-//        [EMPTY] "nothing is called 'already booked' when nothing is booked";
-//        zeroLengthWindowLive = 0. (Also M13 in sim:reschedule-slots.)
+//      → (2026-09-14) KILLED at [EMPTY] "AA Wednesday line names the 5pm–5pm
+//        window". Re-proven 2026-11-11 against the new fixtures: KILLED at
+//        [EMPTY] "a window that misses the field's hours says so" + "a
+//        backwards window names both times" + "four DISTINCT sentences";
+//        line_day_window_too_short = 0. (Also M13 in sim:reschedule-slots.)
 //
 //  M8  The rainout modal's duration form (`Number(s.game_duration ?? 90)`)
 //      → KILLED at [AGREE] "non-numeric duration falls back to 90 — slots still
@@ -700,3 +735,14 @@ void main();
 // own count is smaller than what the old row claimed (10,536 + 8,904). 0
 // mismatches. DiagnosticRow's text depends only on (diagnostic, dateCount,
 // reasonsOnDay), and reasonsOnDay = 1 renders the pre-change text.
+//
+// Addendum 2026-11-11 — the division window's end is the LATEST START (it
+// meant "must end by"). Expected starts re-worked by hand: AA Saturday 9:00
+// through 17:00 (33, jennings open until 19:00); the live AA Wednesday
+// (17:00–17:00) now offers exactly 5:00 PM and has no window line; the
+// mismatch fixture moved to starts 5:00–7:30am (jennings opens 8am); a
+// backwards window has its own sentence. The multi-reason roll-up moved from
+// Wednesday to Saturday ([MR1]–[MR3]: 6 team-cap + 1 blackout, Mets fixture
+// limited to Saturdays), and [MR0] pins the two free Wednesdays now offering
+// 5:00 PM. RU1 re-proven by hand: KILLED at [MR1] (Saturdays — "(7 dates)"),
+// [MR2], [MR3]; multiReasonWeekday = 0.

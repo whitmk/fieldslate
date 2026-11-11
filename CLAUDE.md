@@ -1132,11 +1132,16 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   and 4v5 in round 1, seed 1 plays the 4/5 winner, seed 2 the 3/6 winner.
 - **Spacing is the division's `game_duration` + `buffer_minutes`**
   (`planSettingsFromDivision`; a missing value defaults to 90/15 AND is
-  reported in the warnings). The playoff planner uses the END-BY window rule
-  (the reschedule picker's), for the day window and the field's hours — so a
-  9:00–17:00 Saturday fits two 180-minute games, not three, even though the
-  regular-season generator (start-only) would place three. Deliberate; the
-  stricter rule is the one the founder approved for the picker.
+  reported in the warnings). **The day window's END is the LATEST START**
+  (decided 2026-11-11 — see "THE DIVISION WINDOW'S END IS THE LATEST START");
+  the FIELD's closing time is what a game must end by. So a 9:00–17:00
+  Saturday with 180 + 30 starts games at 9:00, 12:30 and 16:00 when the field
+  is open until 19:00 or later — the same reading as the generator and the
+  pickers. A same-time window (start = end) is kept as the Dates step's default
+  (`playoffDefaultsFromDivision`, `<=`). The playoff Dates inputs read
+  "Earliest game start" / "Latest game start". `LEGACY_WINDOW` (09:00–21:00,
+  a playing day with no window) now means a 21:00 latest start; the field's
+  hours still bound it.
 - **Slots are ONE chronological list; rounds consume it in order and never
   wrap.** A later round starts no earlier than the previous round's last game
   end + buffer (slots passed over are counted as `skippedForOrder`, and the
@@ -3742,7 +3747,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   nothing changes, even if a field is also flagged.
 - **EVERY OTHER CONSTRAINT STILL APPLIES**: venue occupancy, buffer (the
   arriving team's), team game constraints, blackout dates, team per-day caps,
-  and the must-END-by semantic. Only the day gate and the window source change.
+  and the field's hours (the game must END by the field's close — on a makeup
+  day the window IS the fields' hours, so nothing starts later than close −
+  game length). Only the day gate and the window source change.
   A blackout still wins on a makeup day (mutant M6).
 - **The picker needed NO restructuring, and this is why:** `isVenueAvailable`
   already performs the true per-venue window check inside the venue loop, so the
@@ -3786,9 +3793,13 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
     never a candidate to reject. Carries the window, `governedBy`
     (`division` | `makeup_union`) and the span. **Before it existed this was
     reported as `occupied` — "already booked" — with zero rejections behind
-    it.** Live trigger: SRALL Fall 2026 AA's Wednesday window is 17:00–17:00
-    at a field open 17:00–21:00, so the rainout picker told admins every
-    Wednesday was booked. **`occupied` REQUIRES rejections; never collapse
+    it.** Live trigger at the time: SRALL Fall 2026 AA's Wednesday window is
+    17:00–17:00 at a field open 17:00–21:00, so the rainout picker told admins
+    every Wednesday was booked. (Since 2026-11-11 the window's end is the
+    latest START, so that shape offers 5:00 PM; on a playing day (d) now means
+    no start between the window's start and end leaves the game inside a
+    field's hours — e.g. starts 8–9pm at a field closing 9pm — or the window
+    is backwards.) **`occupied` REQUIRES rejections; never collapse
     this back** (mutant M13 in `sim:reschedule-slots`; M7 in
     `sim:interleague-picker`). Differential proof over 20,000 seeded fixtures:
     offered slots byte-identical, and the only diagnostics that moved were
@@ -3874,16 +3885,29 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   sides — after-only padding lets a candidate be crammed against an existing
   game's START. Placing-division because the buffer states how much room THIS
   division needs around ITS games; using the existing game's (Majors' 60) would
-  push Minors to 4:00 and re-hide the recovered time. Andrews now offers
-  3:30 / 3:45 / 4:00 / 4:15 — `3:00 real end + 30 buffer`, exactly.
-- **A window CLOSE means the span must END by it** — in `day_windows.end` AND
-  in the legacy `latest_start` fallback, despite that field's name. A window
-  that says 18:00 and permits a game running to 18:30 is not a window. This is
-  why 4:45 correctly disappeared from Andrews (105 min → 6:30 PM); the fix for
-  a league that wants it back is to WIDEN the Minors Saturday window, not to
-  loosen this check. **The generator still checks only the START
-  (`timeMin <= latest`), so it can place a game the picker considers illegal.**
-  Known, accepted, and the safe direction — the picker is the stricter one.
+  push Minors to 4:00 and re-hide the recovered time. Andrews' first offer is
+  3:30 — `3:00 real end + 30 buffer`, exactly — and offers run to the
+  window's 6:00 PM latest start (the field is open until 8:00).
+- **THE DIVISION WINDOW'S END IS THE LATEST START — everywhere (decided
+  2026-11-11, replacing the picker's and the playoff planner's "must end by"
+  rule).** `day_windows.end` and the legacy `latest_start` are the latest time
+  a game may START: the wizard labels the field "Latest game start", and every
+  reader now agrees — the generator (`buildSlots`, `timeMin <= latest`), the
+  reschedule picker (move + rainout, `buildSlotsAndDiagnostics`), the rainout
+  modal and the interleague counter-proposal picker (same builder), the
+  conflict resolver's `findFreeSlot`, and the playoff planner
+  (`buildSlotGrid`). **What limits the END is the FIELD's hours**
+  (`isVenueAvailable`: the whole span inside the venue's window for that
+  weekday). On a makeup-only or override day the builder's bounds ARE the
+  fields' hours (the union), so there the span still ends by the close.
+  Found 2026-11-11: VT Minors (9:00–2:00, 90 + 15) offered only 9:00 and 9:15
+  at jennings around an 11:00 game, because 12:45–2:00 ended after 2:00.
+  Proof: `sim:reschedule-slots` F1/F4/F7/F8/F9 (MS1 puts end-by back → F1,
+  F4), `sim:interleague-picker` [CLEAR]/[CONFLICT]/[EMPTY]/[MR0],
+  `sim:playoff-bracket` C2/C5/C6/D1/D2/E1/E3/G4 (PM7, PM7b), and the
+  re-recorded `sim:picker-overrides` golden (scratch differential before the
+  re-record: no old slot lost over 2,000 fixtures; every added slot on a
+  playing day with a start in (window end − game length, window end]).
 - **REGENERATING A DIVISION WIPES HAND-PLACED TIMES.** A game moved to a
   non-lattice time (3:30) is deleted and re-placed on a lattice time by the
   next regenerate. Nothing warns about this. Tell admins before they hand-place
@@ -4559,10 +4583,11 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   - field closed: "{Field} is closed that day." (+ Venues link)
   - field too short: "{Field} is open 9am–10am, which isn't long enough for
     this game." (+ Venues link)
-  - day window too short: "{Division}'s game window that day is 5pm–5pm, which
-    isn't long enough for a 90-minute game." — or, when the window is long
-    enough but misses the field's hours: "{Division}'s game window that day
-    (6am–8am) doesn't overlap {Field}'s hours enough for a 90-minute game."
+  - day window (2026-11-11, the window's end is the latest START): "no start
+    between 5am and 7:30am ({Division}'s game start times that day) fits a
+    90-minute game in {Field}'s hours." — or, for a backwards window:
+    "{Division}'s latest game start that day (2pm) is before its earliest
+    (3pm)." (The rainout modal words the same two cases for "this division".)
   - occupied (bookings): "{Field} is already booked at every time that fits
     (N dates)."
   - occupied (team): "{Team} already has a game or a scheduling block at every
@@ -4574,8 +4599,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Plus whole-picker states: unconfigured field, division without dates, and
   "season has no dates left to schedule".
   A weekday with several reasons gets one line per reason, each with its own
-  count (e.g. "Wednesdays — Mets already has a game that day (5 dates)" and
-  "Wednesdays — AA's game window that day is 5pm–5pm, … (2 dates)").
+  count (e.g. "Saturdays — Mets already has a game that day (6 dates)" and
+  "Saturdays — blacked out (1 date)").
 - **The no-times header follows the reasons present (`emptyHeadline`).** Field-side
   only (closed / too short / booked) → "No open times at {field} this season.";
   team-side only (team cap / team occupied) → "No open times for {team} this

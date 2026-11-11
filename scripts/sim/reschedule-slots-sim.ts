@@ -24,8 +24,10 @@
 //   F3  BOUNDARY. With buffer 0, a candidate starting EXACTLY at an existing
 //       game's real end is legal (half-open). One minute earlier is not.
 //       F3b: with a buffer, the first legal start is exactly (end + buffer).
-//   F4  WINDOW EDGES. A candidate whose span would run past the division
-//       window end is excluded; likewise past venue close.
+//   F4  WINDOW EDGES. The division window's end is the LATEST START
+//       (2026-11-11): a start exactly at it is offered, one after it is not.
+//       The FIELD's close limits the end: a start inside the window whose
+//       span runs past venue close is excluded.
 //   F5  TZ. Wall-clock substring convention only. A game whose UTC instant
 //       lands on a different calendar day than its wall-clock date must be
 //       read by its wall-clock. TZ=UTC is mandatory so this is meaningful.
@@ -38,11 +40,13 @@
 //       does exactly that, and the final Saturday then offers its FULL grid —
 //       slots directly on top of both real games.
 //
-//   F9  CASE (d) — "occupied" REQUIRES REJECTIONS. The live AA shape: a
-//       division whose Wednesday window is 17:00–17:00 (zero length) at a field
-//       open 17:00–21:00. The field's hours fit a 90-minute game, so the old
-//       classifier reported the day "occupied" — "already booked" — with zero
-//       rejections behind it. It must now be `day_window_too_short`. F9b covers
+//   F9  CASE (d) — "occupied" REQUIRES REJECTIONS. The original live AA shape
+//       (Wednesday window 17:00–17:00 at a field open 17:00–21:00) was (d) while
+//       the window's end meant "must end by"; since 2026-11-11 it is the latest
+//       START, so that shape offers exactly 5:00 PM. (d) is now pinned by a
+//       window too late for the field (starts 20:00–20:30, field closes 21:00):
+//       the field's hours fit a 90-minute game, so the old classifier would
+//       have said "occupied" with zero rejections behind it. F9b covers
 //       the non-zero sibling (window 10–12, field 13–17: the two never
 //       intersect), F9c pins that a GENUINELY full day still reads "occupied",
 //       F9d that team rejections at times no field could host do not count as
@@ -89,12 +93,13 @@ const counters = {
   venueOverlapRejections: 0, // a candidate was rejected by venue occupancy
   bufferOnlyRejections: 0,   // rejected by the buffer pad alone (span was clear)
   teamOverlapRejections: 0,  // rejected by team real-span occupancy
-  windowEndExclusions: 0,    // rejected because the span ran past window close
+  windowEndExclusions: 0,    // a start after the window's end (the latest start) refused
   venueCloseExclusions: 0,   // rejected because the span ran past venue close
   offeredSlots: 0,           // total slots offered across all fixtures
   scopeExcludedRows: 0,      // rows the occupancy date-scope correctly dropped
   scopeKeptFinalDay: 0,      // final-day rows the scope correctly KEPT
-  zeroLengthWindowCaseD: 0,  // F9: a 17:00–17:00 division window classified as (d)
+  zeroLengthWindowOffersStart: 0, // F9: a 17:00–17:00 window offers exactly 17:00 (latest start)
+  lateWindowCaseD: 0,        // F9: starts 20:00–20:30 at a field closing 21:00 → (d)
   nonIntersectingCaseD: 0,   // F9b: a non-empty window that misses the field hours
   genuineOccupiedKept: 0,    // F9c: a truly booked day still classified as (c)
   teamOnlyUnhostableCaseD: 0, // F9d: team rejections at unhostable times → (d), not (c)
@@ -166,13 +171,18 @@ console.log("\nF1  live case: Andrews, Majors 10:00 & 1:00 (120), placing Minors
   assert(!anyOffered(slots, 105, majorsPM), "F1: nothing overlaps the 1:00–3:00 Majors game");
   assert(t[0] === "15:30", "F1: 3:30 PM is the EARLIEST offer (= 3:00 end + 30 buffer)");
   assert(!t.includes("15:15"), "F1: 3:15 is refused — only 15 min after the 3:00 end");
-  // Window end 18:00, span 105 → last legal start 16:15. The old lattice's sole
-  // offer (16:45) ran to 18:30 and is now correctly excluded.
-  assert(t[t.length - 1] === "16:15", "F1: last offer is 4:15 (span ends exactly at 18:00)");
-  assert(!t.includes("16:45"), "F1: 4:45 is gone — its span would end 18:30, past window close");
+  // 2026-11-11: the window's end (18:00) is the LATEST START. The field is open
+  // until 20:00, so 18:00 + 105 = 19:45 still ends inside the field's hours.
+  // Worked by hand: after the 1:00 game (ends 3:00) + 30 buffer → 3:30; then
+  // every 15 minutes through 18:00 → 11 starts.
+  assert(t[t.length - 1] === "18:00", "F1: last offer is 6:00 PM — the window's end is the latest start");
+  assert(t.includes("16:45"), "F1: 4:45 is offered (ends 6:30, inside the field's 8:00 PM close)");
   assert(
-    JSON.stringify(t) === JSON.stringify(["15:30", "15:45", "16:00", "16:15"]),
-    `F1: exact offer set is 3:30/3:45/4:00/4:15 (got ${t.join(",")})`,
+    JSON.stringify(t) === JSON.stringify([
+      "15:30", "15:45", "16:00", "16:15", "16:30", "16:45",
+      "17:00", "17:15", "17:30", "17:45", "18:00",
+    ]),
+    `F1: exact offer set is 3:30 through 6:00 every 15 minutes (got ${t.join(",")})`,
   );
 
   // Count how many grid candidates the venue occupancy actually rejected.
@@ -293,16 +303,29 @@ console.log("\nF3  boundary: candidate starting exactly at an existing real end"
 // ══ F4 — WINDOW EDGES ════════════════════════════════════════════════════════
 console.log("\nF4  window edges: division window end and venue close");
 {
-  // Division window 10:00–12:00, span 105 → only 10:00 and 10:15 fit
-  // (10:15+105 = 12:00 exactly). 10:30 would end 12:15, past close.
+  // Division window 10:00–12:00 is a START range (2026-11-11): starts 10:00
+  // through 12:00 every 15 minutes = 9 starts. The field is open 8–20, so even
+  // 12:00 + 105 = 13:45 fits. 12:15 is past the latest start.
   const p = baseParams({ dayWindows: { Sa: { start: "10:00", end: "12:00" } } });
   const t = times(buildAvailableSlots(p));
   assert(
-    JSON.stringify(t) === JSON.stringify(["10:00", "10:15"]),
-    `F4: division window truncates to spans ending by close (got ${t.join(",")})`,
+    JSON.stringify(t) === JSON.stringify([
+      "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45", "12:00",
+    ]),
+    `F4: division window bounds the START, 10:00 through 12:00 (got ${t.join(",")})`,
   );
-  assert(!t.includes("10:30"), "F4: a span running past the division window end is excluded");
+  assert(t.includes("12:00"), "F4: a start exactly at the window's end IS offered (latest start)");
+  assert(!t.includes("12:15"), "F4: a start after the window's end is excluded");
   counters.windowEndExclusions++;
+
+  // The FIELD still limits the end. Window 10:00–19:00, field 08:00–20:00, span
+  // 105: the latest start the field allows is 18:15 (ends 20:00 exactly), so
+  // 18:30 / 18:45 / 19:00 — inside the window — are refused by the field.
+  const pf = baseParams({ dayWindows: { Sa: { start: "10:00", end: "19:00" } } });
+  const tf = times(buildAvailableSlots(pf));
+  assert(tf[tf.length - 1] === "18:15", `F4: field close limits the end inside the window — last start 6:15 PM (got ${tf[tf.length - 1]})`);
+  assert(!tf.includes("18:30") && !tf.includes("19:00"), "F4: starts inside the window that would end after the field closes are excluded");
+  counters.venueCloseExclusions++;
 
   // Venue closes at 11:00 while the division window runs to 18:00 → the venue
   // is the binding constraint; only 10:00 (ends 11:45)… no: 105 past 11:00.
@@ -415,7 +438,9 @@ console.log("\nF7  preserved filters: blackout, day cap, playing days, constrain
       baseParams({ dayWindows: {}, earliestStart: "14:00", latestStart: "16:00", gameDuration: 60, bufferMinutes: 0 }),
     ),
   );
-  assert(legacy[0] === "14:00" && legacy[legacy.length - 1] === "15:00", "F7: legacy earliest/latest still honored when day_windows absent");
+  // Legacy 14:00–16:00 with a 60-minute game: starts 14:00 through 16:00 (the
+  // latest START), the field (8–20) allows them all.
+  assert(legacy[0] === "14:00" && legacy[legacy.length - 1] === "16:00", "F7: legacy earliest/latest still honored when day_windows absent (latest = last start)");
 }
 
 // ══ F8 — OCCUPANCY READ SCOPE: the last-day boundary ═════════════════════════
@@ -475,8 +500,12 @@ console.log("\nF8  occupancy scope: a final-day game stays in scope and still bl
   const finalDay = times(slots.filter((s) => s.date === END));
   counters.offeredSlots += slots.length;
 
+  // Same shape as F1, so the same 11 starts (3:30 through 6:00).
   assert(
-    JSON.stringify(finalDay) === JSON.stringify(["15:30", "15:45", "16:00", "16:15"]),
+    JSON.stringify(finalDay) === JSON.stringify([
+      "15:30", "15:45", "16:00", "16:15", "16:30", "16:45",
+      "17:00", "17:15", "17:30", "17:45", "18:00",
+    ]),
     `F8: final-day offers still cleared by the 1:00 game (got ${finalDay.join(",")})`,
   );
   assert(!finalDay.includes("10:00"), "F8: 10:00 on the final day is still BLOCKED — the row survived the scope");
@@ -505,18 +534,33 @@ console.log("\nF9  case (d): zero-length division window is NOT 'already booked'
       ...over,
     });
 
-  const r = buildSlotsAndDiagnostics(aa());
+  // 2026-11-11: the window's end is the LATEST START, so the live AA shape
+  // (17:00–17:00, "Same time") offers exactly one start, 5:00 PM — it ends
+  // 6:30, inside the field's 17:00–21:00.
+  const r0 = buildSlotsAndDiagnostics(aa());
+  const t0 = times(r0.slots);
+  assert(
+    JSON.stringify(t0) === JSON.stringify(["17:00"]),
+    `F9: a 17:00–17:00 window offers exactly 5:00 PM (got ${t0.join(",")})`,
+  );
+  if (JSON.stringify(t0) === JSON.stringify(["17:00"])) counters.zeroLengthWindowOffersStart++;
+
+  // Case (d) on a playing day now means the window's starts all sit where the
+  // game can't end inside the field's hours: starts 20:00–20:30 at a field
+  // closing 21:00 (a 90-minute game would end 21:30 at the earliest). The
+  // field's hours DO fit a 90-minute game (anyFits), so it is (d), not (b).
+  const r = buildSlotsAndDiagnostics(aa({ dayWindows: { We: { start: "20:00", end: "20:30" } } }));
   const d = r.diagnostics.get(WED);
-  assert(r.slots.length === 0, "F9: zero-length window offers no slots");
+  assert(r.slots.length === 0, "F9: a window too late for the field offers no slots");
   assert(
     d?.kind === "day_window_too_short",
-    `F9: 17:00–17:00 window at a field open 17:00–21:00 → day_window_too_short (got ${d?.kind})`,
+    `F9: starts 20:00–20:30 at a field open 17:00–21:00 → day_window_too_short (got ${d?.kind})`,
   );
   assert(d?.kind !== "occupied", "F9: it is NOT reported as occupied / 'already booked'");
   if (d?.kind === "day_window_too_short") {
-    counters.zeroLengthWindowCaseD++;
+    counters.lateWindowCaseD++;
     assert(
-      d.window.start === "17:00" && d.window.end === "17:00" && d.governedBy === "division" && d.durationMin === 90,
+      d.window.start === "20:00" && d.window.end === "20:30" && d.governedBy === "division" && d.durationMin === 90,
       "F9: (d) carries the division's real window, who governs it, and the span",
     );
   }
@@ -662,10 +706,9 @@ process.exit(failures === 0 ? 0 : 1);
 //      → KILLED at F3 "start exactly at real end (12:00) is LEGAL" + F3
 //        "touching spans do not overlap".
 //
-//  M7  Window end back to latest-START semantics:
-//        for (…; timeMin <= latest; …)   (instead of timeMin + duration <= latest)
-//      → KILLED at F4 "division window truncates to spans ending by close" +
-//        F1 "4:45 is gone".
+//  M7  (2026-07-30, SUPERSEDED 2026-11-11 — the rule flipped; see MS1 below.)
+//      Window end back to latest-START semantics — then the mutant, now the
+//      rule.
 //
 //  M8  Skip the venue-hours check (drop the isVenueAvailable guard)
 //      → KILLED at F4 "venue close truncates independently of the division
@@ -681,7 +724,7 @@ process.exit(failures === 0 ? 0 : 1);
 //        toIsoExclusive = `${endDate}T00:00:00+00:00`
 //      → KILLED at F8 "a 1:00 PM game on the FINAL day is IN scope" and F8
 //        "final-day offers still cleared by the 1:00 game", where the offer set
-//        becomes the FULL grid (10:00…16:15) — the picker offering slots on top
+//        becomes the FULL grid (10:00…18:00 since 2026-11-11) — the picker offering slots on top
 //        of BOTH real games. This is the truncation failure mode in miniature:
 //        occupancy the read never returned cannot block anything, and nothing
 //        errors. Do not delete F8.
@@ -724,3 +767,30 @@ process.exit(failures === 0 ? 0 : 1);
 // diagnostic carried ZERO venue-booking rejections (26,753 had no rejections of
 // any kind; 1,310 had only team rejections at times no field could host). That
 // is the complete behavior change: nothing moved except days that were wrong.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ADDENDUM 2026-11-11 — the division window's end is the LATEST START (it meant
+// "must end by"; founder's decision, branch fix/latest-start-means-start).
+// F1, F4, F7, F8 and F9 re-written with hand-worked expected starts; F4 gained
+// the field-close-inside-the-window check; F9's (d) fixture moved from the
+// 17:00–17:00 window (which now offers 5:00 PM) to starts 20:00–20:30 at a
+// field closing 21:00. Mutants applied by hand to the real source, run against
+// this sim, sim:interleague-picker, sim:makeup-days and sim:picker-overrides,
+// then restored and byte-compared. Criterion unchanged.
+//
+// MS1  End-by restored on playing days (`lastStart = latest - duration`)
+//      → KILLED at F1 "last offer is 6:00 PM — the window's end is the latest
+//        start" + F4 "division window bounds the START"; also [CLEAR] in
+//        sim:interleague-picker and both picker-overrides differentials.
+// MS2  Makeup / override days read as start-by too (`lastStart = latest`)
+//      → NOT killed here, nor in sim:makeup-days or sim:interleague-picker;
+//        killed ONLY by sim:picker-overrides [DIFF-rainout]. Stated, not
+//        hidden: on those days the bounds ARE the fields' hours and every
+//        venue is still narrowed by isVenueAvailable, so the offered slots are
+//        identical — only rejection counts in the diagnostics move. Near-
+//        equivalent; the differential is what sees it.
+// MS3  Field hours dropped (`hostable = participating`) — M14 re-proven
+//      → KILLED at F4 "field close limits the end inside the window — last
+//        start 6:15 PM" + F4 "venue close truncates independently…".
+// M13  re-proven against the new F9 → KILLED at F9 "starts 20:00–20:30 …
+//      → day_window_too_short (got occupied)", F9b, F9d, three (d) counters 0.

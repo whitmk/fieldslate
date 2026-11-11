@@ -32,11 +32,13 @@
 //    date in the range gets a diagnostic (ok / closed / too_short) and the
 //    warnings name the day and the field.
 //
-// WINDOW SEMANTIC: a day window's END and a field's closing time both mean the
-// game must END by then (the reschedule picker's rule, CLAUDE.md "A window
-// CLOSE means the span must END by it"). The regular-season generator still
-// checks the start only; the playoff planner deliberately takes the stricter
-// rule, so a Saturday 9:00–17:00 window fits two 180-minute games, not three.
+// WINDOW SEMANTIC (2026-11-11): a day window's END is the LATEST START — the
+// same reading as the division wizard's "Latest game start", the regular-season
+// generator and the reschedule picker. A FIELD's closing time still means the
+// game must END by then (isVenueAvailable). So a Saturday 9:00–17:00 window with
+// 180-minute games and a 15-minute buffer starts games at 9:00, 12:15 and 15:30
+// when the field is open until 18:30 or later. (Until 2026-11-11 the window end
+// meant "must end by", which fit only two.)
 
 import {
   dayKeyFromJsDate,
@@ -179,8 +181,10 @@ export function playoffDefaultsFromDivision(
     const w = rawWin[d];
     const start = typeof w?.start === "string" && HHMM.test(w.start) ? w.start : null;
     const end = typeof w?.end === "string" && HHMM.test(w.end) ? w.end : null;
+    // start === end is a real window ("Same time": one start per field) now
+    // that the end is the latest START, not the time games must end by.
     day_windows[d] =
-      start && end && timeToMinutes(start) < timeToMinutes(end)
+      start && end && timeToMinutes(start) <= timeToMinutes(end)
         ? { start, end }
         : { ...(fallback.day_windows[d] ?? { start: "09:00", end: "17:00" }) };
   }
@@ -210,8 +214,8 @@ export type DayDiagnostic =
   | { date: string; day: DayKey; kind: "ok"; slotCount: number }
   /** No selected field is open that day. */
   | { date: string; day: DayKey; kind: "closed"; venueNames: string[] }
-  /** At least one field is open, but no start fits the game inside BOTH the
-   *  day window and that field's hours. */
+  /** At least one field is open, but no start inside the day window (start to
+   *  latest start) fits the game inside that field's hours. */
   | { date: string; day: DayKey; kind: "too_short"; venueNames: string[] };
 
 export type SlotGridInput = {
@@ -236,8 +240,9 @@ const LEGACY_WINDOW = { start: "09:00", end: "21:00" };
  * different fields at one time before the same field is reused).
  *
  * The time step is duration + buffer, anchored at the day window's start. A
- * start is offered only if the whole game ENDS inside the day window and
- * inside the field's hours for that weekday.
+ * start is offered only if it is no later than the day window's end (the
+ * latest start) and the whole game fits inside the field's hours for that
+ * weekday.
  */
 export function buildSlotGrid(input: SlotGridInput): SlotGrid {
   const slots: PlanSlot[] = [];
@@ -263,7 +268,7 @@ export function buildSlotGrid(input: SlotGridInput): SlotGrid {
       const winEnd = timeToMinutes(win.end);
 
       const before = slots.length;
-      for (let t = winStart; t + input.durationMin <= winEnd; t += step) {
+      for (let t = winStart; t <= winEnd; t += step) {
         const time = minutesToTimeStr(t);
         for (const v of input.venues) {
           if (v.availability && !isVenueAvailable(v.availability, day, time, input.durationMin)) {
@@ -774,7 +779,7 @@ export function planWarnings(p: {
       );
     } else {
       out.push(
-        `${dates.join(", ")}: no games were placed — ${fields} ${d.venueNames.length === 1 ? "is" : "are"} open, but no ${p.settings.durationMin}-minute game fits inside both the ${DAY_LONG[d.day]} playoff window and the field's hours. Widen one of them.`,
+        `${dates.join(", ")}: no games were placed — ${fields} ${d.venueNames.length === 1 ? "is" : "are"} open, but no start in the ${DAY_LONG[d.day]} playoff window leaves a ${p.settings.durationMin}-minute game inside the field's hours. Widen one of them.`,
       );
     }
   }

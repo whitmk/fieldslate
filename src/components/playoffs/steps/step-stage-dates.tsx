@@ -157,11 +157,14 @@ function StagePanel({
             const w = value.day_windows[key] ?? DEFAULT_DAY_WINDOW;
             return (
               <div key={key} className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-gray-700">{DAY_LONG[key]}</span>
+                <span className="text-sm font-medium text-gray-700">
+                  {DAY_LONG[key]}{" "}
+                  <span className="font-normal text-gray-500">· earliest – latest game start</span>
+                </span>
                 <div className="flex items-center gap-2">
                   <input
                     type="time"
-                    aria-label={`${DAY_LONG[key]} start`}
+                    aria-label={`${DAY_LONG[key]} earliest game start`}
                     value={w.start}
                     onChange={(e) => setWindow(key, "start", e.target.value)}
                     className="h-10 min-w-0 flex-1 rounded-lg border border-gray-200 px-2 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none"
@@ -169,7 +172,7 @@ function StagePanel({
                   <span className="text-xs text-gray-300">–</span>
                   <input
                     type="time"
-                    aria-label={`${DAY_LONG[key]} end`}
+                    aria-label={`${DAY_LONG[key]} latest game start`}
                     value={w.end}
                     onChange={(e) => setWindow(key, "end", e.target.value)}
                     className="h-10 min-w-0 flex-1 rounded-lg border border-gray-200 px-2 text-sm text-gray-900 focus:border-[#22C55E] focus:outline-none"

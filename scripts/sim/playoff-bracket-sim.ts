@@ -14,7 +14,9 @@
 //      round's compacted list — a full playthrough for 5, 6, 7 and 8 teams
 //      under two winner policies, every write checked for target and slot.
 //   C  SPACING from the division's duration + buffer (180 + 30), not the
-//      hardcoded 105; a window close means the game must END by it.
+//      hardcoded 105. The day window's end is the LATEST START (2026-11-11 —
+//      it meant "must end by" until then); the FIELD's close is what the game
+//      must end by.
 //   D  MULTI-DATE spreading and round order: rounds consume one chronological
 //      slot list; a later round never starts before the earlier round's games
 //      end (+ buffer); never wraps back to the first slot.
@@ -328,7 +330,7 @@ section("B: advancement playthroughs", () => {
   }
 });
 
-// ─── C: spacing from division settings; END-by windows ───────────────────────
+// ─── C: spacing from division settings; window end = latest START ────────────
 
 section("C: spacing and window semantics", () => {
   const grid: SlotGridInput = {
@@ -338,7 +340,9 @@ section("C: spacing and window semantics", () => {
   };
   const { slots } = buildSlotGrid(grid);
   ok(slots[1]?.time === "12:30", "C1", "the second start is duration + buffer after the first (9:00 → 12:30, not 10:45)", slots.map((s) => s.time).join(","));
-  ok(!slots.some((s) => s.time === "16:00") && slots.length === 2, "C2", "a start whose game would end after the 17:00 window is not offered (no 16:00)", slots.map((s) => s.time).join(","));
+  // 9:00, 12:30, 16:00 (16:00 ≤ the 17:00 latest start; ends 19:00, inside
+  // CCLA's 22:00 close). The next step, 19:30, is past the latest start.
+  ok(slots.map((s) => s.time).join(",") === "09:00,12:30,16:00", "C2", "the window's end is the latest START: 16:00 is offered, 19:30 is not", slots.map((s) => s.time).join(","));
 
   const shortField: PlanVenue = { id: "f", name: "Short", availability: parseAvailability({ Sa: { start: "09:00", end: "13:00" } }) };
   const g2 = buildSlotGrid({ ...grid, venues: [shortField] });
@@ -352,7 +356,10 @@ section("C: spacing and window semantics", () => {
   ok(s3.durationDefaulted && s3.bufferDefaulted, "C4", "garbage settings are defaulted and flagged");
 
   const g3 = buildSlotGrid({ ...grid, venues: [openVenue("o")], durationMin: 60, bufferMin: 0, dayWindows: { Sa: { start: "09:00", end: "12:00" } } });
-  ok(g3.slots.map((s) => s.time).join(",") === "09:00,10:00,11:00", "C5", "60 + 0 steps hourly and the 11:00 game ends exactly at close", g3.slots.map((s) => s.time).join(","));
+  ok(g3.slots.map((s) => s.time).join(",") === "09:00,10:00,11:00,12:00", "C5", "60 + 0 steps hourly and a start exactly at the 12:00 latest start is offered", g3.slots.map((s) => s.time).join(","));
+  // A "Same time" window (start = end) is one start per field.
+  const g4 = buildSlotGrid({ ...grid, venues: [openVenue("o")], dayWindows: { Sa: { start: "17:00", end: "17:00" } } });
+  ok(g4.slots.map((s) => s.time).join(",") === "17:00", "C6", "a 17:00–17:00 window gives exactly one 17:00 start", g4.slots.map((s) => s.time).join(","));
 });
 
 // ─── D: multi-date spreading and round order ─────────────────────────────────
@@ -399,9 +406,12 @@ section("D: multi-date spreading and round order", () => {
   const by = (round: string) => plan.games.filter((g) => g.round === round).sort((a, b) => a.game_number - b.game_number);
   ok(by("R1").map((g) => `${g.scheduled_date} ${g.start_time}`).join(" | ") === "2026-11-07 09:00 | 2026-11-07 12:30",
     "D0", "round 1 fills the first Saturday", by("R1").map((g) => `${g.scheduled_date} ${g.start_time}`).join(" | "));
-  ok(by("SF").every((g) => g.scheduled_date === "2026-11-14"), "D1", "the semifinals move to the NEXT Saturday, not back onto round 1's day",
+  // Each Saturday has 9:00, 12:30 and 16:00. Round 1 ends 12:30 + 180 + 30 =
+  // 16:00, so semifinal 1 takes 11/7 16:00 and semifinal 2 the next slot,
+  // 11/14 9:00. The final waits for that to end (12:30) → 11/14 12:30.
+  ok(by("SF").map((g) => `${g.scheduled_date} ${g.start_time}`).join(" | ") === "2026-11-07 16:00 | 2026-11-14 09:00", "D1", "the semifinals take the next slots after round 1 ends — 16:00 the same day, then the next Saturday",
     by("SF").map((g) => `${g.scheduled_date} ${g.start_time}`).join(" | "));
-  ok(by("F")[0]?.scheduled_date === "2026-11-21" && by("F")[0]?.start_time === "09:00", "D2", "the final lands on the third Saturday at 9:00",
+  ok(by("F")[0]?.scheduled_date === "2026-11-14" && by("F")[0]?.start_time === "12:30", "D2", "the final lands on the second Saturday at 12:30, after semifinal 2",
     `${by("F")[0]?.scheduled_date} ${by("F")[0]?.start_time}`);
   checkRoundOrder(plan.games, SRALL, "D3", "no round starts before the previous round's games have ended");
   checkNoDoubleBooking(plan.games, "D4");
@@ -445,13 +455,15 @@ section("E: not enough slots", () => {
   };
   const plan = planBracket({ format: "single_elimination", seeds: seeds(6), ids: IDS, grid: oneSaturday, settings: SRALL, divisionName: "50/70" });
   const tbd = plan.games.filter((g) => !g.scheduled_date);
-  ok(plan.games.length === 5 && plan.tbdCount === 3 && tbd.every((g) => g.round !== "R1" && !g.start_time && !g.venue_id),
-    "E1", "two slots for five games: round 1 is placed, the three later games are TBD (nothing is reused)",
+  // One Saturday: 9:00, 12:30, 16:00. Round 1 takes 9:00 and 12:30; semifinal
+  // 1 takes 16:00; semifinal 2 and the final are TBD.
+  ok(plan.games.length === 5 && plan.tbdCount === 2 && tbd.every((g) => g.round !== "R1" && !g.start_time && !g.venue_id),
+    "E1", "three slots for five games: round 1 and one semifinal are placed, the two later games are TBD (nothing is reused)",
     plan.games.map((g) => `${g.round} ${g.scheduled_date ?? "TBD"} ${g.start_time ?? ""}`).join(" | "));
   checkNoDoubleBooking(plan.games, "E1");
   counters.tbdGames += plan.tbdCount;
   const w = plan.warnings.find((x) => x.includes("could not be placed"));
-  ok(!!w && w.includes("3 of 5 games") && w.includes("give 2 slots") && w.includes("needs 5") && w.includes("TBD"),
+  ok(!!w && w.includes("2 of 5 games") && w.includes("give 3 slots") && w.includes("needs 5") && w.includes("TBD"),
     "E2", "the warning says how many games, how many slots, and that they are saved TBD", w ?? "(none)");
 
   // Slots existed but fell before the earlier round had finished.
@@ -461,10 +473,14 @@ section("E: not enough slots", () => {
     venues: [openVenue("v1"), openVenue("v2"), openVenue("v3")], durationMin: 180, bufferMin: 30,
   };
   const p3 = planBracket({ format: "single_elimination", seeds: seeds(8), ids: IDS, grid: grid3, settings: SRALL, divisionName: "X" });
-  ok(p3.slots.length === 6 && p3.tbdCount === 3 && p3.skippedForOrder === 2, "E3", "six slots, seven games: round 1 takes four, two 12:30 slots are skipped for order, three games are TBD",
+  // Three fields × (9:00, 12:30, 16:00) = nine slots. Round 1 takes the three
+  // 9:00s and 12:30 on field 1 (ends 16:00); the other two 12:30s are skipped
+  // for order; the semifinals take 16:00 on fields 1 and 2 (end 19:30); 16:00
+  // on field 3 is skipped too, and nothing is left for the final → TBD.
+  ok(p3.slots.length === 9 && p3.tbdCount === 1 && p3.skippedForOrder === 3, "E3", "nine slots, seven games: two 12:30 slots and one 16:00 slot are skipped for order, the final is TBD",
     `slots=${p3.slots.length} tbd=${p3.tbdCount} skipped=${p3.skippedForOrder}`);
   const w3 = p3.warnings.find((x) => x.includes("could not be placed"));
-  ok(!!w3 && w3.includes("2 slots were skipped because they fell before an earlier round's games had finished"),
+  ok(!!w3 && w3.includes("1 of 7 games") && w3.includes("3 slots were skipped because they fell before an earlier round's games had finished"),
     "E3", "the warning explains the skipped slots", w3 ?? "(none)");
   counters.orderSkips += p3.skippedForOrder;
   counters.tbdGames += p3.tbdCount;
@@ -495,7 +511,7 @@ section("F: closed-day warning", () => {
   const p2 = planBracket({ format: "single_elimination", seeds: seeds(4), ids: IDS, grid: shortGrid, settings: SRALL, divisionName: "50/70" });
   ok(p2.days[0]?.kind === "too_short", "F2", "a field open two hours for a three-hour game is TOO SHORT, not closed", JSON.stringify(p2.days));
   counters.tooShortDays += p2.days.filter((d) => d.kind === "too_short").length;
-  const w2 = p2.warnings.find((x) => x.includes("no 180-minute game fits"));
+  const w2 = p2.warnings.find((x) => x.includes("leaves a 180-minute game inside the field's hours"));
   ok(!!w2 && w2.includes("Short Field") && w2.includes("is open, but"), "F2", "the too-short warning says the field IS open and the game does not fit", w2 ?? "(none)");
 
   // Availability unknown (read failed) passes through: Friday is not refused.
@@ -520,6 +536,10 @@ section("G: division day-window defaults", () => {
   const f = playoffDefaultsFromDivision({ playing_days: ["We", "bogus"], day_windows: { We: { start: "17:00", end: "16:00" } } }, DEFAULT_PLAYOFF_DATA);
   ok(JSON.stringify(f.playing_days) === '["We"]' && f.day_windows.We?.start === "09:00" && f.day_windows.We?.end === "17:00",
     "G3", "an invalid window falls back to 9–5 for that day; an unknown day code is dropped", JSON.stringify(f));
+  // "Same time" (start = end) is a real window now that the end is the latest start.
+  const same = playoffDefaultsFromDivision({ playing_days: ["We"], day_windows: { We: { start: "17:00", end: "17:00" } } }, DEFAULT_PLAYOFF_DATA);
+  ok(same.day_windows.We?.start === "17:00" && same.day_windows.We?.end === "17:00",
+    "G4", "a same-time 17:00–17:00 window is kept, not replaced by 9–5", JSON.stringify(same));
 });
 
 // ─── H: manual edit decisions ────────────────────────────────────────────────

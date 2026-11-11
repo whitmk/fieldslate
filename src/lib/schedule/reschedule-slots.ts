@@ -295,11 +295,14 @@ export function candidateClearsSpan(
  *                    — case (d): a field's own hours COULD fit the game, but no
  *                      start time on the day's window put the whole span inside
  *                      those hours — so there was never a candidate to reject.
- *                      The live shape: a division whose Wednesday window is
- *                      17:00–17:00 at a field open 17:00–21:00. Before (d)
- *                      existed that day was reported as (c), "already booked",
- *                      with ZERO rejections behind it — a confidently wrong
- *                      message on a day nothing was booked.
+ *                      Since 2026-11-11 the window's end is the latest START,
+ *                      so on a playing day this means no start between the
+ *                      window's start and end leaves the game inside a field's
+ *                      hours (e.g. starts 6–7:30am at a field opening 8am).
+ *                      (The original live shape, a 17:00–17:00 window at a
+ *                      field open 17:00–21:00, now offers 5:00 PM.) Before (d)
+ *                      existed such a day was reported as (c), "already
+ *                      booked", with ZERO rejections behind it.
  *
  * (c) REQUIRES REJECTIONS. "occupied" is written only when the walk produced a
  * candidate; a field that fits in principle is not enough. Do not collapse (d)
@@ -384,8 +387,11 @@ export interface BuildAvailableSlotsParams {
  * A candidate is offered when ALL hold:
  *   - its date is a playing day, not blacked out, not in the past;
  *   - neither team is already at its per-day game cap;
- *   - its FULL SPAN [t, t+duration) fits inside the division's day window;
- *   - its FULL SPAN fits inside the venue's open hours (isVenueAvailable);
+ *   - its START t is inside the division's day window (window.start ≤ t ≤
+ *     window.end — the window's end is the LATEST START, the wizard's "Latest
+ *     game start"; decided 2026-11-11);
+ *   - its FULL SPAN fits inside the venue's open hours (isVenueAvailable) —
+ *     the field's hours are what limit when a game can END;
  *   - neither team has a severity-'block' constraint covering the start;
  *   - it does not overlap (padded by the placing buffer) any game already at
  *     that venue on that date;
@@ -394,9 +400,13 @@ export interface BuildAvailableSlotsParams {
  * Window precedence is unchanged: per-day `day_windows`, else legacy
  * `earliest_start`/`latest_start`, else 09:00/17:00.
  *
- * NOTE the window is treated as a true WINDOW: the span must END by the close,
- * where the old lattice merely required the START to be <= it. That is the
- * stricter, safer reading and is what "fits inside the division window" means.
+ * THE WINDOW'S END IS THE LATEST START (2026-11-11). The wizard labels it
+ * "Latest game start" and the generator (buildSlots) reads it that way; this
+ * picker used to require the whole span to END by it, so a 9:00–2:00 division
+ * with a 90-minute game was never offered 12:45–2:00. Now every reader agrees.
+ * What limits the END is the FIELD's hours (isVenueAvailable), unchanged.
+ * On a makeup-only or override day the bounds ARE field hours (the union), so
+ * there the span still must end by the close.
  */
 export function buildAvailableSlots(params: BuildAvailableSlotsParams): SlotOption[] {
   return buildSlotsAndDiagnostics(params).slots;
@@ -600,11 +610,14 @@ export function buildSlotsAndDiagnostics(
         let candidatePairs = 0;
         const slotsBefore = slots.length;
 
-        // Full span must fit inside the division window, so the last candidate
-        // is the latest start whose game still ENDS by the close.
+        // On a playing day the division window's end is the LATEST START
+        // (the wizard's "Latest game start"); the field's hours, checked per
+        // venue below, limit the end. On a makeup-only / override day the
+        // bounds are the fields' own hours, so the span must end by the close.
+        const lastStart = playsToday ? latest : latest - duration;
         for (
           let timeMin = earliest;
-          timeMin + duration <= latest;
+          timeMin <= lastStart;
           timeMin += SLOT_GRID_MINUTES
         ) {
           const wallTime = minsToHHMM(timeMin);
