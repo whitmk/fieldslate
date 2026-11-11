@@ -350,6 +350,24 @@ changes on any live screen today.** What changes from now on:
 
 ## A. Email assigned officials when their game changes
 
+### As built (2026-11-11, migration 0130 — proven, held for the apply)
+
+Built as below, with these differences — each one is on purpose:
+
+- **No `official_notice_gaps` function.** The 0128 officials email banner
+  already lists failed emails by official and reason, so a `no_email`
+  failure shows there ("No email on file"). `official_email_problems` / `_ack`
+  are re-created to add the officials' trigger-failure count.
+- **Mutants beyond the plan:** GC4b + MG21 (the send-time "past" drop), MG22
+  (`no_email` never failing). MG20 removes BOTH guards (the trigger's and
+  `official_move_problem`'s busy check) — either alone is caught by the other;
+  MG20b removes the helper's guard alone.
+- **`regress0106`** runs the 0106 proof with its fixtures in the "test" org
+  (non-member "Test 2"), not SRALL — nothing of SRALL's is written, even
+  rolled back.
+- **Privacy section 9** is renamed "Officials"; its `#officialsignup` anchor
+  is kept so existing links still land.
+
 ### What's true today (read from the code)
 
 - An assignment is a `game_umpires` row keyed on the game id, so it follows a

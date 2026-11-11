@@ -161,6 +161,9 @@ function partO() {
     ["recipient-schedule wording", ["lib", "interleague", "recipient-schedule.ts"]],
     ["negotiation emails", ["lib", "interleague", "negotiation-emails.ts"]],
     ["umpire print-all page", ["app", "(dashboard)", "dashboard", "umpires", "print-all", "page.tsx"]],
+    // 0130 — the officials' game-change emails.
+    ["officials game-change words", ["lib", "umpires", "change-notice.ts"]],
+    ["officials email templates", ["lib", "officials-signup", "email-templates.ts"]],
   ];
   for (const [name, p] of outbound) {
     counters.omissionFilesChecked++;

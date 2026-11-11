@@ -127,6 +127,9 @@ const OUTBOUND_FILES = [
   // planner module's own sunset sentences (like the free calculator's) — it
   // must never reach the admin daylight-flags module.
   "src/components/field-requests/plan-print-region.tsx",
+  // The officials' game-change emails' words (0130), rendered by the
+  // officials templates.
+  "src/lib/umpires/change-notice.ts",
 ];
 const outbound = [...new Set([...OUTBOUND_DIRS.flatMap(walk), ...OUTBOUND_FILES])].sort();
 let fenced = 0;

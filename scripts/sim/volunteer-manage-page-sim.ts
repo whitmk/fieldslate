@@ -123,7 +123,7 @@ for (const [name, v] of Object.entries(W)) {
   }
 }
 const privacy = read("src/app/(marketing)/privacy/page.tsx");
-const section8 = privacy.slice(privacy.indexOf("8. VOLUNTEER"), privacy.indexOf("9. OFFICIALS SIGN-UP"));
+const section8 = privacy.slice(privacy.indexOf("8. VOLUNTEER"), privacy.indexOf("9. OFFICIALS */"));
 ok(section8.length > 500, "C1", "privacy section 8 found", String(section8.length));
 const help = read("src/app/(marketing)/help/volunteers/page.tsx");
 for (const [where, text] of [...volunteerStrings.map((t) => [t.split(":")[0], t] as const), ["privacy section 8", section8.replace(/\s+/g, " ")] as const, ["/help/volunteers", help.replace(/\s+/g, " ")] as const]) {

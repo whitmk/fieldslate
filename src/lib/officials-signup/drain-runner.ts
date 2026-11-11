@@ -11,6 +11,7 @@ import {
   outboxRowId,
   type DrainSummary,
 } from "@/lib/outbound-email/outbox-drain";
+import { parseChangeEntries, parseConflictEntries } from "@/lib/umpires/change-notice";
 import { renderOfficialEmail, type OfficialOutboxRow } from "./email-templates";
 import type { GameInfo } from "./page";
 
@@ -62,6 +63,8 @@ export function parseOfficialRows(raw: unknown): { rows: OfficialOutboxRow[]; dr
             })
             .filter(Boolean) as OfficialOutboxRow["claims"])
         : [],
+      changes: o.kind === "game_changes" ? parseChangeEntries(o.changes) : null,
+      conflicts: o.kind === "assignment_conflicts" ? parseConflictEntries(o.conflicts) : null,
     });
   }
   return { rows, dropped };

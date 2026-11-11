@@ -8,7 +8,12 @@
 //                     to an account email.
 //   * on/off        → set_official_signup_enabled (on needs Elite + a
 //                     CONFIRMED contact), as the signed-in admin.
-// Every sentence comes from src/lib/officials-signup/words.ts.
+//   * game-change emails (0130) → set_official_notify_game_changes. Its
+//                     initial value comes from official_notice_state (the
+//                     settings page's read); an unreadable read shows the
+//                     "couldn't check" line instead of a switch.
+// Every sentence comes from src/lib/officials-signup/words.ts and
+// src/lib/umpires/notice-state.ts.
 
 import { useState } from "react";
 import { Lock } from "lucide-react";
@@ -18,14 +23,50 @@ import { ContactEmailField } from "@/components/settings/contact-email-field";
 import { SeasonUpgradeModal } from "@/components/plan/UpgradeModal";
 import type { OfficialSignupState } from "@/lib/officials-signup/feature-state";
 import * as W from "@/lib/officials-signup/words";
+import {
+  NOTICE_NEEDS_CONTACT,
+  NOTICE_SAVE_FAILED,
+  NOTICE_TOGGLE_HINT,
+  NOTICE_TOGGLE_LABEL,
+  NOTICE_UNREADABLE,
+  type NoticeState,
+} from "@/lib/umpires/notice-state";
 
-export function OfficialSignupCard({ orgId, data }: { orgId: string; data: OfficialSignupState }) {
+export function OfficialSignupCard({
+  orgId,
+  data,
+  gameNotice,
+}: {
+  orgId: string;
+  data: OfficialSignupState;
+  gameNotice: NoticeState | null;
+}) {
   const [enabled, setEnabled] = useState(data.enabled);
   const [saved, setSaved] = useState(data.contactEmail);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [notify, setNotify] = useState(gameNotice?.notify ?? true);
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const [notifyError, setNotifyError] = useState<string | null>(null);
+
+  async function toggleNotify() {
+    setNotifyBusy(true);
+    setNotifyError(null);
+    const { data: res, error: err } = await createClient().rpc(
+      // @ts-expect-error — RPC isn't in the hand-maintained types (0130)
+      "set_official_notify_game_changes",
+      { p_org_id: orgId, p_on: !notify },
+    );
+    setNotifyBusy(false);
+    const r = res as { notify?: unknown } | null;
+    if (err || typeof r?.notify !== "boolean") {
+      setNotifyError(NOTICE_SAVE_FAILED);
+      return;
+    }
+    setNotify(r.notify);
+  }
 
   const blocked = !enabled && !saved ? W.CARD_NEEDS_CONTACT : null;
 
@@ -101,6 +142,29 @@ export function OfficialSignupCard({ orgId, data }: { orgId: string; data: Offic
             </div>
             {(error || notice) && (
               <p className={`py-2 text-xs font-medium ${error ? "text-red-600" : "text-[#16a34a]"}`}>{error ?? notice}</p>
+            )}
+            {gameNotice === null ? (
+              <p className="py-4 text-xs font-medium text-amber-700">{NOTICE_UNREADABLE}</p>
+            ) : (
+              <div className="flex items-center justify-between gap-4 py-4">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{NOTICE_TOGGLE_LABEL}</p>
+                  <p className="mt-1 max-w-xl text-xs text-gray-500">{NOTICE_TOGGLE_HINT}</p>
+                  {notify && !saved && <p className="mt-1 text-xs font-medium text-amber-700">{NOTICE_NEEDS_CONTACT}</p>}
+                  {notifyError && <p className="mt-1 text-xs font-medium text-red-600">{notifyError}</p>}
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={notify}
+                  aria-label={NOTICE_TOGGLE_LABEL}
+                  disabled={notifyBusy}
+                  onClick={toggleNotify}
+                  className={`relative h-6 w-11 flex-none rounded-full transition-colors disabled:opacity-60 ${notify ? "bg-[#15803d]" : "bg-gray-300"}`}
+                >
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${notify ? "right-0.5" : "left-0.5"}`} />
+                </button>
+              </div>
             )}
           </div>
         )}

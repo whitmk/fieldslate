@@ -7,6 +7,7 @@ import { ChevronDown, Pencil, Trash2, X, Loader2, CalendarDays } from "lucide-re
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { PARENT_EMAIL_HINT, PARENT_EMAIL_LABEL } from "@/lib/officials-signup/words";
+import { youthEmailCheck } from "@/lib/umpires/notice-state";
 import { OfficialSignupSection, type SignupDivision } from "@/components/umpires/official-signup-section";
 import { getOfficialTitleLower } from "@/lib/utils/official-title";
 import {
@@ -32,6 +33,8 @@ export type UmpireRow = {
   max_games_per_week: number | null;
   notes: string | null;
   team_id: string | null;
+  /** When the row was entered (0130's youth-email check). */
+  created_at?: string | null;
   season: { name: string; sport?: string | null } | null;
   team: { name: string; division: { name: string } | null } | null;
   /** Embedded id-only rows — presence only, for the roster availability hint. */
@@ -130,6 +133,9 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings, signu
                     <p className="mt-0.5 text-xs text-gray-400">
                       {availabilityHint(u)}
                     </p>
+                    {youthEmailCheck(u) && (
+                      <p className="mt-0.5 text-xs font-medium text-amber-700">{youthEmailCheck(u)}</p>
+                    )}
                   </td>
                   <td className="py-3">
                     <Badge variant={u.designation === "adult" ? "info" : "success"}>
@@ -226,6 +232,9 @@ export function UmpireList({ umpires, showSeasonColumn, seasonPaySettings, signu
                           <span className="text-amber-600">Pay rate not set</span>
                         )}
                       </p>
+                    )}
+                    {youthEmailCheck(u) && (
+                      <p className="mt-1 text-xs font-medium text-amber-700">{youthEmailCheck(u)}</p>
                     )}
                   </div>
                   <Badge

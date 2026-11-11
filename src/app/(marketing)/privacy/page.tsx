@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   alternates: { canonical: `${SITE_URL}/privacy` },
 };
 
-const LAST_UPDATED = "November 9, 2026";
+const LAST_UPDATED = "November 11, 2026";
 
 // Anchor-link helper so every section heading also serves as a `#hash` target
 // for the table of contents.
@@ -49,7 +49,7 @@ const tocItems: { id: string; label: string }[] = [
   { id: "infosafe", label: "6. How do we keep your information safe?" },
   { id: "infominors", label: "7. Do we collect information from minors?" },
   { id: "volunteers", label: "8. Volunteer sign-ups" },
-  { id: "officialsignup", label: "9. Officials sign-up" },
+  { id: "officialsignup", label: "9. Officials" },
   { id: "privacyrights", label: "10. What are your privacy rights?" },
   { id: "dnt", label: "11. Controls for Do-Not-Track features" },
   { id: "uslaws", label: "12. Do United States residents have specific privacy rights?" },
@@ -603,7 +603,7 @@ export default function PrivacyPolicyPage() {
             ). So are officials&rsquo; private sign-up links and the record of
             which spots an official took through one (see{" "}
             <a href="#officialsignup" className="text-[#22C55E] hover:underline">
-              &ldquo;Officials sign-up&rdquo;
+              &ldquo;Officials&rdquo;
             </a>
             ).
           </p>
@@ -755,20 +755,21 @@ export default function PrivacyPolicyPage() {
           </p>
         </section>
 
-        {/* 9. OFFICIALS SIGN-UP */}
+        {/* 9. OFFICIALS */}
         <section className="mt-12 space-y-4 text-sm leading-relaxed text-gray-700">
           <SectionHeading id="officialsignup" number={9}>
-            Officials sign-up
+            Officials
           </SectionHeading>
           <InShort>
-            If your league lets its officials (such as umpires) sign up for
-            games, we send each official a private link to the open spots they
-            can take.
+            We email a league&rsquo;s officials (such as umpires) when a game
+            they&rsquo;re assigned to changes. If your league lets its
+            officials sign up for games, we also send each official a private
+            link to the open spots they can take.
           </InShort>
           <p>
             <strong>What the league enters.</strong> The league enters its
             officials&rsquo; names and an email address so we can send the
-            link. For an official under 18, the league enters a parent&rsquo;s
+            link and tell them when their games change. For an official under 18, the league enters a parent&rsquo;s
             or guardian&rsquo;s email address instead, and our emails go there
             (see{" "}
             <a href="#infominors" className="text-[#22C55E] hover:underline">
@@ -799,7 +800,14 @@ export default function PrivacyPolicyPage() {
           <p>
             <strong>Emails.</strong> We email officials when the league asks
             for help with open spots, and to confirm a spot they took or
-            dropped. These emails come from FieldSlate&rsquo;s address with
+            dropped. We also email an official (or, for an official under 18,
+            their parent or guardian) when a game they&rsquo;re assigned to is
+            moved, rained out, given a makeup date, put back on the schedule,
+            or removed from the schedule (only for games that haven&rsquo;t
+            started), whether or not the league uses officials sign-up. When a
+            change puts an official in two places at once, or on a date they
+            said they can&rsquo;t work, we tell the league&rsquo;s officials
+            contact. These emails come from FieldSlate&rsquo;s address with
             your league&rsquo;s name, and replies go to the league&rsquo;s
             officials contact. We also email that contact when an official
             drops a spot, and once a day with the spots officials took. We
