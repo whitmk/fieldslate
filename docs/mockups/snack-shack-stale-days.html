@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snack shack stale days — FieldSlate mockup</title>
+<style>
+:root{--navy:#0C1F3F;--bg:#f4f5f0;--muted:#5b6577;--line:#e2e5dd;--green:#22c55e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--navy);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;font-size:14.5px;line-height:1.45}
+.mock{background:var(--navy);color:#cfd8e8;font-size:13px;text-align:center;padding:7px 12px}
+.wrap{max-width:1000px;margin:0 auto;padding:0 16px 60px}
+h1{font-size:24px;margin:24px 0 6px}
+.lede{color:var(--muted);margin:0 0 8px;max-width:72ch}
+.screen{margin-top:34px}
+.screen>h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+.screen>p.why{color:var(--muted);margin:0 0 12px;font-size:13px;max-width:72ch}
+.row{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+.desk{flex:1 1 560px;min-width:0}
+.phone{width:375px;max-width:100%;border:8px solid #1d2433;border-radius:28px;background:#f9fafb;padding:14px 12px;flex:0 0 auto}
+.page{background:#f9fafb;border:1px solid var(--line);border-radius:14px;padding:18px}
+.label{font-size:11px;color:var(--muted);margin:0 0 6px}
+.amber{border:1px solid #fcd34d;background:#fffbeb;color:#92400e;border-radius:10px;padding:10px 12px;font-size:14px}
+.amber .top{display:flex;gap:8px;align-items:flex-start}
+.amber ul{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.amber li{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;height:36px;padding:0 12px;border-radius:8px;font-size:12.5px;font-weight:600;border:0;cursor:default;white-space:nowrap}
+.btn.amberbtn{background:#d97706;color:#fff}
+.btn.ghost{background:#fff;border:1px solid #fcd34d;color:#92400e}
+.btn.green{background:var(--green);color:#fff;height:44px;padding:0 18px;font-size:14px}
+.btn.cancel{background:#fff;border:1px solid #e5e7eb;color:#4b5563;height:44px;padding:0 16px;font-size:14px}
+.grey{border:1px solid #e5e7eb;background:#fff;color:#4b5563;border-radius:10px;padding:10px 12px;font-size:14px}
+.red{color:#b91c1c}
+.ico{width:16px;height:16px;flex:0 0 16px;margin-top:2px}
+.modal{background:#fff;border-radius:16px;box-shadow:0 20px 50px rgba(12,31,63,.18);overflow:hidden;max-width:576px}
+.mhead{padding:14px 20px;border-bottom:1px solid #f3f4f6}
+.mhead b{display:block}
+.mhead small{color:#9ca3af;font-size:12px}
+.mbody{padding:14px 20px;display:flex;flex-direction:column;gap:14px;font-size:14px}
+.mfoot{padding:14px 20px;border-top:1px solid #f3f4f6;display:flex;justify-content:flex-end;gap:10px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;font-size:12px}
+.chip{border-radius:999px;padding:3px 10px;font-weight:600}
+.c-add{background:#f0fdf4;color:#15803d}.c-chg{background:#fffbeb;color:#b45309}.c-rm{background:#fef2f2;color:#b91c1c}.c-n{background:#f3f4f6;color:#4b5563}
+ul.lines{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px}
+.box-red{border:1px solid #fecaca;background:#fef2f2;color:#991b1b;border-radius:8px;padding:8px 12px}
+.box-amb{border:1px solid #fde68a;background:#fffbeb;color:#78350f;border-radius:8px;padding:8px 12px}
+.box-blue{border:1px solid #dbeafe;background:#eff6ff;color:#1e40af;border-radius:8px;padding:8px 12px}
+.note{font-size:12.5px;color:var(--muted);margin-top:8px;max-width:72ch}
+.decide{border-left:3px solid #d97706;background:#fff;padding:8px 12px;margin-top:10px;font-size:13px;max-width:72ch}
+</style>
+</head>
+<body>
+<div class="mock"><b>Mockup</b> · Part B snack shack (B2 banner, B3 one-day preview, B4 team kept) · for Whit's review · 2026-11-11</div>
+<div class="wrap">
+<h1>Snack shack: games changed, shifts didn't</h1>
+<p class="lede">Scenario: on SRALL-test, the 9:00 game on Sat, Oct 17 moved to 10:30, and on Sun, Oct 18 the last game moved 45 minutes later. No shift has been rebuilt yet. Nothing on this page writes anything until Confirm in the preview.</p>
+
+<!-- 1. Dashboard -->
+<section class="screen">
+  <h2>1 · Dashboard banner (Overview page, above the stat cards)</h2>
+  <p class="why">Shows only when the database marked a game change on a shack day AND the real shift calculation says that day's shifts no longer match. Marks the calculation clears are dropped quietly. Each day gets its own Review button, which opens the snack shack page with that day's preview already open.</p>
+  <div class="row">
+    <div class="desk"><div class="page">
+      <p class="label">Desktop</p>
+      <div class="amber">
+        <div class="top"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <span><b>Snack shack:</b> games changed on 2 days, and those days' shifts no longer match.</span></div>
+        <ul>
+          <li><span>Sat, Oct 17 — 3 shifts change</span><span class="btn amberbtn">Review Sat, Oct 17</span></li>
+          <li><span>Sun, Oct 18 — 1 shift changes</span><span class="btn amberbtn">Review Sun, Oct 18</span></li>
+        </ul>
+      </div>
+      <p class="label" style="margin-top:16px">When the check itself fails</p>
+      <div class="grey">Snack shack: couldn't check whether game changes affect its shifts. <a href="#">Open the snack shack page</a></div>
+    </div></div>
+    <div class="phone">
+      <p class="label">375px</p>
+      <div class="amber">
+        <div class="top"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <span><b>Snack shack:</b> games changed on 2 days, and those days' shifts no longer match.</span></div>
+        <ul>
+          <li><span>Sat, Oct 17 — 3 shifts change</span><span class="btn amberbtn">Review</span></li>
+          <li><span>Sun, Oct 18 — 1 shift changes</span><span class="btn amberbtn">Review</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <p class="note">More than 3 days: the first 3 are listed, then "and 4 more days — open the snack shack page". Shown only to Elite leagues with a snack shack set up for the season (the snack shack page is Elite-only).</p>
+</section>
+
+<!-- 2. Snack shack page -->
+<section class="screen">
+  <h2>2 · Snack shack page notice (replaces "The schedule changed since shifts were made — N days differ.")</h2>
+  <p class="why">Same per-day list, plus the red count when a moved game now overlaps a team's own stored shift (the existing red row flag, counted up here so it isn't missed further down the list). "Regenerate all" keeps today's full-season preview.</p>
+  <div class="row">
+    <div class="desk"><div class="page">
+      <div class="amber">
+        <div class="top"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <span>The game schedule changed on 2 days since shifts were made.</span></div>
+        <ul>
+          <li><span>Sat, Oct 17 — 3 shifts change</span><span class="btn amberbtn">Review this day</span></li>
+          <li><span>Sun, Oct 18 — 1 shift changes</span><span class="btn amberbtn">Review this day</span></li>
+          <li style="justify-content:flex-end"><span class="btn ghost">Regenerate all</span></li>
+        </ul>
+        <p class="red" style="margin:8px 0 0;font-weight:600">1 upcoming shift is assigned to a team that now plays during it.</p>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<!-- 3. One-day preview -->
+<section class="screen">
+  <h2>3 · One-day preview — the first game moved (everything that day is re-cut)</h2>
+  <p class="why">Built by the same plan as the full regenerate, limited to one date: every other day goes to the database exactly as stored. Volunteers who lose their spot are NAMED (first initial + last name, never an email), read by the one new function only this modal may call.</p>
+  <div class="row">
+    <div class="desk">
+      <div class="modal">
+        <div class="mhead"><b>Rebuild Sat, Oct 17 from the game schedule</b><small>Only this day changes. Every other day stays as it is. Nothing is written until you confirm.</small></div>
+        <div class="mbody">
+          <div class="chips"><span class="chip c-add">2 added</span><span class="chip c-chg">0 changed</span><span class="chip c-rm">3 removed</span></div>
+          <div><b>Sat, Oct 17</b>
+            <ul class="lines">
+              <li style="color:#166534">Added: 10:00am–12:00pm</li>
+              <li style="color:#166534">Added: 12:00–2:30pm</li>
+              <li style="color:#991b1b">Removed: 8:30–10:30am</li>
+              <li style="color:#991b1b">Removed: 10:30am–12:30pm</li>
+              <li style="color:#991b1b">Removed: 12:30–2:30pm</li>
+            </ul></div>
+          <div class="box-red"><b>J. Smith</b> (8:30–10:30am) and <b>K. Lee</b> (10:30am–12:30pm) lose their spot when you confirm. Each is emailed.</div>
+          <div><b>Assignments that would change</b>
+            <ul class="lines">
+              <li>Sat, Oct 17 8:30–10:30am: Braves → removed</li>
+              <li>Sat, Oct 17 10:30am–12:30pm: Mets → removed</li>
+              <li>Sat, Oct 17 12:30–2:30pm: Cubs → removed</li>
+              <li>Sat, Oct 17 10:00am–12:00pm: new → Braves</li>
+              <li>Sat, Oct 17 12:00–2:30pm: new → Mets</li>
+            </ul></div>
+        </div>
+        <div class="mfoot"><span class="btn cancel">Cancel</span><span class="btn green">Confirm and rebuild this day</span></div>
+      </div>
+    </div>
+    <div class="phone">
+      <p class="label">375px — the sheet slides up from the bottom, same content, scrolls</p>
+      <div class="modal" style="border-radius:16px 16px 0 0">
+        <div class="mhead"><b>Rebuild Sat, Oct 17 from the game schedule</b><small>Only this day changes. Nothing is written until you confirm.</small></div>
+        <div class="mbody">
+          <div class="chips"><span class="chip c-add">2 added</span><span class="chip c-rm">3 removed</span></div>
+          <div class="box-red"><b>J. Smith</b> (8:30–10:30am) and <b>K. Lee</b> (10:30am–12:30pm) lose their spot when you confirm. Each is emailed.</div>
+        </div>
+        <div class="mfoot"><span class="btn cancel">Cancel</span><span class="btn green">Confirm</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="decide"><b>Decision for you:</b> 2 removed shifts here get a new team picked by the usual fairness rule (Braves and Mets above happen to come back). B4 only keeps a team when a shift keeps its START. Moving the first game moves every start, so a team can still change. Say if you want "same team gets the shift nearest its old one" — that's a bigger rule change and not in the approved plan.</div>
+</section>
+
+<!-- 4. One-day preview, end moved -->
+<section class="screen">
+  <h2>4 · One-day preview — the last game moved (B4 keeps the team)</h2>
+  <div class="row">
+    <div class="desk">
+      <div class="modal">
+        <div class="mhead"><b>Rebuild Sun, Oct 18 from the game schedule</b><small>Only this day changes. Every other day stays as it is. Nothing is written until you confirm.</small></div>
+        <div class="mbody">
+          <div class="chips"><span class="chip c-add">0 added</span><span class="chip c-chg">1 changed</span><span class="chip c-rm">0 removed</span><span class="chip c-n">2 unchanged</span></div>
+          <div><b>Sun, Oct 18</b><ul class="lines"><li style="color:#92400e">Changed: 12:30–2:30pm → 12:30–3:15pm</li></ul></div>
+          <div class="box-amb">1 volunteer sign-up moves with its changed shift: <b>P. Garcia</b>. They're emailed the new hours.</div>
+          <div><b>Assignments that would change</b><ul class="lines"><li>Sun, Oct 18 12:30pm: ends 2:30pm → 3:15pm, Cubs (kept — still free)</li></ul></div>
+        </div>
+        <div class="mfoot"><span class="btn cancel">Cancel</span><span class="btn green">Confirm and rebuild this day</span></div>
+      </div>
+      <p class="note">If Cubs now played during 12:30–3:15, the line would read "Cubs → Giants" and the usual picker chooses.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 5. Names unreadable -->
+<section class="screen">
+  <h2>5 · When the names can't be read</h2>
+  <p class="why">The count still comes from the existing count function, so Confirm stays allowed and the emails go out as today.</p>
+  <div class="desk" style="max-width:576px">
+    <div class="box-red">2 volunteer sign-ups are on removed shifts and will be canceled; each volunteer is emailed. Couldn't read who signed up.</div>
+  </div>
+  <p class="note">The full-season "Regenerate all" preview gets the same named lines (one component, one rule).</p>
+</section>
+
+</div>
+</body>
+</html>
