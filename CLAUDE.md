@@ -2204,6 +2204,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   sim:volunteer-leaks VL4/VL6 sat shadowed from the 0122 merge until
   2026-11-09. Proof: `npm run sim:sql-latest` (11 checks, incl. the old VL4
   run through the real targets check) + `:mutants` (5/5).
+- **A SCRATCH ROUTE STUBS EVERY SERVER ACTION AND EVERY WRITE, NOT JUST THE
+  READS — none may reach production (2026-11-11).** A throwaway route that
+  renders a real component with the Supabase REST answered in the browser
+  still runs the component's SERVER ACTIONS on the dev server, against the
+  real database: the 0131 check's Confirm called `logActivity` (a
+  `"use server"` insert into `activity_log`) four times. Every one was
+  refused (no session, fake season id), but that was luck, not design.
+  Before clicking anything on a scratch route, list every server action and
+  write the clicked path reaches (`grep -n '"use server"'` along its imports,
+  `fetch` to `/api/…`, `.rpc`, `.insert/.update/.delete`) and stub each one —
+  pass a stub prop, or swap the import for the route — then confirm in the
+  dev-server log that no action ran.
 - **NEVER run another sim, the dev server or a build while a mutation pass
   is running — wait for it to finish.** A `:mutants` pass REWRITES the real
   source files (one mutant at a time, restored after each), so anything else
@@ -5981,7 +5993,7 @@ Still open:
     stays allowed.
   - **After a rebuild that changed a team assignment** (`teamAssignmentsChanged`
     — a kept team isn't a change) the page offers "Team assignments changed.
-    Send updated snack shack emails?", which opens the EXISTING "Email full
+    Send the updated schedule?", which opens the EXISTING "Email full
     schedule" form: the whole season's shifts (past included) to ONE address
     the admin types. Nothing emails each team.
   - No admin email in v1. Proof: `scripts/sim/snack-stale-days-sim.sql`
@@ -6694,6 +6706,14 @@ Still open:
   contact email is confirmed by link since 0126.
 
 ## Open items
+
+- **Per-team snack shack emails (backlog, 2026-11-11).** "Email full
+  schedule" sends the whole season to ONE address the admin types, and the
+  Teams page button sends one team's shifts to one typed address; nothing
+  emails each team its own shifts. The 0131 post-rebuild prompt ("Team
+  assignments changed. Send the updated schedule?") uses the full-schedule
+  send until this is built. Needs a recipient per team (no team contact is
+  confirmed today) — decide that first.
 
 - **NEXT BUILD CANDIDATE — email assigned officials when their game moves or
   is rained out (recorded 2026-11-09).** Today an assignment rides the game

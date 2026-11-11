@@ -147,7 +147,7 @@ export function teamAssignmentsChanged(plan: RegeneratePlan): boolean {
     c.kind === "removed" ? true : c.kind === "added" ? c.toTeamId !== null : c.fromTeamId !== c.toTeamId);
 }
 
-export const EMAIL_PROMPT = "Team assignments changed. Send updated snack shack emails?";
+export const EMAIL_PROMPT = "Team assignments changed. Send the updated schedule?";
 export const EMAIL_PROMPT_DETAIL = "This sends the full season's snack shack schedule to one email address you choose.";
 
 /** Title and subtitle for the preview: one day, or the whole season. */

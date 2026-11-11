@@ -174,6 +174,8 @@ import {
 } from "../../src/lib/snack-shack/regenerate-plan";
 import { todayInTimezone } from "../../src/lib/utils/org-today";
 import {
+  EMAIL_PROMPT,
+  EMAIL_PROMPT_DETAIL,
   bannerDays,
   bannerHeadline,
   bannerMoreLine,
@@ -1001,6 +1003,7 @@ section("R: rebuild one day, keep the team, the stale-day words", () => {
   const pd = playsDuringLines([{ id: "s3", date: "2026-10-17", start_time: "12:30:00", assigned_team_id: "cubs" }, { id: "s1", date: "2026-10-17", start_time: "08:30:00", assigned_team_id: "braves" }],
     (id) => id === "s3", tn);
   ok(pd.join("|") === "Sat, Oct 17 12:30pm — Cubs now plays during their shift", "R12", "only shifts whose team plays during them are named", pd.join("|"));
+  ok(EMAIL_PROMPT === "Team assignments changed. Send the updated schedule?" && EMAIL_PROMPT_DETAIL === "This sends the full season's snack shack schedule to one email address you choose.", "R12", "the email prompt, verbatim");
   ok(previewTitle(["2026-10-17"]).title === "Rebuild Sat, Oct 17 from the game schedule" && previewTitle(null).title === "Regenerate shifts from the game schedule", "R12", "the preview titles");
 });
 
