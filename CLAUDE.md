@@ -513,6 +513,22 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `scripts/sim/official-game-change-sim.sql`. Expected md5(prosrc) =
   `official-game-change-build.ts --md5`. See "Officials game-change emails
   (0130)".
+- **0131 (snack shack stale days) APPLIED 2026-11-11 20:27 UTC, catalog
+  `20261111202718`**, verbatim from the repo file on Whit's go (catalog
+  statements md5 = the file, `ad3796e6…`), after its rolled-back proof
+  (`scripts/sim/snack-stale-days-sim.sql`, 13/13 mutants at their own tag).
+  md5(prosrc) = `snack-stale-days-build.ts --md5`, one overload each,
+  SECURITY DEFINER, `search_path=public, pg_temp`:
+  `snack_shack_mark_stale_days` `d82f9176f25cb76d973e258a128f444f`,
+  `snack_shack_stale_state` `eca5451f97429b17e9139d549d791769`,
+  `clear_snack_shack_stale_days` `9d86e29119864d7d526c5e95e73a6b70`,
+  `volunteer_shift_claims_for_blocks` `28351a3204e768fb8b49c1c49bd0ca2b`.
+  EXECUTE: the three app functions authenticated only, the trigger function
+  no role (PUBLIC, anon, service_role, dashboard_readonly false). Both new
+  tables RLS on, no role privilege. The three `games` triggers enabled,
+  statement-level, no `games` trigger disabled; 0 marks, 0 failures; leak
+  check clean. **The latest migration applied.** See "Days that need
+  rebuilding (0131)" under the snack shack section.
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -5949,8 +5965,8 @@ Still open:
   their own tag; it holds ACCESS EXCLUSIVE on both tables and RowShare on
   profiles for the run. `sim:snack-print` (24 checks) +
   `:mutants` (11).
-- **Days that need rebuilding (0131, branch `feat/snack-shack-stale-days`,
-  2026-11-11; proven 13/13 rolled back, NOT APPLIED — Whit sets the time).**
+- **Days that need rebuilding (0131, APPLIED 2026-11-11 20:27 UTC, catalog
+  `20261111202718`, verbatim on Whit's go after a 13/13 rolled-back proof).**
   Plan: `docs/plans/game-change-followthrough.md` Part B; mockup
   `docs/mockups/snack-shack-stale-days.html` (revised after review).
   - **The marks:** a statement-level trigger on `games` records each date a
@@ -5998,8 +6014,8 @@ Still open:
     the admin types. Nothing emails each team.
   - No admin email in v1. Proof: `scripts/sim/snack-stale-days-sim.sql`
     (+ build script; 13 mutants). App: `sim:snack-shifts` section R (+ RM1–RM12).
-  - **Deploy order: apply 0131 BEFORE the code reaches `main`** — the
-    dashboard and the snack shack page call its functions.
+  - **Deploy order (met): 0131 was applied BEFORE the code reached `main`**
+    — the dashboard and the snack shack page call its functions.
 - **Harness: `npm run sim:snack-shifts`** (108 checks × 3 zones, 16
   anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (27 mutants,
   each killed FIRST at its own assertion). Read the MUTATION LOG in the sim

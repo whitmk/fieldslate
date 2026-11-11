@@ -472,4 +472,8 @@ end $h$;
 --     or trigger; no snack shack on QA Fall 2026; 30 games; Rookies
 --     false/false and no calendar links; no h131 volunteers, roles or temp
 --     functions; no games trigger disabled; no idle transaction.
---   NOT applied — held for Whit's go and apply time.
+--   Applied 2026-11-11 20:27 UTC on Whit's go (apply_migration, verbatim):
+--     catalog 20261111202718, statements md5 ad3796e6… = the file; the four
+--     md5(prosrc) = `--md5`; privileges, RLS and the three enabled
+--     statement-level triggers as stated; 0 marks, 0 failures; no h131
+--     functions, no idle transaction, no games trigger disabled.
