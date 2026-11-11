@@ -7,8 +7,12 @@
 //   - Families: team calendar feeds update on the phone's own schedule —
 //     never "instantly".
 //   - Officials: assignments ride the game (game_umpires keys on the game
-//     id). Officials are NOT emailed about a move and no officials check
-//     re-runs on a move — do not claim either until one is built.
+//     id) and nobody is ever unassigned by a change. Since 0130 each
+//     assigned official gets one email per window (moved / rained out /
+//     makeup / back on / taken off), and a move that puts an official in
+//     two places goes to the league's officials contact. Gated: Elite, a
+//     confirmed officials contact, the notices setting on (default on) —
+//     like the Volunteers card, the card states the Elite behaviour.
 //   - Volunteers: 0121's game_moved email (keep the spot or cancel).
 //   - Snack shack: shifts are derived from the games, but a change reaches
 //     the shifts only when the admin regenerates them; the page flags the
@@ -27,7 +31,7 @@ const CARDS = [
   {
     icon: ShieldCheck,
     title: "Officials",
-    text: "The assigned umpires stay on the game, so their assignments move with it.",
+    text: "Assigned umpires stay on the game and get an email with the new time. If a move puts one in two places, you're told.",
   },
   {
     icon: ClipboardList,
