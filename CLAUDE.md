@@ -493,9 +493,26 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `official_bookings` `1d253cb415570d62d7dec9f3547e201e` (DEFINER). EXECUTE:
   `official_bookings` authenticated only, the other two no role (PUBLIC,
   anon, service_role, dashboard_readonly false). Leak check clean, no
-  trigger disabled. **The latest migration applied.** **Deploy order (met):
+  trigger disabled. **Deploy order (met):
   0129 was applied BEFORE the code reached `main`.** See "ONE BUSY RULE
   (0129)".
+- **0130 (officials game-change emails) APPLIED 2026-11-11 17:30 UTC,
+  catalog `20261111173020`**, verbatim from the repo file on Whit's go (the
+  catalog row's text = the file, md5 `9a60d2e2…`). All 14 md5(prosrc) =
+  `official-game-change-build.ts --md5`, one overload each; EXECUTE:
+  record_game_played, official_email_problems(_ack), official_notice_state,
+  set_official_notify_game_changes authenticated only; official_outbox_take
+  service_role only; the six helpers and both trigger functions no role
+  (PUBLIC, anon, dashboard_readonly false); both games triggers enabled;
+  `official_trigger_failures` RLS on, no role grant; leak check clean.
+  **The latest migration applied.** **Deploy order (met): 0130 was applied
+  BEFORE the code reached `main`.** Built on branch `feat/game-change-notices`. Rolled-back
+  proof 2026-11-11 green on run 1, 23/23 mutants at their own tag; the 0124
+  proof against it (MO12 at OX1) and the 0106 proof against it (7/8 at their
+  own tag, MU3 the usual 00:00–10:00 UTC window) green — read the RUN LOG in
+  `scripts/sim/official-game-change-sim.sql`. Expected md5(prosrc) =
+  `official-game-change-build.ts --md5`. See "Officials game-change emails
+  (0130)".
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -4676,8 +4693,8 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   firewall rule is the lever if load ever matters.
 - **Harnesses.** `scripts/sim/team-calendar-links-sim.sql` (SQL, run
   2026-09-29 against production and rolled back: green, 5 mutants incl.
-  `current_date` for expiry — that one is only distinguishable 5pm–3am
-  Pacific and the harness asserts the window; read its run log: runs 1 and 2
+  `current_date` for expiry — that one is only distinguishable 00:00–10:00
+  UTC (4 PM–2 AM Pacific on PST, 5 PM–3 AM on PDT) and the harness asserts the window; read its run log: runs 1 and 2
   were harness faults), `npm run sim:team-calendar` (the builder, three host
   timezones, 21 mutants), `npm run sim:team-calendar-route` (URLs, refusal
   map, coach message, help page, wiring; 7 mutants), and `sim:games-export`
@@ -6472,6 +6489,50 @@ Still open:
 - **Not built:** the email isn't a league email (no outbox row, no retry) — a
   failed send says so and Resend is the retry.
 
+## Officials game-change emails (0130, applied 2026-11-11)
+
+- **What it does.** An official assigned to a game that is moved (time or
+  field), rained out, given a makeup, put back on, or deleted (regenerate,
+  division/team/game delete — "taken off") gets ONE email per window covering
+  all their changed games, held 10 minutes (`coalesce_key 'changes:<umpire>'`,
+  each change restarts the hold). When a game's time changes or it comes back
+  on, each official on it is re-checked (`official_move_problem`: blackout,
+  overlap, availability, weekly limit — 0129's busy rule); problems go to the
+  officials contact as one `assignment_conflicts` email per season and window.
+  **Nobody is ever unassigned.**
+- **The payload holds ids and the FIRST `was` of the window; the take works
+  out what to say NOW** (`official_change_entries` / `official_conflict_entries`):
+  an entry is dropped when its game has started (league time — "past" is
+  judged at SEND time), is back where it was, or the official is off it; an
+  empty row is superseded `no_net_change` / `no_conflicts`. A removal carries
+  a snapshot (the game is gone by send time).
+- **Gates, all four, in the trigger (the take re-checks):** Elite,
+  `org_feature_on('official_signup')`, a CONFIRMED officials contact (0126),
+  `official_signup_settings.notify_game_changes` (default true; Settings →
+  Officials sign-up, `set_official_notify_game_changes`). The Officials page
+  says why when it's off (`noticeOffLine`, from `official_notice_state`).
+- **The change trigger never blocks a game write** (failures recorded in
+  `official_trigger_failures`, shown on the officials email banner); **the
+  delete trigger is NOT swallowed** (a delete that can't queue its notice
+  fails). Both are SECURITY DEFINER and name no volunteer object
+  (sim:volunteer-leaks U1).
+- **`record_game_played` never emails an official:** it sets
+  `fieldslate.official_notice_skip` transaction-locally around its one games
+  UPDATE and resets it right after. Only it and `official_on_game_change` may
+  name the setting, and no callable function may call `set_config` with a
+  non-literal name (proof SK1).
+- **Words:** `src/lib/umpires/change-notice.ts` (every sentence; Moved /
+  Rained out / Makeup set / Back on / Taken off from (was, now); youth wording
+  to the parent; NO link in the official's email — a fresh link would revoke
+  the current one). Templates in `src/lib/officials-signup/email-templates.ts`.
+  An official with no email address: the row fails `no_email` and shows on
+  the banner ("No email on file").
+- **Youth officials entered before 0124** with an email show "Check that this
+  is a parent's or guardian's email." on the Officials list (`youthEmailCheck`).
+- **Harnesses:** the SQL proof (`official-game-change-sim.sql` + build script:
+  default, `--md5`, `regress0124`, `regress0106`); `npm run
+  sim:official-change-notice` (81 checks × 3 zones) + `:mutants` (13).
+
 ## Officials self-sign-up (0124 applied 2026-11-09)
 
 - **Plan and decisions:** `docs/plans/official-self-signup.md` (on
@@ -6668,7 +6729,7 @@ Still open:
   depend on the dates; W1/T1 pin Santa Rosa sentences and totals that do).
 
 - **0106's UTC-today mutant (MU3) is owed a run** between 00:00 and 10:00 UTC
-  (5pm–3am Pacific) against the APPLIED function, rolled back. If it survives,
+  (4 PM–2 AM Pacific while on PST, 5 PM–3 AM on PDT) against the APPLIED function, rolled back. If it survives,
   that is a follow-up migration.
 
 - **Snack shack last-resort tiebreak is alphabetical, so when shifts < teams

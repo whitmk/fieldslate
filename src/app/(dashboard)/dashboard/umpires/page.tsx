@@ -16,6 +16,7 @@ import {
 } from "@/components/umpires/division-priority-card";
 import { AutoAssignSeasonButton } from "@/components/umpires/auto-assign-season-button";
 import { loadOfficialSignup } from "@/lib/officials-signup/feature-state";
+import { loadNoticeState, noticeOffLine } from "@/lib/umpires/notice-state";
 import { AskForHelpButton } from "@/components/umpires/ask-for-help-button";
 import { EmailProblemsBanner } from "@/components/email-problems/email-problems-banner";
 import { loadEmailProblems } from "@/lib/outbound-email/problems-read";
@@ -76,7 +77,7 @@ export default async function UmpiresPage() {
       ? supabase
           .from("umpires")
           .select(
-            "id, name, designation, season_id, pay_rate, email, phone, max_games_per_week, notes, team_id, season:leagues(name, sport), team:teams(name, division:divisions(name)), official_availability(id), official_blackouts(id)",
+            "id, name, designation, season_id, pay_rate, email, phone, max_games_per_week, notes, team_id, created_at, season:leagues(name, sport), team:teams(name, division:divisions(name)), official_availability(id), official_blackouts(id)",
           )
           .eq("season_id", seasonId)
           .order("name", { ascending: true })
@@ -112,6 +113,8 @@ export default async function UmpiresPage() {
   const emailProblems = seasonId ? await loadEmailProblems(supabase, OFFICIAL_PROBLEMS, seasonId) : null;
   const emailProblemsView =
     emailProblems?.state === "ok" ? problemsView(emailProblems.problems, "officials") : null;
+  // 0130: say so when officials aren't emailed about game changes, and why.
+  const noticeLine = seasonId && officialSignup ? noticeOffLine(await loadNoticeState(supabase, currentOrgId, "umpires")) : null;
 
   // Single-season view — the season column never applies anymore.
   const showSeasonColumn = false;
@@ -209,6 +212,9 @@ export default async function UmpiresPage() {
       )}
       {seasonId && emailProblemsView && (
         <EmailProblemsBanner feature="officials" rpc={OFFICIAL_PROBLEMS.rpc} seasonId={seasonId} view={emailProblemsView} />
+      )}
+      {noticeLine && (
+        <p className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">{noticeLine}</p>
       )}
 
       <Card>

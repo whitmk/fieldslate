@@ -11,6 +11,7 @@ import { VolunteersCard } from "@/components/settings/volunteers-card";
 import { loadVolunteerFeature } from "@/lib/volunteers/feature-state";
 import { OfficialSignupCard } from "@/components/settings/official-signup-card";
 import { loadOfficialSignup } from "@/lib/officials-signup/feature-state";
+import { loadNoticeState } from "@/lib/umpires/notice-state";
 import { loadDaylight } from "@/lib/daylight/load";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/calendar/timezones";
@@ -43,6 +44,8 @@ export default async function SettingsPage() {
   const daylight = await loadDaylight(supabase, currentOrgId);
   const volunteers = await loadVolunteerFeature(supabase, currentOrgId, "settings");
   const officialSignup = await loadOfficialSignup(supabase, currentOrgId, "settings");
+  // 0130: whether officials are emailed when games change (null = unreadable).
+  const officialNotice = officialSignup?.elite ? await loadNoticeState(supabase, currentOrgId, "settings") : null;
   const profile = rawProfile as Profile | null;
   const orgTimezone =
     (orgRow as { timezone: string } | null)?.timezone ?? DEFAULT_ORG_TIMEZONE;
@@ -77,7 +80,7 @@ export default async function SettingsPage() {
 
       {volunteers && <VolunteersCard orgId={currentOrgId} data={volunteers} />}
 
-      {officialSignup && <OfficialSignupCard orgId={currentOrgId} data={officialSignup} />}
+      {officialSignup && <OfficialSignupCard orgId={currentOrgId} data={officialSignup} gameNotice={officialNotice} />}
 
       <Card>
         <CardHeader>

@@ -16,7 +16,7 @@
 --   2. Send the output as ONE batch through the Supabase MCP (execute_sql).
 --      A batch runs in a single transaction (probed 2026-09-29).
 --   3. The last statement ALWAYS raises. The raised message IS the result.
---   RUN ONLY BETWEEN 5PM AND 3AM PACIFIC — see S8 below. Get an explicit
+--   RUN ONLY BETWEEN 00:00 AND 10:00 UTC (4 PM–2 AM PACIFIC ON PST, 5 PM–3 AM ON PDT) — see S8 below. Get an explicit
 --   go-ahead first.
 --
 -- LOCKS HELD FOR THE LENGTH OF THE RUN (expected: a few seconds)
@@ -80,7 +80,7 @@
 --   S7   archived season → expired
 --   S8   expiry in the ORG's zone (Honolulu): end date = today−8 → expired,
 --        today−7 → ok. Requires the Honolulu date to differ from the UTC
---        date (5pm–3am Pacific), asserted as S8-window
+--        date (00:00–10:00 UTC: 4 PM–2 AM Pacific on PST, 5 PM–3 AM on PDT), asserted as S8-window
 --   T1   a team inserted into locked D1 gets a link
 --   T2   a team inserted into unlocked D2 gets none; moving it into D1 gives
 --        one; a team moved into unlocked D3 gets none
@@ -496,11 +496,11 @@ begin
   update public.leagues set archived_at = null where id = v_season;
 
   -- Expiry in the ORG's zone. Honolulu is UTC−10: its date differs from the
-  -- UTC date between 00:00 and 10:00 UTC (5pm–3am Pacific during PDT).
+  -- UTC date between 00:00 and 10:00 UTC (5 PM–3 AM Pacific during PDT, 4 PM–2 AM during PST).
   update public.profiles set timezone = 'Pacific/Honolulu' where id = v_org;
   v_today := (now() at time zone 'Pacific/Honolulu')::date;
   if v_today = current_date then
-    v_fails := array_append(v_fails, 'S8-window: Honolulu date equals the UTC date right now — CM3 cannot be told apart; run between 5pm and 3am Pacific');
+    v_fails := array_append(v_fails, 'S8-window: Honolulu date equals the UTC date right now — CM3 cannot be told apart; run between 00:00 and 10:00 UTC (4 PM–2 AM Pacific on PST)');
   end if;
   update public.leagues set end_date = v_today - 8 where id = v_season;
   if (pg_temp.h99_read(v_tok3) ->> 'status') <> 'expired' then

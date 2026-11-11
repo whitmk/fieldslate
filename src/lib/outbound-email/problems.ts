@@ -69,6 +69,8 @@ const KIND_LABELS: Record<string, string> = {
   drop_confirmed: "Drop confirmation",
   drop_notice: "Dropped spot notice",
   claims_digest: "Daily sign-ups summary",
+  game_changes: "Game change notice",
+  assignment_conflicts: "Assignment check",
 };
 
 export function kindLabel(kind: string): string {
@@ -81,6 +83,8 @@ export function whyLine(error: string | null): string {
   switch (error) {
     case "bad_recipient":
       return "No usable email address";
+    case "no_email":
+      return "No email on file";
     case "no_contact_email":
       return "No confirmed contact email";
     case "feature_off":
@@ -126,7 +130,8 @@ export function parseProblems(raw: unknown, feature: ProblemsFeature, describe: 
     if (!d) return null;
     failed.push({ id: f.id, kind: f.kind, error: str(f.error), who: d.who, what: d.what });
   }
-  const triggerFailures = feature === "volunteers" ? (typeof o.trigger_failures === "number" ? o.trigger_failures : NaN) : 0;
+  // Both features return the count (volunteers 0128, officials 0130).
+  const triggerFailures = typeof o.trigger_failures === "number" ? o.trigger_failures : NaN;
   if (!Number.isFinite(triggerFailures)) return null;
   return {
     failed,
@@ -169,9 +174,11 @@ export function problemsView(p: EmailProblems, feature: ProblemsFeature): Proble
         : `${are} for the daily email limit to reset${at ? ` at ${at}` : ""}.`,
     );
   }
-  if (feature === "volunteers" && p.triggerFailures > 0) {
+  if (p.triggerFailures > 0) {
     const t = p.triggerFailures;
-    parts.push(`${t} schedule ${plural(t, "change", "changes")} couldn't be checked for volunteer emails.`);
+    parts.push(
+      `${t} schedule ${plural(t, "change", "changes")} couldn't be checked for ${feature === "volunteers" ? "volunteer" : "officials'"} emails.`,
+    );
   }
   if (parts.length === 0) return null;
   return {

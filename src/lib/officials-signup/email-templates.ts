@@ -1,9 +1,24 @@
-// The officials outbox's five emails (0124). Pure: the drain hands each row
-// what the take attached (game, open spots, the claims, the link token) and
-// gets back subject + html + text, or NULL when the row can't be described —
-// the drain then fails the row ("unknown_kind"), never sends a blank email.
-// Every person-supplied string is escaped in the html.
+// The officials outbox's emails (0124, plus game_changes and
+// assignment_conflicts from 0130). Pure: the drain hands each row what the
+// take attached (game, open spots, the claims, the link token, the changes)
+// and gets back subject + html + text, or NULL when the row can't be
+// described — the drain then fails the row ("unknown_kind"), never sends a
+// blank email. Every person-supplied string is escaped in the html. The
+// game-change words live in src/lib/umpires/change-notice.ts.
 import type { BaseOutboxRow, RenderedEmail } from "@/lib/outbound-email/outbox-drain";
+import { SITE_URL } from "@/lib/site";
+import {
+  CONFLICTS_LINK_LABEL,
+  CONFLICTS_OPENING,
+  changesClosing,
+  changesOpening,
+  changesSubject,
+  conflictLine,
+  conflictsSubject,
+  entryLines,
+  type ChangeEntry,
+  type ConflictEntry,
+} from "@/lib/umpires/change-notice";
 import { gameWhat, gameWhen, officialLinkUrl, type GameInfo } from "./page";
 
 export type OfficialOutboxRow = BaseOutboxRow & {
@@ -14,6 +29,10 @@ export type OfficialOutboxRow = BaseOutboxRow & {
   game: GameInfo | null;
   spots: GameInfo[];
   claims: (GameInfo & { official_name: string | null })[];
+  /** game_changes: what the take worked out; null when it couldn't be read. */
+  changes: ChangeEntry[] | null;
+  /** assignment_conflicts: likewise. */
+  conflicts: ConflictEntry[] | null;
 };
 
 export const OFFICIAL_EMAIL_KINDS = [
@@ -22,6 +41,8 @@ export const OFFICIAL_EMAIL_KINDS = [
   "drop_confirmed",
   "drop_notice",
   "claims_digest",
+  "game_changes",
+  "assignment_conflicts",
 ] as const;
 
 function esc(s: string): string {
@@ -32,12 +53,50 @@ function gameLine(g: GameInfo): string {
   return `${gameWhen(g)} — ${g.role}${gameWhat(g) ? ` · ${gameWhat(g)}` : ""}`;
 }
 
-function assemble(subject: string, league: string, paras: string[], list: string[], link?: { url: string; label: string }): RenderedEmail {
+// The footer under every official's email. The coordinator's own email (it
+// goes TO the officials contact) ends with the first sentence alone.
+const footerFor = (league: string, toContact: boolean) =>
+  toContact ? `Sent by FieldSlate for ${league}.` : `Sent by FieldSlate for ${league}. Reply to this email to reach your league.`;
+
+function assemble(subject: string, league: string, paras: string[], list: string[], link?: { url: string; label: string },
+                  toContact = false): RenderedEmail {
   const html = [
     `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;max-width:600px">`,
     `<p style="font-size:12px;color:#6b7280;margin:0 0 12px">${esc(league)}</p>`,
     ...paras.map((p) => `<p style="font-size:15px;line-height:1.5">${esc(p)}</p>`),
     list.length ? `<ul style="font-size:15px;line-height:1.6;padding-left:18px">${list.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : "",
+    link
+      ? `<p><a href="${esc(link.url)}" style="display:inline-block;background:#22C55E;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">${esc(link.label)}</a></p>`
+      : "",
+    `<p style="font-size:12px;color:#6b7280">${esc(footerFor(league, toContact))}</p>`,
+    `</div>`,
+  ].join("");
+  const text = [
+    league,
+    "",
+    ...paras,
+    ...(list.length ? ["", ...list.map((l) => `- ${l}`)] : []),
+    ...(link ? ["", `${link.label}: ${link.url}`] : []),
+    "",
+    footerFor(league, toContact),
+  ].join("\n");
+  return { subject, html, text };
+}
+
+/** The game-change email: one block per entry, heading in bold. */
+function assembleBlocks(subject: string, league: string, opening: string[], blocks: string[][], closing: string | null,
+                        link?: { url: string; label: string }): RenderedEmail {
+  const html = [
+    `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;max-width:600px">`,
+    `<p style="font-size:12px;color:#6b7280;margin:0 0 12px">${esc(league)}</p>`,
+    ...opening.map((p) => `<p style="font-size:15px;line-height:1.5">${esc(p)}</p>`),
+    ...blocks.map(
+      ([head, ...rest]) =>
+        `<p style="font-size:15px;line-height:1.5;margin:16px 0 0"><strong>${esc(head)}</strong>` +
+        rest.map((l) => `<br>${esc(l)}`).join("") +
+        `</p>`,
+    ),
+    closing ? `<p style="font-size:15px;line-height:1.5;margin-top:16px">${esc(closing)}</p>` : "",
     link
       ? `<p><a href="${esc(link.url)}" style="display:inline-block;background:#22C55E;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">${esc(link.label)}</a></p>`
       : "",
@@ -47,8 +106,9 @@ function assemble(subject: string, league: string, paras: string[], list: string
   const text = [
     league,
     "",
-    ...paras,
-    ...(list.length ? ["", ...list.map((l) => `- ${l}`)] : []),
+    ...opening,
+    ...blocks.flatMap((b) => ["", ...b]),
+    ...(closing ? ["", closing] : []),
     ...(link ? ["", `${link.label}: ${link.url}`] : []),
     "",
     `Sent by FieldSlate for ${league}. Reply to this email to reach your league.`,
@@ -117,6 +177,28 @@ export function renderOfficialEmail(row: OfficialOutboxRow): RenderedEmail | nul
         league,
         [n === 1 ? "Since the last update, an official took this game:" : `Since the last update, officials took these ${n} games:`],
         row.claims.map((c) => `${c.official_name ?? "An official"}: ${gameLine(c)}`),
+      );
+    }
+    case "game_changes": {
+      if (!name || !row.changes || row.changes.length === 0) return null;
+      const v = { youth: row.youth, name, league };
+      return assembleBlocks(
+        changesSubject(row.changes, v),
+        league,
+        changesOpening(row.changes, v),
+        row.changes.map((e) => entryLines(e, v)),
+        changesClosing(row.changes, v),
+      );
+    }
+    case "assignment_conflicts": {
+      if (!row.conflicts || row.conflicts.length === 0) return null;
+      return assemble(
+        conflictsSubject(row.conflicts.length),
+        league,
+        [CONFLICTS_OPENING],
+        row.conflicts.map(conflictLine),
+        { url: `${SITE_URL}/dashboard/umpires`, label: CONFLICTS_LINK_LABEL },
+        true,
       );
     }
     default:

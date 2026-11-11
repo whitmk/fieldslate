@@ -102,7 +102,7 @@ const PAGE = {
 const row = (over: Partial<OfficialOutboxRow>): OfficialOutboxRow => ({
   id: 1, kind: "help_request", payload: {}, attempts: 1, to: "x@example.com", leagueName: "Test League",
   replyTo: "umps@example.com", seasonName: "Fall", officialName: "Cal Kid", youth: false,
-  linkToken: "a".repeat(64), game: G, spots: [G], claims: [], ...over,
+  linkToken: "a".repeat(64), game: G, spots: [G], claims: [], changes: null, conflicts: null, ...over,
 });
 
 async function main() {
@@ -154,7 +154,17 @@ async function main() {
 
   // ── M ───────────────────────────────────────────────────────────────────
   for (const kind of OFFICIAL_EMAIL_KINDS) {
-    const out = renderOfficialEmail(row({ kind, claims: kind === "claims_digest" ? [{ ...G, official_name: "Ann" }] : [] }));
+    // 0130's two kinds carry what the take worked out (their words: sim:official-change-notice).
+    const out = renderOfficialEmail(row({
+      kind,
+      claims: kind === "claims_digest" ? [{ ...G, official_name: "Ann" }] : [],
+      changes: kind === "game_changes"
+        ? [{ change: "removed", game: { start: G.start, division: G.division, home: G.home, away: G.away, field: G.field, role: G.role } }]
+        : null,
+      conflicts: kind === "assignment_conflicts"
+        ? [{ officialName: "Ann", game: { start: G.start, division: G.division, home: G.home, away: G.away, field: G.field, role: G.role }, problem: "blackout", other: null }]
+        : null,
+    }));
     ok(!!out && out.subject.length > 0 && out.text.length > 0, "[M1]", `${kind} rendered nothing`);
     if (out) counters.kindsRendered++;
   }

@@ -289,6 +289,7 @@ async function main() {
         { id: 4, kind: "claims_digest", error: null, official_name: null, to_contact: true, game: null },
       ],
       waiting: { count: 0, reason: null, until: null },
+      trigger_failures: 0,
     }, "officials", OFFICIAL_PROBLEMS.describe);
     const ov = op ? problemsView(op, "officials") : null;
     eq(ov?.items.map((i) => i.line), [

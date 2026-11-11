@@ -232,6 +232,12 @@ let officialFiles = 0;
     .filter(([fn, body]) => !VOLUNTEER_SET.test(fn) && /\bvolunteer_official_(links|no_shows)\b/.test(body))
     .map(([fn]) => fn);
   ok(badSql.length === 0, "[U1] no database function outside the volunteer set reads the officials' tracker tables", badSql.join(", "));
+  // 0130: the officials' games triggers are their own — never the volunteer
+  // ones, and they name no volunteer object.
+  for (const fn of ["official_on_game_change", "official_on_game_delete", "official_change_entries", "official_conflict_entries"]) {
+    const body = latest.get(fn) ?? "";
+    ok(body.length > 0 && !/\bvolunteer_/.test(body), `[U1] ${fn} (0130) names no volunteer object`, fn);
+  }
 }
 
 // ── A1: the activity log ────────────────────────────────────────────────
