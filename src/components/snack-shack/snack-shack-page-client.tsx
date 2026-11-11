@@ -7,8 +7,8 @@
 // assumed durations, stale leftover choices) render the library's output
 // verbatim.
 
-import { useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ShoppingBag, Settings2, Plus, Printer, Mail, LayoutList, CalendarDays, RefreshCw, AlertTriangle, Info,
 } from "lucide-react";
@@ -22,9 +22,19 @@ import { AbsorbChoiceControl } from "./absorb-choice-control";
 import { useShiftPlan } from "./use-shift-plan";
 import { fmtDuration } from "./steps/step-hours";
 import type { SnackShackWizardData, DayCode, TimeBlock } from "./wizard-types";
-import { closedDayLine, stalenessSummary, type DerivedDay } from "@/lib/snack-shack/derive-shifts";
+import { closedDayLine, type DerivedDay } from "@/lib/snack-shack/derive-shifts";
 import { legacyShiftsNotice, upcomingStaleness } from "@/lib/snack-shack/regenerate-plan";
-import { commitRegenerate, regenerateLogMessage } from "@/lib/snack-shack/generate-shifts";
+import { commitRegenerate, planFromInputs, regenerateLogMessage } from "@/lib/snack-shack/generate-shifts";
+import {
+  EMAIL_PROMPT,
+  EMAIL_PROMPT_DETAIL,
+  dayNeedsRebuildLine,
+  marksToClear,
+  pageNoticeHeadline,
+  playsDuringLines,
+  teamAssignmentsChanged,
+} from "@/lib/snack-shack/stale-days";
+import { clearStaleMarks, readStaleState } from "@/lib/snack-shack/stale-marks";
 import { logActivity } from "@/lib/activity-log";
 import { CashPeopleCard } from "./cash-people-card";
 import { useShiftNoteEditor } from "./use-shift-note-editor";
@@ -139,6 +149,13 @@ export function SnackShackPageClient({
   const [emailTarget, setEmailTarget] = useState<"full" | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [previewOpen, setPreviewOpen] = useState(false);
+  // B3: the days the open preview rebuilds; null = the whole season.
+  const [previewDates, setPreviewDates] = useState<string[] | null>(null);
+  // After a rebuild that changed team assignments: offer the existing send.
+  const [emailPrompt, setEmailPrompt] = useState(false);
+  const searchParams = useSearchParams();
+  const reviewParam = searchParams.get("review");
+  const reviewHandled = useRef(false);
   const [committing, setCommitting] = useState(false);
   const [commitError, setCommitError] = useState<string | null>(null);
   const [addOnDate, setAddOnDate] = useState<string | null>(null);
@@ -183,6 +200,12 @@ export function SnackShackPageClient({
   // The derivation + plan. Fails loud into `planState.error`.
   const planState = useShiftPlan(settings, currentOrgId);
   const { inputs, plan } = planState;
+  // The plan the preview shows and Confirm writes: the whole season, or the
+  // chosen day(s) only (B3).
+  const previewPlan = useMemo(
+    () => (inputs ? (previewDates ? planFromInputs(inputs, previewDates) : plan) : null),
+    [inputs, plan, previewDates],
+  );
 
   const derivedByDate = useMemo(() => {
     const m = new Map<string, DerivedDay>();
@@ -200,7 +223,44 @@ export function SnackShackPageClient({
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- blocks/teams are rebuilt every render; inputs changes when the schedule does
   }, [inputs, allBlocks, allTeams, selectedSeasonId]);
-  const stalenessLine = staleness ? stalenessSummary(staleness) : null;
+  const staleDays = staleness?.differingDates ?? [];
+  // Red, named: upcoming stored shifts whose team now plays during them.
+  const playsDuring = flags
+    ? playsDuringLines(blocks, (id) => { const v = flags.get(id); return !!v && v.red && !v.needsTeam; }, (id) => teamName(id))
+    : [];
+
+  function openPreview(dates: string[] | null) {
+    setCommitError(null);
+    setPreviewDates(dates);
+    setPreviewOpen(true);
+  }
+
+  // A dashboard "Review Sat, Oct 17" link lands here with ?review=…: open
+  // that day's preview once the schedule is read, then drop the parameter.
+  useEffect(() => {
+    if (!reviewParam || reviewHandled.current || !inputs || !settings) return;
+    reviewHandled.current = true;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(reviewParam) && reviewParam >= inputs.today) openPreview([reviewParam]);
+    router.replace("/dashboard/snack-shack");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per landing
+  }, [reviewParam, inputs, settings]);
+
+  // 0131: marks on days the real calculation doesn't flag are cleared, timed
+  // to this read (a game changed after it stays marked). Best effort — the
+  // page itself always shows the calculation, never the marks.
+  useEffect(() => {
+    if (!inputs || !settings || !staleness) return;
+    let cancelled = false;
+    readStaleState(settings.season_id)
+      .then((st) => {
+        if (cancelled || !st.snackShackId) return;
+        const clear = marksToClear(st.dates, staleness.differingDates);
+        if (clear.length > 0) return clearStaleMarks(st.snackShackId, clear, inputs.readAt);
+      })
+      .catch((e: unknown) => console.error("[snack shack] stale-day marks:", e instanceof Error ? e.message : e));
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per read of the schedule
+  }, [inputs]);
   const legacy = settings && inputs ? legacyShiftsNotice(settings.shifts_generated_at, inputs.stored) : null;
   const upcomingClosedDays = inputs ? inputs.derivation.closedDays.filter((c) => c.date >= inputs.today) : [];
   const hasDerived = blocks.some((b) => b.is_recurring);
@@ -212,14 +272,22 @@ export function SnackShackPageClient({
   }
 
   async function confirmRegenerate() {
-    if (!settings || !plan) return;
+    if (!settings || !previewPlan || !inputs) return;
+    const committed = previewPlan;
     setCommitting(true);
     setCommitError(null);
     try {
-      const result = await commitRegenerate(settings.id, plan.desired);
-      const message = regenerateLogMessage(result, plan.frozenPast);
+      const result = await commitRegenerate(settings.id, committed.desired);
+      const message = regenerateLogMessage(result, committed.frozenPast);
       await logActivity(settings.season_id, null, "snack_shack_shifts_regenerated", message);
+      // 0131: the rebuilt days' marks (every day for a full regenerate), only
+      // those made before the schedule was read. Not fatal: the next load
+      // clears whatever the calculation no longer flags.
+      clearStaleMarks(settings.id, committed.onlyDates, inputs.readAt)
+        .catch((e: unknown) => console.error("[snack shack] clear marks:", e instanceof Error ? e.message : e));
       setPreviewOpen(false);
+      setPreviewDates(null);
+      if (teamAssignmentsChanged(committed)) setEmailPrompt(true);
       notify("success", message);
       planState.reload();
       router.refresh();
@@ -417,7 +485,7 @@ export function SnackShackPageClient({
           </Card>
 
           {/* Notices — rendered verbatim from the library */}
-          {(planState.error || planState.loading || legacy || stalenessLine || upcomingClosedDays.length > 0 ||
+          {(planState.error || planState.loading || legacy || staleDays.length > 0 || playsDuring.length > 0 || upcomingClosedDays.length > 0 ||
             (inputs && (inputs.derivation.assumedDurationGameIds.length > 0 || inputs.derivation.staleChoices.length > 0 || inputs.derivation.clampedDates.length > 0))) && (
             <div className="flex flex-col gap-2">
               {planState.loading && (
@@ -434,21 +502,51 @@ export function SnackShackPageClient({
                   <span>{legacy}</span>
                 </p>
               )}
-              {stalenessLine && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  <span className="flex items-start gap-2">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                    <span>{stalenessLine}</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => { setCommitError(null); setPreviewOpen(true); }}
-                    disabled={!plan}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Regenerate
-                  </button>
+              {(staleDays.length > 0 || playsDuring.length > 0) && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {staleDays.length > 0 && (
+                    <>
+                      <p className="flex items-start gap-2">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                        <span>{pageNoticeHeadline(staleDays.length)}</span>
+                      </p>
+                      <ul className="mt-2 flex flex-col gap-1.5">
+                        {staleDays.map((d) => (
+                          <li key={d} className="flex flex-wrap items-center justify-between gap-2">
+                            <span>{dayNeedsRebuildLine(d)}</span>
+                            <button
+                              type="button"
+                              onClick={() => openPreview([d])}
+                              disabled={!inputs}
+                              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" />
+                              Review this day
+                            </button>
+                          </li>
+                        ))}
+                        {staleDays.length > 1 && (
+                          <li className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => openPreview(null)}
+                              disabled={!plan}
+                              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                            >
+                              Regenerate all
+                            </button>
+                          </li>
+                        )}
+                      </ul>
+                    </>
+                  )}
+                  {playsDuring.length > 0 && (
+                    <ul className={`${staleDays.length > 0 ? "mt-2 " : ""}flex flex-col gap-0.5 font-semibold text-red-700`}>
+                      {playsDuring.map((l) => (
+                        <li key={l}>{l}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
               {upcomingClosedDays.length > 0 && (
@@ -516,7 +614,7 @@ export function SnackShackPageClient({
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => { setCommitError(null); setPreviewOpen(true); }}
+                    onClick={() => openPreview(null)}
                     disabled={!plan}
                     title={plan ? undefined : planState.error ? "The game schedule couldn't be read" : "Checking the game schedule…"}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-[#22C55E] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#16a34a] disabled:opacity-50"
@@ -603,9 +701,11 @@ export function SnackShackPageClient({
       )}
 
       {/* Regenerate preview — nothing is written until Confirm */}
-      {previewOpen && plan && settings && (
+      {previewOpen && previewPlan && settings && inputs && (
         <RegeneratePreviewModal
-          plan={plan}
+          plan={previewPlan}
+          seasonId={settings.season_id}
+          stored={inputs.stored}
           preference={inputs?.preference ?? "prefer_game_days"}
           teamName={teamName}
           cashName={cashName}
@@ -613,7 +713,7 @@ export function SnackShackPageClient({
           busy={committing}
           error={commitError}
           onConfirm={confirmRegenerate}
-          onCancel={() => { if (!committing) setPreviewOpen(false); }}
+          onCancel={() => { if (!committing) { setPreviewOpen(false); setPreviewDates(null); } }}
         />
       )}
 
@@ -630,6 +730,25 @@ export function SnackShackPageClient({
             router.refresh();
           }}
         />
+      )}
+
+      {/* After a rebuild that changed team assignments: offer the existing send */}
+      {emailPrompt && settings && (
+        <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto flex max-w-md flex-col gap-2 rounded-xl border border-gray-200 bg-white p-4 shadow-xl sm:left-auto">
+          <p className="text-sm font-semibold text-[#0C1F3F]">{EMAIL_PROMPT}</p>
+          <p className="text-xs text-gray-500">{EMAIL_PROMPT_DETAIL}</p>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setEmailPrompt(false)}
+              className="h-9 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 hover:border-gray-300">
+              Not now
+            </button>
+            <button type="button" onClick={() => { setEmailPrompt(false); setEmailTarget("full"); }}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#22C55E] px-3 text-xs font-semibold text-white hover:bg-[#16a34a]">
+              <Mail className="h-3.5 w-3.5" />
+              Send updated schedule
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Email modal */}

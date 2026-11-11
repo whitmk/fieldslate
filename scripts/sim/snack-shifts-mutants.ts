@@ -13,6 +13,8 @@ import { runMutants, type Mutant } from "./mutant-runner";
 const LIB = "src/lib/snack-shack/derive-shifts.ts";
 const PLAN = "src/lib/snack-shack/regenerate-plan.ts";
 const FLAGS = "src/lib/snack-shack/shift-flags.ts";
+const STALE = "src/lib/snack-shack/stale-days.ts";
+const NAMES = "src/lib/snack-shack/preview-names.ts";
 
 const MUTANTS: Mutant[] = [
   {
@@ -155,8 +157,9 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "SM24", what: "equity not seeded with the frozen past rows", file: PLAN,
-    find: "  const assigned = assignNewShifts(rec.create, input.teams, [...pastRows, ...rec.keep], input.preference, input.index);",
-    replace: "  const assigned = assignNewShifts(rec.create, input.teams, rec.keep, input.preference, input.index);",
+    // Re-targeted 2026-11-11: B4 moved the picker call into the assigned list.
+    find: "    ...assignNewShifts(toPick, input.teams, [...pastRows, ...rec.keep, ...seed], input.preference, input.index),",
+    replace: "    ...assignNewShifts(toPick, input.teams, [...rec.keep, ...seed], input.preference, input.index),",
     expect: "F4",
   },
   {
@@ -182,6 +185,79 @@ const MUTANTS: Mutant[] = [
     find: "      if (hasInternal(r)) {\n        lost.push(",
     replace: "      if (false) {\n        lost.push(",
     expect: "F11",
+  },
+  // ── 2026-11-11: rebuild one day + keep the team + stale-day words (0131, section R) ──
+  {
+    id: "RM1", what: "onlyDates ignored — a one-day rebuild rebuilds every day", file: PLAN,
+    find: "  const only = input.onlyDates ? new Set(input.onlyDates) : null;",
+    replace: "  const only = null as Set<string> | null;",
+    expect: "R1",
+  },
+  {
+    id: "RM2", what: "other days' rows dropped from the payload (the RPC would delete them)", file: PLAN,
+    find: "    ...untouchedRows.map(asRpc),\n",
+    replace: "",
+    expect: "R2",
+  },
+  {
+    id: "RM3", what: "a changed shift keeps its team even when the team now plays during it", file: PLAN,
+    find: "    if (team && teamIds.has(team) && !teamBlockedForShift(input.index, team, s)) {",
+    replace: "    if (team && teamIds.has(team)) {",
+    expect: "R4",
+  },
+  {
+    id: "RM4", what: "a changed shift never keeps its team", file: PLAN,
+    find: "    if (team && teamIds.has(team) && !teamBlockedForShift(input.index, team, s)) {",
+    replace: "    if (team && false) {",
+    expect: "R3",
+  },
+  {
+    id: "RM5", what: "equity not seeded with the other days' rows", file: PLAN,
+    find: "  const seed = [...untouchedRows, ...keptTeam.map(",
+    replace: "  const seed = [...keptTeam.map(",
+    expect: "R5",
+  },
+  {
+    id: "RM6", what: "a kept team counted as an assignment change (needless email prompt)", file: STALE,
+    find: "c.kind === \"added\" ? c.toTeamId !== null : c.fromTeamId !== c.toTeamId);",
+    replace: "c.kind === \"added\" ? c.toTeamId !== null : true);",
+    expect: "R6",
+  },
+  {
+    id: "RM7", what: "the resulting day drops what a team's shift was", file: STALE,
+    find: "      if (!same && had.length > 0) suffix = ` (was ${had",
+    replace: "      if (false) suffix = ` (was ${had",
+    expect: "R7",
+  },
+  {
+    id: "RM8", what: "a team with a manual shift that day is listed as having none", file: STALE,
+    find: "      .filter((t) => !afterTeams.has(t) && !manualTeams.has(t))",
+    replace: "      .filter((t) => !afterTeams.has(t))",
+    expect: "R8",
+  },
+  {
+    id: "RM9", what: "the full-season preview's names lose their day", file: NAMES,
+    find: "    withDate ? `${fmtDay(date)} ${fmtShiftRange(start, end)}` : fmtShiftRange(start, end);",
+    replace: "    fmtShiftRange(start, end);",
+    expect: "R9",
+  },
+  {
+    id: "RM10", what: "after a failed mark the banner still trusts the marks", file: STALE,
+    find: "  if (failedSince) return [...differing].sort();\n",
+    replace: "",
+    expect: "R10",
+  },
+  {
+    id: "RM11", what: "marks on flagged days are cleared too", file: STALE,
+    find: "  return marks.filter((m) => !d.has(m)).sort();",
+    replace: "  return [...marks].sort();",
+    expect: "R11",
+  },
+  {
+    id: "RM12", what: "the red line drops the team's name", file: STALE,
+    find: "  return `${fmtDay(date)} ${fmtClock(start)} — ${team} now plays during their shift`;",
+    replace: "  return `${fmtDay(date)} ${fmtClock(start)} — a team now plays during their shift`;",
+    expect: "R12",
   },
   // ── 2026-10-06: the assignment overlap guard (section A) ──
   {

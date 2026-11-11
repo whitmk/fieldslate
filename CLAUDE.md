@@ -513,6 +513,22 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `scripts/sim/official-game-change-sim.sql`. Expected md5(prosrc) =
   `official-game-change-build.ts --md5`. See "Officials game-change emails
   (0130)".
+- **0131 (snack shack stale days) APPLIED 2026-11-11 20:27 UTC, catalog
+  `20261111202718`**, verbatim from the repo file on Whit's go (catalog
+  statements md5 = the file, `ad3796e6…`), after its rolled-back proof
+  (`scripts/sim/snack-stale-days-sim.sql`, 13/13 mutants at their own tag).
+  md5(prosrc) = `snack-stale-days-build.ts --md5`, one overload each,
+  SECURITY DEFINER, `search_path=public, pg_temp`:
+  `snack_shack_mark_stale_days` `d82f9176f25cb76d973e258a128f444f`,
+  `snack_shack_stale_state` `eca5451f97429b17e9139d549d791769`,
+  `clear_snack_shack_stale_days` `9d86e29119864d7d526c5e95e73a6b70`,
+  `volunteer_shift_claims_for_blocks` `28351a3204e768fb8b49c1c49bd0ca2b`.
+  EXECUTE: the three app functions authenticated only, the trigger function
+  no role (PUBLIC, anon, service_role, dashboard_readonly false). Both new
+  tables RLS on, no role privilege. The three `games` triggers enabled,
+  statement-level, no `games` trigger disabled; 0 marks, 0 failures; leak
+  check clean. **The latest migration applied.** See "Days that need
+  rebuilding (0131)" under the snack shack section.
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -2204,6 +2220,18 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   sim:volunteer-leaks VL4/VL6 sat shadowed from the 0122 merge until
   2026-11-09. Proof: `npm run sim:sql-latest` (11 checks, incl. the old VL4
   run through the real targets check) + `:mutants` (5/5).
+- **A SCRATCH ROUTE STUBS EVERY SERVER ACTION AND EVERY WRITE, NOT JUST THE
+  READS — none may reach production (2026-11-11).** A throwaway route that
+  renders a real component with the Supabase REST answered in the browser
+  still runs the component's SERVER ACTIONS on the dev server, against the
+  real database: the 0131 check's Confirm called `logActivity` (a
+  `"use server"` insert into `activity_log`) four times. Every one was
+  refused (no session, fake season id), but that was luck, not design.
+  Before clicking anything on a scratch route, list every server action and
+  write the clicked path reaches (`grep -n '"use server"'` along its imports,
+  `fetch` to `/api/…`, `.rpc`, `.insert/.update/.delete`) and stub each one —
+  pass a stub prop, or swap the import for the route — then confirm in the
+  dev-server log that no action ran.
 - **NEVER run another sim, the dev server or a build while a mutation pass
   is running — wait for it to finish.** A `:mutants` pass REWRITES the real
   source files (one mutant at a time, restored after each), so anything else
@@ -5937,6 +5965,57 @@ Still open:
   their own tag; it holds ACCESS EXCLUSIVE on both tables and RowShare on
   profiles for the run. `sim:snack-print` (24 checks) +
   `:mutants` (11).
+- **Days that need rebuilding (0131, APPLIED 2026-11-11 20:27 UTC, catalog
+  `20261111202718`, verbatim on Whit's go after a 13/13 rolled-back proof).**
+  Plan: `docs/plans/game-change-followthrough.md` Part B; mockup
+  `docs/mockups/snack-shack-stale-days.html` (revised after review).
+  - **The marks:** a statement-level trigger on `games` records each date a
+    game changed on at a shack home field (old AND new row; insert, delete,
+    and an update of scheduled_at / venue_id / status / home_team_id; only
+    today-or-later in league time) in `snack_shack_stale_days`. A mark says
+    "a game changed here", NOT "the shifts are wrong". It never blocks a game
+    write: a failure is recorded in `snack_shack_stale_failures` (time +
+    SQLSTATE), and the app then checks the whole season. DEFINER; skipped
+    under `fieldslate.lock_bypass`. Both tables: RLS on, no role privilege.
+  - **What shows is the REAL calculation** (`loadShiftInputs` +
+    `upcomingStaleness`). Dashboard banner (`SnackShackStaleBanner`, Elite,
+    topbar season): reads `snack_shack_stale_state`, runs the calculation only
+    with a mark or a failed mark, shows marked ∩ flagged days (every flagged
+    day after a failure; `bannerDays`), and clears marks the calculation
+    doesn't flag (`marksToClear`). Snack shack page: per-day "shifts need
+    rebuilding" + Review this day + Regenerate all, and a red line naming each
+    upcoming shift whose team now plays during it (`playsDuringLines`).
+    Clearing is TIMED (`clear_snack_shack_stale_days(shack, dates, before)`,
+    `before` = `ShiftInputs.readAt`), so a change made while a preview was
+    open stays marked. All words: `src/lib/snack-shack/stale-days.ts`.
+  - **Rebuild one day (B3):** `buildRegeneratePlan({ onlyDates })` — every
+    other upcoming stored row rides the payload as stored (`untouched`) and
+    seeds equity. The preview shows each changed day AS IT WILL BE
+    (`dayResults`: "10:00am–12:00pm: Cubs (was 12:30–2:00pm)", "(new this
+    day)", "Needs a team", "Cubs no longer has a shift this day." — a team
+    with a manual shift that day isn't listed).
+  - **Keep the team (B4):** a changed shift (same date + start) keeps its old
+    team when that team is free of it by the hard overlap rule; else the
+    picker. "Nearest shift" when every start moves is a FOLLOW-UP, paired
+    with sign-ups carrying by overlap (plan doc).
+  - **Names (B3):** the preview names volunteers who lose their spot or move
+    with a changed shift via `volunteer_shift_claims_for_blocks(season, block
+    ids)` (volunteer_admin_gate; first initial + last name, never an email).
+    **ONLY `regenerate-preview-modal.tsx` may name it** —
+    `sim:game-notes` [O1-snack-names-only] walks all of src (GM23); the
+    banner, `stale-days.ts` and `stale-marks.ts` reference no sign-up data
+    ([O1-snack-banner], GM24). Wording/parsing: `preview-names.ts`. A failed
+    read keeps the count line + "Couldn't read who signed up."; Confirm
+    stays allowed.
+  - **After a rebuild that changed a team assignment** (`teamAssignmentsChanged`
+    — a kept team isn't a change) the page offers "Team assignments changed.
+    Send the updated schedule?", which opens the EXISTING "Email full
+    schedule" form: the whole season's shifts (past included) to ONE address
+    the admin types. Nothing emails each team.
+  - No admin email in v1. Proof: `scripts/sim/snack-stale-days-sim.sql`
+    (+ build script; 13 mutants). App: `sim:snack-shifts` section R (+ RM1–RM12).
+  - **Deploy order (met): 0131 was applied BEFORE the code reached `main`**
+    — the dashboard and the snack shack page call its functions.
 - **Harness: `npm run sim:snack-shifts`** (108 checks × 3 zones, 16
   anti-vacuity counters) and `npm run sim:snack-shifts:mutants` (27 mutants,
   each killed FIRST at its own assertion). Read the MUTATION LOG in the sim
@@ -6643,6 +6722,14 @@ Still open:
   contact email is confirmed by link since 0126.
 
 ## Open items
+
+- **Per-team snack shack emails (backlog, 2026-11-11).** "Email full
+  schedule" sends the whole season to ONE address the admin types, and the
+  Teams page button sends one team's shifts to one typed address; nothing
+  emails each team its own shifts. The 0131 post-rebuild prompt ("Team
+  assignments changed. Send the updated schedule?") uses the full-schedule
+  send until this is built. Needs a recipient per team (no team contact is
+  confirmed today) — decide that first.
 
 - **NEXT BUILD CANDIDATE — email assigned officials when their game moves or
   is rained out (recorded 2026-11-09).** Today an assignment rides the game

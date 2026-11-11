@@ -61,6 +61,16 @@
 //      only; the "No team is free" chip appears only when nobody is free;
 //      the banner counts red items only; the time range shares one suffix.
 //      Runs LAST so no earlier mutant can land here first.
+//   R  REBUILD ONE DAY + KEEP THE TEAM (0131, Part B, 2026-11-11): with
+//      onlyDates the plan changes only those days, every other upcoming
+//      stored row rides the payload exactly as stored (and seeds equity); a
+//      CHANGED shift keeps its team when the harness's own overlap check says
+//      the team is free, else the picker chooses; the resulting-day lines
+//      ("(was …)", "(new this day)", "Needs a team"), the "no longer has a
+//      shift" lines (a manual shift still counts as a shift), the named
+//      sign-up lines, the banner's day rules (marks ∩ flagged, every flagged
+//      day after a failed mark, unflagged marks cleared) and every sentence.
+//      Runs before U.
 //   X  WALL-CLOCK: a 19:45 end on a +00 wall-clock stays 19:45 in every host
 //      zone; the library never hands scheduled_at to `new Date`.
 //
@@ -113,6 +123,8 @@
 // earlier mutant can land on it; UM1–UM4 (past rows flagged, the
 // nobody-free chip on every empty shift, off-preference red, banner counts
 // gray) killed at their own tag, first run: 41/41.
+// 2026-11-11 (0131, section R): RM1–RM12 added, SM24 re-targeted at the
+// B4 picker call; 56/56 killed at their own assertion on the first run.
 // The sweep did not produce an unfilled shift (12 teams, ≤8 games); the
 // unfilled case is pinned by A3/A6's fixed fixtures and by NM5.
 // Also from the first run: four fixtures accidentally carried a ≥60-minute
@@ -161,6 +173,24 @@ import {
   upcomingStaleness,
 } from "../../src/lib/snack-shack/regenerate-plan";
 import { todayInTimezone } from "../../src/lib/utils/org-today";
+import {
+  EMAIL_PROMPT,
+  EMAIL_PROMPT_DETAIL,
+  bannerDays,
+  bannerHeadline,
+  bannerMoreLine,
+  dayNeedsRebuildLine,
+  dayResults,
+  marksToClear,
+  needsCheck,
+  pageNoticeHeadline,
+  parseStaleState,
+  playsDuringLine,
+  playsDuringLines,
+  previewTitle,
+  teamAssignmentsChanged,
+} from "../../src/lib/snack-shack/stale-days";
+import { parseShiftClaimNames, previewBlockIds, signupNameLines } from "../../src/lib/snack-shack/preview-names";
 import {
   NEEDS_TEAM,
   NO_TEAM_FREE_CHIP,
@@ -217,6 +247,10 @@ const counters = {
   gameDayFallbacks: 0,
   offDayBusyPicks: 0,
   sweepPicksWithSomeoneBlocked: 0,
+  // R (0131)
+  untouchedRows: 0,
+  teamsKept: 0,
+  teamsRepicked: 0,
   // U
   pastRowsUnflagged: 0,
   redRows: 0,
@@ -854,6 +888,124 @@ section("X: wall-clock only", () => {
 });
 
 // ─── U: the page's flags ─────────────────────────────────────────────────────
+
+// ─── R: rebuild one day, keep the team, the stale-day words (0131) ──────────
+
+section("R: rebuild one day, keep the team, the stale-day words", () => {
+  const TODAY = "2026-10-10";
+  const teams = [{ id: "braves", name: "Braves" }, { id: "cubs", name: "Cubs" }, { id: "expos", name: "Expos" }, { id: "giants", name: "Giants" }, { id: "mets", name: "Mets" }];
+  const tn = (id: string) => teams.find((t) => t.id === id)?.name ?? id;
+  // 10-17: the 09:00 game moved to 10:30 → window 10:00–14:00 → 10:00-12:00, 12:00-14:00
+  //        (stored 08:30-10:30 Braves, 10:30-12:30 Mets, 12:30-14:00 Cubs — every start moved).
+  // 10-24: the last game moved 12:00 → 12:45 → 09:30-11:30, 11:30-13:30 kept; 13:30-14:30 → 13:30-15:15.
+  const games = [game("2026-10-17", "10:30", 120), game("2026-10-17", "12:00", 90),
+                 game("2026-10-24", "10:00", 120), game("2026-10-24", "12:45", 120)];
+  const derivation = deriveShifts(games, RULE, []);
+  const stored: StoredShiftRow[] = [
+    { id: "s1", date: "2026-10-17", start_time: "08:30:00", end_time: "10:30:00", assigned_team_id: "braves", is_recurring: true },
+    { id: "s2", date: "2026-10-17", start_time: "10:30:00", end_time: "12:30:00", assigned_team_id: "mets", is_recurring: true },
+    { id: "s3", date: "2026-10-17", start_time: "12:30:00", end_time: "14:00:00", assigned_team_id: "cubs", is_recurring: true },
+    { id: "m1", date: "2026-10-17", start_time: "07:00:00", end_time: "08:30:00", assigned_team_id: "mets", is_recurring: false },
+    { id: "t1", date: "2026-10-24", start_time: "09:30:00", end_time: "11:30:00", assigned_team_id: "braves", is_recurring: true },
+    { id: "t2", date: "2026-10-24", start_time: "11:30:00", end_time: "13:30:00", assigned_team_id: "mets", is_recurring: true },
+    { id: "t3", date: "2026-10-24", start_time: "13:30:00", end_time: "14:30:00", assigned_team_id: "expos", is_recurring: true },
+  ];
+  const noGames = assignmentIndexFromGames([], HOME);
+  const base = { derivation, stored, teams, preference: "prefer_off_days" as const, today: TODAY };
+  const day17 = buildRegeneratePlan({ ...base, index: noGames, onlyDates: ["2026-10-17"] });
+
+  // R1 — scope: only 10-17 changes.
+  ok(day17.dayChanges.map((d) => d.date).join(",") === "2026-10-17" && day17.onlyDates?.join(",") === "2026-10-17",
+     "R1", "onlyDates [10-17]: the plan changes 10-17 only", JSON.stringify(day17.dayChanges.map((d) => d.date)));
+  // R2 — the other upcoming day rides the payload exactly as stored.
+  const d24 = day17.desired.filter((d) => d.date === "2026-10-24");
+  ok(JSON.stringify(d24) === JSON.stringify([
+    { date: "2026-10-24", start: "09:30", end: "11:30", assigned_team_id: "braves" },
+    { date: "2026-10-24", start: "11:30", end: "13:30", assigned_team_id: "mets" },
+    { date: "2026-10-24", start: "13:30", end: "14:30", assigned_team_id: "expos" },
+  ]) && day17.untouched === 3, "R2", "10-24's three stored rows ride the payload unchanged (13:30-14:30 stays, Expos stays), untouched=3", JSON.stringify(d24));
+  counters.untouchedRows += day17.untouched;
+
+  // R3 — a changed shift keeps its team when the team is free of it.
+  const full = buildRegeneratePlan({ ...base, index: noGames });
+  const changed = full.desired.find((d) => d.date === "2026-10-24" && d.start === "13:30");
+  ok(changed?.end === "15:15" && changed.assigned_team_id === "expos" && full.untouched === 0 && full.onlyDates === null,
+     "R3", "13:30-14:30 → 13:30-15:15 keeps Expos (free of the shift)", JSON.stringify(changed));
+  counters.teamsKept++;
+
+  // R4 — …and is re-picked when the team now plays during it (the harness's own check).
+  const blockGames = ag([{ home: "expos", away: null, date: "2026-10-24", start: "15:00", dur: 90, venue: "elsewhere" }]);
+  const blocked = buildRegeneratePlan({ ...base, index: assignmentIndexFromGames(blockGames, HOME) });
+  const re = blocked.desired.find((d) => d.date === "2026-10-24" && d.start === "13:30");
+  ok(!!re && re.assigned_team_id !== null && re.assigned_team_id !== "expos" && !simSideOverlaps(blockGames, re.assigned_team_id, { date: re.date, start: re.start, end: re.end }),
+     "R4", "Expos plays at 3:00 (blocked from 2:30) → the 13:30-15:15 shift goes to a free team", JSON.stringify(re));
+  counters.teamsRepicked++;
+
+  // R5 — the untouched rows seed equity: Braves, Mets and Expos hold a 10-24 shift, so 10-17's
+  // two new shifts go to Cubs and Giants (without the seed: Braves first).
+  const new17 = day17.desired.filter((d) => d.date === "2026-10-17").map((d) => `${d.start}-${d.end}:${d.assigned_team_id}`).join(",");
+  ok(new17 === "10:00-12:00:cubs,12:00-14:00:giants", "R5", "equity is seeded with the untouched rows → Cubs, then Giants", new17);
+
+  // R6 — a changed shift that kept its team is not a team-assignment change; a swap is.
+  const only24 = buildRegeneratePlan({ ...base, index: noGames, onlyDates: ["2026-10-24"] });
+  ok(!teamAssignmentsChanged(only24) && teamAssignmentsChanged(day17)
+     && teamAssignmentsChanged(buildRegeneratePlan({ ...base, index: assignmentIndexFromGames(blockGames, HOME), onlyDates: ["2026-10-24"] })),
+     "R6", "kept team → no email prompt; teams moved or re-picked → prompt");
+
+  // R7 — the resulting day.
+  const res17 = dayResults(day17, stored, tn);
+  ok(JSON.stringify(res17[0]?.shifts.map((x) => x.text)) === JSON.stringify(["10:00am–12:00pm: Cubs (was 12:30–2:00pm)", "12:00–2:00pm: Giants (new this day)"]),
+     "R7", "each shift with its team, and where that team's shift was", JSON.stringify(res17[0]?.shifts));
+  const res24 = dayResults(only24, stored, tn);
+  ok(res24[0]?.shifts.map((x) => x.text).join(" | ") === "9:30–11:30am: Braves | 11:30am–1:30pm: Mets | 1:30–3:15pm: Expos (was 1:30–2:30pm)",
+     "R7", "an unchanged shift has no note; the changed one says what it was", res24[0]?.shifts.map((x) => x.text).join(" | "));
+  const lone = buildRegeneratePlan({ ...base, teams: [{ id: "giants", name: "Giants" }], onlyDates: ["2026-10-17"],
+    index: assignmentIndexFromGames(ag([{ home: "giants", away: null, date: "2026-10-17", start: "10:30", dur: 120 }]), HOME) });
+  ok(dayResults(lone, stored, tn)[0]?.shifts.every((x) => x.needsTeam && x.text.endsWith(": Needs a team")), "R7", "nobody free → \"Needs a team\"");
+
+  // R8 — teams left with no shift that day (a manual shift still counts).
+  ok(JSON.stringify(res17[0]?.noLonger) === JSON.stringify(["Braves no longer has a shift this day."]),
+     "R8", "Braves lost its 10-17 shift; Mets keeps a manual one, so it isn't listed", JSON.stringify(res17[0]?.noLonger));
+  ok(res24[0]?.noLonger.length === 0, "R8", "nobody lost a shift on 10-24");
+
+  // R9 — the named sign-up lines.
+  const ids = previewBlockIds(day17);
+  ok(ids.lost.sort().join(",") === "s1,s2,s3" && ids.carried.length === 0 && previewBlockIds(only24).carried.join(",") === "t3",
+     "R9", "the preview reads names for removed (lost) and changed (carried) shifts only");
+  const two = [{ blockId: "s1", claimId: "c1", firstInitial: "J", lastName: "Smith" }, { blockId: "s2", claimId: "c2", firstInitial: "K", lastName: "Lee" }];
+  ok(signupNameLines(day17, two, false).lost === "J. Smith (8:30–10:30am) and K. Lee (10:30am–12:30pm) lose their spot when you confirm. Each is emailed.",
+     "R9", "two lost, one day", signupNameLines(day17, two, false).lost ?? "null");
+  ok(signupNameLines(day17, two.slice(0, 1), true).lost === "J. Smith (Sat, Oct 17 8:30–10:30am) loses their spot when you confirm. They're emailed.",
+     "R9", "one lost, with the day (full-season preview)", signupNameLines(day17, two.slice(0, 1), true).lost ?? "null");
+  ok(signupNameLines(only24, [{ blockId: "t3", claimId: "c3", firstInitial: "P", lastName: "Garcia" }], false).carried === "P. Garcia moves with their changed shift and is emailed the new hours."
+     && signupNameLines(only24, [], false).carried === null, "R9", "carried, singular; nobody → no line");
+  ok(parseShiftClaimNames([{ block_id: "b", claim_id: "c", first_initial: "J", last_name: "S", email: "x@y" }])?.length === 1
+     && parseShiftClaimNames([{ block_id: "b", claim_id: "c", first_initial: "J" }]) === null && parseShiftClaimNames({}) === null,
+     "R9", "the parser reads the four keys and refuses a malformed reply");
+
+  // R10 — which days the banner shows.
+  ok(bannerDays(["2026-10-17", "2026-10-31"], false, ["2026-10-24", "2026-10-17"]).join(",") === "2026-10-17"
+     && bannerDays([], true, ["2026-10-24", "2026-10-17"]).join(",") === "2026-10-17,2026-10-24",
+     "R10", "marked AND flagged; after a failed mark, every flagged day");
+  ok(needsCheck([], false) === false && needsCheck(["2026-10-17"], false) && needsCheck([], true), "R10", "the full check runs only with a mark or a failed mark");
+  // R11 — marks the calculation doesn't flag are cleared, flagged ones kept.
+  ok(marksToClear(["2026-10-17", "2026-10-31"], ["2026-10-17"]).join(",") === "2026-10-31", "R11", "an unflagged mark is cleared, a flagged one kept");
+  ok(parseStaleState({ snack_shack_id: "x", dates: ["2026-10-17"], failed_since: false })?.dates.length === 1
+     && parseStaleState({ snack_shack_id: null, dates: [], failed_since: false })?.snackShackId === null
+     && parseStaleState({ snack_shack_id: "x", dates: ["Oct 17"], failed_since: false }) === null
+     && parseStaleState({ snack_shack_id: "x", dates: [] }) === null, "R11", "the state reply is checked, never guessed");
+
+  // R12 — every sentence, verbatim.
+  ok(dayNeedsRebuildLine("2026-10-17") === "Sat, Oct 17 — shifts need rebuilding", "R12", "the day line", dayNeedsRebuildLine("2026-10-17"));
+  ok(bannerHeadline(2) === "Snack shack: games changed on 2 days, and those days' shifts no longer match." && bannerHeadline(1) === "Snack shack: games changed on 1 day, and that day's shifts no longer match.", "R12", "the banner headline");
+  ok(pageNoticeHeadline(2) === "The game schedule changed on 2 days since shifts were made." && bannerMoreLine(4) === "and 4 more days — open the snack shack page", "R12", "the page headline and the more line");
+  ok(playsDuringLine("2026-10-17", "12:30", "Cubs") === "Sat, Oct 17 12:30pm — Cubs now plays during their shift", "R12", "the named red line", playsDuringLine("2026-10-17", "12:30", "Cubs"));
+  const pd = playsDuringLines([{ id: "s3", date: "2026-10-17", start_time: "12:30:00", assigned_team_id: "cubs" }, { id: "s1", date: "2026-10-17", start_time: "08:30:00", assigned_team_id: "braves" }],
+    (id) => id === "s3", tn);
+  ok(pd.join("|") === "Sat, Oct 17 12:30pm — Cubs now plays during their shift", "R12", "only shifts whose team plays during them are named", pd.join("|"));
+  ok(EMAIL_PROMPT === "Team assignments changed. Send the updated schedule?" && EMAIL_PROMPT_DETAIL === "This sends the full season's snack shack schedule to one email address you choose.", "R12", "the email prompt, verbatim");
+  ok(previewTitle(["2026-10-17"]).title === "Rebuild Sat, Oct 17 from the game schedule" && previewTitle(null).title === "Regenerate shifts from the game schedule", "R12", "the preview titles");
+});
 
 section("U: page flags — red is fix-this, gray is off-preference, past never", () => {
   ok(fmtShiftRange("09:30:00", "11:30:00") === "9:30–11:30am" && fmtShiftRange("11:30", "13:30") === "11:30am–1:30pm" && fmtShiftRange("11:30", "12:30") === "11:30am–12:30pm" && fmtShiftRange("15:30", "17:45") === "3:30–5:45pm", "U1", "the time range carries one suffix when both ends share it, two when they cross noon");

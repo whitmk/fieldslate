@@ -27,6 +27,14 @@
 //     during it) or filled outside the preference rides `flagged`, so the
 //     preview can say so before Confirm. A null assigned_team_id in `desired`
 //     is a real outcome now, not only a hand-cleared row.
+//   - 2026-11-11 (Part B, B3): `onlyDates` rebuilds those days only. Every
+//     other upcoming stored derived row rides the payload exactly as stored
+//     (the past-freeze pattern), so the full-set RPC keeps it; those rows
+//     also seed the equity pick. They are counted in `untouched`.
+//   - 2026-11-11 (B4): a CHANGED shift (same date + start, the end moved)
+//     KEEPS its old team when that team is still free of the shift by the
+//     hard overlap rule; otherwise the picker chooses, as for any new shift.
+//     A kept team counts toward equity before the picker runs.
 
 import {
   ABSORB_OFFER_UNDER_MIN,
@@ -35,6 +43,8 @@ import {
   normalizeTime,
   reconcileWithStored,
   stalenessDiff,
+  storedAssignmentFlag,
+  teamBlockedForShift,
   type AssignedSlot,
   type DerivationResult,
   type PickTeam,
@@ -92,6 +102,11 @@ export type RegeneratePlan = {
   lost: LostItem[];
   /** Stored derived rows before today, passed through unchanged. */
   frozenPast: number;
+  /** B3: upcoming stored derived rows OUTSIDE `onlyDates`, passed through
+   *  unchanged (0 for a full regenerate). */
+  untouched: number;
+  /** B3: the days this plan rebuilds; null = every upcoming day. */
+  onlyDates: string[] | null;
   /** Upcoming derived rows whose date/start/end is unchanged. */
   kept: number;
   dayChanges: DayChange[];
@@ -114,6 +129,8 @@ export type PlanInput = {
   today: string;
   /** 0122: active volunteer sign-ups per shift id; null = couldn't count. */
   signupCounts?: Readonly<Record<string, number>> | null;
+  /** B3: rebuild only these upcoming days; absent/null = every upcoming day. */
+  onlyDates?: readonly string[] | null;
 };
 
 export function buildRegeneratePlan(input: PlanInput): RegeneratePlan {
@@ -123,8 +140,31 @@ export function buildRegeneratePlan(input: PlanInput): RegeneratePlan {
   const upcomingStored = storedDerived.filter((r) => r.date >= today);
   const derivedUpcoming = flattenShifts(input.derivation).filter((s) => s.date >= today);
 
-  const rec = reconcileWithStored(derivedUpcoming, upcomingStored);
-  const assigned = assignNewShifts(rec.create, input.teams, [...pastRows, ...rec.keep], input.preference, input.index);
+  // B3 — one day (or a few): the rest of the upcoming rows ride through.
+  const only = input.onlyDates ? new Set(input.onlyDates) : null;
+  const untouchedRows = only ? upcomingStored.filter((r) => !only.has(r.date)) : [];
+  const rec = reconcileWithStored(
+    only ? derivedUpcoming.filter((s) => only.has(s.date)) : derivedUpcoming,
+    only ? upcomingStored.filter((r) => only.has(r.date)) : upcomingStored,
+  );
+  // B4 — a changed shift keeps its team when that team is still free of it.
+  const teamIds = new Set(input.teams.map((t) => t.id));
+  const keptTeam: AssignedSlot[] = [];
+  const toPick: ShiftSlot[] = [];
+  for (const s of rec.create) {
+    const prev = rec.remove.find((r) => r.date === s.date && normalizeTime(r.start_time) === s.start && r.assigned_team_id);
+    const team = prev?.assigned_team_id ?? null;
+    if (team && teamIds.has(team) && !teamBlockedForShift(input.index, team, s)) {
+      keptTeam.push({ ...s, assignedTeamId: team, flag: storedAssignmentFlag(input.index, input.preference, team, s) });
+    } else {
+      toPick.push(s);
+    }
+  }
+  const seed = [...untouchedRows, ...keptTeam.map((k) => ({ assigned_team_id: k.assignedTeamId }))];
+  const assigned = [
+    ...keptTeam,
+    ...assignNewShifts(toPick, input.teams, [...pastRows, ...rec.keep, ...seed], input.preference, input.index),
+  ].sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
 
   const asRpc = (r: StoredShiftRow): RpcShift => ({
     date: r.date,
@@ -134,6 +174,7 @@ export function buildRegeneratePlan(input: PlanInput): RegeneratePlan {
   });
   const desired: RpcShift[] = [
     ...pastRows.map(asRpc),
+    ...untouchedRows.map(asRpc),
     ...rec.keep.map(asRpc),
     ...assigned.map((a) => ({ date: a.date, start: a.start, end: a.end, assigned_team_id: a.assignedTeamId })),
   ].sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
@@ -219,6 +260,8 @@ export function buildRegeneratePlan(input: PlanInput): RegeneratePlan {
     carried,
     lost,
     frozenPast: pastRows.length,
+    untouched: untouchedRows.length,
+    onlyDates: only ? [...only].sort() : null,
     kept: rec.keep.length,
     dayChanges,
     assignmentChanges,
