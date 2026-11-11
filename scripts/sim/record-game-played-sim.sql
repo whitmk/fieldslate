@@ -597,7 +597,7 @@ $h106$;
 --   MU2 status filter removed           → KILLED, first failure [ST1] (same
 --       shape: nothing_saved, not status_not_eligible)
 --   MU3 today computed in UTC           → SURVIVED — EXPECTED at this hour;
---       re-run between 00:00 and 10:00 UTC (5pm–3am Pacific) to kill it
+--       re-run between 00:00 and 10:00 UTC (4 PM–2 AM Pacific on PST, 5 PM–3 AM on PDT) to kill it
 --   MU4 season-start check removed      → KILLED, first failure [SS1]
 --   MU5 posted restore drops posted_at  → KILLED, first failure [PS1]
 --   MU6 ordinary edits also exempted    → KILLED, first failure [PS2]

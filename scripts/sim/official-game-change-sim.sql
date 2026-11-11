@@ -707,4 +707,7 @@ end $h$;
 --     ZZ106 rows; no officials settings row for "test"; "test" still Elite,
 --     Los Angeles; official_outbox 7 rows as before; no disabled trigger on
 --     games; no idle transaction.
--- NOT APPLIED — held for Whit's timing.
+-- APPLIED 2026-11-11 17:30 UTC on Whit's go, catalog 20261111173020 (the
+--   catalog row's text = the file, md5 9a60d2e2…). Live md5(prosrc) =
+--   `--md5` for all 14, one overload each; privileges as stated; both games
+--   triggers enabled; leak check clean.
