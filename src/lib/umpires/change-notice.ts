@@ -160,9 +160,10 @@ function matchup(g: NoticeGame): string | null {
   return g.home && g.away ? `${g.home} vs ${g.away}` : g.home ?? g.away;
 }
 
-/** "Moved — Majors · Expos vs Mets · Plate" */
+/** "Moved — Majors · Expos vs Mets · Your role: Plate" (the role as the
+ *  league typed it, labelled — decided 2026-11-11). */
 export function entryHeading(e: ChangeEntry): string {
-  const what = [e.game.division, matchup(e.game), e.game.role].filter(Boolean).join(" · ");
+  const what = [e.game.division, matchup(e.game), `Your role: ${e.game.role}`].filter(Boolean).join(" · ");
   return `${changeLabel(changeKind(e))} — ${what}`;
 }
 
@@ -208,8 +209,8 @@ export function entryLines(e: ChangeEntry, v: Voice): string[] {
     lines.push(whenWhere(e.game.start, e.game.field));
     lines.push(
       v.youth
-        ? `This game was removed from the schedule or rebuilt, and ${v.name} is no longer assigned. ${v.league} will let you know if ${v.name} is needed.`
-        : `This game was removed from the schedule or rebuilt, and you're no longer assigned. ${v.league} will let you know if you're needed.`,
+        ? `The schedule changed and ${v.name} is no longer assigned to this game. ${v.league} will let you know if ${v.name} is needed.`
+        : `The schedule changed and you're no longer assigned to this game. ${v.league} will let you know if you're needed.`,
     );
     return lines;
   }
@@ -254,17 +255,20 @@ export function changesOpening(entries: readonly ChangeEntry[], v: Voice): strin
   const one = entries.length === 1;
   if (v.youth) {
     return [
-      `Hi, this is about ${v.name}'s umpire assignments.`,
+      `Hi, this is about ${v.name}'s game assignments.`,
       one ? `A game ${v.name} is assigned to has changed.` : `Some games ${v.name} is assigned to have changed.`,
     ];
   }
   return [`Hi ${v.name},`, one ? "A game you're assigned to has changed." : "Some games you're assigned to have changed."];
 }
 
-/** The closing line, or null when every entry is a game they were taken off. */
+/** The closing line, or null when every entry is a game they were taken off,
+ *  or every game still theirs is rained out (each rainout block already says
+ *  they're still assigned — decided 2026-11-11). */
 export function changesClosing(entries: readonly ChangeEntry[], v: Voice): string | null {
   const still = entries.filter((e) => e.change === "changed");
   if (still.length === 0) return null;
+  if (still.every((e) => changeKind(e) === "rained_out")) return null;
   const one = still.length === 1;
   if (v.youth) {
     return one

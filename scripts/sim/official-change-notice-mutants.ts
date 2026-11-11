@@ -9,6 +9,7 @@ const MAIL = "src/lib/officials-signup/email-templates.ts";
 const RUNNER = "src/lib/officials-signup/drain-runner.ts";
 const PROBLEMS = "src/lib/outbound-email/problems.ts";
 const NOTICE = "src/lib/umpires/notice-state.ts";
+const MIG = "supabase/migrations/0130_official_game_change_notices.sql";
 
 const MUTANTS: Mutant[] = [
   { id: "CN1", what: "back on and makeup set swapped", file: WORDS,
@@ -21,8 +22,11 @@ const MUTANTS: Mutant[] = [
   { id: "CN3", what: "the youth rained-out line speaks to the official", file: WORDS,
     find: "          ? `${v.name} is still assigned. If a makeup date is set, we'll email you.`",
     replace: "          ? \"You're still assigned. If a makeup date is set, we'll email you.\"", expect: "W2" },
+  // Re-aimed 2026-11-11: with the rainout rule, deleting the empty-list line
+  // is equivalent ([].every(...) is true), so the mutant now counts the
+  // removals as games still theirs.
   { id: "CN4", what: "a closing line on an email that only takes games away", file: WORDS,
-    find: "  if (still.length === 0) return null;", replace: "", expect: "W4" },
+    find: "  const still = entries.filter((e) => e.change === \"changed\");", replace: "  const still = [...entries];", expect: "W4" },
   { id: "CN5", what: "an unknown problem key read as no problem", file: WORDS,
     find: "  return typeof v === \"string\" && (PROBLEMS as readonly string[]).includes(v) ? (v as MoveProblem) : undefined;",
     replace: "  return typeof v === \"string\" && (PROBLEMS as readonly string[]).includes(v) ? (v as MoveProblem) : null;",
@@ -48,6 +52,16 @@ const MUTANTS: Mutant[] = [
   { id: "CN13", what: "the youth-email check shown on every youth official", file: NOTICE,
     find: "  return Number.isFinite(at) && at < PARENT_LABEL_FROM ? YOUTH_EMAIL_CHECK : null;",
     replace: "  return Number.isFinite(at) ? YOUTH_EMAIL_CHECK : null;", expect: "N2" },
+  { id: "CN14", what: "a rainout-only email gets the closing again", file: WORDS,
+    find: "  if (still.every((e) => changeKind(e) === \"rained_out\")) return null;\n", replace: "", expect: "W4" },
+  { id: "CN15", what: "the coordinator's email tells them to reply to reach their own league", file: MAIL,
+    find: "        { url: `${SITE_URL}/dashboard/umpires`, label: CONFLICTS_LINK_LABEL },\n        true,\n",
+    replace: "        { url: `${SITE_URL}/dashboard/umpires`, label: CONFLICTS_LINK_LABEL },\n        false,\n", expect: "R3" },
+  { id: "CN16", what: "the role loses its label", file: WORDS,
+    find: "`Your role: ${e.game.role}`", replace: "e.game.role", expect: "W1" },
+  { id: "CN17", what: "the reply-to falls back to the owner's account email", file: MIG,
+    find: "           'reply_to', s.contact_email,\n",
+    replace: "           'reply_to', coalesce(s.contact_email, (select a.email from auth.users a where a.id = t.owner_id)),\n", expect: "Q1" },
 ];
 
 runMutants({ sim: "scripts/sim/official-change-notice-sim.ts", timezones: ["UTC", "America/Los_Angeles", "Pacific/Kiritimati"], mutants: MUTANTS });

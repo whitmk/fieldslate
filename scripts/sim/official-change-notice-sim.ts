@@ -12,7 +12,8 @@
 //   W1  every entry's lines, adult wording, exact
 //   W2  youth wording (the parent's email) names the official, exact
 //   W3  the four problem lines (adult and youth), exact
-//   W4  opening and closing lines; no closing when every entry is a removal
+//   W4  opening and closing lines; no closing when every entry is a removal,
+//       or when every game still theirs is rained out
 //   S1  subject for one game per kind; for several; youth several
 //   P1  the parsers: a malformed entry, a bad start, an unknown problem key or
 //       a bad "other" makes the WHOLE list unreadable (null), never a partial
@@ -21,8 +22,16 @@
 //   R2  a game_changes row with no changes, unreadable changes, or no name
 //       renders NOTHING (the drain fails it unknown_kind)
 //   R3  the coordinator's template: subject, opening, one line per entry
-//       (the clash's other game named), the www Officials link; nothing when
-//       empty
+//       (the clash's other game named), the www Officials link, the short
+//       footer; nothing when empty
+//   R4  every official's email still ends "Reply to this email to reach your
+//       league" (replies go to the confirmed officials contact)
+//   Q1  SOURCE: the reply-to is the confirmed officials contact and only that
+//       — the take reads s.contact_email from official_signup_settings (0126
+//       writes it only after the link is confirmed) and never a profile
+//       email; a row with no contact fails no_contact_email; the drain fails
+//       a row without a usable reply-to; the triggers queue nothing without a
+//       confirmed contact (proof GC5 / MG6)
 //   T1  every kind the officials outbox can hold (0130's CHECK, read from the
 //       migration) has a template — OFFICIAL_EMAIL_KINDS equals it and each
 //       renders from a minimal row
@@ -43,6 +52,12 @@
 // Run 1 (2026-11-11): 12/12 at their own line, three zones; CN2 (a time read
 // in the host's zone) passes under UTC and dies at W1 in the other two.
 // Run 2 (2026-11-11, + N2 / CN13, the youth-email check): 13/13.
+// Run 3 (2026-11-11, Whit's wording review: role label, taken-off body, youth
+// opening, no closing on rainout-only, coordinator footer; + Q1 reply-to):
+// 16/17 — CN4 SURVIVED. The new rainout rule made it equivalent (deleting
+// the empty-list line changes nothing: [].every(...) is true). Re-aimed at
+// the removal filter itself.
+// Run 4: 17/17 at their own line.
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -145,30 +160,30 @@ function main() {
   {
     const [m, r, mk, b, rm] = entries(RAW.moved, RAW.rained, RAW.makeup, RAW.backOn, RAW.removed);
     eq(entryLines(m, ADULT), [
-      "Moved — Majors · Expos vs Mets · Plate",
+      "Moved — Majors · Expos vs Mets · Your role: Plate",
       "Now: Sat, Oct 17 · 3:30 PM · Monroe Complex — Andrews",
       "Was: Sat, Oct 17 · 1:00 PM · Monroe Complex — Polley",
     ], "[W1] moved");
     eq(entryLines(r, ADULT), [
-      "Rained out — Minors · Royals vs Cubs · Base",
+      "Rained out — Minors · Royals vs Cubs · Your role: Base",
       "Sat, Oct 17 · 9:00 AM · Monroe Complex — Polley",
       "You're still assigned. If a makeup date is set, we'll email you.",
     ], "[W1] rained out");
     eq(entryLines(mk, ADULT), [
-      "Makeup set — Majors · Expos vs Mets · Plate",
+      "Makeup set — Majors · Expos vs Mets · Your role: Plate",
       "Now: Sat, Oct 24 · 1:00 PM · Monroe Complex — Andrews",
       "Was: rained out Sat, Oct 10 · 1:00 PM",
       "It now overlaps another game you're assigned to. Santa Rosa Test LL has been told.",
     ], "[W1] makeup set (with its problem)");
     eq(entryLines(b, ADULT), [
-      "Back on — Minors · Royals vs Cubs · Plate",
+      "Back on — Minors · Royals vs Cubs · Your role: Plate",
       "Sun, Oct 18 · 10:00 AM",
       "The rainout was lifted; the game is at its original time.",
     ], "[W1] back on (no field)");
     eq(entryLines(rm, ADULT), [
-      "Taken off — Majors · Expos vs Mets · Plate",
+      "Taken off — Majors · Expos vs Mets · Your role: Plate",
       "Sun, Oct 25 · 1:00 PM · Monroe Complex — Andrews",
-      "This game was removed from the schedule or rebuilt, and you're no longer assigned. Santa Rosa Test LL will let you know if you're needed.",
+      "The schedule changed and you're no longer assigned to this game. Santa Rosa Test LL will let you know if you're needed.",
     ], "[W1] taken off");
     counters.kinds += 5;
     counters.removal++;
@@ -176,7 +191,7 @@ function main() {
 
     eq(entryLines(r, YOUTH)[2], "Cal is still assigned. If a makeup date is set, we'll email you.", "[W2] youth rained out");
     eq(entryLines(rm, YOUTH)[2],
-      "This game was removed from the schedule or rebuilt, and Cal is no longer assigned. Santa Rosa Test LL will let you know if Cal is needed.",
+      "The schedule changed and Cal is no longer assigned to this game. Santa Rosa Test LL will let you know if Cal is needed.",
       "[W2] youth taken off");
     eq(entryLines(mk, YOUTH)[3], "It now overlaps another game Cal is assigned to. Santa Rosa Test LL has been told.", "[W2] youth problem");
     counters.youth++;
@@ -198,7 +213,7 @@ function main() {
 
     eq(changesOpening([m], ADULT), ["Hi Sam,", "A game you're assigned to has changed."], "[W4] opening, one");
     eq(changesOpening([m, r], ADULT), ["Hi Sam,", "Some games you're assigned to have changed."], "[W4] opening, several");
-    eq(changesOpening([m], YOUTH), ["Hi, this is about Cal's umpire assignments.", "A game Cal is assigned to has changed."],
+    eq(changesOpening([m], YOUTH), ["Hi, this is about Cal's game assignments.", "A game Cal is assigned to has changed."],
       "[W4] opening, youth");
     eq(changesClosing([m], ADULT),
       "You're still assigned to this game. If you can't make it, reply to this email to let Santa Rosa Test LL know.",
@@ -210,6 +225,11 @@ function main() {
       "Cal is still assigned to these games. If Cal can't make a new time, reply to this email to let Santa Rosa Test LL know.",
       "[W4] closing, youth");
     eq(changesClosing([rm], ADULT), null, "[W4] no closing when every entry is a removal");
+    eq(changesClosing([r], ADULT), null, "[W4] no closing when every game still theirs is rained out");
+    eq(changesClosing([r, rm], ADULT), null, "[W4] rained out + taken off → no closing");
+    eq(changesClosing([r, m], ADULT),
+      "You're still assigned to these games. If you can't make a new time, reply to this email to let Santa Rosa Test LL know.",
+      "[W4] a rainout with a move keeps the closing");
     eq(changesClosing([m, rm], ADULT),
       "You're still assigned to this game. If you can't make it, reply to this email to let Santa Rosa Test LL know.",
       "[W4] closing counts only the games still theirs");
@@ -257,12 +277,12 @@ function main() {
       eq(e.text.split("\n"), [
         LEAGUE, "",
         "Hi Sam,", "Some games you're assigned to have changed.", "",
-        "Moved — Majors · Expos vs Mets · Plate",
+        "Moved — Majors · Expos vs Mets · Your role: Plate",
         "Now: Sat, Oct 17 · 3:30 PM · Monroe Complex — Andrews",
         "Was: Sat, Oct 17 · 1:00 PM · Monroe Complex — Polley", "",
-        "Taken off — Majors · Expos vs Mets · Plate",
+        "Taken off — Majors · Expos vs Mets · Your role: Plate",
         "Sun, Oct 25 · 1:00 PM · Monroe Complex — Andrews",
-        "This game was removed from the schedule or rebuilt, and you're no longer assigned. Santa Rosa Test LL will let you know if you're needed.", "",
+        "The schedule changed and you're no longer assigned to this game. Santa Rosa Test LL will let you know if you're needed.", "",
         "You're still assigned to this game. If you can't make it, reply to this email to let Santa Rosa Test LL know.", "",
         "Sent by FieldSlate for Santa Rosa Test LL. Reply to this email to reach your league.",
       ], "[R1] text, verbatim");
@@ -295,12 +315,33 @@ function main() {
         "",
         "Open Officials: https://www.thefieldslate.com/dashboard/umpires",
         "",
-        "Sent by FieldSlate for Santa Rosa Test LL. Reply to this email to reach your league.",
-      ], "[R3] text, verbatim");
+        "Sent by FieldSlate for Santa Rosa Test LL.",
+      ], "[R3] text, verbatim (the coordinator's footer: no \"reply to reach your league\")");
+      ok(k.html.includes(">Sent by FieldSlate for Santa Rosa Test LL.</p>"), "[R3] html footer too");
     }
     eq(conflictLine(conflicts![1]), "Jo P. — Minors · Royals vs Cubs · Base · Sun, Oct 18 · 10:00 AM: is on a date they said they can't work",
       "[R3] a line without another game");
     ok(renderOfficialEmail(row({ kind: "assignment_conflicts", conflicts: [] })) === null, "[R3] no conflicts → nothing");
+
+    const own = renderOfficialEmail(row({ changes: entries(RAW.rained) }));
+    ok(!!own && own.text.endsWith("Sent by FieldSlate for Santa Rosa Test LL. Reply to this email to reach your league."),
+      "[R4] the official's email keeps the reply line");
+    ok(!!own && !own.text.includes("reply to this email to let"), "[R4] a rainout-only email has no closing");
+  }
+
+  // ── Q ───────────────────────────────────────────────────────────────────
+  {
+    const mig = read("supabase/migrations/0130_official_game_change_notices.sql");
+    const take = mig.slice(mig.indexOf("create or replace function public.official_outbox_take("), mig.indexOf("-- 7. The officials email banner"));
+    ok(/'reply_to', s\.contact_email,/.test(take) && /left join public\.official_signup_settings s on s\.owner_id = t\.owner_id/.test(take),
+      "[Q1] the take's reply-to is official_signup_settings.contact_email");
+    ok(!/profiles?\.email|p\.email|auth\.users/.test(take), "[Q1] the take never reads an account email");
+    ok(/error = 'no_contact_email'/.test(take) && /s\.contact_email is not null/.test(take), "[Q1] no confirmed contact → the row fails, never sends");
+    const notice = mig.slice(mig.indexOf("create or replace function public.official_notice_on("), mig.indexOf("-- A field as the emails show it"));
+    ok(/s\.contact_email is not null/.test(notice), "[Q1] the trigger gate requires a confirmed contact");
+    const drain = read("src/lib/outbound-email/outbox-drain.ts");
+    ok(/const replyTo = safeReplyTo\(row\.replyTo\);\s*if \(!replyTo\) \{\s*await finish\(row, false, null, "bad_reply_to", false\);/.test(drain),
+      "[Q1] the drain fails a row without a usable reply-to");
   }
 
   // ── T ───────────────────────────────────────────────────────────────────

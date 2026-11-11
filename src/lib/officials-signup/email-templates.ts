@@ -53,7 +53,13 @@ function gameLine(g: GameInfo): string {
   return `${gameWhen(g)} — ${g.role}${gameWhat(g) ? ` · ${gameWhat(g)}` : ""}`;
 }
 
-function assemble(subject: string, league: string, paras: string[], list: string[], link?: { url: string; label: string }): RenderedEmail {
+// The footer under every official's email. The coordinator's own email (it
+// goes TO the officials contact) ends with the first sentence alone.
+const footerFor = (league: string, toContact: boolean) =>
+  toContact ? `Sent by FieldSlate for ${league}.` : `Sent by FieldSlate for ${league}. Reply to this email to reach your league.`;
+
+function assemble(subject: string, league: string, paras: string[], list: string[], link?: { url: string; label: string },
+                  toContact = false): RenderedEmail {
   const html = [
     `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0C1F3F;max-width:600px">`,
     `<p style="font-size:12px;color:#6b7280;margin:0 0 12px">${esc(league)}</p>`,
@@ -62,7 +68,7 @@ function assemble(subject: string, league: string, paras: string[], list: string
     link
       ? `<p><a href="${esc(link.url)}" style="display:inline-block;background:#22C55E;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">${esc(link.label)}</a></p>`
       : "",
-    `<p style="font-size:12px;color:#6b7280">Sent by FieldSlate for ${esc(league)}. Reply to this email to reach your league.</p>`,
+    `<p style="font-size:12px;color:#6b7280">${esc(footerFor(league, toContact))}</p>`,
     `</div>`,
   ].join("");
   const text = [
@@ -72,7 +78,7 @@ function assemble(subject: string, league: string, paras: string[], list: string
     ...(list.length ? ["", ...list.map((l) => `- ${l}`)] : []),
     ...(link ? ["", `${link.label}: ${link.url}`] : []),
     "",
-    `Sent by FieldSlate for ${league}. Reply to this email to reach your league.`,
+    footerFor(league, toContact),
   ].join("\n");
   return { subject, html, text };
 }
@@ -192,6 +198,7 @@ export function renderOfficialEmail(row: OfficialOutboxRow): RenderedEmail | nul
         [CONFLICTS_OPENING],
         row.conflicts.map(conflictLine),
         { url: `${SITE_URL}/dashboard/umpires`, label: CONFLICTS_LINK_LABEL },
+        true,
       );
     }
     default:
