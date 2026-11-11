@@ -48,6 +48,7 @@ import {
   type RegenerateLoss,
 } from "@/lib/schedule/regenerate-removal";
 import { assignmentLossLine } from "@/lib/umpires/assignment-loss";
+import { fetchOfficialBookings } from "@/lib/umpires/conflicts";
 import { rainoutConfirmCopy } from "@/lib/schedule/rainout-confirm";
 import { markGameRainedOut, markGamesRainedOut, bulkRainoutMessage } from "@/lib/schedule/rainout-write";
 import { MoveGameIcon, MoveNoticeLine } from "./move-game-row";
@@ -414,10 +415,7 @@ export function DivisionSchedulePanel({
           `id, name, team_id, team:teams(name, division:divisions(name)),
            conflicts:official_conflicts(team_id, relationship),
            availability:official_availability(day_of_week, start_time, end_time),
-           blackouts:official_blackouts(date),
-           booking_rows:game_umpires(game:games(id, scheduled_at,
-             home_team:teams!home_team_id(name, division:divisions(settings)),
-             away_team:teams!away_team_id(name)))`,
+           blackouts:official_blackouts(date)`,
         )
         .eq("season_id", leagueId)
         .order("name"),
@@ -431,11 +429,19 @@ export function DivisionSchedulePanel({
             )
         : Promise.resolve({ data: [] as unknown[], error: null }),
     ]);
-    setOfficialsReadFailed(!!(seasonRolesErr || umpiresErr || assignsErr));
     // Each official's division list (0124) — the picker's warning only, fail-soft.
     const roster = (umpiresRaw ?? []) as UmpireOption[];
     const lists = await officialDivisionLists(supabase, roster.map((u) => u.id));
-    setUmpireRoster(roster.map((u) => ({ ...u, divisions: lists.get(u.id) ?? null })));
+    // Each official's BUSY games (0129) — the one rule, from the database.
+    // An unread list fails closed: the slots show the read error, never an
+    // official as free.
+    const bookings = await fetchOfficialBookings(leagueId, roster.map((u) => u.id));
+    setOfficialsReadFailed(!!(seasonRolesErr || umpiresErr || assignsErr) || !bookings.ok);
+    setUmpireRoster(roster.map((u) => ({
+      ...u,
+      divisions: lists.get(u.id) ?? null,
+      bookings: bookings.ok ? bookings.byUmpire.get(u.id) ?? [] : null,
+    })));
     type AssignRow = {
       id: string;
       game_id: string;

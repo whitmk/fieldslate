@@ -302,6 +302,13 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: DbError }> {
   }
 }
 
+/** The statuses that are NOT busy — the fake's copy of 0129's blocklist
+ *  (pinned to the migration by sim:official-busy [FK1]). */
+export const FAKE_NOT_BUSY = ["cancelled", "postponed"];
+export function fakeGameBusy(status: string | null): boolean {
+  return status === null || !FAKE_NOT_BUSY.includes(status);
+}
+
 export class FakeClient {
   private idCounter = 0;
   failDivisionIds = new Set<string>();
@@ -344,6 +351,9 @@ export class FakeClient {
    *  engine's own picks always satisfy here. */
   rpc(name: string, args: Record<string, unknown>): Promise<{ data: unknown; error: DbError }> {
     this.rpcCalls.push({ name, args });
+    // 0129: official_bookings always answers as the database would; the
+    // override replaces insert_official_assignments only (as documented).
+    if (name === "official_bookings") return Promise.resolve(this.officialBookings(args));
     const over = this.rpcOverride?.(name, args);
     if (over) return Promise.resolve(over);
     if (name !== "insert_official_assignments") throw new Error(`fake client: unexpected rpc ${name}`);
@@ -362,6 +372,39 @@ export class FakeClient {
       inserted++;
     }
     return Promise.resolve({ data: { inserted, skipped }, error: null });
+  }
+
+  /** 0129's official_bookings, as the database answers it: the season's
+   *  officials' assignments on BUSY games. The busy test is the
+   *  ENVIRONMENT's copy of the database rule — sim:official-busy [FK1] holds
+   *  it to the exact list in 0129's official_game_busy, so it can't drift.
+   *  failRead("official_bookings", "rpc") makes the call fail. */
+  private officialBookings(args: Record<string, unknown>): { data: unknown; error: DbError } {
+    if (this.failRead?.("official_bookings", "rpc")) return { data: null, error: { message: "injected read fault" } };
+    const season = args.p_season_id as string;
+    const ids = new Set((args.p_umpire_ids ?? []) as string[]);
+    const out: Row[] = [];
+    for (const gu of this.db.game_umpires) {
+      if (!ids.has(gu.umpire_id as string)) continue;
+      const u = this.db.umpires.find((x) => x.id === gu.umpire_id);
+      if (!u || u.season_id !== season) continue;
+      const g = this.db.games.find((x) => x.id === gu.game_id);
+      if (!g || !fakeGameBusy(g.status as string | null)) continue;
+      const home = this.db.teams.find((t) => t.id === g.home_team_id);
+      const away = this.db.teams.find((t) => t.id === g.away_team_id);
+      const div = home ? this.db.divisions.find((d) => d.id === home.division_id) : undefined;
+      const dur = (div?.settings as { game_duration?: unknown } | undefined)?.game_duration;
+      out.push({
+        game_umpire_id: gu.id,
+        umpire_id: gu.umpire_id,
+        game_id: g.id,
+        scheduled_at: g.scheduled_at,
+        minutes: typeof dur === "number" ? Math.round(dur) : 90,
+        home: (home?.name as string | undefined) ?? null,
+        away: (away?.name as string | undefined) ?? null,
+      });
+    }
+    return { data: out, error: null };
   }
 
   asClient(): AutoAssignClient {

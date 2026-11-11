@@ -28,7 +28,7 @@ import { parseAvailability, type VenueAvailability } from "@/lib/venues/availabi
 import { qualifiedVenueLabel, byQualifiedVenueLabel } from "@/lib/venues/venue-label";
 import { durationFromSettings } from "@/lib/schedule/reschedule-slots";
 import { parseManualDateTime } from "@/lib/schedule/manual-move";
-import { bookingsFromRows, type UmpireBookingRow } from "@/lib/umpires/conflicts";
+import { fetchOfficialBookings } from "@/lib/umpires/conflicts";
 import { useDayOccupancy } from "@/components/divisions/use-day-occupancy";
 import {
   DATE_HELP,
@@ -81,7 +81,7 @@ type Venue = {
 };
 
 type OfficialRow = {
-  umpire: { name: string; booking_rows: UmpireBookingRow[] } | null;
+  umpire: { id: string; name: string } | null;
 };
 
 type Ctx = {
@@ -168,12 +168,7 @@ export function RecordPlayedModal({
       supabase.from("blackout_dates").select("date").eq("league_id", game.league_id),
       supabase
         .from("game_umpires")
-        .select(
-          `umpire:umpires(name,
-             booking_rows:game_umpires(game:games(id, scheduled_at,
-               home_team:teams!home_team_id(name, division:divisions(settings)),
-               away_team:teams!away_team_id(name))))`,
-        )
+        .select("umpire:umpires(id, name)")
         .eq("game_id", gameId),
     ]);
     const tz = (profileQ.data as { timezone: string } | null)?.timezone;
@@ -204,11 +199,18 @@ export function RecordPlayedModal({
       }));
 
     // A failed officials read is a "couldn't check" notice, never all-clear.
-    const officials: AssignedOfficial[] = officialsQ.error
+    // Their busy games come from official_bookings (0129) — the one rule; an
+    // unread list is "couldn't check" for every official on the game.
+    const assigned = officialsQ.error
+      ? null
+      : ((officialsQ.data ?? []) as unknown as OfficialRow[]).filter((r) => r.umpire).map((r) => r.umpire!);
+    const busy = assigned ? await fetchOfficialBookings(game.league_id, assigned.map((u) => u.id)) : null;
+    const officials: AssignedOfficial[] = !assigned
       ? [{ name: "the assigned officials", bookings: null }]
-      : ((officialsQ.data ?? []) as unknown as OfficialRow[])
-          .filter((r) => r.umpire)
-          .map((r) => ({ name: r.umpire!.name, bookings: bookingsFromRows(r.umpire!.booking_rows ?? []) }));
+      : assigned.map((u) => ({
+          name: u.name,
+          bookings: busy && busy.ok ? busy.byUmpire.get(u.id) ?? [] : null,
+        }));
 
     const buffer = Number(divisionSettings.buffer_minutes);
     setCtx({

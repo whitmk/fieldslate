@@ -55,7 +55,14 @@ export type RolesScreenData = {
 
 const ROLES_TH = "px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500";
 
-export function RolesScreen({ data }: { data: RolesScreenData }) {
+export function RolesScreen({
+  data,
+  emailPointer = null,
+}: {
+  data: RolesScreenData;
+  /** 0128: "3 volunteer emails didn't go out — see Who signed up." (or null). */
+  emailPointer?: string | null;
+}) {
   const teamDivision = useMemo(() => new Map(data.teamDivision), [data.teamDivision]);
   const active = useMemo(() => (data.active ? new Map(data.active) : null), [data.active]);
   const [editing, setEditing] = useState<RoleDraft | null>(null);
@@ -144,6 +151,14 @@ export function RolesScreen({ data }: { data: RolesScreenData }) {
       </div>
 
       <LinkStrip link={data.link} />
+
+      {emailPointer && (
+        <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <Link href="/dashboard/volunteers/signups" className="font-semibold underline">
+            {emailPointer}
+          </Link>
+        </p>
+      )}
 
       <section className="rounded-xl border border-gray-100 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">

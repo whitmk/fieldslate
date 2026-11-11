@@ -17,6 +17,10 @@ import {
 import { AutoAssignSeasonButton } from "@/components/umpires/auto-assign-season-button";
 import { loadOfficialSignup } from "@/lib/officials-signup/feature-state";
 import { AskForHelpButton } from "@/components/umpires/ask-for-help-button";
+import { EmailProblemsBanner } from "@/components/email-problems/email-problems-banner";
+import { loadEmailProblems } from "@/lib/outbound-email/problems-read";
+import { problemsView } from "@/lib/outbound-email/problems";
+import { OFFICIAL_PROBLEMS } from "@/lib/officials-signup/email-problems";
 import { getCurrentOrgId } from "@/lib/orgs/context";
 import { getCurrentSeasonId } from "@/lib/seasons/context";
 import { getOrgPlan } from "@/lib/plan/get-org-plan";
@@ -102,6 +106,12 @@ export default async function UmpiresPage() {
   const umpires = (rawUmpires as unknown as UmpireRow[] | null) ?? [];
   // Officials self-sign-up (0124): null unless the org has the switch on.
   const officialSignup = seasonId ? await loadOfficialSignup(supabase, currentOrgId, "umpires") : null;
+
+  // 0128: officials emails that didn't go out (admin-only). Feature off →
+  // no banner; an unreadable read says "couldn't check", never nothing.
+  const emailProblems = seasonId ? await loadEmailProblems(supabase, OFFICIAL_PROBLEMS, seasonId) : null;
+  const emailProblemsView =
+    emailProblems?.state === "ok" ? problemsView(emailProblems.problems, "officials") : null;
 
   // Single-season view — the season column never applies anymore.
   const showSeasonColumn = false;
@@ -193,6 +203,13 @@ export default async function UmpiresPage() {
           <AddUmpireButton seasons={simpleSeasons} />
         </div>
       </div>
+
+      {seasonId && emailProblems?.state === "unreadable" && (
+        <EmailProblemsBanner feature="officials" rpc={OFFICIAL_PROBLEMS.rpc} seasonId={seasonId} view={null} />
+      )}
+      {seasonId && emailProblemsView && (
+        <EmailProblemsBanner feature="officials" rpc={OFFICIAL_PROBLEMS.rpc} seasonId={seasonId} view={emailProblemsView} />
+      )}
 
       <Card>
         <CardHeader>

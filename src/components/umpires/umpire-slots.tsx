@@ -7,13 +7,11 @@ import { createClient } from "@/lib/supabase/client";
 import {
   DEFAULT_GAME_DURATION_MINS,
   assignmentPrecheckMessage,
-  bookingsFromRows,
   findConflictInBookings,
   findUmpireBlackout,
   findUmpireConflict,
   formatConflictTime,
   type GameTimeInfo,
-  type UmpireBookingRow,
 } from "@/lib/umpires/conflicts";
 import {
   gameDateKey,
@@ -35,15 +33,21 @@ export type UmpireOption = {
   /** Conflict-of-interest links (0073) — drive the COI warning, parallel to
    *  the coach conflict. */
   conflicts?: CoiLink[] | null;
-  /** Weekly windows / blackout dates / season-wide assignments (embedded on
-   *  the roster feeds) — drive the pre-click eligibility state per option. */
+  /** Weekly windows / blackout dates (embedded on the roster feeds) — drive
+   *  the pre-click eligibility state per option. */
   availability?: AvailabilityWindow[] | null;
   blackouts?: { date: string }[] | null;
-  booking_rows?: UmpireBookingRow[] | null;
+  /** The official's BUSY games, from official_bookings (0129) — the one
+   *  rule: a rained-out or postponed game is not busy. Absent = the roster
+   *  reader couldn't read them, and the option is refused (fail closed). */
+  bookings?: GameTimeInfo[] | null;
   /** 0124: the divisions this official may work; absent/empty = every one.
    *  A warning only here (manual assignment overrides, the house rule). */
   divisions?: string[] | null;
 };
+
+/** The picker's suffix for an official whose busy games couldn't be read. */
+export const BOOKINGS_UNREAD_SUFFIX = "couldn't check other games";
 
 /** Pre-click option state, computed against the specific game. rank orders
  *  the picker: 0 eligible, 1 flagged-but-selectable, 2 disabled. */
@@ -150,10 +154,11 @@ export function UmpireSlots({
   // read in the browser's zone.
   const gameDate = gameDateKey(game.scheduled_at);
   const decorated: DecoratedOption[] = umpires.map((u) => {
-    const conflict = findConflictInBookings(
-      candidate,
-      bookingsFromRows(u.booking_rows ?? []),
-    );
+    // Unread bookings refuse the option — never "free".
+    if (!u.bookings) {
+      return { u, disabled: true, rank: 2, suffix: ` — ${BOOKINGS_UNREAD_SUFFIX}` };
+    }
+    const conflict = findConflictInBookings(candidate, u.bookings);
     if (conflict) {
       return {
         u,
@@ -253,7 +258,7 @@ export function UmpireSlots({
     // A check whose read fails refuses the save (2026-11-06) — it used to
     // read as "no conflict" and save. Wording: assignmentPrecheckMessage.
     const [conflictCheck, blackoutCheck] = await Promise.all([
-      findUmpireConflict(nextUmpireId, candidate),
+      findUmpireConflict(nextUmpireId, seasonId, candidate),
       findUmpireBlackout(nextUmpireId, game.scheduled_at),
     ]);
     const refusal = assignmentPrecheckMessage(umpName, conflictCheck, blackoutCheck);

@@ -6,7 +6,7 @@ datePublished: "2026-11-10"
 dateModified: "2026-11-10"
 faq:
   - question: "Do we still need SignUpGenius for volunteers?"
-    answer: "Not for game-day roles or snack shack if you use FieldSlate. Spots are tied to games, so they move when games move. You might still use a general sign-up tool for one-off events like a fundraiser."
+    answer: "Not for game-day roles or snack shack shifts if you use FieldSlate. Game-day spots are tied to games, so they move when games move. Snack shack shifts are built from the game times. When games change, the coordinator rebuilds the affected shifts with a preview, and volunteers whose shifts change are emailed. You might still use a general sign-up tool for one-off events like a fundraiser."
   - question: "What happens to a volunteer's spot when a game is rained out?"
     answer: "In FieldSlate the spot is held, the volunteer is emailed, and they get another email with the new time once the makeup date is set."
   - question: "Can volunteers cancel?"
@@ -65,7 +65,7 @@ That's how we built volunteer sign-ups into [FieldSlate](https://www.thefieldsla
 2. **It's rained out:** the volunteer keeps the spot and gets an email saying so. When the makeup date is set, they get another with the new time.
 3. **The rainout is called off:** they get a "back on" email.
 
-The same applies to snack shack shifts, which are built from the game times, and to umpires, who are assigned to the game itself. The coordinator makes one change, and the volunteers signed up for that game hear about it on their own.
+The coordinator makes one change, and the volunteers signed up for that game hear about it on their own. Snack shack shifts are built from the game times. When games change, the coordinator rebuilds the affected shifts with a preview, and volunteers whose shifts change are emailed. Umpires are assigned to the game itself, so their assignments move with it, though for now the coordinator still lets them know.
 
 Families sign up from one link. Everyone else sees a filled spot as "Taken"; only the league sees names. And because every spot is tied to a real game, the league can see at a glance which families have worked their shifts this season.
 
@@ -84,7 +84,7 @@ If you'd rather not do steps 2 through 4 by hand every time it rains, that's the
 ## FAQ
 
 **Do we still need SignUpGenius for volunteers?**
-Not for game-day roles or snack shack if you use FieldSlate. Spots are tied to games, so they move when games move. You might still use a general sign-up tool for one-off events like a fundraiser.
+Not for game-day roles or snack shack shifts if you use FieldSlate. Game-day spots are tied to games, so they move when games move. Snack shack shifts are built from the game times. When games change, the coordinator rebuilds the affected shifts with a preview, and volunteers whose shifts change are emailed. You might still use a general sign-up tool for one-off events like a fundraiser.
 
 **What happens to a volunteer's spot when a game is rained out?**
 In FieldSlate the spot is held, the volunteer is emailed, and they get another email with the new time once the makeup date is set.

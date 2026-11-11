@@ -464,6 +464,38 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   Proof: `scripts/sim/feature-default-on-sim.sql` (+ build script; rolled back
   in "test"; RL1 no row written, FD1–FD5, FA1–FA3, FR1 read-only on Santa
   Rosa, FP1; 6 mutants MF1–MF6, MF3 = default-on for any feature name).
+- **0128 (outbox quota hold + email problems) APPLIED 2026-11-10 18:29 UTC,
+  catalog `20261110182927`**, verbatim from the repo file on Whit's go (the
+  catalog row's text = the file, md5 `3ff334cb…`), after its first-run-green
+  rolled-back proof (`scripts/sim/outbox-quota-sim.sql`, 6/6 mutants at their
+  own tag — read its RUN LOG). md5(prosrc) verified, one overload each,
+  SECURITY DEFINER, `search_path=public, pg_temp`: `volunteer_outbox_hold`
+  `6fef56caeda9bcfb8904a6d4fa1c2baa`, `official_outbox_hold`
+  `38a5f9832691049150407d884c519214`, `volunteer_outbox_drop_started`
+  `7915f237b5950c49089a7ffd6d82e60c`, `volunteer_email_problems`
+  `72b17367789e05da495413d4979c3a57`, `official_email_problems`
+  `991d9002d89ea4e7a6eee3235fd5da6f`, `volunteer_email_problems_ack`
+  `107ba39162a476a4f97de5acfaa840b1`, `official_email_problems_ack`
+  `45fd6ba4dcd8cfe32115ba7fcdfe5620`. EXECUTE: hold/drop service_role only,
+  problems/ack authenticated only (PUBLIC, anon, dashboard_readonly false).
+  `acknowledged_at` (nullable) on both outboxes and
+  `volunteer_trigger_failures`. **The latest migration applied.** **Deploy
+  order (met): 0128 was applied BEFORE the code reached `main`.** See
+  "Outbox quota and email problems (0128)".
+- **0129 (one busy rule for officials) APPLIED 2026-11-10 22:44 UTC,
+  catalog `20261110224402`**, verbatim from the repo file on Whit's go (the
+  catalog row's text = the file, md5 `2379c0bd…`), after its first-run-green
+  rolled-back proof (6/6 at their own tag) and the 0124 proof against it
+  (MO5 at OC1) — read the RUN LOG in `scripts/sim/official-busy-sim.sql`.
+  md5(prosrc) verified, one overload each, `search_path=public, pg_temp`:
+  `official_game_busy` `2d31e2e3079eb55e34a5e4decadb82ed` (INVOKER),
+  `official_slot_problem` `9d93f78e8c58a856f93b343e748f6c90` (INVOKER),
+  `official_bookings` `1d253cb415570d62d7dec9f3547e201e` (DEFINER). EXECUTE:
+  `official_bookings` authenticated only, the other two no role (PUBLIC,
+  anon, service_role, dashboard_readonly false). Leak check clean, no
+  trigger disabled. **The latest migration applied.** **Deploy order (met):
+  0129 was applied BEFORE the code reached `main`.** See "ONE BUSY RULE
+  (0129)".
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -3557,8 +3589,9 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   `src/components/divisions/use-day-occupancy.ts` (lifted verbatim out of
   `manual-move-form.tsx`).
 - **Officials:** assignments ride the game id, so they follow the new date;
-  the pay report never reads dates. Officials' rained-out games still count as
-  busy in the new notice (the long-standing open question, left as is).
+  the pay report never reads dates. Since 0129 the notice uses the ONE busy
+  rule: an official's rained-out or postponed game is not busy (see "ONE
+  BUSY RULE (0129)" under Officials).
   Auto-assign now skips past games (see "Officials / umpires") — without that,
   un-cancelling a past rainout would have made it fair game.
 - **Harnesses.** `scripts/sim/record-game-played-sim.sql` (+ build script;
@@ -5287,16 +5320,38 @@ Migrations 0090 (partner visibility) and 0091 (host counter), both applied
   (`fake-supabase.ts`) gained head/exact counts, `range` and `or` with `in.(…)`.
   Not checked in the browser (behind sign-in).
 - **Conflict overlap/blackout logic is shared.** `findUmpireConflict`
-  (`src/lib/umpires/conflicts.ts`) is a thin fetch over the exported pure
-  functions `bookingsFromRows` / `findConflictInBookings`, and the picker's
-  pre-click option states (`umpire-slots.tsx`) use the same functions. Never
-  write a parallel implementation — extend the shared ones.
-- **Open question, deliberately consistent in both places:** bookings on
-  cancelled games still count as time conflicts (save-time and pre-click
-  agree). Revisit alongside rainout workflows.
+  (`src/lib/umpires/conflicts.ts`) is a thin wrapper over
+  `fetchOfficialBookings` + the pure `findConflictInBookings`, and the
+  picker's pre-click option states (`umpire-slots.tsx`) use the same
+  functions. Never write a parallel implementation — extend the shared ones.
+- **ONE BUSY RULE (0129, APPLIED 2026-11-10; branch
+  `fix/official-busy-rule`).** An official is busy for a game
+  unless it is `cancelled` (rained out) or `postponed` — a BLOCKLIST, so a new
+  status, or null, is busy. The rule lives ONCE, in the database:
+  `official_game_busy(status)`. `official_slot_problem` (claims, open spots,
+  auto-assign's write re-check) uses it, and the app's ONE read,
+  `official_bookings(season, umpire ids)` (owner/admin by ROLE, not
+  plan-gated — in-schedule assignment is open to every plan), returns only
+  busy games. Its five callers — the manual save (`findUmpireConflict`), the
+  picker rosters in the division panel and the game detail modal,
+  record-where-played and auto-assign — call `fetchOfficialBookings`; none
+  tests a status or reads `game_umpires → games` for bookings (sim
+  [S1]–[S5]). **FAILS CLOSED:** an rpc error or malformed reply is "couldn't
+  read" — the manual save refuses ("Couldn't check Sam's other games…"),
+  the picker refuses an official whose bookings weren't read
+  (`BOOKINGS_UNREAD_SUFFIX`), both roster readers show the read error in
+  place of the slots, record-played says "couldn't check". The sign-up
+  page's "my games" list keeps its own `<> 'cancelled'` (a display list, by
+  decision). The officials fake answers `official_bookings` with its own
+  copy of the blocklist, pinned to 0129 by sim [FK1]. **Deploy order (met):
+  0129 was applied BEFORE the code reached `main`.** Proof:
+  `scripts/sim/official-busy-sim.sql` (+ `official-busy-build.ts`, `--md5`,
+  `regress0124`; 6 mutants). Harness: `npm run sim:official-busy` (32 checks
+  × 3 zones) + `:mutants` (12: CB1–CB5 one per caller, FC1–FC7 fail-closed).
 - **Scale note:** the picker roster feeds (game-detail-modal,
-  division-schedule-panel) embed each official's FULL booking rows per
-  fetch. First suspect if picker-open slows at large-league scale.
+  division-schedule-panel) read every roster official's busy games per open
+  through `official_bookings`. First suspect if picker-open slows at
+  large-league scale.
 - **Season-wide auto-assign is orchestration only.** `autoAssignSeason`
   (`src/lib/umpires/auto-assign-season.ts`) runs the unchanged per-division
   engine in ascending `divisions.priority` order (name tiebreak, matching
@@ -5926,6 +5981,57 @@ Still open:
   neither, the request is byte-identical ([Q3]). Harness: `npm run
   sim:volunteer-email` (101 checks) + `:mutants` (20, each killed at its own
   assertion — read the sim's MUTATION LOG).
+- **Outbox quota and email problems (0128, branch `fix/outbox-quota`,
+  2026-11-10).** THE BUG: `sendEmail` reported every Resend error as status
+  500, so the drains retried everything — a quota stop (Free plan: 100 a
+  day) burned all 5 attempts in ~30 minutes and the rest of the day's emails
+  in BOTH outboxes failed for good, a permanent 4xx was retried 5 times, and
+  no admin screen showed an outbox failure.
+  - `sendEmail` keeps `status` (500 — two interleague routes return it as
+    their own HTTP status) and ADDS Resend's `name` and `providerStatus`
+    (`resendFailure`, `src/lib/email.ts`).
+  - **ONE decision, `sendOutcome`** (`src/lib/outbound-email/outbox-drain.ts`):
+    `daily_quota_exceeded` → hold until the next 00:00 UTC (Resend: the
+    daily quota is "a UTC calendar day … resets at midnight UTC", "not a
+    rolling 24-hour window"; Free plan only — account-quotas-and-limits and
+    rate-limit docs, read 2026-11-10);
+    `monthly_quota_exceeded` → hold 6 hours; `rate_limit_exceeded` or a 429
+    → hold until the next run; 5xx / no provider status / a thrown send →
+    retry with backoff; any other 4xx → final, never retried. A hold puts
+    this row AND every row still waiting in the run back WITHOUT using an
+    attempt (`volunteer_outbox_hold` / `official_outbox_hold` give the take's
+    attempt back) and stops the run. `shouldRetry` is gone.
+  - **The volunteer drain drops started-game notices first**
+    (`volunteer_outbox_drop_started`, its `beforeTake`): a pending
+    game_moved / rained_out / makeup_set / back_on / shift_changed /
+    spot_lost whose spot has started (league time) is superseded
+    `game_started`. Confirmations, reminders and cancels are never dropped.
+    A failed drop is logged and the drain still runs.
+  - **The admin banner** (`EmailProblemsBanner`,
+    `src/components/email-problems/`; words and rules
+    `src/lib/outbound-email/problems.ts`, rendered verbatim): top of Who
+    signed up and on the Officials page above "All officials"; a one-line
+    pointer on the Volunteers roles page under the link strip. It lists
+    unacknowledged failed emails (who, what, why — a provider message is
+    never shown), how many wait for a quota reset (time in the league's
+    timezone) and, for volunteers, unacknowledged trigger failures; "Mark as
+    seen" sets `acknowledged_at`. An unreadable read says "Couldn't check for
+    email problems." (`feature_off` → no banner). "Sent" means it left
+    FieldSlate — no Resend webhook, bounces are invisible, and the banner
+    says so. Each feature names its OWN functions and describes its own rows
+    (`src/lib/volunteers/email-problems.ts`,
+    `src/lib/officials-signup/email-problems.ts`) — the shared module names
+    neither, which keeps sim:volunteer-leaks U1 green.
+  - **Admin-only:** the problems functions are authenticated only (feature
+    admin gate: member → switch → Elite → not archived). `sim:outbox-quota`
+    F1 walks every public page and public API route's import chain and fails
+    on any path to the banner, its words, the loader or a name containing
+    `email_problems`.
+  - Harness: `npm run sim:outbox-quota` (69 checks × 3 zones, 5 counters) +
+    `:mutants` (12, each killed at its own assertion; QM1/QM5 a quota stop
+    using attempts, QM4 a 4xx retried, QM8/QM9 the banner data reaching a
+    public route). sim:volunteer-email D2 now tests 5xx only (429 is a hold);
+    VE8/VE9/VE12 re-targeted at `sendOutcome` and the new loop.
 - **`vercel.json` runs the drain every 5 minutes, which needs Vercel PRO** —
   on Hobby a cron more frequent than daily fails EVERY deploy (Vercel status
   "Deployment failed.", linking the cron pricing page). It did exactly that to
@@ -6019,8 +6125,12 @@ Still open:
   regenerate code is unchanged. **Trigger failures fail LOUD:** the change and
   insert triggers never block the edit, but record a row in
   `volunteer_trigger_failures` (game, trigger, SQLSTATE — no personal data);
-  `volunteer_failure_count(season)` (member only) feeds the sign-up list and
-  the daily check. `volunteer_keep_spot`
+  `volunteer_failure_count(season)` (member only) exists, but **CORRECTION
+  2026-11-10: nothing in `src` ever called it — the sign-up list did NOT show
+  the count, despite what this bullet said.** 0128 shows unacknowledged
+  trigger failures on the Who signed up banner (its own count, in
+  `volunteer_email_problems`; `volunteer_failure_count` is unchanged and still
+  uncalled). `volunteer_keep_spot`
   (service_role) clears `moved_from`. Season delete sends nothing: it needs an
   archived season, and archiving already wiped the sign-ups. Proof: 44 mutants (13 for part 3), all killed at their own tag. Applying takes SHARE ROW EXCLUSIVE on `games`
   for the three CREATE TRIGGERs, plus the part-1 FKs.

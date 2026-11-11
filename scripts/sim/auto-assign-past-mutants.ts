@@ -21,8 +21,9 @@ const MUTANTS: Mutant[] = [
   },
   {
     id: "AP3", what: "past games dropped from bookings / weekly load too", file: ENGINE,
-    find: "    (r) => r.game && r.game.status !== \"cancelled\",",
-    replace: "    (r) => r.game && r.game.status !== \"cancelled\" && !isBeforeToday(r.game.scheduled_at, today),",
+    // 0129: re-aimed at the line that takes the busy list from official_bookings.
+    find: "  const existing = busyRead.ok ? busyRead.rows : [];",
+    replace: "  const existing = (busyRead.ok ? busyRead.rows : []).filter((r) => !isBeforeToday(r.scheduled_at, today));",
     expect: "P3",
   },
   {

@@ -14,6 +14,10 @@ import { loadVolunteerFeature } from "@/lib/volunteers/feature-state";
 import * as W from "@/lib/volunteers/words";
 import { SignupsScreen, type SignupsScreenData } from "@/components/volunteers/signups-screen";
 import type { SignupClaim } from "@/lib/volunteers/signups-screen";
+import { EmailProblemsBanner } from "@/components/email-problems/email-problems-banner";
+import { loadEmailProblems } from "@/lib/outbound-email/problems-read";
+import { problemsView } from "@/lib/outbound-email/problems";
+import { VOLUNTEER_PROBLEMS } from "@/lib/volunteers/email-problems";
 
 export const dynamic = "force-dynamic";
 
@@ -53,8 +57,24 @@ export default async function VolunteerSignupsPage() {
   if (!seasonId) {
     return <p className="rounded-xl border border-gray-100 bg-white p-6 text-sm text-gray-600">{W.NO_SEASON}</p>;
   }
+  // 0128: emails that didn't go out (admin-only; names from the database's
+  // own function). An unreadable read shows "couldn't check", never nothing.
+  const problems = await loadEmailProblems(supabase, VOLUNTEER_PROBLEMS, seasonId);
+  const problemsBanner =
+    problems.state === "off" ? null : problems.state === "unreadable" ? (
+      <EmailProblemsBanner feature="volunteers" rpc={VOLUNTEER_PROBLEMS.rpc} seasonId={seasonId} view={null} />
+    ) : (() => {
+      const view = problemsView(problems.problems, "volunteers");
+      return view ? <EmailProblemsBanner feature="volunteers" rpc={VOLUNTEER_PROBLEMS.rpc} seasonId={seasonId} view={view} /> : null;
+    })();
   try {
-    return <SignupsScreen data={await loadSignups(supabase, orgId, seasonId)} />;
+    const data = await loadSignups(supabase, orgId, seasonId);
+    return (
+      <div className="flex flex-col gap-4">
+        {problemsBanner}
+        <SignupsScreen data={data} />
+      </div>
+    );
   } catch (e) {
     console.error("[volunteer signups] read failed:", (e as Error).message);
     return <p className="rounded-xl border border-red-100 bg-red-50 p-6 text-sm text-red-700">{W.SIGNUPS_READ_FAILED}</p>;

@@ -46,6 +46,8 @@
 //   MR3  wording ignores an unreadable conflict check    → [W1]
 //   MR4  wording ignores an unreadable blackout check    → [W2]
 //   MA1–MA8  each auto-assign read's error check removed → [A1]…[A8]
+//   2026-11-10 (0129): MR1 re-aimed at findUmpireConflict's own refusal of an
+//     unread bookings list; MA5 at auto-assign's refusal of official_bookings.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -130,7 +132,8 @@ const AUTO_FAULTS: Fault[] = [
   { tag: "A2", what: "this season's official roles", fail: (t, s) => t === "official_roles" && s === "id, name" },
   { tag: "A3", what: "this division's teams", fail: (t) => t === "teams" },
   { tag: "A4", what: "this division's games", fail: (t) => t === "games" },
-  { tag: "A5", what: "the officials' other games", fail: (t, s) => t === "game_umpires" && s.includes("game:games(") },
+  // 0129: the officials' busy games come from official_bookings.
+  { tag: "A5", what: "the officials' other games", fail: (t, s) => t === "official_bookings" && s === "rpc" },
   { tag: "A6", what: "the officials' availability", fail: (t) => t === "official_availability" },
   { tag: "A7", what: "the officials' blackout dates", fail: (t) => t === "official_blackouts" },
   { tag: "A8", what: "this division's current assignments", fail: (t, s) => t === "game_umpires" && s === "id, game_id, umpire_id, role" },
@@ -178,8 +181,8 @@ async function main() {
   // ── M: the manual checks ──────────────────────────────────────────────────
   await section("M", async () => {
     const failConflicts = new FakeClient(buildDb());
-    failConflicts.failRead = (t) => t === "game_umpires";
-    const c1 = await findUmpireConflict("u-busy", CANDIDATE, failConflicts.asClient());
+    failConflicts.failRead = (t) => t === "official_bookings";
+    const c1 = await findUmpireConflict("u-busy", SEASON, CANDIDATE, failConflicts.asClient());
     ok(c1.ok === false, "[M1]", `a failed bookings read must be "couldn't check": ${JSON.stringify(c1)}`);
     if (!c1.ok) counters.manualRefusals++;
 
@@ -190,7 +193,7 @@ async function main() {
     if (!b1.ok) counters.manualRefusals++;
 
     const clean = new FakeClient(buildDb());
-    const c2 = await findUmpireConflict("u-busy", CANDIDATE, clean.asClient());
+    const c2 = await findUmpireConflict("u-busy", SEASON, CANDIDATE, clean.asClient());
     ok(c2.ok === true && c2.conflict?.id === "g-2", "[M3]", `Busy's overlap must be found: ${JSON.stringify(c2)}`);
     if (c2.ok && c2.conflict) counters.realConflictFound++;
 
@@ -198,7 +201,7 @@ async function main() {
     ok(b2.ok === true && b2.blackout?.date === "2026-10-10", "[M4]", `Out's blackout must be found: ${JSON.stringify(b2)}`);
     if (b2.ok && b2.blackout) counters.realBlackoutFound++;
 
-    const c3 = await findUmpireConflict("u-free", CANDIDATE, clean.asClient());
+    const c3 = await findUmpireConflict("u-free", SEASON, CANDIDATE, clean.asClient());
     const b3 = await findUmpireBlackout("u-free", CANDIDATE.scheduled_at, clean.asClient());
     ok(c3.ok === true && c3.conflict === null && b3.ok === true && b3.blackout === null, "[M5]",
       `a clean official finds nothing: ${JSON.stringify(c3)} ${JSON.stringify(b3)}`);

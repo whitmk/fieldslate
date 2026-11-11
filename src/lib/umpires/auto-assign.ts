@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { DEFAULT_GAME_DURATION_MINS } from "./conflicts";
+import { DEFAULT_GAME_DURATION_MINS, fetchOfficialBookings } from "./conflicts";
 import { type AvailabilityWindow } from "./eligibility";
 import { blockReason, type Booking } from "./claim-rules";
 import { ensureSeasonRoleIds } from "./roles";
@@ -292,42 +292,20 @@ export async function autoAssignUmpires(
     return none();
   }
 
-  // 5. Load every existing game_umpires row for these umpires across the season,
-  //    so we can detect overlap with games in other divisions too. Alongside,
-  //    pull each umpire's availability windows and blackout dates (0062) and
-  //    resolve the normalized role ids for this division's role labels.
+  // 5. Each umpire's BUSY games across the season (0129, official_bookings —
+  //    the one rule: a rained-out or postponed game is not busy), so we can
+  //    detect overlap with games in other divisions too. Alongside, pull each
+  //    umpire's availability windows and blackout dates (0062) and resolve
+  //    the normalized role ids for this division's role labels.
   const umpireIds = umpires.map((u) => u.id);
-  type ExistingRow = {
-    id: string;
-    game_id: string;
-    umpire_id: string;
-    role: string;
-    game: {
-      id: string;
-      scheduled_at: string;
-      status: string;
-      home_team:
-        | { division: { settings: unknown } | null }
-        | null;
-    } | null;
-  };
   const [
-    { data: existingRaw, error: existingErr },
+    busyRead,
     { data: availabilityRaw, error: availabilityErr },
     { data: blackoutsRaw, error: blackoutsErr },
     { data: officialDivisionsRaw, error: officialDivisionsErr },
     roleIdByName,
   ] = await Promise.all([
-    supabase
-      .from("game_umpires")
-      .select(
-        `id, game_id, umpire_id, role,
-         game:games(
-           id, scheduled_at, status,
-           home_team:teams!home_team_id(division:divisions(settings))
-         )`,
-      )
-      .in("umpire_id", umpireIds),
+    fetchOfficialBookings(seasonId, umpireIds, supabase),
     supabase
       .from("official_availability")
       .select("umpire_id, day_of_week, start_time, end_time")
@@ -343,7 +321,7 @@ export async function autoAssignUmpires(
     ensureSeasonRoleIds(supabase, seasonId, roles),
   ]);
 
-  if (existingErr) return unreadable("the officials' other games");
+  if (!busyRead.ok) return unreadable("the officials' other games");
   if (availabilityErr) return unreadable("the officials' availability");
   if (blackoutsErr) return unreadable("the officials' blackout dates");
   // 0124: an unread division list would read as "every division".
@@ -354,9 +332,9 @@ export async function autoAssignUmpires(
     divisionsByUmpire.get(r.umpire_id)!.add(r.division_id);
   }
 
-  const existing = ((existingRaw as unknown as ExistingRow[] | null) ?? []).filter(
-    (r) => r.game && r.game.status !== "cancelled",
-  );
+  // No status test here — the database decided which games are busy. (The
+  // empty fallback is unreachable: an unread list refused above.)
+  const existing = busyRead.ok ? busyRead.rows : [];
 
   // Each slot label resolved to its season role — the CANONICAL name is the
   // slot's text from here on (2026-11-07), so an assignment never carries a
@@ -385,11 +363,7 @@ export async function autoAssignUmpires(
   const umpireBookings = new Map<string, Booking[]>();
   for (const u of umpires) umpireBookings.set(u.id, []);
   for (const e of existing) {
-    if (!e.game) continue;
-    umpireBookings.get(e.umpire_id)!.push({
-      start: e.game.scheduled_at,
-      minutes: gameDuration(e.game.home_team?.division?.settings),
-    });
+    umpireBookings.get(e.umpire_id)?.push({ start: e.scheduled_at, minutes: e.minutes });
   }
 
   // 6. Per-game slot occupancy across the division being assigned.
