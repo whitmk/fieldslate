@@ -527,8 +527,35 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   no role (PUBLIC, anon, service_role, dashboard_readonly false). Both new
   tables RLS on, no role privilege. The three `games` triggers enabled,
   statement-level, no `games` trigger disabled; 0 marks, 0 failures; leak
-  check clean. **The latest migration applied.** See "Days that need
-  rebuilding (0131)" under the snack shack section.
+  check clean. See "Days that need rebuilding (0131)" under the snack shack
+  section.
+- **0132 (revoke PUBLIC EXECUTE on trigger functions) APPLIED 2026-11-24
+  19:54 UTC, catalog `20261124195450`**, verbatim from the repo file on
+  Whit's go (catalog statements md5 = the file, `0fc84d1d…`), after its
+  rolled-back proof (`scripts/sim/trigger-fn-execute-sim.sql` + build
+  script; cases a–e green, both mutants killed at the migration's own
+  assertion — read its RUN LOG). It revokes the default PUBLIC (and
+  `dashboard_readonly`) EXECUTE from `handle_new_user`,
+  `clear_division_posted`, `enforce_division_lock`,
+  `set_games_notes_attribution`, `rls_auto_enable` and `set_updated_at`, and
+  sets `set_updated_at`'s `search_path = ''`. Postgres checks EXECUTE on a
+  trigger function only at CREATE TRIGGER time, never when it fires. After
+  apply: proacl `{postgres=X/postgres}` on all six, md5(prosrc) unchanged,
+  a throwaway sign-up created its profile and owner row, and the security
+  advisor no longer names any of the six or a mutable search_path.
+  Acceptance passed (sign-up, a test-org game edit + note with attribution,
+  the share link signed out; the reschedule link was not checked — no
+  interleague game in the test org). **The latest migration applied.**
+- **`rls_auto_enable` + event trigger `ensure_rls` are NOT from our
+  migrations** — most likely Supabase's dashboard setting that turns RLS on
+  for new public tables (owned by `postgres`, body in Supabase's style).
+  Toggling that setting may recreate the function with the default PUBLIC
+  grant and bring the advisor warning back; 0132's revoke would then need
+  re-running. Our migrations enable RLS explicitly anyway.
+- **`dashboard_readonly` IS CREATED BY HAND, not by a migration.** Any
+  migration that names it must existence-guard it (`exists (select 1 from
+  pg_roles where rolname = 'dashboard_readonly')`, as 0132 does), or it fails
+  on a rebuilt database or a Supabase branch.
 - **0117 (saved practice plans) APPLIED 2026-10-21 20:02 UTC, catalog
   `20261021200232`**, verbatim from the repo file on Whit's go, after its
   rolled-back proof (14/14 mutants) and a read-only pre-check (no transaction
@@ -6914,7 +6941,22 @@ Still open:
   an EXECUTE grant to `dashboard_readonly`. It fails CLOSED (the functions gate
   on `is_org_member`, which matches `auth.uid()`, and the dashboard connects with
   NO JWT), so nothing is exposed — but it is one layer of protection instead of
-  two. Clean up alongside the restricted Stripe key.
+  two. Clean up alongside the restricted Stripe key. **Wider than first
+  written (recorded 2026-11-24):** it holds EXECUTE on every public function
+  plus default privileges for future ones — including SECURITY DEFINER writers
+  that take only a token. **Investigate first:** list exactly what the local
+  dashboard calls, then revoke the blanket grant AND the default privileges
+  and grant back only those, so the dashboard's `is_org_member` "permission
+  denied" error doesn't come back.
+- **`get_game_venue_context_for_gate` is anon-callable with only a game id
+  (backlog, recorded 2026-11-24).** Called as anon by
+  `/api/reschedule/[token]/respond` and `/api/schedule/[token]/reschedule`
+  (via `gateRescheduleVenue`), but the function checks no token: any game
+  UUID reads that field's full weekly hours (`existing_venue`), and
+  `p_proposed_venue_name` probes the org's other field names and returns
+  their hours (`matched_venue`). Replace with a token-gated RPC (the
+  0088/0089 pattern). Also: a non-integer `game_duration` makes its `::int`
+  cast throw, which the gate reports as "couldn't check" (fails closed).
 
 - **Rainout reschedule modal carries lever advice** — `rainout-reschedule-modal.tsx`
   line ~515 says "Try adding venues or extending the season end date." Same
