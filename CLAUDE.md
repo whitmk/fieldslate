@@ -542,8 +542,10 @@ production-critical, easy-to-get-wrong facts, mostly around billing and URLs.
   trigger function only at CREATE TRIGGER time, never when it fires. After
   apply: proacl `{postgres=X/postgres}` on all six, md5(prosrc) unchanged,
   a throwaway sign-up created its profile and owner row, and the security
-  advisor no longer names any of the six or a mutable search_path. **The
-  latest migration applied.**
+  advisor no longer names any of the six or a mutable search_path.
+  Acceptance passed (sign-up, a test-org game edit + note with attribution,
+  the share link signed out; the reschedule link was not checked — no
+  interleague game in the test org). **The latest migration applied.**
 - **`rls_auto_enable` + event trigger `ensure_rls` are NOT from our
   migrations** — most likely Supabase's dashboard setting that turns RLS on
   for new public tables (owned by `postgres`, body in Supabase's style).

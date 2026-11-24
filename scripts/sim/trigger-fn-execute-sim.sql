@@ -52,6 +52,10 @@
 --   dashboard_readonly, supabase_auth_admin EXECUTE false; md5(prosrc)
 --   unchanged on all six; set_updated_at proconfig {search_path=""}; the
 --   security advisor names none of the six and has no search_path warning.
+--   Acceptance (Whit, 2026-11-24): throwaway sign-up worked; a game edit + note
+--   in the SRALL test org saved with attribution; the public schedule share
+--   link loaded signed out. Reschedule link NOT checked (no interleague game in
+--   the test org; 0132 touches none of those functions).
 
 -- ==== CASE a ====
 -- @@MIGRATION_0132@@
