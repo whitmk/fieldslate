@@ -16,9 +16,9 @@ import { CALENDAR_HELP_FAQ, calendarHelpFaqJsonLd } from "@/lib/calendar/help-fa
 // here directly, or the visible list and the structured data drift.
 
 export const metadata: Metadata = {
-  title: "Add your team's schedule to your calendar · FieldSlate",
+  title: "How to Add a Team Schedule to iPhone, Google or Android",
   description:
-    "How to add a FieldSlate team calendar link to iPhone, Google Calendar, Android, Outlook and Skylight, and what to expect when games change.",
+    "Got a team calendar link from your coach? Add it once on iPhone, Google Calendar, Android, Outlook or Skylight and every game change shows up on its own.",
   alternates: { canonical: `${SITE_URL}/help/calendar` },
 };
 
